@@ -7,8 +7,6 @@ parameters:
     excludePaths:
         - app/Models/
         - routes/console.php
-        - tests/Feature/
-        - tests/Unit/ExampleTest.php
     ignoreErrors:
         - '#Trait App\\Support\\Traits\\.* is used zero times and is not analysed\.#'
         - '#has parameter \$[a-z]+ with generic class Illuminate\\Testing\\TestResponse but does not specify its types#'

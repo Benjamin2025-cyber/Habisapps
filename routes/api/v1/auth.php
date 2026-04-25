@@ -2,17 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\AuthController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('login', fn () => response()->json([
-    'success' => false,
-    'message' => 'Not yet implemented.',
-], 501));
-Route::post('register', fn () => response()->json([
-    'success' => false,
-    'message' => 'Not yet implemented.',
-], 501));
-Route::post('logout', fn () => response()->json([
-    'success' => false,
-    'message' => 'Not yet implemented.',
-], 501))->middleware('auth:sanctum');
+Route::post('login', [AuthController::class, 'login']);
+Route::post('register', [AuthController::class, 'register']);
+Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');

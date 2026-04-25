@@ -9,7 +9,7 @@ Microfinance core banking API built on Laravel 13.
 | Runtime | PHP 8.4+ |
 | Framework | Laravel 13 |
 | Database | PostgreSQL |
-| Auth | Laravel Sanctum (token-based) |
+| Auth | Laravel Sanctum (bearer token auth) |
 | Static analysis | PHPStan level 9 |
 | Testing | PHPUnit |
 | Financial math | brick/money (no floats) |
@@ -22,7 +22,7 @@ Microfinance core banking API built on Laravel 13.
 
 ```bash
 cp .env.example .env
-# Edit .env with your database credentials, then:
+# Edit `.env` with your PostgreSQL credentials, then:
 
 composer setup
 ```
@@ -33,6 +33,8 @@ composer install
 php artisan key:generate
 php artisan migrate
 ```
+
+For automated tests, create a separate PostgreSQL database such as `habis_finance_api_test`. The committed `phpunit.xml` points tests at that database name while reusing the rest of your PostgreSQL connection settings from `.env`.
 
 ## Commands
 
@@ -58,10 +60,9 @@ All responses follow a standard envelope:
 ```
 
 **Headers required on every request:**
-- `Accept: application/json` (forced by middleware)
 - `X-API-Version: 1`
 
-**Idempotency:** Pass `Idempotency-Key` on POST/PATCH to safely retry without duplicates.
+**Idempotency:** Pass `Idempotency-Key` on POST/PATCH to safely retry without duplicate processing. Keys are bound to the request method, path, actor, tenant context, query string, and payload.
 
 ## Directory Structure
 
@@ -70,32 +71,30 @@ app/
 ├── Http/
 │   ├── Actions/          # Single-responsibility command objects
 │   ├── Controllers/      # Thin controllers
-│   └── Middleware/        # ApiVersion, Idempotency, ForceJson
+│   └── Middleware/       # ApiVersion, Idempotency
 ├── Repositories/          # Data access layer with generics
 └── Support/
     ├── ApiResponse.php    # Standard JSON response builder
     ├── Casts/             # MoneyCast (brick/money Eloquent cast)
-    └── Traits/            # HasUuid, HasAuditLog, BelongsToTenant
+    └── Traits/            # Optional domain traits under evaluation
 routes/
 ├── api.php                # API entry point
 └── api/v1/
-    └── auth.php           # Auth route stubs
+    └── auth.php           # Auth routes
 ```
 
 ## Architecture Patterns
 
-- **UUIDs** on all models via `HasUuid` trait
 - **Actions** encapsulate business logic (`BaseAction::run([...])`)
 - **Repositories** provide typed CRUD with `spatie/laravel-query-builder`
-- **Money** stored as decimal subunits, handled via `brick/money`
+- **Money** handled with `brick/money`
 - **Audit logs** on every model mutation (dirty fields only)
-- **Multi-tenant** ready via `BelongsToTenant` trait and Laravel Context
 
 ## API Endpoints
 
 | Method | Path | Auth | Status |
 |---|---|---|---|
 | GET | `/api/v1/health` | No | Live |
-| POST | `/api/v1/login` | No | Stub |
-| POST | `/api/v1/register` | No | Stub |
-| POST | `/api/v1/logout` | Sanctum | Stub |
+| POST | `/api/v1/login` | No | Live |
+| POST | `/api/v1/register` | No | Live |
+| POST | `/api/v1/logout` | Sanctum | Live |

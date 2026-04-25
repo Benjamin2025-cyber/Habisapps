@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\ApiVersion;
-use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\IdempotencyMiddleware;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
@@ -20,8 +19,8 @@ use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        api: __DIR__ . '/../routes/api.php',
-        commands: __DIR__ . '/../routes/console.php',
+        api: __DIR__.'/../routes/api.php',
+        commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -31,41 +30,72 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->api(prepend: [
-            ForceJsonResponse::class,
             IdempotencyMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e): bool {
+            return $request->is('api/*') || $request->expectsJson();
+        });
+
         $exceptions->render(function (ValidationException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             return ApiResponse::unprocessable('Validation failed', $e->errors());
         });
 
         $exceptions->render(function (ModelNotFoundException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             return ApiResponse::notFound();
         });
 
         $exceptions->render(function (NotFoundHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             return ApiResponse::notFound($e->getMessage() ?: 'Resource not found');
         });
 
         $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             return ApiResponse::unauthorized($e->getMessage() ?: 'Unauthenticated');
         });
 
         $exceptions->render(function (AccessDeniedHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             return ApiResponse::forbidden($e->getMessage() ?: 'Access denied');
         });
 
         $exceptions->render(function (TooManyRequestsHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             $retryAfter = $e->getHeaders()['Retry-After'] ?? 60;
 
             return ApiResponse::tooManyRequests(
-                'Rate limit exceeded. Try again in ' . $retryAfter . ' seconds.',
+                'Rate limit exceeded. Try again in '.$retryAfter.' seconds.',
                 (int) $retryAfter
             );
         });
 
-        $exceptions->render(function (\Throwable $e, Request $request) {
+        $exceptions->render(function (Throwable $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
             if (app()->isProduction()) {
                 return ApiResponse::error(
                     'Internal server error',
