@@ -13,6 +13,7 @@
 /.vscode
 /.zed
 /auth.json
+/api.json
 /public/storage
 /storage/*.key
 /storage/pail

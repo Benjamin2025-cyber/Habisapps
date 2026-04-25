@@ -17,7 +17,7 @@ Microfinance core banking API built on Laravel 13.
 | Audit trail | spatie/laravel-activitylog |
 | API querying | spatie/laravel-query-builder |
 | DTOs | spatie/laravel-data |
-| API contract | OpenAPI 3.1 |
+| API docs | Dedoc Scramble (OpenAPI 3.1) |
 
 ## Setup
 
@@ -49,8 +49,13 @@ vendor/bin/pint --test      # Code style gate
 
 ## API Documentation
 
-- OpenAPI contract: `public/openapi.yaml`
-- Swagger UI: `public/docs.html` when served by the app, for example `http://localhost:8000/docs.html`
+API documentation is generated from Laravel routes, Form Requests, controller signatures, and response types using Dedoc Scramble.
+
+- Docs UI: `http://localhost:8000/docs/api`
+- OpenAPI JSON: `http://localhost:8000/docs/api.json`
+- Export command: `php artisan scramble:export`
+
+Scramble restricts docs to the `local` environment by default unless a `viewApiDocs` gate is explicitly defined.
 
 ## Foundation Policy
 

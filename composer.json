@@ -11,6 +11,7 @@
     "require": {
         "php": "^8.4",
         "brick/money": "^0.11",
+        "dedoc/scramble": "^0.13.20",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
