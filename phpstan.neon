@@ -1,0 +1,19 @@
+parameters:
+    level: 9
+    paths:
+        - app
+        - routes
+        - tests
+    excludePaths:
+        - app/Models/
+        - routes/console.php
+        - tests/Feature/
+        - tests/Unit/ExampleTest.php
+    ignoreErrors:
+        - '#Trait App\\Support\\Traits\\.* is used zero times and is not analysed\.#'
+        - '#has parameter \$[a-z]+ with generic class Illuminate\\Testing\\TestResponse but does not specify its types#'
+        - '#return type with generic class Illuminate\\Testing\\TestResponse does not specify its types#'
+        - '#Dynamic call to static method#'
+        - '#property\.extraNativeType#'
+        - '#missingType\.iterableValue#'
+    reportUnmatchedIgnoredErrors: false
