@@ -11,5 +11,5 @@ Route::prefix('v1')->middleware('api')->group(function (): void {
         'version' => '1.0.0',
     ]));
 
-    require __DIR__ . '/auth.php';
+    require __DIR__.'/auth.php';
 });

@@ -18,7 +18,7 @@ final class ApiVersion
     {
         $version = $request->header('X-API-Version', '1');
 
-        $versionStr = is_array($version) ? implode(',', $version) : (string) $version;
+        $versionStr = $version;
 
         if (! in_array($versionStr, self::SUPPORTED_VERSIONS, true)) {
             return ApiResponse::error(

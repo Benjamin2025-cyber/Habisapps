@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Models\ApiIdempotencyKey;
 use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -12,7 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\DB;
 use JsonException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
@@ -20,8 +21,6 @@ use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 final class IdempotencyMiddleware
 {
     private const string HEADER = 'Idempotency-Key';
-
-    private const int TTL_MINUTES = 1440;
 
     private const int LOCK_SECONDS = 30;
 
@@ -39,7 +38,7 @@ final class IdempotencyMiddleware
             return $next($request);
         }
 
-        $keyString = is_array($key) ? implode(',', $key) : $key;
+        $keyString = $key;
 
         if (strlen($keyString) > 255) {
             return response()->json([
@@ -48,44 +47,55 @@ final class IdempotencyMiddleware
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        $responseCacheKey = $this->responseCacheKey($request, $keyString);
-        $lockKey = $this->lockCacheKey($request, $keyString);
+        $actorContext = $this->actorContext($request);
+        $scopeHash = $this->scopeHash($request, $keyString, $actorContext);
+        $lockKey = $this->lockCacheKey($scopeHash);
         $fingerprint = $this->fingerprint($request);
-
-        /** @var array{fingerprint: string, body: array<array-key, mixed>, status: int, headers: array<string, string>}|null $cached */
-        $cached = Cache::get($responseCacheKey);
-        $replayedResponse = $this->replayCachedResponse($cached, $fingerprint);
-
-        if ($replayedResponse !== null) {
-            return $replayedResponse;
-        }
 
         try {
             $response = Cache::lock($lockKey, self::LOCK_SECONDS)->block(
                 self::WAIT_SECONDS,
-                function () use ($fingerprint, $next, $request, $responseCacheKey): Response {
-                    /** @var array{fingerprint: string, body: array<array-key, mixed>, status: int, headers: array<string, string>}|null $cached */
-                    $cached = Cache::get($responseCacheKey);
-                    $replayedResponse = $this->replayCachedResponse($cached, $fingerprint);
+                function () use ($actorContext, $fingerprint, $keyString, $next, $request, $scopeHash): Response {
+                    $transactionResponse = DB::transaction(function () use ($actorContext, $fingerprint, $keyString, $next, $request, $scopeHash): Response {
+                        $record = (new ApiIdempotencyKey)->newQuery()
+                            ->where('scope_hash', $scopeHash)
+                            ->first();
 
-                    if ($replayedResponse !== null) {
-                        return $replayedResponse;
-                    }
+                        if ($record !== null) {
+                            $replayedResponse = $this->replayStoredResponse($record, $fingerprint);
 
-                    $response = $next($request);
+                            if ($replayedResponse !== null) {
+                                return $replayedResponse;
+                            }
+                        } else {
+                            $record = (new ApiIdempotencyKey)->newQuery()->create([
+                                'key' => $keyString,
+                                'method' => $request->method(),
+                                'path' => $request->path(),
+                                'actor_context' => $actorContext,
+                                'scope_hash' => $scopeHash,
+                                'request_fingerprint' => $fingerprint,
+                                'expires_at' => now()->addMinutes($this->ttlMinutes()),
+                            ]);
+                        }
 
-                    if ($response instanceof JsonResponse
-                        && $response->getStatusCode() >= 200
-                        && $response->getStatusCode() < 300) {
-                        Cache::put($responseCacheKey, [
-                            'fingerprint' => $fingerprint,
-                            'body' => $response->getData(true),
-                            'status' => $response->getStatusCode(),
-                            'headers' => $this->cacheableHeaders($response->headers),
-                        ], now()->addMinutes(self::TTL_MINUTES));
-                    }
+                        $response = $next($request);
 
-                    return $response;
+                        if ($response instanceof JsonResponse
+                            && $response->getStatusCode() >= 200
+                            && $response->getStatusCode() < 300) {
+                            $record->forceFill([
+                                'response_body' => $response->getData(true),
+                                'response_status' => $response->getStatusCode(),
+                                'response_headers' => $this->cacheableHeaders($response->headers),
+                                'completed_at' => now(),
+                            ])->save();
+                        }
+
+                        return $response;
+                    });
+
+                    return $transactionResponse;
                 }
             );
 
@@ -108,21 +118,11 @@ final class IdempotencyMiddleware
     }
 
     /**
-     * @param  array{fingerprint?: mixed, body?: mixed, status?: mixed, headers?: mixed}|null  $cached
+     * Replay a completed operation or reject key reuse with a different payload.
      */
-    private function replayCachedResponse(?array $cached, string $fingerprint): ?JsonResponse
+    private function replayStoredResponse(ApiIdempotencyKey $record, string $fingerprint): ?JsonResponse
     {
-        if (! is_array($cached)) {
-            return null;
-        }
-
-        $cachedFingerprint = $cached['fingerprint'] ?? null;
-
-        if (! is_string($cachedFingerprint)) {
-            return null;
-        }
-
-        if (! hash_equals($cachedFingerprint, $fingerprint)) {
+        if (! hash_equals($record->request_fingerprint, $fingerprint)) {
             return ApiResponse::error(
                 'Idempotency-Key has already been used for a different request.',
                 null,
@@ -130,11 +130,11 @@ final class IdempotencyMiddleware
             );
         }
 
-        $body = $cached['body'] ?? [];
-        $status = $cached['status'] ?? Response::HTTP_OK;
-        $headers = $cached['headers'] ?? [];
+        $body = $record->response_body;
+        $status = $record->response_status;
+        $headers = $record->response_headers ?? [];
 
-        if (! is_array($body) || ! is_int($status) || ! is_array($headers)) {
+        if (! is_array($body) || ! is_int($status)) {
             return null;
         }
 
@@ -143,14 +143,19 @@ final class IdempotencyMiddleware
             ->withHeaders(['Idempotency-Replayed' => 'true']);
     }
 
-    private function responseCacheKey(Request $request, string $key): string
+    private function scopeHash(Request $request, string $key, string $actorContext): string
     {
-        return 'idempotency:response:'.hash('sha256', $request->method().'|'.$request->path().'|'.$key);
+        return hash('sha256', implode('|', [
+            $request->method(),
+            $request->path(),
+            $actorContext,
+            $key,
+        ]));
     }
 
-    private function lockCacheKey(Request $request, string $key): string
+    private function lockCacheKey(string $scopeHash): string
     {
-        return 'idempotency:lock:'.hash('sha256', $request->method().'|'.$request->path().'|'.$key);
+        return 'idempotency:lock:'.$scopeHash;
     }
 
     private function fingerprint(Request $request): string
@@ -162,7 +167,6 @@ final class IdempotencyMiddleware
                 'query' => $this->normalize($request->query->all()),
                 'body' => $this->normalize($request->request->all()),
                 'actor' => $this->actorContext($request),
-                'tenant' => Context::get('tenant_id'),
             ], JSON_THROW_ON_ERROR));
         } catch (JsonException) {
             return hash('sha256', $request->method().'|'.$request->path().'|'.$this->actorContext($request));
@@ -215,6 +219,13 @@ final class IdempotencyMiddleware
             (string) $request->ip(),
             (string) $request->userAgent(),
         ]);
+    }
+
+    private function ttlMinutes(): int
+    {
+        $value = config('security.idempotency.ttl_minutes', 1440);
+
+        return is_int($value) && $value > 0 ? $value : 1440;
     }
 
     /**

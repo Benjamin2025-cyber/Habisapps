@@ -17,6 +17,7 @@ Microfinance core banking API built on Laravel 13.
 | Audit trail | spatie/laravel-activitylog |
 | API querying | spatie/laravel-query-builder |
 | DTOs | spatie/laravel-data |
+| API contract | OpenAPI 3.1 |
 
 ## Setup
 
@@ -43,7 +44,32 @@ composer dev     # Start dev server + queue + logs
 composer test    # Clear config cache and run tests
 php artisan test # Run tests directly
 vendor/bin/phpstan analyze  # Static analysis
+vendor/bin/pint --test      # Code style gate
 ```
+
+## API Documentation
+
+- OpenAPI contract: `public/openapi.yaml`
+- Swagger UI: `public/docs.html` when served by the app, for example `http://localhost:8000/docs.html`
+
+## Foundation Policy
+
+The repo now carries explicit initialization rules in:
+
+- `docs/architecture.md`
+- `docs/database-conventions.md`
+- `docs/operations.md`
+- `docs/security-baseline.md`
+
+Current explicit decisions:
+
+- Primary keys remain integer `id` columns.
+- Multitenancy is out of scope for the current bootstrap.
+- Repositories are optional and must be justified by reuse or complexity.
+- Sanctum tokens currently default to the `access-api` ability.
+- Sanctum tokens expire after `AUTH_TOKEN_TTL_MINUTES` / `SANCTUM_TOKEN_EXPIRATION_MINUTES`.
+- Public registration is disabled unless `AUTH_REGISTRATION_ENABLED=true`.
+- Login and registration are rate-limited.
 
 ## API Design
 
@@ -62,7 +88,7 @@ All responses follow a standard envelope:
 **Headers required on every request:**
 - `X-API-Version: 1`
 
-**Idempotency:** Pass `Idempotency-Key` on POST/PATCH to safely retry without duplicate processing. Keys are bound to the request method, path, actor, tenant context, query string, and payload.
+**Idempotency:** Pass `Idempotency-Key` on POST/PATCH to safely retry without duplicate processing. Keys are persisted in the `api_idempotency_keys` table and bound to the request method, path, actor, query string, and payload.
 
 ## Directory Structure
 
@@ -76,7 +102,7 @@ app/
 └── Support/
     ├── ApiResponse.php    # Standard JSON response builder
     ├── Casts/             # MoneyCast (brick/money Eloquent cast)
-    └── Traits/            # Optional domain traits under evaluation
+    └── Traits/            # Shared support traits such as audit helpers
 routes/
 ├── api.php                # API entry point
 └── api/v1/

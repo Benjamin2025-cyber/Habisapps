@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Support\ApiResponse;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->middleware(['api', 'api.version'])->group(function (): void {
-    Route::get('health', fn () => \App\Support\ApiResponse::success(
+    Route::get('health', fn () => ApiResponse::success(
         data: [
             'status' => 'ok',
             'service' => config('app.name', 'habis-finance-api'),
@@ -15,5 +16,5 @@ Route::prefix('v1')->middleware(['api', 'api.version'])->group(function (): void
         message: 'Service is healthy',
     ));
 
-    require __DIR__ . '/api/v1/auth.php';
+    require __DIR__.'/api/v1/auth.php';
 });

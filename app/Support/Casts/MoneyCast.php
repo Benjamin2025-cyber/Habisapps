@@ -83,14 +83,14 @@ class MoneyCast implements CastsAttributes
     private function currencyKey(string $key): string
     {
         if (str_ends_with($key, '_amount')) {
-            return substr($key, 0, -7) . '_currency';
+            return substr($key, 0, -7).'_currency';
         }
 
         if (str_ends_with($key, '_subunit')) {
-            return substr($key, 0, -7) . '_currency';
+            return substr($key, 0, -7).'_currency';
         }
 
-        return $key . '_currency';
+        return $key.'_currency';
     }
 
     private function defaultCurrency(): string

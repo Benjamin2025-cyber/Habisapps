@@ -11,29 +11,31 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
 
-/**
- * @template TModel of Model
- */
 abstract class BaseRepository
 {
-    /** @var class-string<TModel> */
+    /** @var class-string<Model> */
     protected string $modelClass;
 
-    /** @return Builder<TModel> */
+    /** @return Builder<Model> */
     protected function newQuery(): Builder
     {
-        return $this->modelClass::query();
+        return $this->newModel()->newQuery();
     }
 
-    /** @return QueryBuilder<TModel> */
+    protected function newModel(): Model
+    {
+        return new $this->modelClass;
+    }
+
+    /** @return QueryBuilder<Model> */
     protected function newQueryBuilder(): QueryBuilder
     {
         return QueryBuilder::for($this->modelClass);
     }
 
     /**
-     * @param array<int|string> $ids
-     * @return Collection<int, TModel>
+     * @param  array<int|string>  $ids
+     * @return Collection<int, Model>
      */
     public function findMany(array $ids): Collection
     {
@@ -41,39 +43,35 @@ abstract class BaseRepository
     }
 
     /**
-     * @param array<int|string> $ids
-     * @return Collection<int, TModel>
+     * @param  array<int|string>  $ids
+     * @return Collection<int, Model>
      */
     public function findManyOrFail(array $ids): Collection
     {
         $result = $this->newQuery()->whereKey($ids)->get();
 
         if ($result->isEmpty()) {
-            throw (new ModelNotFoundException())->setModel($this->modelClass, $ids);
+            throw (new ModelNotFoundException)->setModel($this->modelClass, $ids);
         }
 
         return $result;
     }
 
-    /** @return TModel|null */
     public function findById(string|int $id): ?Model
     {
         return $this->newQuery()->find($id);
     }
 
-    /** @return TModel */
     public function findByIdOrFail(string|int $id): Model
     {
         return $this->newQuery()->findOrFail($id);
     }
 
-    /** @return TModel|null */
     public function findByField(string $field, mixed $value): ?Model
     {
         return $this->newQuery()->where($field, $value)->first();
     }
 
-    /** @return TModel */
     public function findFirstByFieldOrFail(string $field, mixed $value): Model
     {
         return $this->newQuery()->where($field, $value)->firstOrFail();
@@ -82,14 +80,12 @@ abstract class BaseRepository
     /** @param array<string, mixed> $attributes */
     public function create(array $attributes): Model
     {
-        /** @var TModel */
         return $this->newQuery()->create($attributes);
     }
 
     /** @param array<string, mixed> $attributes */
     public function update(Model $model, array $attributes): Model
     {
-        /** @var TModel */
         return DB::transaction(function () use ($model, $attributes): Model {
             $model->update($attributes);
 
@@ -105,6 +101,6 @@ abstract class BaseRepository
 
     public function hasRecordWith(string $field, mixed $value): bool
     {
-        return $this->newQuery()->where($field, $value)->exists();
+        return $this->newQuery()->where($field, $value)->first() !== null;
     }
 }

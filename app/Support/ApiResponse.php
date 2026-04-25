@@ -12,8 +12,8 @@ final class ApiResponse
     private function __construct() {}
 
     /**
-     * @param array<array-key, mixed> $meta
-     * @param array<array-key, string> $headers
+     * @param  array<array-key, mixed>  $meta
+     * @param  array<array-key, string>  $headers
      */
     public static function success(
         mixed $data = null,
@@ -79,8 +79,8 @@ final class ApiResponse
     }
 
     /**
-     * @param array<array-key, mixed> $meta
-     * @param array<array-key, string> $headers
+     * @param  array<array-key, mixed>  $meta
+     * @param  array<array-key, string>  $headers
      */
     private static function build(
         bool $success,

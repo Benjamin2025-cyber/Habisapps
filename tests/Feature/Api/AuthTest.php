@@ -14,7 +14,9 @@ final class AuthTest extends TestCase
 
     public function test_register_creates_a_user_and_returns_a_token(): void
     {
-        $response = $this->postJson('/api/v1/register', [
+        config(['security.auth.registration.enabled' => true]);
+
+        $response = $this->withServerVariables(['REMOTE_ADDR' => '10.10.0.2'])->postJson('/api/v1/register', [
             'name' => 'Ada Lovelace',
             'email' => 'ada@example.com',
             'password' => 'Password123!',
@@ -28,6 +30,34 @@ final class AuthTest extends TestCase
 
         $this->assertDatabaseHas('users', ['email' => 'ada@example.com']);
         $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'name' => 'auth-token',
+        ]);
+    }
+
+    public function test_register_is_disabled_by_default(): void
+    {
+        $response = $this->withServerVariables(['REMOTE_ADDR' => '10.10.0.3'])->postJson('/api/v1/register', [
+            'name' => 'Ada Lovelace',
+            'email' => 'ada@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ]);
+
+        $this->assertJsonError($response, 403, 'Registration is disabled.');
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_login_rejects_unknown_fields(): void
+    {
+        $response = $this->postJson('/api/v1/login', [
+            'email' => 'grace@example.com',
+            'password' => 'Password123!',
+            'role' => 'platform-admin',
+        ]);
+
+        $this->assertJsonError($response, 422, 'Validation failed');
+        $response->assertJsonValidationErrors(['role']);
     }
 
     public function test_login_returns_a_token_for_valid_credentials(): void
@@ -48,6 +78,9 @@ final class AuthTest extends TestCase
         $response->assertJsonPath('data.token', fn (mixed $token): bool => is_string($token) && $token !== '');
 
         $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'expires_at' => null,
+        ]);
     }
 
     public function test_login_rejects_invalid_credentials(): void

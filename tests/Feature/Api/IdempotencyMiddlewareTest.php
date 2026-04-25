@@ -41,6 +41,10 @@ final class IdempotencyMiddlewareTest extends TestCase
         $firstResponse->assertJsonPath('data.sequence', 1);
         $secondResponse->assertJsonPath('data.sequence', 1);
         $secondResponse->assertHeader('Idempotency-Replayed', 'true');
+        $this->assertDatabaseHas('api_idempotency_keys', [
+            'key' => 'transfer-001',
+            'response_status' => 201,
+        ]);
     }
 
     public function test_same_key_with_different_payload_is_rejected(): void
@@ -63,10 +67,16 @@ final class IdempotencyMiddlewareTest extends TestCase
     public function test_locked_request_returns_a_conflict_response(): void
     {
         $key = 'transfer-003';
-        $lockKey = 'idempotency:lock:'.hash('sha256', 'POST|api/v1/test/idempotency|'.$key);
+        $scopeHash = hash('sha256', implode('|', [
+            'POST',
+            'api/v1/test/idempotency',
+            'guest|127.0.0.1|Symfony',
+            $key,
+        ]));
+        $lockKey = 'idempotency:lock:'.$scopeHash;
         $lock = Cache::lock($lockKey, 30);
 
-        $this->assertTrue($lock->get());
+        self::assertTrue($lock->get());
 
         try {
             $response = $this->withApiHeaders(['Idempotency-Key' => $key])->postJson('/api/v1/test/idempotency', [

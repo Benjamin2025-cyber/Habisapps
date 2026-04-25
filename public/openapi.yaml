@@ -1,0 +1,263 @@
+openapi: 3.1.0
+info:
+  title: Habis Finance API
+  version: 1.0.0
+  summary: Microfinance core API foundation.
+  description: |
+    Initial API contract for the Habis Finance API bootstrap.
+    All API requests should send `Accept: application/json` and `X-API-Version: 1`.
+servers:
+  - url: http://localhost:8000/api
+    description: Local development
+security:
+  - sanctumBearer: []
+tags:
+  - name: Health
+  - name: Authentication
+components:
+  securitySchemes:
+    sanctumBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum token
+  parameters:
+    ApiVersion:
+      name: X-API-Version
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: ["1"]
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+      description: Required for retry-safe financial mutations once finance endpoints are added.
+  schemas:
+    ApiError:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+          const: false
+        message:
+          type: string
+        errors:
+          type: [object, array, string, "null"]
+        meta:
+          type: [object, "null"]
+    HealthResponse:
+      type: object
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          type: object
+          required: [status, service, version, timestamp]
+          properties:
+            status:
+              type: string
+              enum: [ok]
+            service:
+              type: string
+            version:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+    User:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        email_verified_at:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: [string, "null"]
+          format: date-time
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+    AuthTokenResponse:
+      type: object
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        message:
+          type: string
+        data:
+          type: object
+          required: [user, token]
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+            token:
+              type: string
+              description: Plain-text Sanctum token. Store securely; it is only returned once.
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email, password, password_confirmation]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          format: password
+        password_confirmation:
+          type: string
+          format: password
+paths:
+  /v1/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /v1/login:
+    post:
+      tags: [Authentication]
+      summary: Issue a Sanctum bearer token
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /v1/register:
+    post:
+      tags: [Authentication]
+      summary: Register a user when registration is explicitly enabled
+      description: Disabled by default for finance-grade deployments.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Registration succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "403":
+          description: Registration is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /v1/logout:
+    post:
+      tags: [Authentication]
+      summary: Revoke the current Sanctum token
+      parameters:
+        - $ref: "#/components/parameters/ApiVersion"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Logout succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, message]
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        "401":
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"

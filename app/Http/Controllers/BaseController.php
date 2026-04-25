@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Support\ApiResponse;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Controller;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -68,10 +69,10 @@ abstract class BaseController extends Controller
     }
 
     /**
-     * @param  class-string<Model>|\Illuminate\Database\Eloquent\Builder<Model> $subject
+     * @param  class-string<Model>|Builder<Model>  $subject
      * @return QueryBuilder<Model>
      */
-    protected function newQueryBuilder(string|\Illuminate\Database\Eloquent\Builder $subject): QueryBuilder
+    protected function newQueryBuilder(string|Builder $subject): QueryBuilder
     {
         return QueryBuilder::for($subject);
     }

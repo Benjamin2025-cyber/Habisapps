@@ -43,6 +43,12 @@ abstract class BaseAction
         return $instance->execute();
     }
 
+    /**
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $callback
+     * @return TResult
+     */
     protected function inTransaction(Closure $callback): mixed
     {
         return DB::transaction($callback);

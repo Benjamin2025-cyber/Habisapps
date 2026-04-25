@@ -1,25 +1,43 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Database\Seeders;
 
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use InvalidArgumentException;
 
-class DatabaseSeeder extends Seeder
+final class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $this->call(RolesAndPermissionsSeeder::class);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        if (! app()->environment(['local', 'testing'])) {
+            return;
+        }
+
+        if (! (bool) env('SEED_BOOTSTRAP_ADMIN', false)) {
+            return;
+        }
+
+        $password = (string) env('SEED_BOOTSTRAP_ADMIN_PASSWORD');
+
+        if ($password === '') {
+            throw new InvalidArgumentException('SEED_BOOTSTRAP_ADMIN_PASSWORD is required when SEED_BOOTSTRAP_ADMIN is enabled.');
+        }
+
+        $user = User::firstOrCreate(
+            ['email' => (string) env('SEED_BOOTSTRAP_ADMIN_EMAIL', 'test@example.com')],
+            [
+                'name' => (string) env('SEED_BOOTSTRAP_ADMIN_NAME', 'Bootstrap Admin'),
+                'password' => $password,
+            ]
+        );
+
+        if (! $user->hasRole('platform-admin')) {
+            $user->assignRole('platform-admin');
+        }
     }
 }

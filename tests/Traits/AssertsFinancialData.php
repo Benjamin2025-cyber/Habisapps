@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Traits;
 
 use Brick\Math\BigDecimal;
-use Brick\Math\RoundingMode;
 use Brick\Money\Money;
+use PHPUnit\Framework\Assert;
 
 trait AssertsFinancialData
 {
@@ -17,7 +17,7 @@ trait AssertsFinancialData
 
         $diff = $expectedAmount->minus($actualAmount)->abs();
 
-        \PHPUnit\Framework\Assert::assertTrue(
+        Assert::assertTrue(
             $diff->isLessThanOrEqualTo(BigDecimal::of('0.01')),
             sprintf(
                 'Expected money amount %s but got %s %s.',
@@ -28,7 +28,7 @@ trait AssertsFinancialData
         );
 
         if ($currency !== null) {
-            \PHPUnit\Framework\Assert::assertSame(
+            Assert::assertSame(
                 strtoupper($currency),
                 (string) $actual->getCurrency(),
                 sprintf('Expected currency %s but got %s.', $currency, $actual->getCurrency())
@@ -38,7 +38,7 @@ trait AssertsFinancialData
 
     protected function assertMoneySame(string $expected, Money $actual): void
     {
-        \PHPUnit\Framework\Assert::assertTrue(
+        Assert::assertTrue(
             $actual->getAmount()->isEqualTo($expected),
             sprintf(
                 'Expected money amount %s but got %s.',
