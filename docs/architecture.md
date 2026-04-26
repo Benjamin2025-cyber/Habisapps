@@ -42,6 +42,7 @@ This project is initialized as a Laravel API foundation for a future microfinanc
 
 - Formula-dependent services must fail closed until the matching stakeholder policy is approved in `config/formulas.php`.
 - Use `FormulaPolicyRegistry::requireApproved(...)` before implementing interest, repayment allocation, balance, penalty, cash reconciliation, or reporting calculations.
+- Resolve formula implementations through `FormulaEngineManager` and configured drivers. Do not hardcode a formula class in application services.
 - Value objects and ledger draft validation may be built before approval because they enforce invariants without choosing formulas.
 - See `docs/domain/formula-guardrails.md`.
 

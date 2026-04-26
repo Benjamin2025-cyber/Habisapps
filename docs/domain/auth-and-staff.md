@@ -154,3 +154,9 @@ Authenticated:
 - `PATCH /api/v1/staff-users/{staffUser}`
 - `PATCH /api/v1/staff-users/{staffUser}/status`
 - `PUT /api/v1/staff-users/{staffUser}/roles`
+- `GET /api/v1/documents`
+- `POST /api/v1/documents`
+- `GET /api/v1/documents/{document}`
+- `PATCH /api/v1/documents/{document}/archive`
+- `POST /api/v1/reference-numbers`
+- `GET /api/v1/audit-events`

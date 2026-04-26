@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Support;
 
+use App\Support\Finance\Contracts\LoanInterestEngine;
 use App\Support\Finance\DateRange;
+use App\Support\Finance\FormulaEngineKey;
+use App\Support\Finance\FormulaEngineManager;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\FormulaPolicyRegistry;
@@ -79,5 +82,61 @@ final class FinanceFoundationTest extends TestCase
             JournalEntryLineDraft::make('CASH-001', LedgerLineType::Debit, MoneyAmount::of('10000')),
             JournalEntryLineDraft::make('CUSTOMER-001', LedgerLineType::Credit, MoneyAmount::of('9000')),
         );
+    }
+
+    public function test_default_formula_engine_fails_closed_until_stakeholder_policy_is_approved(): void
+    {
+        $engine = app(FormulaEngineManager::class)->engine(FormulaEngineKey::LoanInterest);
+
+        self::assertSame(FormulaEngineKey::LoanInterest, $engine->key());
+
+        $this->expectException(FormulaPolicyNotApproved::class);
+
+        if ($engine instanceof LoanInterestEngine) {
+            $engine->calculate(
+                MoneyAmount::of('100000'),
+                PercentageRate::of('10'),
+                DateRange::make(CarbonImmutable::parse('2026-04-01'), CarbonImmutable::parse('2026-04-30'))
+            );
+        }
+    }
+
+    public function test_formula_engine_can_be_swapped_by_configuration_after_policy_approval(): void
+    {
+        config([
+            'formulas.policies.loan_interest_method.approved' => true,
+            'formulas.engines.loan_interest' => 'test_loan_interest',
+            'formulas.drivers.test_loan_interest' => TestLoanInterestEngine::class,
+        ]);
+
+        $engine = app(FormulaEngineManager::class)->engine(FormulaEngineKey::LoanInterest);
+
+        self::assertInstanceOf(TestLoanInterestEngine::class, $engine);
+
+        $interest = $engine->calculate(
+            MoneyAmount::of('100000'),
+            PercentageRate::of('10'),
+            DateRange::make(CarbonImmutable::parse('2026-04-01'), CarbonImmutable::parse('2026-04-30'))
+        );
+
+        self::assertSame('1234', $interest->amount());
+    }
+}
+
+final class TestLoanInterestEngine implements LoanInterestEngine
+{
+    public function key(): FormulaEngineKey
+    {
+        return FormulaEngineKey::LoanInterest;
+    }
+
+    public function requiredPolicy(): FormulaPolicyKey
+    {
+        return FormulaPolicyKey::LoanInterestMethod;
+    }
+
+    public function calculate(MoneyAmount $principal, PercentageRate $rate, DateRange $period): MoneyAmount
+    {
+        return MoneyAmount::of('1234', $principal->currency());
     }
 }

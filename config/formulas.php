@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use App\Support\Finance\Engines\UnavailableFormulaEngine;
 
 return [
     /*
@@ -60,5 +61,32 @@ return [
             'owner' => null,
             'approved_at' => null,
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Formula Engine Drivers
+    |--------------------------------------------------------------------------
+    |
+    | Each critical calculation area resolves through a named engine driver.
+    | The default "unavailable" engine fails closed through the policy gate.
+    | When stakeholders approve a rule, implement a driver class, register it
+    | in "drivers", and map the relevant engine key to that driver.
+    |
+    */
+    'engines' => [
+        'rounding' => 'unavailable',
+        'loan_interest' => 'unavailable',
+        'installment' => 'unavailable',
+        'repayment_allocation' => 'unavailable',
+        'fee_tax_insurance' => 'unavailable',
+        'penalty_arrears' => 'unavailable',
+        'account_balance' => 'unavailable',
+        'cash_till_reconciliation' => 'unavailable',
+        'portfolio_reporting' => 'unavailable',
+    ],
+
+    'drivers' => [
+        'unavailable' => UnavailableFormulaEngine::class,
     ],
 ];

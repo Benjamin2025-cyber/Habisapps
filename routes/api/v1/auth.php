@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\AuditEventController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\DocumentController;
+use App\Http\Controllers\Api\V1\ReferenceNumberController;
 use App\Http\Controllers\Api\V1\StaffUserController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,4 +23,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::patch('staff-users/{staffUser}', [StaffUserController::class, 'update']);
     Route::patch('staff-users/{staffUser}/status', [StaffUserController::class, 'updateStatus']);
     Route::put('staff-users/{staffUser}/roles', [StaffUserController::class, 'updateRoles']);
+
+    Route::get('documents', [DocumentController::class, 'index']);
+    Route::post('documents', [DocumentController::class, 'store']);
+    Route::get('documents/{document}', [DocumentController::class, 'show']);
+    Route::patch('documents/{document}/archive', [DocumentController::class, 'archive']);
+
+    Route::post('reference-numbers', [ReferenceNumberController::class, 'store']);
+
+    Route::get('audit-events', [AuditEventController::class, 'index']);
 });

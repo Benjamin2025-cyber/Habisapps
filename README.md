@@ -152,3 +152,9 @@ routes/
 | PATCH | `/api/v1/staff-users/{staffUser}` | Sanctum | Live |
 | PATCH | `/api/v1/staff-users/{staffUser}/status` | Sanctum | Live |
 | PUT | `/api/v1/staff-users/{staffUser}/roles` | Sanctum | Live |
+| GET | `/api/v1/documents` | Sanctum | Live |
+| POST | `/api/v1/documents` | Sanctum | Live |
+| GET | `/api/v1/documents/{document}` | Sanctum | Live |
+| PATCH | `/api/v1/documents/{document}/archive` | Sanctum | Live |
+| POST | `/api/v1/reference-numbers` | Sanctum | Live |
+| GET | `/api/v1/audit-events` | Sanctum | Live |
