@@ -5,6 +5,7 @@ These conventions are the default until the finance domain introduces a stronger
 ## Keys and table shape
 
 - Use Laravel's default integer `id` primary keys.
+- Externally exposed financial resources should also have immutable public identifiers, preferably ULIDs, so API clients do not depend on internal integer IDs.
 - Foreign keys should use `foreignId()->constrained()` unless there is a documented reason not to.
 - Keep table names plural and model names singular.
 - Use explicit unique indexes for natural identifiers such as email, external references, or idempotency keys.

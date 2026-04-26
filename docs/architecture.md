@@ -41,4 +41,5 @@ This project is initialized as a Laravel API foundation for a future microfinanc
 ## Deferred decisions
 
 - UUID primary keys are out of scope for the current foundation. The default project convention is integer `id` keys.
+- Domain developer docs now recommend adding public immutable IDs, preferably ULIDs, to externally exposed business resources while retaining internal integer IDs unless a future ADR changes this.
 - Multitenancy is out of scope for the current foundation. Tenant scoping must not be added piecemeal without a dedicated architecture decision.

@@ -65,6 +65,7 @@ The repo now carries explicit initialization rules in:
 - `docs/database-conventions.md`
 - `docs/operations.md`
 - `docs/security-baseline.md`
+- `docs/domain/`
 
 Current explicit decisions:
 
@@ -75,6 +76,19 @@ Current explicit decisions:
 - Sanctum tokens expire after `AUTH_TOKEN_TTL_MINUTES` / `SANCTUM_TOKEN_EXPIRATION_MINUTES`.
 - Public registration is disabled unless `AUTH_REGISTRATION_ENABLED=true`.
 - Login and registration are rate-limited.
+
+Domain developer docs generated from stakeholder resources:
+
+- `docs/domain/modules.md`
+- `docs/domain/architecture-decisions.md`
+- `docs/domain/data-model.md`
+- `docs/domain/agency-scope.md`
+- `docs/domain/accounting-ledger.md`
+- `docs/domain/auth-and-staff.md`
+- `docs/domain/loan-lifecycle.md`
+- `docs/domain/cash-operations.md`
+- `docs/domain/implementation-roadmap.md`
+- `docs/domain/stakeholder-formula-questions.md`
 
 ## API Design
 
