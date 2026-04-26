@@ -12,11 +12,14 @@ use App\Http\Requests\Api\V1\UpdateStaffUserStatusRequest;
 use App\Http\Resources\StaffUserResource;
 use App\Models\User;
 use App\Support\Otp\OtpService;
+use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 final class StaffUserController extends BaseController
 {
+    public function __construct(private readonly SecurityAudit $securityAudit) {}
+
     public function index(Request $request): JsonResponse
     {
         if ($request->user()?->can('users.view') !== true) {
@@ -56,6 +59,7 @@ final class StaffUserController extends BaseController
 
         $user->assignRole('staff');
         $otpService->issueActivationChallenge($user, $request);
+        $this->securityAudit->record('staff.created', actor: $actor instanceof User ? $actor : null, subject: $user, request: $request);
 
         return $this->respondCreated([
             'user' => StaffUserResource::make($user)->resolve(),
@@ -97,6 +101,9 @@ final class StaffUserController extends BaseController
         }
 
         $staffUser->update($attributes);
+        $this->securityAudit->record('staff.updated', actor: $request->user() instanceof User ? $request->user() : null, subject: $staffUser, properties: [
+            'changed_fields' => array_keys($attributes),
+        ], request: $request);
 
         return $this->respondSuccess([
             'user' => StaffUserResource::make($staffUser->refresh())->resolve(),
@@ -120,6 +127,9 @@ final class StaffUserController extends BaseController
         if (in_array($status, [User::STATUS_SUSPENDED, User::STATUS_DEACTIVATED], true)) {
             $this->revokeAllTokens($staffUser);
         }
+        $this->securityAudit->record('staff.status_changed', actor: $request->user() instanceof User ? $request->user() : null, subject: $staffUser, properties: [
+            'status' => $status,
+        ], request: $request);
 
         return $this->respondSuccess([
             'user' => StaffUserResource::make($staffUser->refresh())->resolve(),
@@ -145,6 +155,9 @@ final class StaffUserController extends BaseController
         }
 
         $staffUser->syncRoles($roles);
+        $this->securityAudit->record('staff.roles_changed', actor: $actor instanceof User ? $actor : null, subject: $staffUser, properties: [
+            'roles' => $roles,
+        ], request: $request);
 
         return $this->respondSuccess([
             'user' => StaffUserResource::make($staffUser->refresh())->resolve(),

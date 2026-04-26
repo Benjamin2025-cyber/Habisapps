@@ -186,6 +186,88 @@ final class AuthTest extends TestCase
         $this->assertDatabaseCount('otp_deliveries', 2);
     }
 
+    public function test_active_staff_can_request_password_reset_otp_with_generic_response(): void
+    {
+        User::factory()->createOne([
+            'phone_number' => '+237699000009',
+            'status' => User::STATUS_ACTIVE,
+            'phone_verified_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/password/otp', [
+            'phone_number' => '+237699000009',
+        ]);
+
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('message', 'If the account can reset its password, a verification code has been sent.');
+        $this->assertDatabaseHas('otp_challenges', [
+            'purpose' => OtpChallenge::PURPOSE_PASSWORD_RESET,
+            'phone_number' => '+237699000009',
+        ]);
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'otp.password_reset_requested',
+        ]);
+    }
+
+    public function test_password_reset_verifies_otp_sets_password_and_revokes_tokens(): void
+    {
+        $user = User::factory()->createOne([
+            'phone_number' => '+237699000010',
+            'password' => 'OldPassword123!',
+            'status' => User::STATUS_ACTIVE,
+            'phone_verified_at' => now(),
+        ]);
+        $user->createToken('mobile-device');
+
+        app(OtpService::class)->issuePasswordResetChallenge($user, request());
+
+        $response = $this->postJson('/api/v1/password/reset', [
+            'phone_number' => '+237699000010',
+            'otp' => '123456',
+            'password' => 'NewPassword123!',
+            'password_confirmation' => 'NewPassword123!',
+        ]);
+
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('message', 'Password reset successfully');
+        self::assertTrue(Hash::check('NewPassword123!', (string) $user->refresh()->password));
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $user->id,
+            'tokenable_type' => User::class,
+        ]);
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'auth.password_reset_succeeded',
+        ]);
+    }
+
+    public function test_password_reset_rejects_invalid_otp_with_generic_error(): void
+    {
+        $user = User::factory()->createOne([
+            'phone_number' => '+237699000011',
+            'password' => 'OldPassword123!',
+            'status' => User::STATUS_ACTIVE,
+            'phone_verified_at' => now(),
+        ]);
+
+        app(OtpService::class)->issuePasswordResetChallenge($user, request());
+
+        $response = $this->postJson('/api/v1/password/reset', [
+            'phone_number' => '+237699000011',
+            'otp' => '000000',
+            'password' => 'NewPassword123!',
+            'password_confirmation' => 'NewPassword123!',
+        ]);
+
+        $this->assertJsonError($response, 422, 'Invalid or expired verification code.');
+        self::assertTrue(Hash::check('OldPassword123!', (string) $user->refresh()->password));
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'auth.password_reset_failed',
+        ]);
+    }
+
     public function test_logout_revokes_the_current_access_token(): void
     {
         $user = User::factory()->createOne();
@@ -199,5 +281,9 @@ final class AuthTest extends TestCase
         $response->assertJsonPath('message', 'Logout successful');
 
         $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'auth.logout_succeeded',
+        ]);
     }
 }

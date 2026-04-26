@@ -7,18 +7,21 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      CI_POSTGRES_DB: habis_finance_api_test
+      CI_POSTGRES_USER: habis_finance_ci
 
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: habis_finance_api_test
-          POSTGRES_USER: admin
-          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: ${{ env.CI_POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.CI_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U admin -d habis_finance_api_test"
+          --health-cmd "pg_isready -U habis_finance_ci -d habis_finance_api_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -50,15 +53,26 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: habis_finance_api_test
-          DB_USERNAME: admin
-          DB_PASSWORD: admin
+          DB_DATABASE: ${{ env.CI_POSTGRES_DB }}
+          DB_USERNAME: ${{ env.CI_POSTGRES_USER }}
+          DB_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
 
       - name: Run Pint
         run: vendor/bin/pint --test
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyze
+
+      - name: Analyze API documentation
+        run: php artisan scramble:analyze
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: ${{ env.CI_POSTGRES_DB }}
+          DB_USERNAME: ${{ env.CI_POSTGRES_USER }}
+          DB_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
 
       - name: Run test suite
         run: php artisan test
@@ -67,6 +81,18 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: habis_finance_api_test
-          DB_USERNAME: admin
-          DB_PASSWORD: admin
+          DB_DATABASE: ${{ env.CI_POSTGRES_DB }}
+          DB_USERNAME: ${{ env.CI_POSTGRES_USER }}
+          DB_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+
+      - name: Run production readiness checker
+        run: |
+          APP_KEY="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')" \
+            php artisan app:production-readiness-check
+        env:
+          APP_ENV: production
+          APP_DEBUG: false
+          CACHE_STORE: redis
+          SESSION_DRIVER: redis
+          QUEUE_CONNECTION: redis
+          MONEY_DEFAULT_CURRENCY: XAF

@@ -143,6 +143,8 @@ routes/
 | POST | `/api/v1/login` | No | Live |
 | POST | `/api/v1/activate` | No | Live |
 | POST | `/api/v1/activation/resend` | No | Live |
+| POST | `/api/v1/password/otp` | No | Live |
+| POST | `/api/v1/password/reset` | No | Live |
 | POST | `/api/v1/logout` | Sanctum | Live |
 | GET | `/api/v1/staff-users` | Sanctum | Live |
 | POST | `/api/v1/staff-users` | Sanctum | Live |

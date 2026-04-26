@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 final class OtpService
 {
@@ -17,10 +18,20 @@ final class OtpService
 
     public function issueActivationChallenge(User $user, ?Request $request = null): OtpChallenge
     {
+        return $this->issueChallenge($user, OtpChallenge::PURPOSE_ACTIVATION, $request);
+    }
+
+    public function issuePasswordResetChallenge(User $user, ?Request $request = null): OtpChallenge
+    {
+        return $this->issueChallenge($user, OtpChallenge::PURPOSE_PASSWORD_RESET, $request);
+    }
+
+    public function issueChallenge(User $user, string $purpose, ?Request $request = null): OtpChallenge
+    {
         $code = $this->generateCode();
         $challenge = OtpChallenge::query()->create([
             'user_id' => $user->id,
-            'purpose' => OtpChallenge::PURPOSE_ACTIVATION,
+            'purpose' => $this->validPurpose($purpose),
             'phone_number' => $user->phone_number,
             'code_hash' => Hash::make($code),
             'expires_at' => now()->addMinutes($this->integerConfig('security.otp.expires_minutes', 10)),
@@ -46,9 +57,19 @@ final class OtpService
 
     public function verifyActivationCode(User $user, string $code): bool
     {
+        return $this->verifyCode($user, OtpChallenge::PURPOSE_ACTIVATION, $code);
+    }
+
+    public function verifyPasswordResetCode(User $user, string $code): bool
+    {
+        return $this->verifyCode($user, OtpChallenge::PURPOSE_PASSWORD_RESET, $code);
+    }
+
+    public function verifyCode(User $user, string $purpose, string $code): bool
+    {
         $challenge = OtpChallenge::query()
             ->where('user_id', $user->id)
-            ->where('purpose', OtpChallenge::PURPOSE_ACTIVATION)
+            ->where('purpose', $this->validPurpose($purpose))
             ->where('used_at', null)
             ->where('expires_at', '>', now())
             ->latest()
@@ -71,6 +92,15 @@ final class OtpService
         $challenge->forceFill(['used_at' => now()])->save();
 
         return true;
+    }
+
+    private function validPurpose(string $purpose): string
+    {
+        if (! in_array($purpose, [OtpChallenge::PURPOSE_ACTIVATION, OtpChallenge::PURPOSE_PASSWORD_RESET], true)) {
+            throw new InvalidArgumentException(sprintf('Unsupported OTP purpose [%s].', $purpose));
+        }
+
+        return $purpose;
     }
 
     private function deliver(OtpChallenge $challenge, User $user, string $code): void

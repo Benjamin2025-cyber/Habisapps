@@ -64,6 +64,10 @@ final class StaffUserManagementTest extends TestCase
         $this->assertDatabaseMissing('otp_deliveries', [
             'provider_reference' => 'test-123456',
         ]);
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'staff.created',
+        ]);
     }
 
     public function test_staff_without_user_creation_permission_cannot_create_staff_user(): void
@@ -128,6 +132,10 @@ final class StaffUserManagementTest extends TestCase
         $this->assertJsonSuccess($response);
         $response->assertJsonPath('data.user.roles.0', 'auditor');
         self::assertTrue($target->refresh()->hasRole('auditor'));
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'staff.roles_changed',
+        ]);
     }
 
     public function test_user_admin_cannot_suspend_platform_admin(): void
@@ -162,6 +170,10 @@ final class StaffUserManagementTest extends TestCase
         $this->assertDatabaseMissing('personal_access_tokens', [
             'tokenable_id' => $target->id,
             'tokenable_type' => User::class,
+        ]);
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'staff.status_changed',
         ]);
     }
 

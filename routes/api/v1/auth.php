@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:auth.login');
 Route::post('activate', [AuthController::class, 'activate'])->middleware('throttle:auth.activation');
 Route::post('activation/resend', [AuthController::class, 'resendActivationOtp'])->middleware('throttle:auth.activation');
+Route::post('password/otp', [AuthController::class, 'requestPasswordResetOtp'])->middleware('throttle:auth.activation');
+Route::post('password/reset', [AuthController::class, 'resetPassword'])->middleware('throttle:auth.activation');
 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
 Route::middleware('auth:sanctum')->group(function (): void {

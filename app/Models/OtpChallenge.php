@@ -40,6 +40,8 @@ final class OtpChallenge extends Model
 {
     public const string PURPOSE_ACTIVATION = 'activation';
 
+    public const string PURPOSE_PASSWORD_RESET = 'password_reset';
+
     protected function casts(): array
     {
         return [

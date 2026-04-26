@@ -142,6 +142,8 @@ Unauthenticated:
 - `POST /api/v1/login`
 - `POST /api/v1/activate`
 - `POST /api/v1/activation/resend`
+- `POST /api/v1/password/otp`
+- `POST /api/v1/password/reset`
 
 Authenticated:
 
