@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\ApiVersion;
 use App\Http\Middleware\IdempotencyMiddleware;
+use App\Http\Middleware\RemoveServerDisclosureHeaders;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -29,9 +30,16 @@ return Application::configure(basePath: dirname(__DIR__))
             'idempotency' => IdempotencyMiddleware::class,
         ]);
 
-        $middleware->api(prepend: [
-            IdempotencyMiddleware::class,
-        ]);
+        $middleware->redirectGuestsTo(fn (): ?string => null);
+
+        $middleware->api(
+            append: [
+                RemoveServerDisclosureHeaders::class,
+            ],
+            prepend: [
+                IdempotencyMiddleware::class,
+            ]
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e): bool {

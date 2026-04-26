@@ -42,6 +42,14 @@ final class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($maxAttempts, $decayMinutes)
                 ->by((string) $request->ip());
         });
+
+        RateLimiter::for('auth.activation', function (Request $request): Limit {
+            $maxAttempts = $this->integerConfig('security.auth.activation.max_attempts', 5);
+            $decayMinutes = $this->integerConfig('security.auth.activation.decay_minutes', 1);
+
+            return Limit::perMinute($maxAttempts, $decayMinutes)
+                ->by((string) $request->ip());
+        });
     }
 
     private function integerConfig(string $key, int $default): int

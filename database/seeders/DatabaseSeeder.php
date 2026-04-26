@@ -32,7 +32,11 @@ final class DatabaseSeeder extends Seeder
             ['email' => (string) env('SEED_BOOTSTRAP_ADMIN_EMAIL', 'test@example.com')],
             [
                 'name' => (string) env('SEED_BOOTSTRAP_ADMIN_NAME', 'Bootstrap Admin'),
+                'phone_number' => (string) env('SEED_BOOTSTRAP_ADMIN_PHONE', '+237600000000'),
+                'phone_verified_at' => now(),
                 'password' => $password,
+                'status' => User::STATUS_ACTIVE,
+                'activated_at' => now(),
             ]
         );
 

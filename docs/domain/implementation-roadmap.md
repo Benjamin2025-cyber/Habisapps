@@ -7,7 +7,7 @@ This roadmap orders features so foundational risks are resolved before high-risk
 Goals:
 
 - Confirm ID strategy: internal integer IDs plus public ULIDs.
-- Confirm login identifier: email, phone, or both.
+- Establish staff-only phone/password login with activation OTP.
 - Confirm single-institution multi-agency scope versus true multi-tenancy.
 - Confirm agency hierarchy, cross-agency transfer rules, and reference numbering policy.
 - Confirm `XAF` rounding, precision, and final-adjustment rules.
@@ -30,9 +30,9 @@ Deliverables:
 Build:
 
 - Agencies.
-- Staff profile fields.
-- Staff invite/admin creation flow.
-- OTP verification if confirmed.
+- Additional staff profile fields beyond the reusable auth foundation.
+- Agency, portfolio, and supervisor assignment workflow.
+- Password reset and optional risky-login MFA using the OTP challenge model.
 - Role/permission policies.
 - Agency scoping policies.
 - Batch procedure registry.

@@ -15,7 +15,7 @@ final class AuthRateLimitTest extends TestCase
     {
         foreach (range(1, 6) as $attempt) {
             $response = $this->postJson('/api/v1/login', [
-                'email' => 'nobody@example.com',
+                'phone_number' => '+237699100001',
                 'password' => 'wrong-password',
             ]);
 
@@ -23,34 +23,32 @@ final class AuthRateLimitTest extends TestCase
         }
     }
 
-    public function test_login_rate_limit_is_not_keyed_to_the_victim_email(): void
+    public function test_login_rate_limit_is_not_keyed_to_the_victim_phone_number(): void
     {
         foreach (range(1, 5) as $attempt) {
             $this->withServerVariables(['REMOTE_ADDR' => '10.20.0.10'])->postJson('/api/v1/login', [
-                'email' => 'victim@example.com',
+                'phone_number' => '+237699100002',
                 'password' => 'wrong-password-'.$attempt,
             ])->assertUnauthorized();
         }
 
         $this->withServerVariables(['REMOTE_ADDR' => '10.20.0.11'])->postJson('/api/v1/login', [
-            'email' => 'victim@example.com',
+            'phone_number' => '+237699100002',
             'password' => 'wrong-password',
         ])->assertUnauthorized();
     }
 
-    public function test_register_is_rate_limited_after_too_many_attempts(): void
+    public function test_activation_is_rate_limited_after_too_many_attempts(): void
     {
-        config(['security.auth.registration.enabled' => true]);
-
-        foreach (range(1, 4) as $attempt) {
-            $response = $this->postJson('/api/v1/register', [
-                'name' => 'Test User',
-                'email' => 'rate-limit-'.$attempt.'@example.com',
+        foreach (range(1, 6) as $attempt) {
+            $response = $this->postJson('/api/v1/activate', [
+                'phone_number' => '+237699100003',
+                'otp' => '000000',
                 'password' => 'Password123!',
                 'password_confirmation' => 'Password123!',
             ]);
 
-            $response->assertStatus($attempt === 4 ? 429 : 201);
+            $response->assertStatus($attempt === 6 ? 429 : 422);
         }
     }
 }

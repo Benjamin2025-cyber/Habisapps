@@ -25,31 +25,35 @@ Rules:
 
 ### users
 
-Current table exists and should evolve carefully.
+Current table exists and has been extended for the reusable staff-auth foundation.
 
-Required future additions:
+Foundation fields:
 
 - `public_id`
-- `email`, unique when email login remains enabled
-- `phone_number`, unique if phone login/OTP is confirmed
+- `email`, nullable unique contact field
+- `phone_number`, unique login and OTP identity
 - `phone_verified_at`
-- `matricule`, unique staff reference
-- staff profile fields: `gender`, `birth_date`, `birth_place`, `job_title`, `title_function`
-- `agency_id`, nullable until assignment
-- `supervisor_id`, nullable self-reference
-- `status`: active, inactive, suspended
+- `matricule`, nullable staff reference
+- `job_title`
+- `agency_code`, nullable metadata until agency module exists
+- `agency_name`, nullable metadata until agency module exists
+- `invited_by_user_id`
+- `status`: pending_verification, active, suspended, deactivated
+- `activated_at`, nullable
 - `last_login_at`, nullable
 
 Do not store:
 
 - `password_hash` as a separate field. Laravel already uses `password`.
+- Domain-specific agency, portfolio, and supervisor foreign keys until those modules are intentionally implemented.
 
-### otp_codes
+### otp_challenges
 
 Required fields:
 
 - `id`
-- `purpose`: phone_verification, login_challenge, password_reset, or similar
+- `user_id`
+- `purpose`: activation now; future values can include login_challenge and password_reset
 - `phone_number`
 - `code_hash`
 - `expires_at`
@@ -57,7 +61,9 @@ Required fields:
 - `attempts`
 - `max_attempts`
 - `created_ip`
-- `last_attempted_at`
+- `created_user_agent`
+- `last_sent_at`
+- `resend_count`
 - timestamps
 
 Rules:
@@ -66,6 +72,28 @@ Rules:
 - OTPs are single-use.
 - OTP creation and verification are rate-limited.
 - OTP records should be deleted or anonymized according to retention policy after expiry/use.
+
+### otp_deliveries
+
+Required fields:
+
+- `id`
+- `otp_challenge_id`
+- `channel`: sms, email, or future delivery channel
+- `destination_hash`
+- `destination_masked`
+- `status`
+- `provider_reference`
+- `error_summary`
+- `sent_at`
+- `failed_at`
+- timestamps
+
+Rules:
+
+- Do not store plaintext OTPs in delivery records.
+- Do not store full destinations where a hash plus masked display value is sufficient.
+- One OTP challenge may have multiple delivery records so activation can be attempted through all configured channels.
 
 ### agencies
 

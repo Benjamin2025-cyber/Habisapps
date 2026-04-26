@@ -12,6 +12,10 @@ return [
             'max_attempts' => (int) env('AUTH_REGISTER_MAX_ATTEMPTS', 3),
             'decay_minutes' => (int) env('AUTH_REGISTER_DECAY_MINUTES', 1),
         ],
+        'activation' => [
+            'max_attempts' => (int) env('AUTH_ACTIVATION_MAX_ATTEMPTS', 5),
+            'decay_minutes' => (int) env('AUTH_ACTIVATION_DECAY_MINUTES', 1),
+        ],
         'registration' => [
             'enabled' => (bool) env('AUTH_REGISTRATION_ENABLED', false),
         ],
@@ -24,15 +28,41 @@ return [
         'ttl_minutes' => (int) env('IDEMPOTENCY_TTL_MINUTES', 1440),
         'bypass_persistence_paths' => [
             'api/v1/login',
-            'api/v1/register',
+            'api/v1/activate',
+            'api/v1/activation/resend',
         ],
+    ],
+    'otp' => [
+        'expires_minutes' => (int) env('OTP_EXPIRES_MINUTES', 10),
+        'max_attempts' => (int) env('OTP_MAX_ATTEMPTS', 5),
+        'resend_decay_minutes' => (int) env('OTP_RESEND_DECAY_MINUTES', 1),
     ],
     'permissions' => [
         'roles' => [
             'platform-admin' => [
                 'system.view-health',
+                'audit.view',
+                'users.view',
+                'users.create',
                 'users.manage',
+                'users.update',
+                'users.status.manage',
                 'roles.manage',
+                'users.roles.manage',
+            ],
+            'user-admin' => [
+                'users.view',
+                'users.create',
+                'users.update',
+                'users.status.manage',
+            ],
+            'auditor' => [
+                'system.view-health',
+                'audit.view',
+                'users.view',
+            ],
+            'staff' => [
+                'system.view-health',
             ],
         ],
     ],

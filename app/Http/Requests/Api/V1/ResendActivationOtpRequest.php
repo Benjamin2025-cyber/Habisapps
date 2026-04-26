@@ -6,7 +6,7 @@ namespace App\Http\Requests\Api\V1;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-final class LoginRequest extends FormRequest
+final class ResendActivationOtpRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -20,7 +20,6 @@ final class LoginRequest extends FormRequest
     {
         return [
             'phone_number' => ['required', 'string', 'max:32'],
-            'password' => ['required', 'string', 'max:255'],
         ];
     }
 }

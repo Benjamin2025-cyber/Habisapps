@@ -27,19 +27,18 @@ Implementation guidance:
 Decision:
 
 - Staff authentication remains Sanctum bearer-token based for API access.
-- The stakeholder requirement for OTP verification is accepted as a required future authentication capability.
-- Registration remains disabled by default. Staff creation should be administrative or invite-based.
-
-Open decision:
-
-- Confirm whether staff login uses email, phone number, or both.
-- Confirm whether OTP is required only for first verification, risky login, password reset, or every login.
+- Phone + password is the base staff login identifier.
+- Email is optional contact metadata and a secondary OTP delivery channel when present.
+- Registration is not exposed publicly. Staff creation is administrative/invite-based.
+- OTP is required for first account activation before a staff user can set a password and login.
+- The OTP model must support future purposes such as password reset and risky-login challenge without reusing activation codes.
 
 Implementation guidance:
 
-- Extend users with staff profile fields only after confirming login identifier.
 - Store OTP codes hashed, not plaintext.
 - OTPs must expire, be single-use, and be rate-limited by phone/IP/purpose.
+- Send the same activation challenge through available channels and record each delivery attempt separately.
+- Keep agency assignment as metadata in the base; implement true agency relationships only in the administration module.
 
 ## ADR-003: Agency Scoping
 

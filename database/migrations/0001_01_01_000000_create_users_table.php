@@ -13,10 +13,21 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+            $table->ulid('public_id')->unique();
             $table->string('name');
-            $table->string('email')->unique();
+            $table->string('phone_number')->unique();
+            $table->timestamp('phone_verified_at')->nullable();
+            $table->string('email')->nullable()->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
+            $table->string('password')->nullable();
+            $table->string('status', 32)->default('pending_verification')->index();
+            $table->string('matricule')->nullable()->unique();
+            $table->string('job_title')->nullable();
+            $table->string('agency_code')->nullable();
+            $table->string('agency_name')->nullable();
+            $table->foreignId('invited_by_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('activated_at')->nullable();
+            $table->timestamp('last_login_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

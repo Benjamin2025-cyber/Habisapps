@@ -26,9 +26,12 @@ class UserFactory extends Factory
     {
         return [
             'name' => fake()->name(),
+            'phone_number' => '+2376'.fake()->unique()->numerify('########'),
+            'phone_verified_at' => now(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'status' => User::STATUS_ACTIVE,
             'remember_token' => Str::random(10),
         ];
     }
@@ -39,7 +42,9 @@ class UserFactory extends Factory
     public function unverified(): static
     {
         return $this->state(fn (array $attributes) => [
+            'phone_verified_at' => null,
             'email_verified_at' => null,
+            'status' => User::STATUS_PENDING_VERIFICATION,
         ]);
     }
 }

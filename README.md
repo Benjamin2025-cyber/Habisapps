@@ -141,5 +141,12 @@ routes/
 |---|---|---|---|
 | GET | `/api/v1/health` | No | Live |
 | POST | `/api/v1/login` | No | Live |
-| POST | `/api/v1/register` | No | Live |
+| POST | `/api/v1/activate` | No | Live |
+| POST | `/api/v1/activation/resend` | No | Live |
 | POST | `/api/v1/logout` | Sanctum | Live |
+| GET | `/api/v1/staff-users` | Sanctum | Live |
+| POST | `/api/v1/staff-users` | Sanctum | Live |
+| GET | `/api/v1/staff-users/{staffUser}` | Sanctum | Live |
+| PATCH | `/api/v1/staff-users/{staffUser}` | Sanctum | Live |
+| PATCH | `/api/v1/staff-users/{staffUser}/status` | Sanctum | Live |
+| PUT | `/api/v1/staff-users/{staffUser}/roles` | Sanctum | Live |
