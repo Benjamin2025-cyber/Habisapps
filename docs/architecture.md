@@ -38,6 +38,13 @@ This project is initialized as a Laravel API foundation for a future microfinanc
 - Business rule violations should use explicit domain exceptions once those rules exist.
 - Do not return ad hoc JSON error arrays from deep inside the application layer.
 
+## Formula policy
+
+- Formula-dependent services must fail closed until the matching stakeholder policy is approved in `config/formulas.php`.
+- Use `FormulaPolicyRegistry::requireApproved(...)` before implementing interest, repayment allocation, balance, penalty, cash reconciliation, or reporting calculations.
+- Value objects and ledger draft validation may be built before approval because they enforce invariants without choosing formulas.
+- See `docs/domain/formula-guardrails.md`.
+
 ## Deferred decisions
 
 - UUID primary keys are out of scope for the current foundation. The default project convention is integer `id` keys.

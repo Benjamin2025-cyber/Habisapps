@@ -32,6 +32,7 @@
 
 - Required checks: `vendor/bin/pint --test`, `vendor/bin/phpstan analyze`, `php artisan test`.
 - GitHub Actions runs these checks on pushes and pull requests.
+- Before deployment, run `php artisan app:production-readiness-check` and resolve failures instead of bypassing them.
 
 ## API documentation
 

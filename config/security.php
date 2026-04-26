@@ -36,6 +36,11 @@ return [
         'expires_minutes' => (int) env('OTP_EXPIRES_MINUTES', 10),
         'max_attempts' => (int) env('OTP_MAX_ATTEMPTS', 5),
         'resend_decay_minutes' => (int) env('OTP_RESEND_DECAY_MINUTES', 1),
+        'delivery_channels' => [
+            'sms',
+            'email',
+        ],
+        'delivery_provider' => env('OTP_DELIVERY_PROVIDER', 'log'),
     ],
     'permissions' => [
         'roles' => [

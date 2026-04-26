@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 
 final class OtpService
 {
+    public function __construct(private readonly OtpDeliveryChannelManager $deliveryChannelManager) {}
+
     public function issueActivationChallenge(User $user, ?Request $request = null): OtpChallenge
     {
         $code = $this->generateCode();
@@ -29,7 +31,7 @@ final class OtpService
             'created_user_agent' => $request?->userAgent(),
         ]);
 
-        $this->deliver($challenge, $user);
+        $this->deliver($challenge, $user, $code);
 
         return $challenge;
     }
@@ -71,21 +73,29 @@ final class OtpService
         return true;
     }
 
-    private function deliver(OtpChallenge $challenge, User $user): void
+    private function deliver(OtpChallenge $challenge, User $user, string $code): void
     {
-        $this->recordDelivery(
-            $challenge,
-            OtpDelivery::CHANNEL_SMS,
-            $user->phone_number,
-            $this->maskPhone($user->phone_number)
-        );
+        $channels = $this->configuredChannels();
 
-        if (is_string($user->email) && $user->email !== '') {
+        if (in_array(OtpDelivery::CHANNEL_SMS, $channels, true)) {
+            $this->recordDelivery(
+                $challenge,
+                OtpDelivery::CHANNEL_SMS,
+                $user->phone_number,
+                $this->maskPhone($user->phone_number),
+                $code
+            );
+        }
+
+        if (in_array(OtpDelivery::CHANNEL_EMAIL, $channels, true)
+            && is_string($user->email)
+            && $user->email !== '') {
             $this->recordDelivery(
                 $challenge,
                 OtpDelivery::CHANNEL_EMAIL,
                 $user->email,
-                $this->maskEmail($user->email)
+                $this->maskEmail($user->email),
+                $code
             );
         }
     }
@@ -95,16 +105,44 @@ final class OtpService
         string $channel,
         string $destination,
         string $maskedDestination,
+        string $code,
     ): void {
+        $result = $this->sendOtp($channel, $destination, $code);
+
         OtpDelivery::query()->create([
             'otp_challenge_id' => $challenge->id,
             'channel' => $channel,
             'destination_hash' => hash('sha256', Str::lower($destination)),
             'destination_masked' => $maskedDestination,
-            'status' => OtpDelivery::STATUS_SENT,
-            'provider_reference' => app()->environment('testing') ? 'test-delivery' : null,
-            'sent_at' => now(),
+            'status' => $result->sent ? OtpDelivery::STATUS_SENT : OtpDelivery::STATUS_FAILED,
+            'provider_reference' => $result->providerReference,
+            'error_summary' => $result->errorSummary,
+            'sent_at' => $result->sent ? now() : null,
+            'failed_at' => $result->sent ? null : now(),
         ]);
+    }
+
+    private function sendOtp(string $channel, string $destination, string $code): OtpDeliveryResult
+    {
+        try {
+            return $this->deliveryChannelManager->driver()->send($channel, $destination, $code);
+        } catch (\Throwable $e) {
+            return OtpDeliveryResult::failed($e->getMessage());
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function configuredChannels(): array
+    {
+        $channels = config('security.otp.delivery_channels', [OtpDelivery::CHANNEL_SMS, OtpDelivery::CHANNEL_EMAIL]);
+
+        if (! is_array($channels)) {
+            return [OtpDelivery::CHANNEL_SMS];
+        }
+
+        return array_values(array_filter($channels, static fn (mixed $channel): bool => is_string($channel) && $channel !== ''));
     }
 
     private function generateCode(): string
