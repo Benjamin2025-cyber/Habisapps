@@ -23,6 +23,21 @@ final class AuthRateLimitTest extends TestCase
         }
     }
 
+    public function test_login_rate_limit_is_not_keyed_to_the_victim_email(): void
+    {
+        foreach (range(1, 5) as $attempt) {
+            $this->withServerVariables(['REMOTE_ADDR' => '10.20.0.10'])->postJson('/api/v1/login', [
+                'email' => 'victim@example.com',
+                'password' => 'wrong-password-'.$attempt,
+            ])->assertUnauthorized();
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.20.0.11'])->postJson('/api/v1/login', [
+            'email' => 'victim@example.com',
+            'password' => 'wrong-password',
+        ])->assertUnauthorized();
+    }
+
     public function test_register_is_rate_limited_after_too_many_attempts(): void
     {
         config(['security.auth.registration.enabled' => true]);

@@ -47,6 +47,10 @@ final class IdempotencyMiddleware
             ], Response::HTTP_BAD_REQUEST);
         }
 
+        if ($this->shouldBypassPersistence($request)) {
+            return $next($request);
+        }
+
         $actorContext = $this->actorContext($request);
         $scopeHash = $this->scopeHash($request, $keyString, $actorContext);
         $lockKey = $this->lockCacheKey($scopeHash);
@@ -226,6 +230,20 @@ final class IdempotencyMiddleware
         $value = config('security.idempotency.ttl_minutes', 1440);
 
         return is_int($value) && $value > 0 ? $value : 1440;
+    }
+
+    private function shouldBypassPersistence(Request $request): bool
+    {
+        /** @var array<int, string> $paths */
+        $paths = config('security.idempotency.bypass_persistence_paths', []);
+
+        foreach ($paths as $path) {
+            if ($request->is($path)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

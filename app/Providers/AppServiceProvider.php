@@ -30,10 +30,9 @@ final class AppServiceProvider extends ServiceProvider
         RateLimiter::for('auth.login', function (Request $request): Limit {
             $maxAttempts = $this->integerConfig('security.auth.login.max_attempts', 5);
             $decayMinutes = $this->integerConfig('security.auth.login.decay_minutes', 1);
-            $email = strtolower($this->stringInput($request, 'email', 'guest'));
 
             return Limit::perMinute($maxAttempts, $decayMinutes)
-                ->by($email.'|'.$request->ip());
+                ->by((string) $request->ip());
         });
 
         RateLimiter::for('auth.register', function (Request $request): Limit {
@@ -50,12 +49,5 @@ final class AppServiceProvider extends ServiceProvider
         $value = config($key, $default);
 
         return is_int($value) ? $value : $default;
-    }
-
-    private function stringInput(Request $request, string $key, string $default): string
-    {
-        $value = $request->input($key, $default);
-
-        return is_string($value) ? $value : $default;
     }
 }

@@ -35,6 +35,25 @@ final class AuthTest extends TestCase
         ]);
     }
 
+    public function test_register_sanitizes_user_name_html(): void
+    {
+        config(['security.auth.registration.enabled' => true]);
+
+        $response = $this->withServerVariables(['REMOTE_ADDR' => '10.10.0.4'])->postJson('/api/v1/register', [
+            'name' => '<script>alert(1)</script>Ada <b>Lovelace</b>',
+            'email' => 'sanitized@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ]);
+
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonPath('data.user.name', 'Ada Lovelace');
+        $this->assertDatabaseHas('users', [
+            'email' => 'sanitized@example.com',
+            'name' => 'Ada Lovelace',
+        ]);
+    }
+
     public function test_register_is_disabled_by_default(): void
     {
         $response = $this->withServerVariables(['REMOTE_ADDR' => '10.10.0.3'])->postJson('/api/v1/register', [
@@ -60,6 +79,17 @@ final class AuthTest extends TestCase
         $response->assertJsonValidationErrors(['role']);
     }
 
+    public function test_login_rejects_oversized_passwords(): void
+    {
+        $response = $this->postJson('/api/v1/login', [
+            'email' => 'grace@example.com',
+            'password' => str_repeat('a', 256),
+        ]);
+
+        $this->assertJsonError($response, 422, 'Validation failed');
+        $response->assertJsonValidationErrors(['password']);
+    }
+
     public function test_login_returns_a_token_for_valid_credentials(): void
     {
         $user = User::factory()->createOne([
@@ -81,6 +111,27 @@ final class AuthTest extends TestCase
         $this->assertDatabaseMissing('personal_access_tokens', [
             'expires_at' => null,
         ]);
+    }
+
+    public function test_login_idempotency_does_not_persist_plain_text_token_response(): void
+    {
+        User::factory()->createOne([
+            'email' => 'grace@example.com',
+            'password' => 'Password123!',
+        ]);
+
+        $response = $this
+            ->withApiHeaders(['Idempotency-Key' => 'login-token-storage-check'])
+            ->postJson('/api/v1/login', [
+                'email' => 'grace@example.com',
+                'password' => 'Password123!',
+            ]);
+
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('data.token', fn (mixed $token): bool => is_string($token) && $token !== '');
+
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseCount('api_idempotency_keys', 0);
     }
 
     public function test_login_rejects_invalid_credentials(): void

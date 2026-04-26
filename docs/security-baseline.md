@@ -4,7 +4,7 @@
 
 - Sanctum bearer tokens are the default API authentication mechanism.
 - Sanctum tokens must expire; the default bootstrap TTL is 60 minutes.
-- Login and registration are rate-limited.
+- Login and registration are rate-limited. Login throttling is IP-scoped to avoid victim-email account lockouts.
 - Public registration is disabled by default and must be explicitly enabled for controlled environments.
 - Personal access tokens currently receive the `access-api` ability by default.
 - When feature-specific tokens appear, abilities must become explicit and least-privilege.
@@ -33,8 +33,9 @@
 - POST/PATCH retries use `Idempotency-Key`.
 - Idempotency records are persisted in `api_idempotency_keys`.
 - Reusing a key with a different request fingerprint must return a conflict instead of executing the request.
+- Authentication endpoints bypass idempotency persistence so issued tokens are never stored in idempotency response snapshots.
 
 ## Deferred security work
 
-- MFA, device/session management, key rotation workflows, and structured security event logging are not part of the current bootstrap.
+- MFA, refresh-token rotation, device/session management, key rotation workflows, and structured security event logging are not part of the current bootstrap.
 - They become required before handling real customer or financial operations.

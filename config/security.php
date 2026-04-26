@@ -22,6 +22,10 @@ return [
     ],
     'idempotency' => [
         'ttl_minutes' => (int) env('IDEMPOTENCY_TTL_MINUTES', 1440),
+        'bypass_persistence_paths' => [
+            'api/v1/login',
+            'api/v1/register',
+        ],
     ],
     'permissions' => [
         'roles' => [
