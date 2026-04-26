@@ -10,7 +10,7 @@ Goals:
 - Confirm login identifier: email, phone, or both.
 - Confirm single-institution multi-agency scope versus true multi-tenancy.
 - Confirm agency hierarchy, cross-agency transfer rules, and reference numbering policy.
-- Confirm currency policy. Current default is `TZS`, but stakeholder examples use CFA/XAF.
+- Confirm `XAF` rounding, precision, and final-adjustment rules.
 - Confirm document/file storage requirements.
 - Confirm idempotency policy for all financial mutation endpoints.
 - Confirm retention/redaction policy for PII and financial audit records.
@@ -21,7 +21,7 @@ Deliverables:
 - Migration conventions for public IDs.
 - Agency scoping and authorization matrix.
 - Domain enum list.
-- Currency/money precision standard.
+- `XAF` money precision and rounding standard.
 - Stakeholder-approved formula specification for interest, schedules, fees, penalties, balances, cash reconciliation, and reporting metrics.
 - API mutation/idempotency standard.
 

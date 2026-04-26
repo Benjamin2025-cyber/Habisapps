@@ -1,210 +1,458 @@
-# Stakeholder Formula Clarification
+# Stakeholder Formula Clarification Guide
 
-This document lists the mathematical and accounting formulas that must be confirmed before implementing the Habis Finance API financial modules.
+This guide is for stakeholders, product owners, accountants, branch managers, credit officers, and operations staff. It explains every calculation decision the backend needs before implementing loans, accounts, teller operations, and reports.
 
-The current stakeholder resources identify many fields such as interest rate, penalty formula, fees, insurance, guarantee deposit, amortization schedules, arrears, and cash reconciliation. They do not yet define the exact formulas. The backend cannot safely implement loans, repayments, accounting balances, or cash operations until these rules are confirmed.
+The base operating currency is `XAF`. The open questions are not about which currency to use. They are about how amounts are rounded, how interest is calculated, how repayments are allocated, and how accounting/cash values are derived.
 
-## Why This Is Required
+## How To Use This Document
 
-Microfinance formulas affect:
+For each section:
 
-- Customer repayment amounts.
-- Interest income.
-- Penalties and arrears.
-- Regulatory/accounting reports.
-- Cash reconciliation.
-- Customer account balances.
-- Loan closure and write-off.
+- Read the explanation.
+- Review the illustration.
+- Choose the business rule.
+- Fill the decision fields.
+- Mark the section as approved only when Finance/Operations agree.
 
-Small formula differences can create accounting mismatches and customer disputes. The goal is to make every calculation explicit, testable, and auditable.
+The examples are illustrative only. They are not proposed final formulas unless explicitly approved.
 
-## Required Stakeholder Decisions
+## 1. XAF Precision And Rounding
 
-### 1. Currency And Rounding
+### What This Means
 
-Questions:
+The system will calculate interest, fees, taxes, penalties, balances, and schedules. Some formulas can produce fractional values, for example `333.33 XAF`. Stakeholders must decide how the system rounds these values.
 
-- What is the operational currency: XAF/CFA, TZS, or multiple currencies?
-- How many decimal places should money use?
-- Should amounts be rounded to the nearest franc/unit, nearest cent, or another precision?
-- Which rounding mode should be used: half-up, half-even, always up, always down?
-- Should rounding occur per schedule line, per transaction, per day, or only at final total?
+### Illustration
+
+Loan interest calculation produces:
+
+```text
+raw interest = 10,000.67 XAF
+```
+
+Possible outcomes:
+
+```text
+round to nearest whole XAF = 10,001 XAF
+round down = 10,000 XAF
+round up = 10,001 XAF
+keep internal decimal until final total = 10,000.67 XAF internally
+```
+
+### Decision Needed
+
+- Are customer-facing amounts always whole XAF?
+- Can internal calculations keep decimals before final rounding?
+- Which rounding mode should be used?
+- Should rounding happen on each installment line, each transaction, or only at final total?
 - Should the final installment absorb rounding differences?
 
-Business impact:
+### Decision Fields
 
-- Rounding rules affect every repayment, fee, tax, and ledger posting.
-
-Required answer:
-
-- Currency:
-- Decimal precision:
+- Customer-facing precision:
+- Internal calculation precision:
 - Rounding mode:
 - Rounding timing:
-- Final-installment adjustment rule:
+- Final installment adjustment:
+- Approved by:
 
-## Loan Product Formulas
+## 2. Loan Interest Method
 
-### 2. Interest Method
+### What This Means
 
-Questions:
+The interest method determines how much the customer pays for borrowing. The same loan amount and interest rate can produce very different repayment totals depending on the method.
 
-- Which interest method is used for each loan product?
-- Is interest flat on original principal?
-- Is interest on declining balance?
-- Is it annuity/equal installment?
-- Is it equal principal plus declining interest?
-- Is it bullet/interest-only until maturity?
-- Is interest accrued daily, monthly, or per installment?
+### Illustration
 
-Required answer per product:
+Example loan:
+
+```text
+principal = 100,000 XAF
+interest rate = 10%
+duration = 10 months
+```
+
+Flat interest example:
+
+```text
+interest = 100,000 * 10% = 10,000 XAF
+total repayment = 110,000 XAF
+```
+
+Declining balance example:
+
+```text
+interest is calculated on remaining principal each period
+as principal reduces, interest reduces
+total interest may be lower than flat interest
+```
+
+Equal installment / annuity example:
+
+```text
+customer pays roughly the same total installment each period
+principal and interest portions change over time
+```
+
+### Decision Needed
+
+For each loan product, choose the interest method:
+
+- Flat interest on original principal.
+- Declining balance interest.
+- Equal installment / annuity.
+- Equal principal plus declining interest.
+- Interest-only / bullet.
+- Another institution-specific method.
+
+### Decision Fields Per Product
 
 - Product code/name:
 - Interest method:
-- Interest frequency:
+- Interest rate period: daily / monthly / annual / per cycle
 - Interest base:
 - Formula:
+- Approved by:
 
-### 3. Day-Count Convention
+## 3. Day-Count Convention
 
-Questions:
+### What This Means
 
-- For daily interest, what day-count convention is used?
-- Actual days / 365?
+If interest is calculated by days, the system must know how to convert days into interest. A month can be treated as 30 days, actual calendar days, or another convention.
+
+### Illustration
+
+Example:
+
+```text
+principal = 100,000 XAF
+annual rate = 12%
+period = 15 days
+```
+
+Actual/365:
+
+```text
+interest = 100,000 * 12% * 15 / 365
+```
+
+Actual/360:
+
+```text
+interest = 100,000 * 12% * 15 / 360
+```
+
+30/360:
+
+```text
+each month is treated as 30 days
+each year is treated as 360 days
+```
+
+### Decision Needed
+
+- Should daily interest use actual days / 365?
 - Actual days / 360?
 - 30/360?
-- Calendar month based?
+- Calendar-month based?
+- How are leap years handled?
+- How are partial months handled?
 
-Business impact:
-
-- Same nominal interest rate produces different interest amounts depending on this rule.
-
-Required answer:
+### Decision Fields
 
 - Day-count convention:
-- Treatment of leap years:
-- Treatment of partial months:
+- Leap year rule:
+- Partial month rule:
+- Approved by:
 
-### 4. Installment Amount
+## 4. Installment Amount
 
-Questions:
+### What This Means
 
-- How is `installment_amount` calculated?
-- Is it equal for every period?
-- Does it vary by interest due?
-- Does it include tax, insurance, fees, or penalties?
-- Is the first or last installment allowed to differ?
+The installment amount is what the customer is expected to pay on each due date. It may include principal, interest, tax, insurance, fees, or penalties depending on policy.
 
-Required answer:
+### Illustration
 
-- Formula:
+Example schedule line:
+
+```text
+principal due = 10,000 XAF
+interest due = 1,500 XAF
+tax = 0 XAF
+insurance = 0 XAF
+installment amount = 11,500 XAF
+```
+
+If fees are included:
+
+```text
+monthly fee = 500 XAF
+installment amount = 12,000 XAF
+```
+
+### Decision Needed
+
+- Is the installment amount equal each period?
+- Does it vary based on interest/principal?
+- Which components are included?
+- Can the first or last installment differ?
+- How are rounding differences handled?
+
+### Decision Fields
+
+- Installment formula:
 - Included components:
+- Equal or variable installments:
+- First/last installment rule:
 - Rounding rule:
-- Adjustment rule:
+- Approved by:
 
-### 5. Principal / Interest Split
+## 5. Principal And Interest Split
 
-Questions:
+### What This Means
 
-- How is each installment split between principal and interest?
-- Does interest get calculated before principal allocation?
-- Does repayment allocation affect schedule status immediately?
+Each repayment must be split into principal and interest so the system can reduce the loan balance correctly and report income correctly.
 
-Required answer:
+### Illustration
 
-- Principal formula:
-- Interest formula:
-- Allocation timing:
+Customer pays:
 
-## Fees, Taxes, Insurance, And Deposits
+```text
+payment = 12,000 XAF
+interest due = 2,000 XAF
+principal due = 10,000 XAF
+```
 
-### 6. Dossier / Application Fees
+If paid in full:
 
-Questions:
+```text
+2,000 XAF goes to interest
+10,000 XAF reduces principal
+```
 
-- Are dossier fees fixed amount, percentage of loan amount, or product-configured?
-- Are fees charged at application, approval, or disbursement?
-- Are fees paid in cash/account debit, deducted from disbursement, or accrued separately?
-- Are fees refundable if the loan is rejected/cancelled?
+If customer pays only 7,000 XAF, the allocation rule decides what gets paid first.
 
-Required answer:
+### Decision Needed
+
+- Is interest calculated before principal allocation?
+- Does principal reduce immediately after payment?
+- What happens when payment is partial?
+
+### Decision Fields
+
+- Interest calculation timing:
+- Principal reduction rule:
+- Partial payment behavior:
+- Approved by:
+
+## 6. Dossier / Application Fees
+
+### What This Means
+
+Dossier fees are charges for processing a loan. The system must know how they are calculated and when they are collected.
+
+### Illustration
+
+Fixed fee:
+
+```text
+dossier fee = 5,000 XAF
+```
+
+Percentage fee:
+
+```text
+loan amount = 200,000 XAF
+fee rate = 2%
+dossier fee = 4,000 XAF
+```
+
+Deducted from disbursement:
+
+```text
+approved loan = 200,000 XAF
+fee = 5,000 XAF
+cash received by customer = 195,000 XAF
+```
+
+### Decision Needed
+
+- Fixed or percentage?
+- Charged at application, approval, or disbursement?
+- Paid separately or deducted from disbursement?
+- Refundable if rejected or cancelled?
+
+### Decision Fields
 
 - Formula:
 - Trigger event:
 - Payment method:
 - Refund rule:
 - Ledger treatment:
+- Approved by:
 
-### 7. VAT / Tax
+## 7. VAT / Tax
 
-Questions:
+### What This Means
 
-- What is the tax base?
-- Interest only?
-- Fees only?
-- Insurance only?
-- Interest + fees?
-- Is tax calculated per installment or upfront?
+Taxes may apply to interest, fees, insurance, or other charges. The system must know the tax base and timing.
+
+### Illustration
+
+Tax on fee:
+
+```text
+fee = 5,000 XAF
+tax rate = 19.25%
+tax = 962.5 XAF before rounding
+```
+
+Tax on interest:
+
+```text
+interest = 2,000 XAF
+tax rate = 19.25%
+tax = 385 XAF
+```
+
+### Decision Needed
+
+- What rate applies?
+- What is taxed: interest, fees, insurance, penalties, or combinations?
+- Is tax calculated upfront or per installment?
 - Is tax rounded separately?
 
-Required answer:
+### Decision Fields
 
 - Tax rate:
 - Tax base:
 - Calculation timing:
 - Rounding rule:
 - Ledger treatment:
+- Approved by:
 
-### 8. Insurance
+## 8. Insurance
 
-Questions:
+### What This Means
 
-- Is insurance fixed or percentage-based?
-- What is the base amount: granted amount, outstanding principal, installment amount, or another base?
-- Is insurance paid upfront or per installment?
-- Is it refundable on early closure?
+Loan insurance may be fixed or based on the loan amount. The system must know when it is charged and whether it can be refunded.
 
-Required answer:
+### Illustration
+
+Percentage insurance:
+
+```text
+loan amount = 200,000 XAF
+insurance rate = 1%
+insurance = 2,000 XAF
+```
+
+Monthly insurance example:
+
+```text
+insurance = 500 XAF per installment
+```
+
+### Decision Needed
+
+- Fixed or percentage-based?
+- Based on granted amount, outstanding principal, installment, or another base?
+- Paid upfront or per installment?
+- Refundable on early closure?
+
+### Decision Fields
 
 - Formula:
 - Base:
 - Timing:
 - Refund rule:
 - Ledger treatment:
+- Approved by:
 
-### 9. Guarantee Deposit
+## 9. Guarantee Deposit
 
-Questions:
+### What This Means
 
-- Is guarantee deposit fixed or percentage-based?
-- What is the base: granted amount, outstanding principal, or another value?
-- Is it collected before disbursement, deducted from disbursement, or held from customer account?
-- Is it released automatically at loan closure?
-- Can it be used to settle unpaid amounts?
+A guarantee deposit is money held as security for the loan. It may be collected, held, released, or used to settle unpaid balances.
 
-Required answer:
+### Illustration
+
+Percentage deposit:
+
+```text
+loan amount = 300,000 XAF
+guarantee deposit = 10%
+deposit required = 30,000 XAF
+```
+
+If held from customer account:
+
+```text
+account balance = 80,000 XAF
+hold = 30,000 XAF
+available balance = 50,000 XAF
+```
+
+### Decision Needed
+
+- Fixed or percentage-based?
+- What is the base amount?
+- Is it paid in cash, deducted, or held from account balance?
+- Released at closure?
+- Can it settle unpaid loans?
+
+### Decision Fields
 
 - Formula:
 - Base:
-- Collection timing:
+- Collection method:
 - Release rule:
 - Offset/use rule:
 - Ledger treatment:
+- Approved by:
 
-## Penalties And Arrears
+## 10. Penalty Formula
 
-### 10. Penalty Formula
+### What This Means
 
-Questions:
+Penalties apply when repayment is late. The system must know when penalties start, what amount they are based on, and whether they accumulate.
 
-- When does penalty start: immediately after due date or after grace days?
-- What is the penalty base: overdue principal, overdue interest, total overdue installment, outstanding principal, or fixed amount?
-- Is penalty fixed amount, percentage, daily percentage, monthly percentage, or product-specific formula?
-- Does penalty compound?
-- Is penalty capped?
-- Is penalty recalculated daily or only during payment?
+### Illustration
 
-Required answer:
+Installment due:
+
+```text
+due date = April 10
+installment = 20,000 XAF
+grace period = 3 days
+penalty starts = April 14
+```
+
+Daily percentage penalty:
+
+```text
+overdue amount = 20,000 XAF
+penalty rate = 1% per day
+late days = 5
+penalty = 20,000 * 1% * 5 = 1,000 XAF
+```
+
+Fixed penalty:
+
+```text
+penalty = 2,000 XAF once overdue
+```
+
+### Decision Needed
+
+- When does penalty start?
+- What is the penalty base?
+- Fixed or percentage?
+- Daily, monthly, or one-time?
+- Does it compound?
+- Is there a cap?
+
+### Decision Fields
 
 - Trigger:
 - Grace days:
@@ -215,93 +463,197 @@ Required answer:
 - Cap:
 - Rounding rule:
 - Ledger treatment:
+- Approved by:
 
-### 11. Arrears / Unpaid Amount
+## 11. Arrears / Unpaid Amount
 
-Questions:
+### What This Means
 
-- What makes a loan installment late?
-- Is a partial payment considered late, partially paid, or unpaid?
+Arrears represent amounts not paid by their due date. The system must decide how partial payments affect arrears.
+
+### Illustration
+
+Due installment:
+
+```text
+installment due = 20,000 XAF
+customer pays = 12,000 XAF
+remaining unpaid = 8,000 XAF
+```
+
+If partial payment still counts as late:
+
+```text
+installment status = partially_paid_late
+arrears = 8,000 XAF
+```
+
+### Decision Needed
+
+- What makes an installment late?
+- How are partial payments classified?
+- How is `due_amount` calculated?
 - How is `total_unpaid_amount` calculated?
-- How is `due_amount` / `exigible` calculated?
 
-Required answer:
+### Decision Fields
 
 - Late rule:
 - Partial payment rule:
 - Due amount formula:
 - Total unpaid formula:
+- Approved by:
 
-### 12. Repayment Allocation Order
+## 12. Repayment Allocation Order
 
-Questions:
+### What This Means
 
-- When a customer pays less than total due, what is paid first?
-- Penalties first?
-- Taxes first?
-- Fees first?
-- Interest first?
-- Principal first?
-- Oldest installment first?
+When a customer pays less than the total amount due, the system must decide what is paid first.
 
-Example options:
+### Illustration
 
-- penalty -> tax -> interest -> principal
-- tax -> penalty -> interest -> principal
-- interest -> principal -> penalty
-- oldest installment fully before next installment
+Customer owes:
 
-Required answer:
+```text
+penalty = 1,000 XAF
+tax = 500 XAF
+interest = 4,000 XAF
+principal = 15,000 XAF
+total due = 20,500 XAF
+payment = 10,000 XAF
+```
+
+Option A:
+
+```text
+penalty -> tax -> interest -> principal
+principal receives 4,500 XAF
+```
+
+Option B:
+
+```text
+interest -> principal -> penalty
+principal receives 6,000 XAF
+penalty remains unpaid
+```
+
+### Decision Needed
+
+- Which component is paid first?
+- Are oldest installments paid before newer installments?
+- How are same-day multiple payments ordered?
+- What happens to overpayments?
+
+### Decision Fields
 
 - Allocation order:
+- Installment ordering:
 - Same-day payment ordering:
 - Overpayment handling:
+- Approved by:
 
-## Grace Period, Capitalization, And Rescheduling
+## 13. Grace Period
 
-### 13. Grace Period
+### What This Means
 
-Questions:
+A grace period may delay principal repayment, penalty start, or both. Interest may still accrue.
 
-- During grace period, does interest accrue?
+### Illustration
+
+Loan has:
+
+```text
+first principal due after 30 days
+grace period = 10 days
+```
+
+Possible rules:
+
+```text
+principal deferred, interest still due
+principal and interest both deferred
+interest accrues and is capitalized
+penalty disabled during grace period
+```
+
+### Decision Needed
+
+- Is principal deferred?
+- Does interest accrue?
 - Is interest paid during grace period?
-- Is interest capitalized into principal?
-- Are principal payments deferred?
-- Are penalties disabled during grace period?
+- Is interest capitalized?
+- Are penalties disabled?
 
-Required answer:
+### Decision Fields
 
 - Principal behavior:
 - Interest behavior:
 - Penalty behavior:
 - Schedule impact:
+- Approved by:
 
-### 14. Capitalized Interest
+## 14. Capitalized Interest
 
-Questions:
+### What This Means
+
+Capitalized interest means unpaid interest is added to the loan principal. Future interest may then be calculated on the higher balance.
+
+### Illustration
+
+```text
+principal = 100,000 XAF
+unpaid interest = 5,000 XAF
+after capitalization, new principal = 105,000 XAF
+```
+
+### Decision Needed
 
 - When is interest capitalized?
-- What base does future interest use after capitalization?
-- Is capitalized interest treated as principal for accounting and penalties?
+- Does future interest use the new principal?
+- Is capitalized interest treated like principal for penalties and reporting?
 
-Required answer:
+### Decision Fields
 
 - Capitalization trigger:
 - Formula:
 - Future interest base:
+- Penalty treatment:
 - Ledger treatment:
+- Approved by:
 
-### 15. Early Repayment
+## 15. Early Repayment
 
-Questions:
+### What This Means
 
-- Can a customer repay early?
-- Is future interest waived, reduced, or still due?
-- Are early repayment fees charged?
+Early repayment occurs when a customer pays before the scheduled loan end date. The system must know whether future interest is waived or still collected.
+
+### Illustration
+
+Customer has:
+
+```text
+remaining principal = 80,000 XAF
+future scheduled interest = 12,000 XAF
+customer wants to close today
+```
+
+Possible rules:
+
+```text
+pay only 80,000 XAF principal plus current accrued interest
+pay 80,000 XAF plus all future interest
+pay 80,000 XAF plus early closure fee
+```
+
+### Decision Needed
+
+- Is early repayment allowed?
+- Is future interest waived?
+- Is an early repayment fee charged?
 - Is insurance refunded?
 - Is guarantee deposit released immediately?
 
-Required answer:
+### Decision Fields
 
 - Early repayment allowed:
 - Future interest rule:
@@ -309,178 +661,391 @@ Required answer:
 - Insurance refund rule:
 - Guarantee release rule:
 - Ledger treatment:
+- Approved by:
 
-### 16. Rescheduling / Refinancing
+## 16. Rescheduling / Refinancing
 
-Questions:
+### What This Means
 
-- Can overdue loans be rescheduled?
-- Does rescheduling create a new loan or modify the existing loan?
-- Are unpaid interest and penalties capitalized?
+Rescheduling changes the repayment plan. Refinancing may close an old loan and create a new one.
+
+### Illustration
+
+Current overdue loan:
+
+```text
+principal outstanding = 100,000 XAF
+unpaid interest = 10,000 XAF
+penalties = 5,000 XAF
+```
+
+Possible rule:
+
+```text
+new rescheduled principal = 100,000 XAF
+interest and penalties stay separate
+```
+
+Alternative:
+
+```text
+new principal = 115,000 XAF
+interest and penalties are capitalized
+```
+
+### Decision Needed
+
+- Is rescheduling allowed?
+- Does it modify the same loan or create a new loan?
+- Are interest/penalties capitalized?
 - Is approval required?
 
-Required answer:
+### Decision Fields
 
 - Rescheduling allowed:
 - New loan vs same loan:
 - Capitalization rule:
 - Approval workflow:
 - Ledger treatment:
+- Approved by:
 
-## Account And Balance Formulas
+## 17. Accounting Balance
 
-### 17. Accounting Balance
+### What This Means
 
-Questions:
+Accounting balance should be the ledger-derived balance of an account. Stakeholders must confirm whether pending transactions are excluded.
 
-- Is accounting balance strictly derived from posted ledger entries?
-- Are pending transactions included?
+### Illustration
 
-Required answer:
+Posted entries:
+
+```text
+credits = 150,000 XAF
+debits = 40,000 XAF
+accounting balance = 110,000 XAF
+```
+
+Pending withdrawal:
+
+```text
+pending withdrawal = 10,000 XAF
+accounting balance remains 110,000 XAF if pending is excluded
+```
+
+### Decision Needed
+
+- Is accounting balance strictly from posted ledger entries?
+- Are pending transactions excluded?
+- How are reversals shown?
+
+### Decision Fields
 
 - Accounting balance formula:
 - Included statuses:
+- Reversal handling:
+- Approved by:
 
-### 18. Available Balance
+## 18. Available Balance
 
-Questions:
+### What This Means
+
+Available balance is what the customer can use. It is usually accounting balance minus holds, unavailable funds, and pending restrictions.
+
+### Illustration
+
+```text
+accounting balance = 100,000 XAF
+guarantee deposit hold = 30,000 XAF
+pending withdrawal = 10,000 XAF
+available balance = 60,000 XAF
+```
+
+### Decision Needed
 
 - Which holds reduce available balance?
-- Guarantee deposits?
-- Pending withdrawals?
-- Legal freezes?
-- Minimum balance requirements?
-- Loan-related restrictions?
+- Is there a minimum balance?
+- Do pending withdrawals reduce availability?
+- Do loan restrictions reduce availability?
 
-Required answer:
+### Decision Fields
 
 - Available balance formula:
 - Hold types:
 - Minimum balance rule:
+- Pending transaction rule:
+- Approved by:
 
-### 19. Daily And Cumulative Movements
+## 19. Daily And Cumulative Movements
 
-Questions:
+### What This Means
 
-- Are daily movements based on transaction date or posting date?
-- Do reversed transactions reduce movement totals or appear separately?
-- When does the day close?
+Reports show daily and cumulative debit/credit movements. Stakeholders must decide whether reports use transaction date or posting date.
 
-Required answer:
+### Illustration
+
+Transaction initiated:
+
+```text
+transaction date = April 10
+posted date = April 11
+amount = 20,000 XAF
+```
+
+If reporting by transaction date:
+
+```text
+April 10 movement includes 20,000 XAF
+```
+
+If reporting by posting date:
+
+```text
+April 11 movement includes 20,000 XAF
+```
+
+### Decision Needed
+
+- Use transaction date or posting date?
+- How are reversals reported?
+- What is the day-close boundary?
+
+### Decision Fields
 
 - Daily movement formula:
 - Cumulative movement formula:
 - Reversal handling:
 - Day boundary:
+- Approved by:
 
-## Teller And Cash Formulas
+## 20. Bank Notes And Coins / Billetage
 
-### 20. Cash Denomination Count
+### What This Means
 
-Formula proposal:
+The stakeholder resources include bank note and coin management through denomination setup and cash counting. This is used when opening/closing tills and reconciling actual cash.
+
+### Illustration
+
+Cash count:
+
+```text
+10 notes of 10,000 XAF = 100,000 XAF
+5 notes of 5,000 XAF = 25,000 XAF
+20 coins/notes of 500 XAF = 10,000 XAF
+actual cash total = 135,000 XAF
+```
+
+Formula:
 
 ```text
 line_total = denomination_value * quantity
 actual_cash_total = sum(line_total)
 ```
 
-Questions:
+### Decision Needed
 
-- Are damaged notes/coins tracked separately?
-- Are foreign currency denominations supported?
+- Which denominations are accepted?
+- Are coins tracked?
+- Are damaged notes tracked separately?
+- Can denominations be deactivated?
+- Is denomination counting required at till opening, till closing, or both?
 
-Required answer:
+### Decision Fields
 
-- Denomination rule:
+- Accepted denominations:
+- Coin tracking:
 - Damaged cash rule:
-- Foreign currency rule:
+- Opening count required:
+- Closing count required:
+- Approved by:
 
-### 21. Till Theoretical Balance
+## 21. Till Theoretical Balance
 
-Questions:
+### What This Means
 
-- Is theoretical balance derived only from posted teller ledger entries?
+The theoretical balance is what the system believes should be in the teller’s cash drawer based on posted cash movements.
+
+### Illustration
+
+```text
+opening cash = 100,000 XAF
+cash deposits = 80,000 XAF
+cash withdrawals = 30,000 XAF
+theoretical balance = 150,000 XAF
+```
+
+If pending transactions are excluded:
+
+```text
+pending withdrawal = 10,000 XAF
+theoretical balance remains 150,000 XAF until posted
+```
+
+### Decision Needed
+
+- Are only posted teller transactions included?
 - Are pending transactions included?
-- Are inter-till transfers included when sent, received, or both confirmed?
+- How are inter-till transfers counted?
+- When does transferred cash leave one till and enter another?
 
-Required answer:
+### Decision Fields
 
 - Opening balance formula:
 - Theoretical balance formula:
 - Pending transaction treatment:
 - Inter-till transfer timing:
+- Approved by:
 
-### 22. Till Reconciliation Difference
+## 22. Till Reconciliation Difference
 
-Formula proposal:
+### What This Means
+
+At closing, the teller counts physical cash. The system compares counted cash to theoretical balance.
+
+### Illustration
+
+```text
+theoretical balance = 150,000 XAF
+actual counted cash = 148,500 XAF
+difference = -1,500 XAF
+```
+
+Formula:
 
 ```text
 difference = actual_cash_total - theoretical_balance
 ```
 
-Questions:
+### Decision Needed
 
-- What tolerance is allowed?
-- Who approves differences?
-- How are shortages and overages posted?
+- What difference tolerance is allowed?
+- Who approves shortages/overages?
+- How are shortages posted?
+- How are overages posted?
+- Can a till close with unresolved differences?
 
-Required answer:
+### Decision Fields
 
 - Tolerance:
 - Approval role:
 - Shortage ledger treatment:
 - Overage ledger treatment:
+- Close-with-difference rule:
+- Approved by:
 
-## Reporting Metrics
+## 23. Portfolio Outstanding
 
-### 23. Portfolio Outstanding
+### What This Means
 
-Questions:
+Portfolio outstanding is used for management and reporting. It must be clear whether it means principal only or includes interest/penalties.
 
-- Is portfolio outstanding principal only or principal + interest + penalties?
+### Illustration
+
+Loan portfolio:
+
+```text
+principal outstanding = 1,000,000 XAF
+interest due = 80,000 XAF
+penalties due = 20,000 XAF
+```
+
+Principal-only portfolio:
+
+```text
+portfolio outstanding = 1,000,000 XAF
+```
+
+Total exposure portfolio:
+
+```text
+portfolio outstanding = 1,100,000 XAF
+```
+
+### Decision Needed
+
+- Principal only or principal + interest + penalties?
 - Are written-off loans included?
 - Are rescheduled loans included under original or new portfolio?
 
-Required answer:
+### Decision Fields
 
 - Formula:
 - Included statuses:
 - Grouping rules:
+- Approved by:
 
-### 24. Portfolio At Risk / Delinquency
+## 24. Portfolio At Risk / Delinquency
 
-Questions:
+### What This Means
 
-- Does the institution use PAR30, PAR60, PAR90?
-- Is PAR based on outstanding principal of loans with any installment overdue by N days?
-- Are restructured loans reported separately?
+Portfolio at risk measures loans with overdue installments. Common buckets are PAR30, PAR60, and PAR90.
 
-Required answer:
+### Illustration
+
+If a loan has one installment overdue by 35 days:
+
+```text
+loan outstanding principal = 200,000 XAF
+PAR30 includes 200,000 XAF
+```
+
+Depending on policy, the full outstanding principal may be counted, not just the overdue installment.
+
+### Decision Needed
+
+- Which PAR buckets are used?
+- Is PAR based on full outstanding principal or overdue amount only?
+- Are written-off or rescheduled loans included?
+
+### Decision Fields
 
 - PAR buckets:
 - Formula:
 - Included/excluded loans:
 - Restructured loan handling:
+- Approved by:
 
-### 25. Collection Performance
+## 25. Collection Performance
 
-Questions:
+### What This Means
 
-- How is expected collection calculated?
-- How is actual collection calculated?
-- Are penalties and fees included in collection performance?
+Collection performance compares what should have been collected to what was actually collected.
 
-Required answer:
+### Illustration
+
+Expected today:
+
+```text
+scheduled principal = 300,000 XAF
+scheduled interest = 50,000 XAF
+expected collection = 350,000 XAF
+```
+
+Actual today:
+
+```text
+actual repayments = 280,000 XAF
+collection performance = 280,000 / 350,000 = 80%
+```
+
+### Decision Needed
+
+- Are penalties included in expected collection?
+- Are fees included?
+- Are partial payments counted immediately?
+- Are cash and account debits both included?
+
+### Decision Fields
 
 - Expected collection formula:
 - Actual collection formula:
 - Inclusion/exclusion rules:
+- Approved by:
 
 ## Approval Needed Before Implementation
 
 Please confirm these items before backend implementation starts:
 
-- Currency and rounding.
+- XAF precision and rounding.
 - Interest method by loan product.
 - Installment formula.
 - Fee, tax, insurance, and guarantee deposit formulas.
@@ -489,14 +1054,14 @@ Please confirm these items before backend implementation starts:
 - Grace period and capitalization behavior.
 - Early repayment and rescheduling rules.
 - Balance formulas.
-- Teller/cash reconciliation formulas.
+- Bank notes/coins and till reconciliation formulas.
 - Reporting metric formulas.
 
 ## Suggested Sign-Off Table
 
 | Area | Stakeholder Owner | Status | Notes |
 |---|---|---|---|
-| Currency and rounding |  | Pending |  |
+| XAF precision and rounding |  | Pending |  |
 | Loan interest |  | Pending |  |
 | Installments |  | Pending |  |
 | Fees and VAT |  | Pending |  |
@@ -504,9 +1069,11 @@ Please confirm these items before backend implementation starts:
 | Guarantee deposit |  | Pending |  |
 | Penalties |  | Pending |  |
 | Repayment allocation |  | Pending |  |
+| Grace period/capitalization |  | Pending |  |
 | Early repayment |  | Pending |  |
 | Rescheduling/refinancing |  | Pending |  |
 | Account balances |  | Pending |  |
+| Bank notes and coins |  | Pending |  |
 | Teller reconciliation |  | Pending |  |
 | Reporting metrics |  | Pending |  |
 

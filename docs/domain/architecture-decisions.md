@@ -102,17 +102,18 @@ Implementation guidance:
 Decision:
 
 - The platform must use an explicit currency on every monetary amount.
-- Default currency is not settled. Stakeholder screens imply CFA/XAF, while the current `.env.example` still defaults to `TZS`.
+- The base operating currency is `XAF`.
+- Multi-currency support is out of scope unless a future ADR explicitly introduces it.
 - Decimal storage is acceptable for early implementation only with explicit precision/scale and `brick/money` in PHP.
 
 Open decision:
 
-- Confirm operational currency or multi-currency support before implementing accounting, accounts, cash, or loans.
+- Confirm rounding policy for `XAF` amounts before implementing accounting, accounts, cash, or loans.
 
 Implementation guidance:
 
 - Do not create money columns without an adjacent currency column unless the currency is guaranteed by table-level invariant and documented.
-- Use one precision/scale convention across the system, for example `decimal(19, 4)` for major units, unless accounting stakeholders require a stricter format.
+- Use one precision/scale convention across the system. For user-facing `XAF` amounts, assume whole monetary units unless stakeholders approve fractional accounting precision.
 - Never use floating-point types.
 
 ## ADR-008: Audit, Retention, And PII
