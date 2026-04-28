@@ -59,6 +59,8 @@ return [
                 'documents.archive',
                 'references.reserve',
             ],
+            // Deprecated compatibility alias for agency-scoped staff administration.
+            // New grants should use agency-manager.
             'user-admin' => [
                 'users.view',
                 'users.create',
@@ -66,6 +68,38 @@ return [
                 'users.status.manage',
                 'documents.view',
                 'documents.create',
+                'references.reserve',
+            ],
+            'agency-manager' => [
+                'users.view',
+                'users.create',
+                'users.update',
+                'users.status.manage',
+                'documents.view',
+                'documents.create',
+                'references.reserve',
+            ],
+            'regional-manager' => [
+                'users.view',
+                'documents.view',
+                'references.reserve',
+            ],
+            'teller' => [
+                'system.view-health',
+                'documents.view',
+                'documents.create',
+                'references.reserve',
+            ],
+            'loan-officer' => [
+                'system.view-health',
+                'documents.view',
+                'documents.create',
+                'references.reserve',
+            ],
+            'accountant' => [
+                'system.view-health',
+                'audit.view',
+                'documents.view',
                 'references.reserve',
             ],
             'auditor' => [

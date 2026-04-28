@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property string $public_id
+ * @property int $agency_id
  * @property int|null $uploaded_by_user_id
  * @property string $category
  * @property string $title
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'public_id',
+    'agency_id',
     'owner_type',
     'owner_id',
     'uploaded_by_user_id',

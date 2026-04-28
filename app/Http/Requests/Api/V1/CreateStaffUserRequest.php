@@ -24,7 +24,7 @@ final class CreateStaffUserRequest extends FormRequest
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:users,email'],
             'matricule' => ['nullable', 'string', 'max:64', 'unique:users,matricule'],
             'job_title' => ['nullable', 'string', 'max:255'],
-            'agency_code' => ['nullable', 'string', 'max:64'],
+            'agency_code' => ['nullable', 'string', 'max:64', 'exists:agencies,code'],
             'agency_name' => ['nullable', 'string', 'max:255'],
         ];
     }

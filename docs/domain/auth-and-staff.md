@@ -37,6 +37,7 @@ Implemented foundation fields:
 - `phone_verified_at`
 - `matricule`
 - `job_title`
+- `agency_id`
 - `agency_code`
 - `agency_name`
 - `status`
@@ -53,9 +54,15 @@ Deferred fields belong to targeted administration/HR implementation, not the reu
 - `portfolio_name`
 - `assignment_date`
 - `supervisor_id`
-- `agency_id`
 
-The base intentionally stores `agency_code` and `agency_name` as nullable metadata only. It does not implement agencies, branch hierarchies, portfolios, or multi-agency authorization yet.
+The base now includes agencies and primary staff agency assignments because document access, staff administration, and future operational records require a real agency boundary from the start.
+
+Decision:
+
+- `staff_agency_assignments` is the authority for active agency membership.
+- `users.agency_id` is a synchronized primary-agency cache for simple query scoping and document access.
+- `agency_code` and `agency_name` are display compatibility fields derived from the agency when possible; they are not the long-term authorization source.
+- Temporary assignment, transfer history, and cross-agency work must be represented through assignment records rather than rewriting historical operational records.
 
 ## Login Identifier Decision
 
@@ -103,7 +110,8 @@ Implemented base flow:
 
 Deferred flow:
 
-- Staff assignment to an agency, portfolio, or supervisor remains domain-specific and must be implemented with the administration module.
+- Portfolio assignment, supervisor assignment, and HR profile details remain domain-specific and must be implemented with the administration module.
+- Primary agency assignment is part of the foundation and is represented by `staff_agency_assignments`.
 - Password reset and risky-login MFA should reuse the same OTP challenge design with a separate `purpose`.
 
 Required controls:
@@ -119,6 +127,18 @@ Authorization must combine:
 - Role/permission checks.
 - Agency scope checks.
 - Resource ownership/assignment checks.
+
+Base role model:
+
+- `staff` is the generic authenticated employee account class and grants no business authority by itself.
+- `platform-admin` is institution-wide system administration and bootstrap access.
+- `agency-manager` is agency-scoped staff administration and supervision.
+- `regional-manager` is regional oversight and must be paired with explicit region scope before cross-agency write access is introduced.
+- `teller` is cash/till operation staff.
+- `loan-officer` is client and credit portfolio staff.
+- `accountant` is ledger/accounting workflow staff.
+- `auditor` is read-only oversight.
+- `user-admin` is retained only as a legacy compatibility alias for agency-scoped user administration and should not be expanded.
 
 Example:
 

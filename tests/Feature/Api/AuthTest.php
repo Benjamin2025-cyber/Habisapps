@@ -169,6 +169,33 @@ final class AuthTest extends TestCase
         self::assertSame(User::STATUS_PENDING_VERIFICATION, $user->refresh()->status);
     }
 
+    public function test_otp_challenge_is_single_use(): void
+    {
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000017',
+            'password' => null,
+        ]);
+        $otpService = app(OtpService::class);
+        $otpService->issueActivationChallenge($user, request());
+
+        self::assertTrue($otpService->verifyActivationCode($user, '123456'));
+        self::assertFalse($otpService->verifyActivationCode($user, '123456'));
+    }
+
+    public function test_otp_attempt_limit_is_enforced_atomically(): void
+    {
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000018',
+            'password' => null,
+        ]);
+        $otpService = app(OtpService::class);
+        $challenge = $otpService->issueActivationChallenge($user, request());
+        $challenge->forceFill(['max_attempts' => 1])->save();
+
+        self::assertFalse($otpService->verifyActivationCode($user, '000000'));
+        self::assertFalse($otpService->verifyActivationCode($user, '123456'));
+    }
+
     public function test_resend_activation_otp_uses_generic_response(): void
     {
         User::factory()->unverified()->createOne([

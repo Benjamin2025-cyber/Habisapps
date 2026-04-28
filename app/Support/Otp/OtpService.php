@@ -8,6 +8,7 @@ use App\Models\OtpChallenge;
 use App\Models\OtpDelivery;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -67,31 +68,36 @@ final class OtpService
 
     public function verifyCode(User $user, string $purpose, string $code): bool
     {
-        $challenge = OtpChallenge::query()
-            ->where('user_id', $user->id)
-            ->where('purpose', $this->validPurpose($purpose))
-            ->where('used_at', null)
-            ->where('expires_at', '>', now())
-            ->latest()
-            ->first();
+        return DB::transaction(function () use ($code, $purpose, $user): bool {
+            $query = (new OtpChallenge)->newQuery()
+                ->where('user_id', $user->id)
+                ->where('purpose', $this->validPurpose($purpose))
+                ->where('used_at', null)
+                ->where('expires_at', '>', now())
+                ->latest('created_at');
+            $query->getQuery()->lockForUpdate();
 
-        if (! $challenge instanceof OtpChallenge) {
-            return false;
-        }
+            $challenge = $query->first();
 
-        if ($challenge->attempts >= $challenge->max_attempts) {
-            return false;
-        }
+            if (! $challenge instanceof OtpChallenge) {
+                return false;
+            }
 
-        $challenge->increment('attempts');
+            if ($challenge->attempts >= $challenge->max_attempts) {
+                return false;
+            }
 
-        if (! Hash::check($code, $challenge->code_hash)) {
-            return false;
-        }
+            $challenge->increment('attempts');
+            $challenge->refresh();
 
-        $challenge->forceFill(['used_at' => now()])->save();
+            if (! Hash::check($code, $challenge->code_hash)) {
+                return false;
+            }
 
-        return true;
+            $challenge->forceFill(['used_at' => now()])->save();
+
+            return true;
+        });
     }
 
     private function validPurpose(string $purpose): string

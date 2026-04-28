@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Support\Traits\HasAuditLog;
+use App\Support\Staff\StaffAgencyScope;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -24,6 +27,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $email
  * @property string|null $password
  * @property string $status
+ * @property int|null $agency_id
  * @property Carbon|null $phone_verified_at
  * @property Carbon|null $activated_at
  * @property Carbon|null $last_login_at
@@ -36,6 +40,7 @@ use Spatie\Permission\Traits\HasRoles;
     'status',
     'matricule',
     'job_title',
+    'agency_id',
     'agency_code',
     'agency_name',
     'invited_by_user_id',
@@ -111,5 +116,26 @@ class User extends Authenticatable
         return Attribute::make(
             set: static fn (string $value): string => preg_replace('/\s+/', '', $value) ?? $value,
         );
+    }
+
+    /**
+     * @return BelongsTo<Agency, $this>
+     */
+    public function agency(): BelongsTo
+    {
+        return $this->belongsTo(Agency::class);
+    }
+
+    /**
+     * @return HasMany<StaffAgencyAssignment, $this>
+     */
+    public function agencyAssignments(): HasMany
+    {
+        return $this->hasMany(StaffAgencyAssignment::class);
+    }
+
+    public function currentAgencyId(): ?int
+    {
+        return app(StaffAgencyScope::class)->currentAgencyId($this);
     }
 }

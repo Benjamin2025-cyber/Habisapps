@@ -24,8 +24,14 @@ final class DocumentController extends BaseController
             return $this->respondForbidden();
         }
 
+        $agencyId = $this->resolveAgencyId($request);
+        if ($agencyId === null) {
+            return $this->respondForbidden();
+        }
+
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $documents = Document::query()
+            ->where('agency_id', $agencyId)
             ->latest()
             ->paginate($perPage);
 
@@ -45,6 +51,11 @@ final class DocumentController extends BaseController
     {
         $file = $request->file('file');
         $actor = $request->user();
+        $agencyId = $this->resolveAgencyId($request);
+        if ($agencyId === null) {
+            return $this->respondForbidden();
+        }
+
         $disk = 'local';
         $path = $file->store('documents', $disk);
 
@@ -60,6 +71,7 @@ final class DocumentController extends BaseController
         $checksum = hash('sha256', $contents);
 
         $document = Document::query()->create([
+            'agency_id' => $agencyId,
             'uploaded_by_user_id' => $actor instanceof User ? $actor->id : null,
             'category' => $request->string('category')->toString(),
             'title' => $request->string('title')->toString(),
@@ -86,6 +98,10 @@ final class DocumentController extends BaseController
             return $this->respondForbidden();
         }
 
+        if ($document->agency_id !== $this->resolveAgencyId($request)) {
+            return $this->respondForbidden();
+        }
+
         return $this->respondSuccess([
             'document' => DocumentResource::make($document)->resolve(),
         ]);
@@ -94,6 +110,10 @@ final class DocumentController extends BaseController
     public function archive(Request $request, Document $document): JsonResponse
     {
         if ($request->user()?->can('documents.archive') !== true) {
+            return $this->respondForbidden();
+        }
+
+        if ($document->agency_id !== $this->resolveAgencyId($request)) {
             return $this->respondForbidden();
         }
 
@@ -108,5 +128,16 @@ final class DocumentController extends BaseController
         return $this->respondSuccess([
             'document' => DocumentResource::make($document->refresh())->resolve(),
         ], 'Document archived successfully');
+    }
+
+    private function resolveAgencyId(Request $request): ?int
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        return $user->currentAgencyId();
     }
 }

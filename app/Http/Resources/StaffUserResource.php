@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Models\Agency;
 use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;
@@ -33,8 +34,9 @@ final class StaffUserResource extends JsonResource
             'status' => $user->status,
             'matricule' => $user->matricule,
             'job_title' => $user->job_title,
-            'agency_code' => $user->agency_code,
-            'agency_name' => $user->agency_name,
+            'agency_id' => $user->agency_id,
+            'agency_code' => $this->agencyCode($user),
+            'agency_name' => $this->agencyName($user),
             'phone_verified_at' => $this->formatDate($user->phone_verified_at),
             'activated_at' => $this->formatDate($user->activated_at),
             'last_login_at' => $this->formatDate($user->last_login_at),
@@ -49,5 +51,27 @@ final class StaffUserResource extends JsonResource
         }
 
         return $value->format(DateTimeInterface::ATOM);
+    }
+
+    private function agencyCode(User $user): ?string
+    {
+        $agency = $user->relationLoaded('agency') ? $user->agency : null;
+
+        if ($agency instanceof Agency) {
+            return $agency->code;
+        }
+
+        return $user->agency_code;
+    }
+
+    private function agencyName(User $user): ?string
+    {
+        $agency = $user->relationLoaded('agency') ? $user->agency : null;
+
+        if ($agency instanceof Agency) {
+            return $agency->name;
+        }
+
+        return $user->agency_name;
     }
 }

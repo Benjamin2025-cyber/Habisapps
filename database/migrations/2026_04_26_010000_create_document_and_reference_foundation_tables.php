@@ -32,6 +32,7 @@ return new class extends Migration
 
             $table->index(['category', 'status']);
             $table->index(['checksum_sha256']);
+            $table->unique(['disk', 'path']);
         });
 
         Schema::create('reference_sequences', function (Blueprint $table): void {
