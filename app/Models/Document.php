@@ -11,6 +11,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Carbon;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 /**
  * @property int $id
@@ -50,9 +53,9 @@ use Illuminate\Support\Carbon;
     'verified_by_user_id',
     'archived_at',
 ])]
-final class Document extends Model
+final class Document extends Model implements HasMedia
 {
-    use HasAuditLog, HasUlids;
+    use HasAuditLog, HasUlids, InteractsWithMedia;
 
     public const string STATUS_ACTIVE = 'active';
 
@@ -64,6 +67,24 @@ final class Document extends Model
     public function uniqueIds(): array
     {
         return ['public_id'];
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $diskName = config('media-library.disk_name', 'local');
+        if (! is_string($diskName) || $diskName === '') {
+            $diskName = 'local';
+        }
+
+        $this->addMediaCollection('kyc_documents')
+            ->useDisk($diskName)
+            ->singleFile();
+    }
+
+    public function registerMediaConversions(?Media $media = null): void
+    {
+        // KYC documents intentionally do not generate conversions/responsive images.
+        // Any conversion must be explicitly approved and reviewed first.
     }
 
     public function getRouteKeyName(): string

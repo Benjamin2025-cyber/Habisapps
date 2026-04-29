@@ -12,7 +12,8 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 final class DocumentController extends BaseController
 {
@@ -56,34 +57,40 @@ final class DocumentController extends BaseController
             return $this->respondForbidden();
         }
 
-        $disk = 'local';
-        $path = $file->store('documents', $disk);
-
-        if (! is_string($path)) {
-            return $this->respondError('Document could not be stored.');
+        if ($file === null) {
+            throw new RuntimeException('Validated upload payload is missing file.');
         }
 
-        $contents = Storage::disk($disk)->get($path);
-        if (! is_string($contents)) {
-            return $this->respondError('Stored document could not be read for verification.');
+        $realPath = $file->getRealPath();
+        $checksum = is_string($realPath) ? hash_file('sha256', $realPath) : false;
+        if (! is_string($checksum)) {
+            throw new RuntimeException('Unable to compute checksum for uploaded document.');
         }
 
-        $checksum = hash('sha256', $contents);
+        $document = DB::transaction(function () use ($actor, $agencyId, $request, $checksum): Document {
+            $document = Document::query()->create([
+                'agency_id' => $agencyId,
+                'uploaded_by_user_id' => $actor instanceof User ? $actor->id : null,
+                'category' => $request->string('category')->toString(),
+                'title' => $request->string('title')->toString(),
+                'status' => Document::STATUS_ACTIVE,
+                'metadata' => $request->input('metadata'),
+            ]);
 
-        $document = Document::query()->create([
-            'agency_id' => $agencyId,
-            'uploaded_by_user_id' => $actor instanceof User ? $actor->id : null,
-            'category' => $request->string('category')->toString(),
-            'title' => $request->string('title')->toString(),
-            'disk' => $disk,
-            'path' => $path,
-            'original_name' => $file->getClientOriginalName(),
-            'mime_type' => $file->getMimeType() ?? 'application/octet-stream',
-            'size_bytes' => $file->getSize(),
-            'checksum_sha256' => $checksum,
-            'status' => Document::STATUS_ACTIVE,
-            'metadata' => $request->input('metadata'),
-        ]);
+            $media = $document->addMediaFromRequest('file')
+                ->toMediaCollection('kyc_documents');
+
+            $document->update([
+                'disk' => $media->disk,
+                'path' => $media->getPathRelativeToRoot(),
+                'original_name' => $media->file_name,
+                'mime_type' => $media->mime_type,
+                'size_bytes' => $media->size,
+                'checksum_sha256' => $checksum,
+            ]);
+
+            return $document->refresh();
+        });
 
         $this->securityAudit->record('document.created', actor: $actor instanceof User ? $actor : null, subject: $document, request: $request);
 
