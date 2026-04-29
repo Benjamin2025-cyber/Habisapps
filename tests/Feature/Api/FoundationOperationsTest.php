@@ -12,6 +12,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 final class FoundationOperationsTest extends TestCase
@@ -50,6 +51,7 @@ final class FoundationOperationsTest extends TestCase
             'id' => $document->id,
             'agency_id' => $agency['id'],
         ]);
+        self::assertIsString($document->path);
         Storage::disk('local')->assertExists($document->path);
         $this->assertDatabaseHas('activity_log', [
             'log_name' => 'security',
@@ -83,6 +85,76 @@ final class FoundationOperationsTest extends TestCase
 
         $response->assertForbidden();
         $this->assertDatabaseCount('documents', 0);
+    }
+
+    public function test_staff_cannot_view_document_from_different_agency(): void
+    {
+        Storage::fake('local');
+        $agencyA = $this->createAgency('AGA');
+        $agencyB = $this->createAgency('AGB');
+        $actorA = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
+        $actorB = $this->createUserWithRole('agency-manager', $agencyB['code'], $agencyB['name']);
+
+        // Verify agency assignments
+        self::assertEquals($agencyA['id'], $actorA->currentAgencyId());
+        self::assertEquals($agencyB['id'], $actorB->currentAgencyId());
+
+        $uploadResponse = $this
+            ->actingAs($actorA)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorA->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Agency A Document',
+                'file' => UploadedFile::fake()->image('doc-a.jpg'),
+            ]);
+
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $document = Document::query()->where('public_id', $documentPublicId)->first();
+
+        self::assertInstanceOf(Document::class, $document);
+        self::assertEquals($agencyA['id'], $document->agency_id);
+
+        $viewResponse = $this
+            ->actingAs($actorB)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorB->createToken('test-token')->plainTextToken])
+            ->getJson('/api/v1/documents/'.$documentPublicId);
+
+        $viewResponse->assertForbidden();
+    }
+
+    public function test_staff_cannot_archive_document_from_different_agency(): void
+    {
+        Storage::fake('local');
+        $agencyA = $this->createAgency('AGC');
+        $agencyB = $this->createAgency('AGD');
+        $actorA = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
+        $actorB = $this->createUserWithRole('agency-manager', $agencyB['code'], $agencyB['name']);
+
+        // Verify agency assignments
+        self::assertEquals($agencyA['id'], $actorA->currentAgencyId());
+        self::assertEquals($agencyB['id'], $actorB->currentAgencyId());
+
+        $uploadResponse = $this
+            ->actingAs($actorA)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorA->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Agency A Document',
+                'file' => UploadedFile::fake()->image('doc-a.jpg'),
+            ]);
+
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $document = Document::query()->where('public_id', $documentPublicId)->first();
+
+        self::assertInstanceOf(Document::class, $document);
+        self::assertEquals($agencyA['id'], $document->agency_id);
+
+        $archiveResponse = $this
+            ->actingAs($actorB)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorB->createToken('test-token')->plainTextToken])
+            ->patchJson('/api/v1/documents/'.$documentPublicId.'/archive');
+
+        $archiveResponse->assertForbidden();
     }
 
     public function test_document_scope_uses_active_assignment_not_cached_user_agency(): void
@@ -135,6 +207,265 @@ final class FoundationOperationsTest extends TestCase
         $this->assertDatabaseHas('activity_log', [
             'log_name' => 'security',
             'event' => 'reference.reserved',
+        ]);
+    }
+
+    public function test_upload_creates_domain_document_and_media_record(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('TST');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
+            ]);
+
+        $this->assertJsonSuccess($response, 201);
+        $documentPublicId = $this->requireStringJsonPath($response, 'data.document.public_id');
+
+        $document = Document::query()->where('public_id', $documentPublicId)->first();
+        self::assertInstanceOf(Document::class, $document);
+        self::assertTrue($document->hasMedia('kyc_documents'));
+        self::assertCount(1, $document->getMedia('kyc_documents'));
+    }
+
+    public function test_upload_rejects_unsupported_mime_types(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('TST2');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->create('test.exe', 100),
+            ]);
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('documents', 0);
+    }
+
+    public function test_upload_rejects_oversized_files(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('TST3');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->create('test.pdf', 15 * 1024), // 15MB
+            ]);
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('documents', 0);
+    }
+
+    public function test_archive_does_not_delete_files(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('TST4');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $uploadResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
+            ]);
+
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $document = Document::query()->where('public_id', $documentPublicId)->first();
+        self::assertInstanceOf(Document::class, $document);
+        $media = $document->getMedia('kyc_documents')->first();
+
+        self::assertNotNull($media);
+        Storage::disk($media->disk)->assertExists($media->getPathRelativeToRoot());
+
+        $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->patchJson('/api/v1/documents/'.$documentPublicId.'/archive')
+            ->assertOk();
+
+        $document->refresh();
+        self::assertEquals(Document::STATUS_ARCHIVED, $document->status);
+        Storage::disk($media->disk)->assertExists($media->getPathRelativeToRoot());
+    }
+
+    public function test_api_responses_do_not_expose_private_storage_paths(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('TST5');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
+            ]);
+
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonMissingPath('data.document.path');
+        $response->assertJsonMissingPath('data.document.disk');
+    }
+
+    public function test_path_traversal_payload_cannot_bypass_validation(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('SEC1');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $maliciousNamedFile = UploadedFile::fake()->image('..\\..\\evil.jpg', 640, 480);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Malicious Filename Probe',
+                'file' => $maliciousNamedFile,
+            ]);
+
+        $this->assertJsonSuccess($response, 201);
+        $documentPublicId = $this->requireStringJsonPath($response, 'data.document.public_id');
+
+        $document = Document::query()->where('public_id', $documentPublicId)->first();
+        self::assertInstanceOf(Document::class, $document);
+        $media = $document->getMedia('kyc_documents')->first();
+        self::assertNotNull($media);
+        Storage::disk($media->disk)->assertExists($media->getPathRelativeToRoot());
+        self::assertStringNotContainsString('..', $media->file_name);
+        self::assertStringNotContainsString('/', $media->file_name);
+        self::assertStringNotContainsString('\\', $media->file_name);
+    }
+
+    public function test_content_type_spoofing_does_not_bypass_validation(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('SEC2');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $spoofedFile = UploadedFile::fake()->createWithContent(
+            'identity.jpg',
+            "MZ\x90\x00".str_repeat('A', 2048)
+        );
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => $spoofedFile,
+            ]);
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseCount('documents', 0);
+    }
+
+    public function test_generic_media_ids_cannot_bypass_authorization(): void
+    {
+        Storage::fake('local');
+        $agencyA = $this->createAgency('SEC3');
+        $agencyB = $this->createAgency('SEC4');
+        $actorA = $this->createUserWithRole('platform-admin', $agencyA['code'], $agencyA['name']);
+        $actorB = $this->createUserWithRole('platform-admin', $agencyB['code'], $agencyB['name']);
+
+        $uploadResponse = $this
+            ->actingAs($actorA)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorA->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
+            ]);
+
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $document = Document::query()->where('public_id', $documentPublicId)->first();
+        self::assertInstanceOf(Document::class, $document);
+        $media = $document->getMedia('kyc_documents')->first();
+
+        self::assertNotNull($media);
+
+        // Try to access document by public ID (not media ID)
+        $viewResponse = $this
+            ->actingAs($actorB)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorB->createToken('test-token')->plainTextToken])
+            ->getJson('/api/v1/documents/'.$documentPublicId);
+
+        $viewResponse->assertForbidden();
+
+        $documentByMediaIdResponse = $this
+            ->actingAs($actorB)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorB->createToken('test-token')->plainTextToken])
+            ->getJson('/api/v1/documents/'.$media->id);
+
+        $documentByMediaIdResponse->assertNotFound();
+
+        $directMediaRouteResponse = $this
+            ->actingAs($actorB)
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actorB->createToken('test-token')->plainTextToken])
+            ->get('/media/'.$media->id.'/'.$media->file_name);
+
+        $directMediaRouteResponse->assertNotFound();
+    }
+
+    public function test_archived_documents_are_protected(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('SEC5');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $uploadResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
+            ]);
+
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+
+        $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->patchJson('/api/v1/documents/'.$documentPublicId.'/archive')
+            ->assertOk();
+
+        // Archived document can still be viewed (by authorized user)
+        $viewResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->getJson('/api/v1/documents/'.$documentPublicId);
+
+        $viewResponse->assertOk();
+        $viewResponse->assertJsonPath('data.document.status', Document::STATUS_ARCHIVED);
+    }
+
+    public function test_audit_logs_capture_media_actions(): void
+    {
+        Storage::fake('local');
+        $agency = $this->createAgency('SEC6');
+        $actor = $this->createUserWithRole('platform-admin', $agency['code'], $agency['name']);
+
+        $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/documents', [
+                'category' => 'kyc',
+                'title' => 'Test Document',
+                'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
+            ]);
+
+        $this->assertDatabaseHas('activity_log', [
+            'log_name' => 'security',
+            'event' => 'document.created',
         ]);
     }
 
@@ -214,5 +545,13 @@ final class FoundationOperationsTest extends TestCase
         ]);
 
         return ['id' => $id, 'code' => $code, 'name' => $name];
+    }
+
+    private function requireStringJsonPath(TestResponse $response, string $path): string
+    {
+        $value = $response->json($path);
+        self::assertIsString($value);
+
+        return $value;
     }
 }

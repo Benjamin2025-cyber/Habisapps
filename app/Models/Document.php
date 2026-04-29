@@ -22,12 +22,12 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  * @property int|null $uploaded_by_user_id
  * @property string $category
  * @property string $title
- * @property string $disk
- * @property string $path
- * @property string $original_name
- * @property string $mime_type
- * @property int $size_bytes
- * @property string $checksum_sha256
+ * @property string|null $disk
+ * @property string|null $path
+ * @property string|null $original_name
+ * @property string|null $mime_type
+ * @property int|null $size_bytes
+ * @property string|null $checksum_sha256
  * @property string $status
  * @property array<string, mixed>|null $metadata
  * @property Carbon|null $verified_at

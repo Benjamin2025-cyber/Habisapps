@@ -117,4 +117,12 @@ return [
         'log_name' => 'default',
         'actor_fallback' => 'system',
     ],
+    'documents' => [
+        'backfill' => [
+            'allowed_source_disks' => array_values(array_filter(array_map(
+                static fn (string $disk): string => trim($disk),
+                explode(',', (string) env('DOCUMENT_BACKFILL_ALLOWED_SOURCE_DISKS', 'local'))
+            ))),
+        ],
+    ],
 ];
