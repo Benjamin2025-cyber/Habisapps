@@ -40,6 +40,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
         $secondAgencyId = $this->createAgency('A002');
 
         DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
             'agency_id' => $firstAgencyId,
             'role_at_agency' => 'cashier',
@@ -51,6 +52,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
         $this->expectException(QueryException::class);
 
         DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
             'agency_id' => $secondAgencyId,
             'role_at_agency' => 'cashier',
@@ -375,6 +377,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
         $agencyId = $this->createAgency('SA01');
 
         DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
             'agency_id' => $agencyId,
             'role_at_agency' => 'manager',
@@ -385,6 +388,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
         ]);
 
         DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
             'agency_id' => $agencyId,
             'role_at_agency' => 'manager',
@@ -397,6 +401,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
         $this->expectException(QueryException::class);
 
         DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
             'agency_id' => $agencyId,
             'role_at_agency' => 'manager',

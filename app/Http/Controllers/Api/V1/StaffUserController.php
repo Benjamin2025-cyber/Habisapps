@@ -18,6 +18,7 @@ use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final class StaffUserController extends BaseController
 {
@@ -103,7 +104,7 @@ final class StaffUserController extends BaseController
         $this->securityAudit->record('staff.created', actor: $actor, subject: $user, request: $request);
 
         return $this->respondCreated([
-            'user' => StaffUserResource::make($user)->resolve(),
+            'user' => StaffUserResource::make($user->loadMissing('agency'))->resolve(),
         ], 'Staff user created successfully');
     }
 
@@ -323,6 +324,7 @@ final class StaffUserController extends BaseController
     private function createPrimaryAssignment(User $user, int $agencyId, string $roleAtAgency): void
     {
         (new StaffAgencyAssignment)->newQuery()->create([
+            'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
             'agency_id' => $agencyId,
             'role_at_agency' => $roleAtAgency,

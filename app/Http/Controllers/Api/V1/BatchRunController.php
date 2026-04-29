@@ -1,0 +1,307 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\BaseController;
+use App\Http\Resources\BatchRunResource;
+use App\Models\Agency;
+use App\Models\BatchProcedure;
+use App\Models\BatchRun;
+use App\Models\User;
+use App\Support\Security\SecurityAudit;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use JsonException;
+
+final class BatchRunController extends BaseController
+{
+    public function __construct(private readonly SecurityAudit $securityAudit) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        if ($request->user()?->can('batch.runs.view') !== true && $request->user()?->can('batch.runs.manage') !== true) {
+            return $this->respondForbidden();
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $query = BatchRun::query()->with(['batchProcedure', 'agency', 'operator'])->latest();
+
+        if ($request->filled('batch_procedure_public_id')) {
+            $procedure = BatchProcedure::query()->where('public_id', $request->string('batch_procedure_public_id')->toString())->first();
+            if ($procedure !== null) {
+                $query->where('batch_procedure_id', $procedure->id);
+            }
+        }
+
+        $runs = $query->paginate($perPage);
+
+        return $this->respondSuccess([
+            'runs' => BatchRunResource::collection($runs->getCollection())->resolve(),
+        ], meta: [
+            'pagination' => [
+                'current_page' => $runs->currentPage(),
+                'per_page' => $runs->perPage(),
+                'total' => $runs->total(),
+                'last_page' => $runs->lastPage(),
+            ],
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        if ($request->user()?->can('batch.runs.manage') !== true) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'batch_procedure_public_id' => ['required', 'string', 'exists:batch_procedures,public_id'],
+            'business_date' => ['required', 'date'],
+            'agency_code' => ['nullable', 'string', 'exists:agencies,code'],
+            'idempotency_key' => ['nullable', 'string', 'max:128'],
+            'summary_payload' => ['nullable', 'array'],
+        ])->validate();
+
+        $procedure = BatchProcedure::query()->where('public_id', $validated['batch_procedure_public_id'])->firstOrFail();
+        $agency = null;
+        if (isset($validated['agency_code'])) {
+            $agency = Agency::query()->where('code', $validated['agency_code'])->first();
+        }
+
+        $actorContext = $this->actorContext($request);
+        $scopeHash = $this->scopeHash($request, $validated['idempotency_key'] ?? null, $actorContext);
+        $fingerprint = $this->fingerprint($request, $validated);
+
+        $existing = null;
+        if (isset($validated['idempotency_key'])) {
+            $existing = BatchRun::query()
+                ->with(['batchProcedure', 'agency', 'operator'])
+                ->where('scope_hash', $scopeHash)
+                ->first();
+
+            if ($existing !== null) {
+                if ($existing->request_fingerprint === null) {
+                    return $this->respondError('Idempotency-Key has already been used for a different request.', null, 409);
+                }
+
+                if (! hash_equals($existing->request_fingerprint, $fingerprint)) {
+                    return $this->respondError('Idempotency-Key has already been used for a different request.', null, 409);
+                }
+
+                return $this->respondSuccess([
+                    'run' => BatchRunResource::make($existing)->resolve(),
+                ], 'Batch run already exists');
+            }
+
+            $legacyExisting = DB::table('batch_runs')
+                ->where('idempotency_key', $validated['idempotency_key'])
+                ->whereNull('scope_hash')
+                ->first();
+
+            if ($legacyExisting !== null) {
+                return $this->respondError('Idempotency-Key has already been used for a different request.', null, 409);
+            }
+        }
+
+        $existingRun = BatchRun::query()
+            ->with(['batchProcedure', 'agency', 'operator'])
+            ->where('batch_procedure_id', $procedure->id)
+            ->where('agency_id', $agency?->id)
+            ->where('business_date', $validated['business_date'])
+            ->first();
+
+        if ($existingRun !== null) {
+            return $this->respondSuccess([
+                'run' => BatchRunResource::make($existingRun)->resolve(),
+            ], 'Batch run already exists');
+        }
+
+        $run = BatchRun::query()->create([
+            'public_id' => (string) \Illuminate\Support\Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency?->id,
+            'business_date' => $validated['business_date'],
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $request->user()->id,
+            'actor_context' => $actorContext,
+            'scope_hash' => isset($validated['idempotency_key']) ? $scopeHash : null,
+            'idempotency_key' => $validated['idempotency_key'] ?? null,
+            'request_fingerprint' => isset($validated['idempotency_key']) ? $fingerprint : null,
+            'summary_payload' => $validated['summary_payload'] ?? null,
+        ])->load(['batchProcedure', 'agency', 'operator']);
+
+        $this->securityAudit->record('batch.run.created', actor: $request->user(), subject: $run, request: $request);
+
+        return $this->respondCreated([
+            'run' => BatchRunResource::make($run)->resolve(),
+        ], 'Batch run created successfully');
+    }
+
+    public function show(Request $request, BatchRun $batchRun): JsonResponse
+    {
+        if ($request->user()?->can('batch.runs.view') !== true && $request->user()?->can('batch.runs.manage') !== true) {
+            return $this->respondForbidden();
+        }
+
+        return $this->respondSuccess([
+            'run' => BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))->resolve(),
+        ]);
+    }
+
+    public function updateStatus(Request $request, BatchRun $batchRun): JsonResponse
+    {
+        if ($request->user()?->can('batch.runs.manage') !== true) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'status' => ['required', 'string', Rule::in([
+                BatchRun::STATUS_PENDING,
+                BatchRun::STATUS_RUNNING,
+                BatchRun::STATUS_SUCCEEDED,
+                BatchRun::STATUS_FAILED,
+            ])],
+            'summary_payload' => ['sometimes', 'nullable', 'array'],
+            'failure_reason' => ['sometimes', 'nullable', 'string'],
+        ])->validate();
+
+        $requestedStatus = $validated['status'];
+        if ($batchRun->status !== $requestedStatus) {
+            if ($this->isTerminalStatus($batchRun->status)) {
+                return $this->respondUnprocessable('Completed batch runs cannot be changed.');
+            }
+
+            $allowedTransitions = [
+                BatchRun::STATUS_PENDING => [BatchRun::STATUS_RUNNING, BatchRun::STATUS_FAILED],
+                BatchRun::STATUS_RUNNING => [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED],
+                BatchRun::STATUS_FAILED => [BatchRun::STATUS_PENDING, BatchRun::STATUS_RUNNING],
+                BatchRun::STATUS_SUCCEEDED => [],
+            ];
+
+            if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
+                return $this->respondUnprocessable('Invalid batch run status transition.');
+            }
+        } else {
+            return $this->respondSuccess([
+                'run' => BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))->resolve(),
+            ], 'Batch run status updated successfully');
+        }
+
+        $updates = [
+            'status' => $requestedStatus,
+            'summary_payload' => $validated['summary_payload'] ?? $batchRun->summary_payload,
+            'failure_reason' => $validated['failure_reason'] ?? $batchRun->failure_reason,
+        ];
+
+        if ($requestedStatus === BatchRun::STATUS_RUNNING && $batchRun->started_at === null) {
+            $updates['started_at'] = now();
+        }
+
+        if (in_array($requestedStatus, [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED], true) && $batchRun->finished_at === null) {
+            $updates['finished_at'] = now();
+        }
+
+        if ($requestedStatus === BatchRun::STATUS_FAILED && ! array_key_exists('failure_reason', $validated)) {
+            throw ValidationException::withMessages(['failure_reason' => ['A failure reason is required for failed runs.']]);
+        }
+
+        $run = DB::transaction(function () use ($batchRun, $updates): BatchRun {
+            $batchRun->forceFill($updates)->save();
+
+            return $batchRun->refresh()->loadMissing(['batchProcedure', 'agency', 'operator']);
+        });
+
+        $this->securityAudit->record('batch.run.status_changed', actor: $request->user(), subject: $run, properties: [
+            'status' => $run->status,
+        ], request: $request);
+
+        return $this->respondSuccess([
+            'run' => BatchRunResource::make($run)->resolve(),
+        ], 'Batch run status updated successfully');
+    }
+
+    private function isTerminalStatus(string $status): bool
+    {
+        return in_array($status, [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED], true);
+    }
+
+    private function actorContext(Request $request): string
+    {
+        $user = $request->user();
+        $identifier = $user?->getAuthIdentifier();
+
+        if (is_string($identifier) || is_int($identifier)) {
+            return 'user:'.$identifier;
+        }
+
+        return 'system';
+    }
+
+    private function scopeHash(Request $request, ?string $key, string $actorContext): ?string
+    {
+        if (! is_string($key) || $key === '') {
+            return null;
+        }
+
+        return hash('sha256', implode('|', [
+            $request->method(),
+            $request->path(),
+            $actorContext,
+            $key,
+        ]));
+    }
+
+    /**
+     * @param array<string, mixed> $validated
+     */
+    private function fingerprint(Request $request, array $validated): string
+    {
+        $payload = [
+            'actor' => $this->actorContext($request),
+            'batch_procedure_public_id' => $validated['batch_procedure_public_id'],
+            'business_date' => $validated['business_date'],
+            'agency_code' => $validated['agency_code'] ?? null,
+            'summary_payload' => $this->normalizeForFingerprint($validated['summary_payload'] ?? null),
+        ];
+
+        try {
+            return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
+        } catch (JsonException) {
+            return hash('sha256', implode('|', [
+                $this->scalarToString($payload['actor']),
+                $this->scalarToString($payload['batch_procedure_public_id']),
+                $this->scalarToString($payload['business_date']),
+                $this->scalarToString($payload['agency_code']),
+            ]));
+        }
+    }
+
+    private function normalizeForFingerprint(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        ksort($value);
+
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->normalizeForFingerprint($item);
+        }
+
+        return $value;
+    }
+
+    private function scalarToString(mixed $value): string
+    {
+        if (is_string($value) || is_int($value) || is_float($value) || is_bool($value)) {
+            return (string) $value;
+        }
+
+        return '';
+    }
+}

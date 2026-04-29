@@ -34,7 +34,7 @@ final class StaffUserResource extends JsonResource
             'status' => $user->status,
             'matricule' => $user->matricule,
             'job_title' => $user->job_title,
-            'agency_id' => $user->agency_id,
+            'agency_public_id' => $this->agencyPublicId($user),
             'agency_code' => $this->agencyCode($user),
             'agency_name' => $this->agencyName($user),
             'phone_verified_at' => $this->formatDate($user->phone_verified_at),
@@ -62,6 +62,23 @@ final class StaffUserResource extends JsonResource
         }
 
         return $user->agency_code;
+    }
+
+    private function agencyPublicId(User $user): ?string
+    {
+        $agency = $user->relationLoaded('agency') ? $user->agency : null;
+
+        if ($agency instanceof Agency) {
+            return $agency->public_id;
+        }
+
+        if (! is_int($user->agency_id) || $user->agency_id <= 0) {
+            return null;
+        }
+
+        $publicId = Agency::query()->whereKey($user->agency_id)->value('public_id');
+
+        return is_string($publicId) ? $publicId : null;
     }
 
     private function agencyName(User $user): ?string

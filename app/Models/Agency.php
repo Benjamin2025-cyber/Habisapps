@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
@@ -40,11 +43,15 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 final class Agency extends Model
 {
-    use HasUlids;
+    use HasAuditLog, HasUlids;
 
     public const string STATUS_ACTIVE = 'active';
 
     public const string STATUS_INACTIVE = 'inactive';
+
+    public const string STATUS_SUSPENDED = 'suspended';
+
+    public const string STATUS_ARCHIVED = 'archived';
 
     /**
      * @return array<int, string>
@@ -52,5 +59,22 @@ final class Agency extends Model
     public function uniqueIds(): array
     {
         return ['public_id'];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manager_id');
+    }
+
+    /** @return HasMany<User, $this> */
+    public function staff(): HasMany
+    {
+        return $this->hasMany(User::class);
     }
 }

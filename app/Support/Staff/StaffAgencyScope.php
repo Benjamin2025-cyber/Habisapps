@@ -27,7 +27,7 @@ final class StaffAgencyScope
             return (int) $assignment->agency_id;
         }
 
-        return $user->agency_id;
+        return null;
     }
 
     /**

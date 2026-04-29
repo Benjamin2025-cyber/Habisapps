@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string $status
  */
 #[Fillable([
+    'public_id',
     'user_id',
     'agency_id',
     'role_at_agency',
@@ -31,6 +33,8 @@ use Illuminate\Support\Carbon;
 ])]
 final class StaffAgencyAssignment extends Model
 {
+    use HasUlids;
+
     public const string STATUS_ACTIVE = 'active';
 
     public const string STATUS_ENDED = 'ended';
@@ -61,6 +65,19 @@ final class StaffAgencyAssignment extends Model
     public function agency(): BelongsTo
     {
         return $this->belongsTo(Agency::class);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function uniqueIds(): array
+    {
+        return ['public_id'];
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
     }
 
     /**

@@ -188,6 +188,24 @@ final class FoundationOperationsTest extends TestCase
         ]);
     }
 
+    public function test_current_agency_scope_fails_closed_without_active_assignment_even_if_cached_agency_exists(): void
+    {
+        $agency = $this->createAgency('CLD');
+        $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+
+        DB::table('staff_agency_assignments')
+            ->where('user_id', $actor->id)
+            ->delete();
+
+        $actor->forceFill([
+            'agency_id' => $agency['id'],
+            'agency_code' => $agency['code'],
+            'agency_name' => $agency['name'],
+        ])->save();
+
+        self::assertNull($actor->currentAgencyId());
+    }
+
     public function test_authorized_user_can_reserve_reference_numbers_sequentially(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -519,6 +537,7 @@ final class FoundationOperationsTest extends TestCase
 
         if ($agency !== null) {
             DB::table('staff_agency_assignments')->insert([
+                'public_id' => (string) Str::ulid(),
                 'user_id' => $user->id,
                 'agency_id' => $agency->id,
                 'role_at_agency' => $role,

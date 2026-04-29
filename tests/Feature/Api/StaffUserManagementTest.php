@@ -31,6 +31,7 @@ final class StaffUserManagementTest extends TestCase
             'name' => 'Akwa',
             'status' => 'active',
         ]);
+        $agencyPublicId = DB::table('agencies')->where('id', $agencyId)->value('public_id');
 
         $response = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$admin->createToken('test-token')->plainTextToken])
@@ -47,7 +48,8 @@ final class StaffUserManagementTest extends TestCase
         $this->assertJsonSuccess($response, 201);
         $response->assertJsonPath('message', 'Staff user created successfully');
         $response->assertJsonPath('data.user.phone_number', '+237699200001');
-        $response->assertJsonPath('data.user.agency_id', $agencyId);
+        $response->assertJsonPath('data.user.agency_public_id', $agencyPublicId);
+        $response->assertJsonMissingPath('data.user.agency_id');
         $response->assertJsonPath('data.user.status', User::STATUS_PENDING_VERIFICATION);
         $response->assertJsonPath('data.user.roles.0', 'staff');
         $response->assertJsonMissingPath('data.user.id');
@@ -321,6 +323,7 @@ final class StaffUserManagementTest extends TestCase
 
         if ($agencyId !== null) {
             DB::table('staff_agency_assignments')->insert([
+                'public_id' => (string) Str::ulid(),
                 'user_id' => $user->id,
                 'agency_id' => $agencyId,
                 'role_at_agency' => $role,
