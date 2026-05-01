@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\StaffAgencyAssignmentResource;
+use App\Http\Resources\StaffAgencyAssignmentCollection;
 use App\Models\Agency;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
@@ -26,7 +27,13 @@ final class StaffAssignmentController extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
     ) {}
 
-    public function index(Request $request, User $staffUser): JsonResponse
+    /**
+     * List staff assignments
+     *
+     * @authenticated
+     * @response StaffAgencyAssignmentCollection
+     */
+    public function index(Request $request, User $staffUser): StaffAgencyAssignmentCollection|JsonResponse
     {
         if ($request->user()?->can('staff.assignments.view') !== true) {
             return $this->respondForbidden();
@@ -61,11 +68,15 @@ final class StaffAssignmentController extends BaseController
                 ->values();
         }
 
-        return $this->respondSuccess([
-            'assignments' => StaffAgencyAssignmentResource::collection($assignments)->resolve(),
-        ]);
+        return new StaffAgencyAssignmentCollection($assignments);
     }
 
+    /**
+     * Create staff assignment
+     *
+     * @authenticated
+     * @response 201 StaffAgencyAssignmentResource
+     */
     public function store(Request $request, User $staffUser): JsonResponse
     {
         if ($request->user()?->can('staff.assignments.manage') !== true) {
@@ -185,11 +196,18 @@ final class StaffAssignmentController extends BaseController
             'reason' => $validated['reason'] ?? null,
         ], request: $request);
 
-        return $this->respondCreated([
-            'assignment' => StaffAgencyAssignmentResource::make($assignment)->resolve(),
-        ], 'Assignment created successfully');
+        return $this->respondCreated(
+            StaffAgencyAssignmentResource::make($assignment),
+            'Assignment created successfully'
+        );
     }
 
+    /**
+     * Update staff assignment
+     *
+     * @authenticated
+     * @response StaffAgencyAssignmentResource
+     */
     public function update(Request $request, User $staffUser, StaffAgencyAssignment $assignment): JsonResponse
     {
         if ($request->user()?->can('staff.assignments.manage') !== true) {
@@ -234,9 +252,10 @@ final class StaffAssignmentController extends BaseController
             'reason' => $validated['reason'] ?? null,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'assignment' => StaffAgencyAssignmentResource::make($assignment->refresh()->loadMissing('agency'))->resolve(),
-        ], 'Assignment updated successfully');
+        return $this->respondSuccess(
+            StaffAgencyAssignmentResource::make($assignment->refresh()->loadMissing('agency')),
+            'Assignment updated successfully'
+        );
     }
 
     private function canAccessStaffUser(User $actor, User $target): bool

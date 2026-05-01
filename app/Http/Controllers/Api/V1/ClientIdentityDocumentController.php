@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\StoreClientIdentityDocumentRequest;
 use App\Http\Requests\Api\V1\UpdateClientIdentityDocumentRequest;
 use App\Http\Requests\Api\V1\UpdateClientIdentityDocumentStatusRequest;
 use App\Http\Resources\ClientIdentityDocumentResource;
+use App\Http\Resources\ClientIdentityDocumentCollection;
 use App\Models\Client;
 use App\Models\ClientIdentityDocument;
 use App\Models\Document;
@@ -30,12 +31,13 @@ final class ClientIdentityDocumentController extends BaseController
      * List client identity documents.
      *
      * @authenticated
+     * @response ClientIdentityDocumentCollection
      */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{identity_documents: array<int, \App\Http\Resources\ClientIdentityDocumentResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}'
     )]
-    public function index(Request $request, Client $client): JsonResponse
+    public function index(Request $request, Client $client): ClientIdentityDocumentCollection|JsonResponse
     {
         $actor = $request->user();
         if (! $actor instanceof User
@@ -45,23 +47,15 @@ final class ClientIdentityDocumentController extends BaseController
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $records = ClientIdentityDocument::query()
-            ->with(['client', 'document'])
-            ->where('client_id', $client->id)
-            ->where('agency_id', $client->agency_id)
-            ->latest()
-            ->paginate($perPage);
 
-        return $this->respondSuccess([
-            'identity_documents' => ClientIdentityDocumentResource::collection($records->getCollection())->resolve($request),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $records->currentPage(),
-                'per_page' => $records->perPage(),
-                'total' => $records->total(),
-                'last_page' => $records->lastPage(),
-            ],
-        ]);
+        return new ClientIdentityDocumentCollection(
+            ClientIdentityDocument::query()
+                ->with(['client', 'document'])
+                ->where('client_id', $client->id)
+                ->where('agency_id', $client->agency_id)
+                ->latest()
+                ->paginate($perPage)
+        );
     }
 
     /**
@@ -134,15 +128,17 @@ final class ClientIdentityDocumentController extends BaseController
             'document_type' => $record->document_type,
         ], request: $request);
 
-        return $this->respondCreated([
-            'identity_document' => ClientIdentityDocumentResource::make($record->loadMissing(['client', 'document']))->resolve($request),
-        ], 'Client identity document created successfully');
+        return $this->respondCreated(
+            ClientIdentityDocumentResource::make($record->loadMissing(['client', 'document'])),
+            'Client identity document created successfully'
+        );
     }
 
     /**
      * Show a client identity document record.
      *
      * @authenticated
+     * @response ClientIdentityDocumentResource
      */
     #[Response(
         status: 200,
@@ -161,15 +157,16 @@ final class ClientIdentityDocumentController extends BaseController
             return $this->respondNotFound();
         }
 
-        return $this->respondSuccess([
-            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document']))->resolve($request),
-        ]);
+return $this->respondSuccess(
+            ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document']))
+        );
     }
 
     /**
      * Update a client identity document record.
      *
      * @authenticated
+     * @response ClientIdentityDocumentResource
      */
     #[Response(
         status: 200,
@@ -254,18 +251,20 @@ final class ClientIdentityDocumentController extends BaseController
             'changed_fields' => array_keys($attributes),
         ], request: $request);
 
-        return $this->respondSuccess([
-            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document']))->resolve($request),
-        ], 'Client identity document updated successfully');
+        return $this->respondSuccess(
+            ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document'])),
+            'Client identity document updated successfully'
+        );
     }
 
-    /**
-     * Update client identity document lifecycle or verification status.
-     *
-     * Supported actions: submit, verify, reject, archive.
-     *
-     * @authenticated
-     */
+/**
+ * Update client identity document lifecycle or verification status.
+ *
+ * Supported actions: submit, verify, reject, archive.
+ *
+ * @authenticated
+ * @response ClientIdentityDocumentResource
+ */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{identity_document: \App\Http\Resources\ClientIdentityDocumentResource}, errors: null, meta: null}'
@@ -339,9 +338,10 @@ final class ClientIdentityDocumentController extends BaseController
             'status' => $identityDocument->status,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document']))->resolve($request),
-        ], 'Client identity document status updated successfully');
+        return $this->respondSuccess(
+            ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document'])),
+            'Client identity document status updated successfully'
+        );
     }
 
     private function belongsToClient(ClientIdentityDocument $identityDocument, Client $client): bool

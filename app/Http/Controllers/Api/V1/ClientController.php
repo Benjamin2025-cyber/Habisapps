@@ -11,6 +11,7 @@ use App\Http\Requests\Api\V1\UpdateClientKycStatusRequest;
 use App\Http\Requests\Api\V1\UpdateClientRequest;
 use App\Http\Resources\ClientKycReviewResource;
 use App\Http\Resources\ClientResource;
+use App\Http\Resources\ClientCollection;
 use App\Models\Agency;
 use App\Models\Client;
 use App\Models\ClientIdentityDocument;
@@ -41,12 +42,13 @@ final class ClientController extends BaseController
      * Returns a paginated client list scoped by agency permissions.
      *
      * @authenticated
+     * @response ClientCollection
      */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{clients: array<int, \App\Http\Resources\ClientResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}'
     )]
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): ClientCollection|JsonResponse
     {
         $actor = $request->user();
         if (! $actor instanceof User || ! $actor->hasPermissionTo('crm.clients.view')) {
@@ -68,25 +70,17 @@ final class ClientController extends BaseController
         }
 
         $this->applySafeFilters($query, $request, $actor);
-        $clients = $query->paginate($perPage);
 
         if ($actor->hasPermissionTo('crm.pii.view')) {
             $this->securityAudit->record('crm.client.pii_list_viewed', actor: $actor, properties: [
                 'scope' => $this->shouldUseInstitutionScope($actor, $request) ? 'institution' : 'agency',
-                'results' => $clients->total(),
+                'results' => 0,
             ], request: $request);
         }
 
-        return $this->respondSuccess([
-            'clients' => ClientResource::collection($clients->getCollection())->resolve($request),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $clients->currentPage(),
-                'per_page' => $clients->perPage(),
-                'total' => $clients->total(),
-                'last_page' => $clients->lastPage(),
-            ],
-        ]);
+        return new ClientCollection(
+            $query->paginate($perPage)
+        );
     }
 
     /**
@@ -164,15 +158,17 @@ final class ClientController extends BaseController
             'client_reference' => $client->client_reference,
         ], request: $request);
 
-        return $this->respondCreated([
-            'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
-        ], 'Client created successfully');
+        return $this->respondCreated(
+            ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            'Client created successfully'
+        );
     }
 
     /**
      * Show a CRM client.
      *
      * @authenticated
+     * @response ClientResource
      */
     #[Response(
         status: 200,
@@ -191,15 +187,16 @@ final class ClientController extends BaseController
             ], request: $request);
         }
 
-        return $this->respondSuccess([
-            'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
-        ]);
+        return $this->respondSuccess(
+            ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))
+        );
     }
 
     /**
      * Update a CRM client.
      *
      * @authenticated
+     * @response ClientResource
      */
     #[Response(
         status: 200,
@@ -266,9 +263,10 @@ final class ClientController extends BaseController
             'changed_fields' => array_keys($attributes),
         ], request: $request);
 
-        return $this->respondSuccess([
-            'client' => ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
-        ], 'Client updated successfully');
+        return $this->respondSuccess(
+            ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            'Client updated successfully'
+        );
     }
 
     /**
@@ -305,9 +303,10 @@ final class ClientController extends BaseController
         }
 
         if ($client->kyc_status === $transition) {
-            return $this->respondSuccess([
-                'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
-            ], 'KYC status already applied.');
+            return $this->respondSuccess(
+                ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+                'KYC status already applied.'
+            );
         }
 
         if (! $this->isKycTransitionAllowed($client->kyc_status, $transition)) {
@@ -372,15 +371,17 @@ final class ClientController extends BaseController
             'new_kyc_status' => $transition,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'client' => ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
-        ], 'Client KYC status updated successfully');
+        return $this->respondSuccess(
+            ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            'Client KYC status updated successfully'
+        );
     }
 
     /**
      * List client KYC review history.
      *
      * @authenticated
+     * @response array<int, ClientKycReviewResource>
      */
     #[Response(
         status: 200,
@@ -400,16 +401,19 @@ final class ClientController extends BaseController
             ->latest('created_at')
             ->paginate($perPage);
 
-        return $this->respondSuccess([
-            'reviews' => ClientKycReviewResource::collection($reviews->getCollection())->resolve($request),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $reviews->currentPage(),
-                'per_page' => $reviews->perPage(),
-                'total' => $reviews->total(),
-                'last_page' => $reviews->lastPage(),
+        return $this->respondSuccess(
+            [
+                'reviews' => ClientKycReviewResource::collection($reviews->getCollection()),
             ],
-        ]);
+            meta: [
+                'pagination' => [
+                    'current_page' => $reviews->currentPage(),
+                    'per_page' => $reviews->perPage(),
+                    'total' => $reviews->total(),
+                    'last_page' => $reviews->lastPage(),
+                ],
+            ]
+        );
     }
 
     private function shouldUseInstitutionScope(User $actor, Request $request): bool

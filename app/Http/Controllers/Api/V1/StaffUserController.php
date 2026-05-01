@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\UpdateStaffUserRequest;
 use App\Http\Requests\Api\V1\UpdateStaffUserRolesRequest;
 use App\Http\Requests\Api\V1\UpdateStaffUserStatusRequest;
 use App\Http\Resources\StaffUserResource;
+use App\Http\Resources\StaffUserCollection;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use App\Support\Otp\OtpService;
@@ -27,7 +28,13 @@ final class StaffUserController extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
     ) {}
 
-    public function index(Request $request): JsonResponse
+    /**
+     * List staff users
+     *
+     * @authenticated
+     * @response StaffUserCollection
+     */
+    public function index(Request $request): StaffUserCollection|JsonResponse
     {
         if ($request->user()?->can('users.view') !== true) {
             return $this->respondForbidden();
@@ -48,20 +55,17 @@ final class StaffUserController extends BaseController
             $query->whereKey($this->staffAgencyScope->currentAgencyStaffIdList($agencyId));
         }
 
-        $users = $query->paginate($perPage);
-
-        return $this->respondSuccess([
-            'users' => StaffUserResource::collection($users->getCollection())->resolve(),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $users->currentPage(),
-                'per_page' => $users->perPage(),
-                'total' => $users->total(),
-                'last_page' => $users->lastPage(),
-            ],
-        ]);
+        return new StaffUserCollection(
+            $query->paginate($perPage)
+        );
     }
 
+    /**
+     * Create staff user
+     *
+     * @authenticated
+     * @response 201 StaffUserResource
+     */
     public function store(CreateStaffUserRequest $request, OtpService $otpService): JsonResponse
     {
         $actor = $request->user();
@@ -103,11 +107,18 @@ final class StaffUserController extends BaseController
         $otpService->issueActivationChallenge($user, $request);
         $this->securityAudit->record('staff.created', actor: $actor, subject: $user, request: $request);
 
-        return $this->respondCreated([
-            'user' => StaffUserResource::make($user->loadMissing('agency'))->resolve(),
-        ], 'Staff user created successfully');
+        return $this->respondCreated(
+            StaffUserResource::make($user->loadMissing('agency')),
+            'Staff user created successfully'
+        );
     }
 
+    /**
+     * Get staff user
+     *
+     * @authenticated
+     * @response StaffUserResource
+     */
     public function show(Request $request, User $staffUser): JsonResponse
     {
         if ($request->user()?->can('users.view') !== true) {
@@ -118,11 +129,17 @@ final class StaffUserController extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess([
-            'user' => StaffUserResource::make($staffUser->loadMissing('agency'))->resolve(),
-        ]);
+        return $this->respondSuccess(
+            StaffUserResource::make($staffUser->loadMissing('agency'))
+        );
     }
 
+    /**
+     * Update staff user
+     *
+     * @authenticated
+     * @response StaffUserResource
+     */
     public function update(UpdateStaffUserRequest $request, User $staffUser): JsonResponse
     {
         if (! $this->canManagePlatformAdmin($request, $staffUser)) {
@@ -178,11 +195,18 @@ final class StaffUserController extends BaseController
             'changed_fields' => array_keys($attributes),
         ], request: $request);
 
-        return $this->respondSuccess([
-            'user' => StaffUserResource::make($staffUser->refresh()->loadMissing('agency'))->resolve(),
-        ], 'Staff user updated successfully');
+        return $this->respondSuccess(
+            StaffUserResource::make($staffUser->refresh()->loadMissing('agency')),
+            'Staff user updated successfully'
+        );
     }
 
+    /**
+     * Update staff user status
+     *
+     * @authenticated
+     * @response StaffUserResource
+     */
     public function updateStatus(UpdateStaffUserStatusRequest $request, User $staffUser): JsonResponse
     {
         if (! $this->canManagePlatformAdmin($request, $staffUser)) {
@@ -213,11 +237,18 @@ final class StaffUserController extends BaseController
             'status' => $status,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'user' => StaffUserResource::make($staffUser->refresh()->loadMissing('agency'))->resolve(),
-        ], 'Staff user status updated successfully');
+        return $this->respondSuccess(
+            StaffUserResource::make($staffUser->refresh()->loadMissing('agency')),
+            'Staff user status updated successfully'
+        );
     }
 
+    /**
+     * Update staff user roles
+     *
+     * @authenticated
+     * @response StaffUserResource
+     */
     public function updateRoles(UpdateStaffUserRolesRequest $request, User $staffUser): JsonResponse
     {
         $actor = $request->user();
@@ -251,9 +282,10 @@ final class StaffUserController extends BaseController
             'roles' => $roles,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'user' => StaffUserResource::make($staffUser->refresh()->loadMissing('agency'))->resolve(),
-        ], 'Staff user roles updated successfully');
+        return $this->respondSuccess(
+            StaffUserResource::make($staffUser->refresh()->loadMissing('agency')),
+            'Staff user roles updated successfully'
+        );
     }
 
     private function revokeAllTokens(User $user): void

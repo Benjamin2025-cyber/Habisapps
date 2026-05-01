@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\StoreClientProxyRequest;
 use App\Http\Requests\Api\V1\UpdateClientProxyRequest;
 use App\Http\Requests\Api\V1\UpdateClientProxyStatusRequest;
 use App\Http\Resources\ClientProxyResource;
+use App\Http\Resources\ClientProxyCollection;
 use App\Models\Client;
 use App\Models\ClientProxy;
 use App\Models\Document;
@@ -30,12 +31,13 @@ final class ClientProxyController extends BaseController
      * Supports optional `current_only` filtering for currently active mandates.
      *
      * @authenticated
+     * @response ClientProxyCollection
      */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{proxies: array<int, \App\Http\Resources\ClientProxyResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}'
     )]
-    public function index(Request $request, Client $client): JsonResponse
+    public function index(Request $request, Client $client): ClientProxyCollection|JsonResponse
     {
         $actor = $request->user();
         if (! $actor instanceof User
@@ -48,30 +50,21 @@ final class ClientProxyController extends BaseController
         $onlyCurrent = $request->boolean('current_only', false);
         $today = now()->toDateString();
 
-        $records = ClientProxy::query()
-            ->with(['client', 'document'])
-            ->where('client_id', $client->id)
-            ->where('agency_id', $client->agency_id)
-            ->when($onlyCurrent, function (Builder $query) use ($today): void {
-                $query
-                    ->where('status', ClientProxy::STATUS_ACTIVE)
-                    ->where(function (Builder $activeQuery) use ($today): void {
-                        $activeQuery->where('ends_on', null)->orWhere('ends_on', '>=', $today);
-                    });
-            })
-            ->latest()
-            ->paginate($perPage);
-
-        return $this->respondSuccess([
-            'proxies' => ClientProxyResource::collection($records->getCollection())->resolve($request),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $records->currentPage(),
-                'per_page' => $records->perPage(),
-                'total' => $records->total(),
-                'last_page' => $records->lastPage(),
-            ],
-        ]);
+        return new ClientProxyCollection(
+            ClientProxy::query()
+                ->with(['client', 'document'])
+                ->where('client_id', $client->id)
+                ->where('agency_id', $client->agency_id)
+                ->when($onlyCurrent, function (Builder $query) use ($today): void {
+                    $query
+                        ->where('status', ClientProxy::STATUS_ACTIVE)
+                        ->where(function (Builder $activeQuery) use ($today): void {
+                            $activeQuery->where('ends_on', null)->orWhere('ends_on', '>=', $today);
+                        });
+                })
+                ->latest()
+                ->paginate($perPage)
+        );
     }
 
     /**
@@ -122,15 +115,17 @@ final class ClientProxyController extends BaseController
             'client_public_id' => $client->public_id,
         ], request: $request);
 
-        return $this->respondCreated([
-            'proxy' => ClientProxyResource::make($record->loadMissing(['client', 'document']))->resolve($request),
-        ], 'Client proxy created successfully');
+        return $this->respondCreated(
+            ClientProxyResource::make($record->loadMissing(['client', 'document'])),
+            'Client proxy created successfully'
+        );
     }
 
     /**
      * Show a client proxy/mandate record.
      *
      * @authenticated
+     * @response ClientProxyResource
      */
     #[Response(
         status: 200,
@@ -149,15 +144,16 @@ final class ClientProxyController extends BaseController
             return $this->respondNotFound();
         }
 
-        return $this->respondSuccess([
-            'proxy' => ClientProxyResource::make($proxy->loadMissing(['client', 'document']))->resolve($request),
-        ]);
+        return $this->respondSuccess(
+            ClientProxyResource::make($proxy->loadMissing(['client', 'document']))
+        );
     }
 
     /**
      * Update a client proxy/mandate record.
      *
      * @authenticated
+     * @response ClientProxyResource
      */
     #[Response(
         status: 200,
@@ -217,18 +213,20 @@ final class ClientProxyController extends BaseController
             'changed_fields' => array_keys($attributes),
         ], request: $request);
 
-        return $this->respondSuccess([
-            'proxy' => ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document']))->resolve($request),
-        ], 'Client proxy updated successfully');
+        return $this->respondSuccess(
+            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document'])),
+            'Client proxy updated successfully'
+        );
     }
 
-    /**
-     * Update client proxy lifecycle or verification status.
-     *
-     * Supported actions: submit, verify, reject, archive, deactivate, expire.
-     *
-     * @authenticated
-     */
+/**
+ * Update client proxy lifecycle or verification status.
+ *
+ * Supported actions: submit, verify, reject, archive, deactivate, expire.
+ *
+ * @authenticated
+ * @response ClientProxyResource
+ */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{proxy: \App\Http\Resources\ClientProxyResource}, errors: null, meta: null}'
@@ -308,9 +306,10 @@ final class ClientProxyController extends BaseController
             'verification_status' => $proxy->verification_status,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'proxy' => ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document']))->resolve($request),
-        ], 'Client proxy status updated successfully');
+        return $this->respondSuccess(
+            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document'])),
+            'Client proxy status updated successfully'
+        );
     }
 
     private function belongsToClient(ClientProxy $proxy, Client $client): bool

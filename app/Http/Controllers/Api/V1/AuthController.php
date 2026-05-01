@@ -24,6 +24,11 @@ final class AuthController extends BaseController
 {
     public function __construct(private readonly SecurityAudit $securityAudit) {}
 
+    /**
+     * Login
+     *
+     * @response StaffUserResource
+     */
     public function login(LoginRequest $request): JsonResponse
     {
         $password = $request->string('password')->toString();
@@ -45,12 +50,21 @@ final class AuthController extends BaseController
         $token = $this->createAccessToken($user);
         $this->securityAudit->record('auth.login_succeeded', actor: $user, subject: $user, request: $request);
 
-        return $this->respondSuccess([
-            'user' => StaffUserResource::make($user)->resolve(),
-            'token' => $token->plainTextToken,
-        ], 'Login successful');
+        return $this->respondSuccess(
+            [
+                'user' => StaffUserResource::make($user),
+                'token' => $token->plainTextToken,
+            ],
+            'Login successful'
+        );
     }
 
+    /**
+     * Activate staff account
+     *
+     * @authenticated
+     * @response StaffUserResource
+     */
     public function activate(ActivateStaffRequest $request, OtpService $otpService): JsonResponse
     {
         $user = User::query()
@@ -71,9 +85,10 @@ final class AuthController extends BaseController
         ])->save();
         $this->securityAudit->record('auth.account_activated', actor: $user, subject: $user, request: $request);
 
-        return $this->respondSuccess([
-            'user' => StaffUserResource::make($user)->resolve(),
-        ], 'Account activated successfully');
+        return $this->respondSuccess(
+            ['user' => StaffUserResource::make($user)],
+            'Account activated successfully'
+        );
     }
 
     public function resendActivationOtp(ResendActivationOtpRequest $request, OtpService $otpService): JsonResponse

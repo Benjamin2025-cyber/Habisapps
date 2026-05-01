@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreDocumentRequest;
 use App\Http\Resources\DocumentResource;
+use App\Http\Resources\DocumentCollection;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -21,7 +22,13 @@ final class DocumentController extends BaseController
 {
     public function __construct(private readonly SecurityAudit $securityAudit) {}
 
-    public function index(Request $request): JsonResponse
+    /**
+     * List documents
+     *
+     * @authenticated
+     * @response DocumentCollection
+     */
+    public function index(Request $request): DocumentCollection|JsonResponse
     {
         if ($request->user()?->can('documents.view') !== true) {
             return $this->respondForbidden();
@@ -33,21 +40,13 @@ final class DocumentController extends BaseController
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $documents = Document::query()
-            ->where('agency_id', $agencyId)
-            ->latest()
-            ->paginate($perPage);
 
-        return $this->respondSuccess([
-            'documents' => DocumentResource::collection($documents->getCollection())->resolve(),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $documents->currentPage(),
-                'per_page' => $documents->perPage(),
-                'total' => $documents->total(),
-                'last_page' => $documents->lastPage(),
-            ],
-        ]);
+        return new DocumentCollection(
+            Document::query()
+                ->where('agency_id', $agencyId)
+                ->latest()
+                ->paginate($perPage)
+        );
     }
 
     /**
@@ -61,6 +60,7 @@ final class DocumentController extends BaseController
      * @body metadata optional Additional metadata as key-value pairs. Each value max length: 255 characters.
      *
      * @authenticated
+     * @response 201 DocumentResource
      */
     #[Response(
         status: 201,
@@ -113,9 +113,10 @@ final class DocumentController extends BaseController
 
         $this->securityAudit->record('document.created', actor: $actor instanceof User ? $actor : null, subject: $document, request: $request);
 
-        return $this->respondCreated([
-            'document' => DocumentResource::make($document)->resolve(),
-        ], 'Document uploaded successfully');
+        return $this->respondCreated(
+            DocumentResource::make($document),
+            'Document uploaded successfully'
+        );
     }
 
     /**
@@ -124,6 +125,7 @@ final class DocumentController extends BaseController
      * Retrieves metadata for a specific KYC document by its public ID. Note: This endpoint does not return the file content. File download is not currently exposed.
      *
      * @authenticated
+     * @response DocumentResource
      */
     #[Response(
         status: 200,
@@ -140,9 +142,9 @@ final class DocumentController extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess([
-            'document' => DocumentResource::make($document)->resolve(),
-        ]);
+        return $this->respondSuccess(
+            DocumentResource::make($document)
+        );
     }
 
     /**
@@ -151,6 +153,7 @@ final class DocumentController extends BaseController
      * Archives a KYC document by changing its status to 'archived'. This changes the domain lifecycle state without physically deleting the underlying file.
      *
      * @authenticated
+     * @response DocumentResource
      */
     #[Response(
         status: 200,
@@ -174,9 +177,10 @@ final class DocumentController extends BaseController
         $actor = $request->user();
         $this->securityAudit->record('document.archived', actor: $actor, subject: $document, request: $request);
 
-        return $this->respondSuccess([
-            'document' => DocumentResource::make($document->refresh())->resolve(),
-        ], 'Document archived successfully');
+        return $this->respondSuccess(
+            DocumentResource::make($document->refresh()),
+            'Document archived successfully'
+        );
     }
 
     private function resolveAgencyId(Request $request): ?int

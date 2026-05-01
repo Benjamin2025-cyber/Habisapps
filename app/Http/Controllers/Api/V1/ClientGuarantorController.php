@@ -8,8 +8,9 @@ use Dedoc\Scramble\Attributes\Response;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreClientGuarantorRequest;
 use App\Http\Requests\Api\V1\UpdateClientGuarantorRequest;
-use App\Http\Requests\Api\V1\UpdateClientGuarantorStatusRequest;
+use App\HttpRequestsApiV1UpdateClientGuarantorStatusRequest;
 use App\Http\Resources\ClientGuarantorResource;
+use App\Http\Resources\ClientGuarantorCollection;
 use App\Models\Client;
 use App\Models\ClientGuarantor;
 use App\Models\Document;
@@ -23,16 +24,17 @@ final class ClientGuarantorController extends BaseController
 {
     public function __construct(private readonly SecurityAudit $securityAudit) {}
 
-    /**
-     * List client guarantors.
-     *
-     * @authenticated
-     */
+/**
+ * List client guarantors.
+ *
+ * @authenticated
+ * @response ClientGuarantorCollection
+ */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{guarantors: array<int, \App\Http\Resources\ClientGuarantorResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}'
     )]
-    public function index(Request $request, Client $client): JsonResponse
+    public function index(Request $request, Client $client): ClientGuarantorCollection|JsonResponse
     {
         $actor = $request->user();
         if (! $actor instanceof User
@@ -42,23 +44,15 @@ final class ClientGuarantorController extends BaseController
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $records = ClientGuarantor::query()
-            ->with(['client', 'guarantorClient', 'document'])
-            ->where('client_id', $client->id)
-            ->where('agency_id', $client->agency_id)
-            ->latest()
-            ->paginate($perPage);
 
-        return $this->respondSuccess([
-            'guarantors' => ClientGuarantorResource::collection($records->getCollection())->resolve($request),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $records->currentPage(),
-                'per_page' => $records->perPage(),
-                'total' => $records->total(),
-                'last_page' => $records->lastPage(),
-            ],
-        ]);
+        return new ClientGuarantorCollection(
+            ClientGuarantor::query()
+                ->with(['client', 'guarantorClient', 'document'])
+                ->where('client_id', $client->id)
+                ->where('agency_id', $client->agency_id)
+                ->latest()
+                ->paginate($perPage)
+        );
     }
 
     /**
@@ -109,15 +103,17 @@ final class ClientGuarantorController extends BaseController
             'client_public_id' => $client->public_id,
         ], request: $request);
 
-        return $this->respondCreated([
-            'guarantor' => ClientGuarantorResource::make($record->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
-        ], 'Client guarantor created successfully');
+        return $this->respondCreated(
+            ClientGuarantorResource::make($record->loadMissing(['client', 'guarantorClient', 'document'])),
+            'Client guarantor created successfully'
+        );
     }
 
     /**
      * Show a client guarantor.
      *
      * @authenticated
+     * @response ClientGuarantorResource
      */
     #[Response(
         status: 200,

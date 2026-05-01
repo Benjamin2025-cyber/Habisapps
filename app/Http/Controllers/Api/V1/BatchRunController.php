@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\BatchRunResource;
+use App\Http\Resources\BatchRunCollection;
 use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
@@ -23,7 +24,13 @@ final class BatchRunController extends BaseController
 {
     public function __construct(private readonly SecurityAudit $securityAudit) {}
 
-    public function index(Request $request): JsonResponse
+    /**
+     * List batch runs
+     *
+     * @authenticated
+     * @response BatchRunCollection
+     */
+    public function index(Request $request): BatchRunCollection|JsonResponse
     {
         if ($request->user()?->can('batch.runs.view') !== true && $request->user()?->can('batch.runs.manage') !== true) {
             return $this->respondForbidden();
@@ -39,20 +46,17 @@ final class BatchRunController extends BaseController
             }
         }
 
-        $runs = $query->paginate($perPage);
-
-        return $this->respondSuccess([
-            'runs' => BatchRunResource::collection($runs->getCollection())->resolve(),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $runs->currentPage(),
-                'per_page' => $runs->perPage(),
-                'total' => $runs->total(),
-                'last_page' => $runs->lastPage(),
-            ],
-        ]);
+        return new BatchRunCollection(
+            $query->paginate($perPage)
+        );
     }
 
+    /**
+     * Create batch run
+     *
+     * @authenticated
+     * @response 201 BatchRunResource
+     */
     public function store(Request $request): JsonResponse
     {
         if ($request->user()?->can('batch.runs.manage') !== true) {
@@ -93,9 +97,10 @@ final class BatchRunController extends BaseController
                     return $this->respondError('Idempotency-Key has already been used for a different request.', null, 409);
                 }
 
-                return $this->respondSuccess([
-                    'run' => BatchRunResource::make($existing)->resolve(),
-                ], 'Batch run already exists');
+                return $this->respondSuccess(
+                    BatchRunResource::make($existing),
+                    'Batch run already exists'
+                );
             }
 
             $legacyExisting = DB::table('batch_runs')
@@ -116,9 +121,10 @@ final class BatchRunController extends BaseController
             ->first();
 
         if ($existingRun !== null) {
-            return $this->respondSuccess([
-                'run' => BatchRunResource::make($existingRun)->resolve(),
-            ], 'Batch run already exists');
+            return $this->respondSuccess(
+                BatchRunResource::make($existingRun),
+                'Batch run already exists'
+            );
         }
 
         $run = BatchRun::query()->create([
@@ -137,22 +143,35 @@ final class BatchRunController extends BaseController
 
         $this->securityAudit->record('batch.run.created', actor: $request->user(), subject: $run, request: $request);
 
-        return $this->respondCreated([
-            'run' => BatchRunResource::make($run)->resolve(),
-        ], 'Batch run created successfully');
+        return $this->respondCreated(
+            BatchRunResource::make($run),
+            'Batch run created successfully'
+        );
     }
 
+    /**
+     * Get batch run
+     *
+     * @authenticated
+     * @response BatchRunResource
+     */
     public function show(Request $request, BatchRun $batchRun): JsonResponse
     {
         if ($request->user()?->can('batch.runs.view') !== true && $request->user()?->can('batch.runs.manage') !== true) {
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess([
-            'run' => BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))->resolve(),
-        ]);
+        return $this->respondSuccess(
+            BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))
+        );
     }
 
+    /**
+     * Update batch run status
+     *
+     * @authenticated
+     * @response BatchRunResource
+     */
     public function updateStatus(Request $request, BatchRun $batchRun): JsonResponse
     {
         if ($request->user()?->can('batch.runs.manage') !== true) {
@@ -183,13 +202,14 @@ final class BatchRunController extends BaseController
                 BatchRun::STATUS_SUCCEEDED => [],
             ];
 
-            if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
+if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
                 return $this->respondUnprocessable('Invalid batch run status transition.');
             }
-        } else {
-            return $this->respondSuccess([
-                'run' => BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))->resolve(),
-            ], 'Batch run status updated successfully');
+
+            return $this->respondSuccess(
+                BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator'])),
+                'Batch run status updated successfully'
+            );
         }
 
         $updates = [
@@ -220,9 +240,10 @@ final class BatchRunController extends BaseController
             'status' => $run->status,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'run' => BatchRunResource::make($run)->resolve(),
-        ], 'Batch run status updated successfully');
+        return $this->respondSuccess(
+            BatchRunResource::make($run),
+            'Batch run status updated successfully'
+        );
     }
 
     private function isTerminalStatus(string $status): bool

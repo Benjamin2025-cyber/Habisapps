@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\BatchProcedureResource;
+use App\Http\Resources\BatchProcedureCollection;
 use App\Models\BatchProcedure;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -19,27 +20,31 @@ final class BatchProcedureController extends BaseController
 {
     public function __construct(private readonly SecurityAudit $securityAudit) {}
 
-    public function index(Request $request): JsonResponse
+    /**
+     * List batch procedures
+     *
+     * @authenticated
+     * @response BatchProcedureCollection
+     */
+    public function index(Request $request): BatchProcedureCollection|JsonResponse
     {
         if ($request->user()?->can('batch.procedures.view') !== true && $request->user()?->can('batch.procedures.manage') !== true) {
             return $this->respondForbidden();
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $procedures = BatchProcedure::query()->latest()->paginate($perPage);
 
-        return $this->respondSuccess([
-            'procedures' => BatchProcedureResource::collection($procedures->getCollection())->resolve(),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $procedures->currentPage(),
-                'per_page' => $procedures->perPage(),
-                'total' => $procedures->total(),
-                'last_page' => $procedures->lastPage(),
-            ],
-        ]);
+        return new BatchProcedureCollection(
+            BatchProcedure::query()->latest()->paginate($perPage)
+        );
     }
 
+    /**
+     * Create batch procedure
+     *
+     * @authenticated
+     * @response 201 BatchProcedureResource
+     */
     public function store(Request $request): JsonResponse
     {
         if ($request->user()?->can('batch.procedures.manage') !== true) {
@@ -67,22 +72,35 @@ final class BatchProcedureController extends BaseController
 
         $this->securityAudit->record('batch.procedure.created', actor: $request->user(), subject: $procedure, request: $request);
 
-        return $this->respondCreated([
-            'procedure' => BatchProcedureResource::make($procedure)->resolve(),
-        ], 'Batch procedure created successfully');
+        return $this->respondCreated(
+            BatchProcedureResource::make($procedure),
+            'Batch procedure created successfully'
+        );
     }
 
+    /**
+     * Get batch procedure
+     *
+     * @authenticated
+     * @response BatchProcedureResource
+     */
     public function show(Request $request, BatchProcedure $batchProcedure): JsonResponse
     {
         if ($request->user()?->can('batch.procedures.view') !== true && $request->user()?->can('batch.procedures.manage') !== true) {
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess([
-            'procedure' => BatchProcedureResource::make($batchProcedure)->resolve(),
-        ]);
+        return $this->respondSuccess(
+            BatchProcedureResource::make($batchProcedure)
+        );
     }
 
+    /**
+     * Update batch procedure
+     *
+     * @authenticated
+     * @response BatchProcedureResource
+     */
     public function update(Request $request, BatchProcedure $batchProcedure): JsonResponse
     {
         if ($request->user()?->can('batch.procedures.manage') !== true) {
@@ -102,11 +120,18 @@ final class BatchProcedureController extends BaseController
             'changed_fields' => array_keys($validated),
         ], request: $request);
 
-        return $this->respondSuccess([
-            'procedure' => BatchProcedureResource::make($batchProcedure->refresh())->resolve(),
-        ], 'Batch procedure updated successfully');
+        return $this->respondSuccess(
+            BatchProcedureResource::make($batchProcedure->refresh()),
+            'Batch procedure updated successfully'
+        );
     }
 
+    /**
+     * Update batch procedure status
+     *
+     * @authenticated
+     * @response BatchProcedureResource
+     */
     public function updateStatus(Request $request, BatchProcedure $batchProcedure): JsonResponse
     {
         if ($request->user()?->can('batch.procedures.manage') !== true) {
@@ -122,8 +147,9 @@ final class BatchProcedureController extends BaseController
             'status' => $validated['status'],
         ], request: $request);
 
-        return $this->respondSuccess([
-            'procedure' => BatchProcedureResource::make($batchProcedure->refresh())->resolve(),
-        ], 'Batch procedure status updated successfully');
+        return $this->respondSuccess(
+            BatchProcedureResource::make($batchProcedure->refresh()),
+            'Batch procedure status updated successfully'
+        );
     }
 }
