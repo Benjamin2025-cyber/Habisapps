@@ -6,6 +6,10 @@ use App\Http\Controllers\Api\V1\AgencyController;
 use App\Http\Controllers\Api\V1\AuditEventController;
 use App\Http\Controllers\Api\V1\BatchProcedureController;
 use App\Http\Controllers\Api\V1\BatchRunController;
+use App\Http\Controllers\Api\V1\ClientController;
+use App\Http\Controllers\Api\V1\ClientGuarantorController;
+use App\Http\Controllers\Api\V1\ClientIdentityDocumentController;
+use App\Http\Controllers\Api\V1\ClientProxyController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\ReferenceNumberController;
@@ -44,6 +48,31 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('documents', [DocumentController::class, 'store']);
     Route::get('documents/{document}', [DocumentController::class, 'show']);
     Route::patch('documents/{document}/archive', [DocumentController::class, 'archive']);
+
+    Route::get('clients', [ClientController::class, 'index']);
+    Route::post('clients', [ClientController::class, 'store']);
+    Route::get('clients/{client}', [ClientController::class, 'show']);
+    Route::patch('clients/{client}', [ClientController::class, 'update']);
+    Route::patch('clients/{client}/kyc-status', [ClientController::class, 'updateKycStatus']);
+    Route::get('clients/{client}/kyc-reviews', [ClientController::class, 'kycReviews']);
+
+    Route::get('clients/{client}/identity-documents', [ClientIdentityDocumentController::class, 'index']);
+    Route::post('clients/{client}/identity-documents', [ClientIdentityDocumentController::class, 'store']);
+    Route::get('clients/{client}/identity-documents/{identityDocument}', [ClientIdentityDocumentController::class, 'show']);
+    Route::patch('clients/{client}/identity-documents/{identityDocument}', [ClientIdentityDocumentController::class, 'update']);
+    Route::patch('clients/{client}/identity-documents/{identityDocument}/status', [ClientIdentityDocumentController::class, 'updateStatus']);
+
+    Route::get('clients/{client}/guarantors', [ClientGuarantorController::class, 'index']);
+    Route::post('clients/{client}/guarantors', [ClientGuarantorController::class, 'store']);
+    Route::get('clients/{client}/guarantors/{guarantor}', [ClientGuarantorController::class, 'show']);
+    Route::patch('clients/{client}/guarantors/{guarantor}', [ClientGuarantorController::class, 'update']);
+    Route::patch('clients/{client}/guarantors/{guarantor}/status', [ClientGuarantorController::class, 'updateStatus']);
+
+    Route::get('clients/{client}/proxies', [ClientProxyController::class, 'index']);
+    Route::post('clients/{client}/proxies', [ClientProxyController::class, 'store']);
+    Route::get('clients/{client}/proxies/{proxy}', [ClientProxyController::class, 'show']);
+    Route::patch('clients/{client}/proxies/{proxy}', [ClientProxyController::class, 'update']);
+    Route::patch('clients/{client}/proxies/{proxy}/status', [ClientProxyController::class, 'updateStatus']);
 
     Route::get('roles', [RoleController::class, 'index']);
     Route::put('roles/{role}/permissions', [RoleController::class, 'updatePermissions']);

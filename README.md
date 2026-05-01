@@ -89,6 +89,7 @@ Domain developer docs generated from stakeholder resources:
 - `docs/domain/cash-operations.md`
 - `docs/domain/implementation-roadmap.md`
 - `docs/domain/stakeholder-formula-questions.md`
+- `docs/domain/module-2-crm-kyc-operations.md`
 
 ## API Design
 

@@ -1,0 +1,28 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Api\V1;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+final class UpdateClientIdentityDocumentRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user()?->can('crm.identity_documents.update') === true;
+    }
+
+    /** @return array<string, array<int, mixed>> */
+    public function rules(): array
+    {
+        return [
+            'document_type' => ['sometimes', 'string', 'max:64'],
+            'document_number' => ['sometimes', 'string', 'max:128'],
+            'issuing_authority' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'issued_on' => ['sometimes', 'nullable', 'date'],
+            'expires_on' => ['sometimes', 'nullable', 'date', 'after_or_equal:issued_on'],
+            'document_public_id' => ['sometimes', 'nullable', 'string', 'exists:documents,public_id'],
+        ];
+    }
+}

@@ -10,6 +10,7 @@ use App\Http\Resources\DocumentResource;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -59,12 +60,12 @@ final class DocumentController extends BaseController
      * @body title required A descriptive title for the document. Max length: 255 characters.
      * @body metadata optional Additional metadata as key-value pairs. Each value max length: 255 characters.
      *
-     * @response 201 {"success":true,"message":"Document uploaded successfully","data":{"document":{"public_id":"01H...","category":"kyc","title":"National ID","original_name":"id.jpg","mime_type":"image/jpeg","size_bytes":12345,"checksum_sha256":"abc123...","status":"active","metadata":null,"verified_at":null,"archived_at":null,"created_at":"2024-01-01T00:00:00+00:00"}}}
-     * @response 403 {"success":false,"message":"Access denied"}
-     * @response 422 {"success":false,"message":"Validation failed","errors":{"file":["The file must be a file of type: pdf, jpg, jpeg, png."]}}
-     *
      * @authenticated
      */
+    #[Response(
+        status: 201,
+        type: 'array{success: bool, message: string, data: array{document: \App\Http\Resources\DocumentResource}, errors: null, meta: null}'
+    )]
     public function store(StoreDocumentRequest $request): JsonResponse
     {
         $file = $request->file('file');
@@ -122,12 +123,12 @@ final class DocumentController extends BaseController
      *
      * Retrieves metadata for a specific KYC document by its public ID. Note: This endpoint does not return the file content. File download is not currently exposed.
      *
-     * @response 200 {"success":true,"data":{"document":{"public_id":"01H...","category":"kyc","title":"National ID","original_name":"id.jpg","mime_type":"image/jpeg","size_bytes":12345,"checksum_sha256":"abc123...","status":"active","metadata":null,"verified_at":null,"archived_at":null,"created_at":"2024-01-01T00:00:00+00:00"}}}
-     * @response 403 {"success":false,"message":"Access denied"}
-     * @response 404 {"success":false,"message":"Resource not found"}
-     *
      * @authenticated
      */
+    #[Response(
+        status: 200,
+        type: 'array{success: bool, message: string, data: array{document: \App\Http\Resources\DocumentResource}, errors: null, meta: null}'
+    )]
     public function show(Request $request, Document $document): JsonResponse
     {
         if ($request->user()?->can('documents.view') !== true) {
@@ -149,12 +150,12 @@ final class DocumentController extends BaseController
      *
      * Archives a KYC document by changing its status to 'archived'. This changes the domain lifecycle state without physically deleting the underlying file.
      *
-     * @response 200 {"success":true,"message":"Document archived successfully","data":{"document":{"public_id":"01H...","category":"kyc","title":"National ID","original_name":"id.jpg","mime_type":"image/jpeg","size_bytes":12345,"checksum_sha256":"abc123...","status":"archived","metadata":null,"verified_at":null,"archived_at":"2024-01-01T00:00:00+00:00","created_at":"2024-01-01T00:00:00+00:00"}}}
-     * @response 403 {"success":false,"message":"Access denied"}
-     * @response 404 {"success":false,"message":"Resource not found"}
-     *
      * @authenticated
      */
+    #[Response(
+        status: 200,
+        type: 'array{success: bool, message: string, data: array{document: \App\Http\Resources\DocumentResource}, errors: null, meta: null}'
+    )]
     public function archive(Request $request, Document $document): JsonResponse
     {
         if ($request->user()?->can('documents.archive') !== true) {

@@ -50,3 +50,4 @@ The CI database name and username are non-secret workflow variables. The applica
 - Docs UI is available at `/docs/api` in local development.
 - OpenAPI JSON is available at `/docs/api.json` in local development and can be exported with `php artisan scramble:export`.
 - Feature work must keep route signatures, Form Requests, and response types explicit enough for Scramble to generate useful documentation.
+- Module-specific operational runbooks should be maintained under `docs/domain/` (for CRM/KYC, see `docs/domain/module-2-crm-kyc-operations.md`).
