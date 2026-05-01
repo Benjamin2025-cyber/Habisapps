@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\ClientProxy;
+use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,7 +25,7 @@ final class ClientProxyResource extends JsonResource
             return [];
         }
 
-        $showPii = $request->user()?->can('crm.pii.view') === true;
+        $showPii = $this->canViewPii($request);
 
         return [
             'public_id' => $record->public_id,
@@ -57,6 +58,13 @@ final class ClientProxyResource extends JsonResource
         }
 
         return substr($value, 0, 1).str_repeat('*', max(0, strlen($value) - 1));
+    }
+
+    private function canViewPii(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user instanceof User && $user->hasPermissionTo('crm.pii.view');
     }
 
     private function maskPhone(?string $value): ?string

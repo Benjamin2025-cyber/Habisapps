@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\ClientIdentityDocument;
+use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,7 +25,7 @@ final class ClientIdentityDocumentResource extends JsonResource
             return [];
         }
 
-        $showPii = $request->user()?->can('crm.pii.view') === true;
+        $showPii = $this->canViewPii($request);
 
         return [
             'public_id' => $record->public_id,
@@ -55,6 +56,13 @@ final class ClientIdentityDocumentResource extends JsonResource
         }
 
         return str_repeat('*', $length - 4).substr($value, -4);
+    }
+
+    private function canViewPii(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user instanceof User && $user->hasPermissionTo('crm.pii.view');
     }
 
     private function formatDate(mixed $value): ?string

@@ -84,6 +84,31 @@ final class Module2CrmKycTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_client_profile_rejects_html_payloads_on_create_and_update(): void
+    {
+        $agency = $this->createAgency('AG-CRM-XSS');
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+
+        $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('xss-v1')->plainTextToken])
+            ->postJson('/api/v1/clients', [
+                'first_name' => '<script>alert(1)</script>',
+                'last_name' => 'Test',
+            ]);
+
+        $create->assertStatus(422);
+        $create->assertJsonValidationErrors(['first_name']);
+
+        $clientPublicId = $this->createClientViaApi($actor, $agency['public_id']);
+
+        $update = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('xss-v2')->plainTextToken])
+            ->patchJson('/api/v1/clients/'.$clientPublicId, [
+                'last_name' => '<img src=x onerror=alert(1)>',
+            ]);
+
+        $update->assertStatus(422);
+        $update->assertJsonValidationErrors(['last_name']);
+    }
+
     public function test_kyc_verification_requires_verified_identity_document(): void
     {
         Storage::fake('local');
@@ -215,6 +240,36 @@ final class Module2CrmKycTest extends TestCase
             $actorA,
             Client::query()->where('public_id', $clientBPublicId)->firstOrFail(),
         ));
+    }
+
+    public function test_identity_document_numbers_are_masked_without_pii_permission(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-CRM-PII');
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $auditor = $this->createUserWithRole('auditor');
+        $clientPublicId = $this->createClientViaApi($actor, $agency['public_id']);
+        $documentPublicId = $this->createDocumentViaApi($actor);
+
+        $identity = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('pii-v1')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'passport',
+                'document_number' => 'AB123456',
+                'document_public_id' => $documentPublicId,
+            ]);
+        $this->assertJsonSuccess($identity, 201);
+
+        $piiResponse = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('pii-v2')->plainTextToken])
+            ->getJson('/api/v1/clients/'.$clientPublicId.'/identity-documents');
+        $this->assertJsonSuccess($piiResponse);
+        $piiResponse->assertJsonPath('data.identity_documents.0.document_number', 'AB123456');
+
+        $maskedResponse = $this->withApiHeaders()
+            ->actingAsSanctum($auditor)
+            ->getJson('/api/v1/clients/'.$clientPublicId.'/identity-documents');
+        $this->assertJsonSuccess($maskedResponse);
+        $maskedResponse->assertJsonPath('data.identity_documents.0.document_number', '****3456');
     }
 
     public function test_guarantor_and_proxy_security_constraints_are_enforced(): void

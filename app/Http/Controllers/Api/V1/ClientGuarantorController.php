@@ -50,7 +50,7 @@ final class ClientGuarantorController extends BaseController
             ->paginate($perPage);
 
         return $this->respondSuccess([
-            'guarantors' => ClientGuarantorResource::collection($records->getCollection())->resolve(),
+            'guarantors' => ClientGuarantorResource::collection($records->getCollection())->resolve($request),
         ], meta: [
             'pagination' => [
                 'current_page' => $records->currentPage(),
@@ -110,7 +110,7 @@ final class ClientGuarantorController extends BaseController
         ], request: $request);
 
         return $this->respondCreated([
-            'guarantor' => ClientGuarantorResource::make($record->loadMissing(['client', 'guarantorClient', 'document']))->resolve(),
+            'guarantor' => ClientGuarantorResource::make($record->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
         ], 'Client guarantor created successfully');
     }
 
@@ -137,7 +137,7 @@ final class ClientGuarantorController extends BaseController
         }
 
         return $this->respondSuccess([
-            'guarantor' => ClientGuarantorResource::make($guarantor->loadMissing(['client', 'guarantorClient', 'document']))->resolve(),
+            'guarantor' => ClientGuarantorResource::make($guarantor->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
         ]);
     }
 
@@ -203,7 +203,7 @@ final class ClientGuarantorController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document']))->resolve(),
+            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
         ], 'Client guarantor updated successfully');
     }
 
@@ -286,7 +286,7 @@ final class ClientGuarantorController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document']))->resolve(),
+            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
         ], 'Client guarantor status updated successfully');
     }
 

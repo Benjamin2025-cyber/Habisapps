@@ -63,7 +63,7 @@ final class ClientProxyController extends BaseController
             ->paginate($perPage);
 
         return $this->respondSuccess([
-            'proxies' => ClientProxyResource::collection($records->getCollection())->resolve(),
+            'proxies' => ClientProxyResource::collection($records->getCollection())->resolve($request),
         ], meta: [
             'pagination' => [
                 'current_page' => $records->currentPage(),
@@ -123,7 +123,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondCreated([
-            'proxy' => ClientProxyResource::make($record->loadMissing(['client', 'document']))->resolve(),
+            'proxy' => ClientProxyResource::make($record->loadMissing(['client', 'document']))->resolve($request),
         ], 'Client proxy created successfully');
     }
 
@@ -150,7 +150,7 @@ final class ClientProxyController extends BaseController
         }
 
         return $this->respondSuccess([
-            'proxy' => ClientProxyResource::make($proxy->loadMissing(['client', 'document']))->resolve(),
+            'proxy' => ClientProxyResource::make($proxy->loadMissing(['client', 'document']))->resolve($request),
         ]);
     }
 
@@ -218,7 +218,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'proxy' => ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document']))->resolve(),
+            'proxy' => ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document']))->resolve($request),
         ], 'Client proxy updated successfully');
     }
 
@@ -309,7 +309,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'proxy' => ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document']))->resolve(),
+            'proxy' => ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document']))->resolve($request),
         ], 'Client proxy status updated successfully');
     }
 

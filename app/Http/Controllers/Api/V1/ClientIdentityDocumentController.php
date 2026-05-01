@@ -53,7 +53,7 @@ final class ClientIdentityDocumentController extends BaseController
             ->paginate($perPage);
 
         return $this->respondSuccess([
-            'identity_documents' => ClientIdentityDocumentResource::collection($records->getCollection())->resolve(),
+            'identity_documents' => ClientIdentityDocumentResource::collection($records->getCollection())->resolve($request),
         ], meta: [
             'pagination' => [
                 'current_page' => $records->currentPage(),
@@ -135,7 +135,7 @@ final class ClientIdentityDocumentController extends BaseController
         ], request: $request);
 
         return $this->respondCreated([
-            'identity_document' => ClientIdentityDocumentResource::make($record->loadMissing(['client', 'document']))->resolve(),
+            'identity_document' => ClientIdentityDocumentResource::make($record->loadMissing(['client', 'document']))->resolve($request),
         ], 'Client identity document created successfully');
     }
 
@@ -162,7 +162,7 @@ final class ClientIdentityDocumentController extends BaseController
         }
 
         return $this->respondSuccess([
-            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document']))->resolve(),
+            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document']))->resolve($request),
         ]);
     }
 
@@ -255,7 +255,7 @@ final class ClientIdentityDocumentController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document']))->resolve(),
+            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document']))->resolve($request),
         ], 'Client identity document updated successfully');
     }
 
@@ -340,7 +340,7 @@ final class ClientIdentityDocumentController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document']))->resolve(),
+            'identity_document' => ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document']))->resolve($request),
         ], 'Client identity document status updated successfully');
     }
 

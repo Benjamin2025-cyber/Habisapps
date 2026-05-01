@@ -78,7 +78,7 @@ final class ClientController extends BaseController
         }
 
         return $this->respondSuccess([
-            'clients' => ClientResource::collection($clients->getCollection())->resolve(),
+            'clients' => ClientResource::collection($clients->getCollection())->resolve($request),
         ], meta: [
             'pagination' => [
                 'current_page' => $clients->currentPage(),
@@ -165,7 +165,7 @@ final class ClientController extends BaseController
         ], request: $request);
 
         return $this->respondCreated([
-            'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve(),
+            'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
         ], 'Client created successfully');
     }
 
@@ -192,7 +192,7 @@ final class ClientController extends BaseController
         }
 
         return $this->respondSuccess([
-            'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve(),
+            'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
         ]);
     }
 
@@ -267,7 +267,7 @@ final class ClientController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'client' => ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve(),
+            'client' => ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
         ], 'Client updated successfully');
     }
 
@@ -306,7 +306,7 @@ final class ClientController extends BaseController
 
         if ($client->kyc_status === $transition) {
             return $this->respondSuccess([
-                'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve(),
+                'client' => ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
             ], 'KYC status already applied.');
         }
 
@@ -373,7 +373,7 @@ final class ClientController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'client' => ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve(),
+            'client' => ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent']))->resolve($request),
         ], 'Client KYC status updated successfully');
     }
 
@@ -401,7 +401,7 @@ final class ClientController extends BaseController
             ->paginate($perPage);
 
         return $this->respondSuccess([
-            'reviews' => ClientKycReviewResource::collection($reviews->getCollection())->resolve(),
+            'reviews' => ClientKycReviewResource::collection($reviews->getCollection())->resolve($request),
         ], meta: [
             'pagination' => [
                 'current_page' => $reviews->currentPage(),
