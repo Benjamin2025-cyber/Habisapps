@@ -19,10 +19,8 @@ final class ClientKycReviewResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var ClientKycReview $review */
         $review = $this->resource;
-        if (! $review instanceof ClientKycReview) {
-            return [];
-        }
 
         return [
             'public_id' => $review->public_id,

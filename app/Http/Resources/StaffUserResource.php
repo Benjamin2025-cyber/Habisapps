@@ -23,7 +23,23 @@ final class StaffUserResource extends JsonResource
         $user = $this->resource;
 
         if (! $user instanceof User) {
-            return [];
+            return [
+                'public_id' => null,
+                'name' => null,
+                'phone_number' => null,
+                'email' => null,
+                'status' => null,
+                'matricule' => null,
+                'job_title' => null,
+                'agency_public_id' => null,
+                'agency_code' => null,
+                'agency_name' => null,
+                'phone_verified_at' => null,
+                'activated_at' => null,
+                'last_login_at' => null,
+                'created_at' => null,
+                'updated_at' => null,
+            ];
         }
 
         return [

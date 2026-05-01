@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
+use App\Http\Resources\AgencyCollection;
 use App\Http\Resources\AgencyResource;
 use App\Models\Agency;
 use App\Models\StaffAgencyAssignment;
@@ -25,40 +26,43 @@ final class AgencyController extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
     ) {}
 
-    public function index(Request $request): JsonResponse
-    {
-        if ($request->user()?->can('agencies.view') !== true) {
+    /**
+ * List agencies
+ *
+ * @authenticated
+ */
+public function index(Request $request): AgencyCollection|JsonResponse
+{
+    if ($request->user()?->can('agencies.view') !== true) {
+        return $this->respondForbidden();
+    }
+
+    $actor = $request->user();
+    $query = Agency::query()->with('manager')->latest();
+
+    if (! $actor->hasRole('platform-admin')) {
+        $currentAgencyId = $actor->currentAgencyId();
+
+        if ($currentAgencyId === null) {
             return $this->respondForbidden();
         }
 
-        $actor = $request->user();
-        $query = Agency::query()->with('manager')->latest();
-
-        if (! $actor->hasRole('platform-admin')) {
-            $currentAgencyId = $actor->currentAgencyId();
-
-            if ($currentAgencyId === null) {
-                return $this->respondForbidden();
-            }
-
-            $query->whereKey($currentAgencyId);
-        }
-
-        $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $agencies = $query->paginate($perPage);
-
-        return $this->respondSuccess([
-            'agencies' => AgencyResource::collection($agencies->getCollection())->resolve(),
-        ], meta: [
-            'pagination' => [
-                'current_page' => $agencies->currentPage(),
-                'per_page' => $agencies->perPage(),
-                'total' => $agencies->total(),
-                'last_page' => $agencies->lastPage(),
-            ],
-        ]);
+        $query->whereKey($currentAgencyId);
     }
 
+    $perPage = min(max($request->integer('per_page', 25), 1), 100);
+
+    return new AgencyCollection(
+        $query->paginate($perPage)
+    );
+}
+
+    /**
+     * Create agency
+     *
+     * @authenticated
+     * @response 201 AgencyResource
+     */
     public function store(Request $request): JsonResponse
     {
         if ($request->user()?->can('agencies.manage') !== true) {
@@ -110,11 +114,18 @@ final class AgencyController extends BaseController
 
         $this->securityAudit->record('agency.created', actor: $request->user(), subject: $agency, request: $request);
 
-        return $this->respondCreated([
-            'agency' => AgencyResource::make($agency)->resolve(),
-        ], 'Agency created successfully');
+        return $this->respondCreated(
+            AgencyResource::make($agency),
+            'Agency created successfully'
+        );
     }
 
+    /**
+     * Get agency
+     *
+     * @authenticated
+     * @response AgencyResource
+     */
     public function show(Request $request, Agency $agency): JsonResponse
     {
         if ($request->user()?->can('agencies.view') !== true) {
@@ -125,11 +136,17 @@ final class AgencyController extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess([
-            'agency' => AgencyResource::make($agency->loadMissing('manager'))->resolve(),
-        ]);
+        return $this->respondSuccess(
+            AgencyResource::make($agency->loadMissing('manager'))
+        );
     }
 
+    /**
+     * Update agency
+     *
+     * @authenticated
+     * @response AgencyResource
+     */
     public function update(Request $request, Agency $agency): JsonResponse
     {
         if ($request->user()?->can('agencies.manage') !== true) {
@@ -153,11 +170,18 @@ final class AgencyController extends BaseController
             'changed_fields' => array_keys($validated),
         ], request: $request);
 
-        return $this->respondSuccess([
-            'agency' => AgencyResource::make($agency->refresh()->loadMissing('manager'))->resolve(),
-        ], 'Agency updated successfully');
+        return $this->respondSuccess(
+            AgencyResource::make($agency->refresh()->loadMissing('manager')),
+            'Agency updated successfully'
+        );
     }
 
+    /**
+     * Update agency status
+     *
+     * @authenticated
+     * @response AgencyResource
+     */
     public function updateStatus(Request $request, Agency $agency): JsonResponse
     {
         if ($request->user()?->can('agencies.manage') !== true) {
@@ -178,11 +202,18 @@ final class AgencyController extends BaseController
             'status' => $validated['status'],
         ], request: $request);
 
-        return $this->respondSuccess([
-            'agency' => AgencyResource::make($agency->refresh()->loadMissing('manager'))->resolve(),
-        ], 'Agency status updated successfully');
+        return $this->respondSuccess(
+            AgencyResource::make($agency->refresh()->loadMissing('manager')),
+            'Agency status updated successfully'
+        );
     }
 
+    /**
+     * Archive agency
+     *
+     * @authenticated
+     * @response AgencyResource
+     */
     public function destroy(Request $request, Agency $agency): JsonResponse
     {
         if ($request->user()?->can('agencies.manage') !== true) {
@@ -190,19 +221,27 @@ final class AgencyController extends BaseController
         }
 
         if ($agency->status === Agency::STATUS_ARCHIVED) {
-            return $this->respondSuccess([
-                'agency' => AgencyResource::make($agency->loadMissing('manager'))->resolve(),
-            ], 'Agency already archived');
+            return $this->respondSuccess(
+                AgencyResource::make($agency->loadMissing('manager')),
+                'Agency already archived'
+            );
         }
 
         $agency->forceFill(['status' => Agency::STATUS_ARCHIVED])->save();
         $this->securityAudit->record('agency.archived', actor: $request->user(), subject: $agency, request: $request);
 
-        return $this->respondSuccess([
-            'agency' => AgencyResource::make($agency->refresh()->loadMissing('manager'))->resolve(),
-        ], 'Agency archived successfully');
+        return $this->respondSuccess(
+            AgencyResource::make($agency->refresh()->loadMissing('manager')),
+            'Agency archived successfully'
+        );
     }
 
+    /**
+     * Update agency manager
+     *
+     * @authenticated
+     * @response AgencyResource
+     */
     public function updateManager(Request $request, Agency $agency): JsonResponse
     {
         if ($request->user()?->can('agencies.manage') !== true) {
@@ -246,9 +285,10 @@ final class AgencyController extends BaseController
             'role_at_agency' => $roleAtAgency,
         ], request: $request);
 
-        return $this->respondSuccess([
-            'agency' => AgencyResource::make($agency->refresh()->loadMissing('manager'))->resolve(),
-        ], 'Agency manager updated successfully');
+        return $this->respondSuccess(
+            AgencyResource::make($agency->refresh()->loadMissing('manager')),
+            'Agency manager updated successfully'
+        );
     }
 
     private function canViewAgency(Request $request, Agency $agency): bool

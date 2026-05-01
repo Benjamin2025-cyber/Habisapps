@@ -25,7 +25,22 @@ final class BatchRunResource extends JsonResource
         $run = $this->resource;
 
         if (! $run instanceof BatchRun) {
-            return [];
+            return [
+                'public_id' => null,
+                'batch_procedure_public_id' => null,
+                'batch_procedure_code' => null,
+                'agency_public_id' => null,
+                'agency_code' => null,
+                'operator_public_id' => null,
+                'status' => null,
+                'parameters' => null,
+                'started_at' => null,
+                'completed_at' => null,
+                'error_message' => null,
+                'output_uri' => null,
+                'created_at' => null,
+                'updated_at' => null,
+            ];
         }
 
         $procedure = $run->relationLoaded('batchProcedure') ? $run->batchProcedure : null;

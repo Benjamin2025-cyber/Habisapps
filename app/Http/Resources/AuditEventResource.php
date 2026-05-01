@@ -22,7 +22,18 @@ final class AuditEventResource extends JsonResource
         $activity = $this->resource;
 
         if (! $activity instanceof Activity) {
-            return [];
+            return [
+                'id' => null,
+                'log_name' => null,
+                'event' => null,
+                'description' => null,
+                'subject_type' => null,
+                'subject_id' => null,
+                'causer_type' => null,
+                'causer_id' => null,
+                'properties' => null,
+                'created_at' => null,
+            ];
         }
 
         return [

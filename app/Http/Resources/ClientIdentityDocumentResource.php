@@ -20,10 +20,8 @@ final class ClientIdentityDocumentResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var ClientIdentityDocument $record */
         $record = $this->resource;
-        if (! $record instanceof ClientIdentityDocument) {
-            return [];
-        }
 
         $showPii = $this->canViewPii($request);
 

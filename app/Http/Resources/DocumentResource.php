@@ -19,11 +19,8 @@ final class DocumentResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var Document $document */
         $document = $this->resource;
-
-        if (! $document instanceof Document) {
-            return [];
-        }
 
         return [
             'public_id' => $document->public_id,

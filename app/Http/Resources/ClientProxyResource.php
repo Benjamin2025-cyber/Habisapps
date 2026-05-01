@@ -20,10 +20,8 @@ final class ClientProxyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var ClientProxy $record */
         $record = $this->resource;
-        if (! $record instanceof ClientProxy) {
-            return [];
-        }
 
         $showPii = $this->canViewPii($request);
 

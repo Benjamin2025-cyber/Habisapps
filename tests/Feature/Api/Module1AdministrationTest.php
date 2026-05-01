@@ -109,7 +109,7 @@ final class Module1AdministrationTest extends TestCase
             ->postJson('/api/v1/staff-users/'.$staff->public_id.'/assignments', [
                 'agency_code' => $agencyB['code'],
                 'role_at_agency' => 'cashier',
-                'starts_on' => '2026-05-01',
+                'starts_on' => '2026-06-01',
                 'is_primary' => true,
                 'transfer_from_assignment_public_id' => $existingAssignment->public_id,
                 'reason' => 'Transfer to new branch',

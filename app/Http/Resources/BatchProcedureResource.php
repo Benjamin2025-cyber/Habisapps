@@ -22,7 +22,17 @@ final class BatchProcedureResource extends JsonResource
         $procedure = $this->resource;
 
         if (! $procedure instanceof BatchProcedure) {
-            return [];
+            return [
+                'public_id' => null,
+                'code' => null,
+                'name' => null,
+                'description' => null,
+                'schedule_type' => null,
+                'schedule_metadata' => null,
+                'status' => null,
+                'created_at' => null,
+                'updated_at' => null,
+            ];
         }
 
         return [

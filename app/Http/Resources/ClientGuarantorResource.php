@@ -20,10 +20,8 @@ final class ClientGuarantorResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var ClientGuarantor $record */
         $record = $this->resource;
-        if (! $record instanceof ClientGuarantor) {
-            return [];
-        }
 
         $showPii = $this->canViewPii($request);
 

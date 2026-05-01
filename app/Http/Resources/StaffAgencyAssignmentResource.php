@@ -23,7 +23,18 @@ final class StaffAgencyAssignmentResource extends JsonResource
         $assignment = $this->resource;
 
         if (! $assignment instanceof StaffAgencyAssignment) {
-            return [];
+            return [
+                'public_id' => null,
+                'agency_public_id' => null,
+                'agency_code' => null,
+                'role_at_agency' => null,
+                'starts_on' => null,
+                'ends_on' => null,
+                'is_primary' => null,
+                'status' => null,
+                'created_at' => null,
+                'updated_at' => null,
+            ];
         }
 
         $agency = $assignment->relationLoaded('agency') ? $assignment->agency : null;

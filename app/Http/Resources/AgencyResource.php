@@ -20,11 +20,8 @@ final class AgencyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        /** @var Agency $agency */
         $agency = $this->resource;
-
-        if (! $agency instanceof Agency) {
-            return [];
-        }
 
         $manager = $agency->relationLoaded('manager') ? $agency->manager : null;
 
