@@ -67,7 +67,7 @@ The workflow in `.github/workflows/deploy.yml` expects these GitHub secrets:
 - `VPS_SSH_KEY`
 - `VPS_SSH_PORT`
 
-On the VPS, place the production `.env` file at `/srv/habis-finance-api/.env` before the first deployment. The workflow assumes the repository is already cloned at `/srv/habis-finance-api`, runs `git pull --ff-only origin main`, and then runs `docker compose up -d --build --remove-orphans`.
+On the VPS, place the production `.env` file at `/srv/habis-finance-api/.env` before the first deployment. The workflow assumes the repository is already cloned at `/srv/habis-finance-api`, runs `git fetch origin main` followed by `git reset --hard origin/main`, and then runs `docker compose up -d --build --remove-orphans`.
 
 The API container is published through Traefik at `https://api.abbisapps.site`, and the container itself only exposes port `8000` on the Docker network.
 

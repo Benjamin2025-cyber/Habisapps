@@ -21,5 +21,6 @@ jobs:
           script: |
             set -e
             cd /srv/habis-finance-api
-            git pull --ff-only origin main
+            git fetch origin main
+            git reset --hard origin/main
             docker compose up -d --build --remove-orphans
