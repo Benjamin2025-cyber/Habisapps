@@ -69,7 +69,7 @@ The workflow in `.github/workflows/deploy.yml` expects these GitHub secrets:
 
 On the VPS, place the production `.env` file at `/srv/habis-finance-api/.env` before the first deployment. The workflow assumes the repository is already cloned at `/srv/habis-finance-api`, runs `git pull --ff-only origin main`, and then runs `docker compose up -d --build --remove-orphans`.
 
-The API container listens on port `8000` by default, and `APP_PORT` can be changed in the server `.env` if you want a different host port.
+The API container is published through Traefik at `https://api.abbisapps.site`, and the container itself only exposes port `8000` on the Docker network.
 
 ## API Documentation
 
