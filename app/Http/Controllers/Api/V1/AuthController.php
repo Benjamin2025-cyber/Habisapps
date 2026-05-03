@@ -63,6 +63,7 @@ final class AuthController extends BaseController
      * Activate staff account
      *
      * @authenticated
+     *
      * @response StaffUserResource
      */
     public function activate(ActivateStaffRequest $request, OtpService $otpService): JsonResponse

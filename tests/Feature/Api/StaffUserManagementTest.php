@@ -47,12 +47,12 @@ final class StaffUserManagementTest extends TestCase
 
         $this->assertJsonSuccess($response, 201);
         $response->assertJsonPath('message', 'Staff user created successfully');
-        $response->assertJsonPath('data.user.phone_number', '+237699200001');
-        $response->assertJsonPath('data.user.agency_public_id', $agencyPublicId);
-        $response->assertJsonMissingPath('data.user.agency_id');
-        $response->assertJsonPath('data.user.status', User::STATUS_PENDING_VERIFICATION);
-        $response->assertJsonPath('data.user.roles.0', 'staff');
-        $response->assertJsonMissingPath('data.user.id');
+        $response->assertJsonPath('data.phone_number', '+237699200001');
+        $response->assertJsonPath('data.agency_public_id', $agencyPublicId);
+        $response->assertJsonMissingPath('data.agency_id');
+        $response->assertJsonPath('data.status', User::STATUS_PENDING_VERIFICATION);
+        $response->assertJsonPath('data.roles.0', 'staff');
+        $response->assertJsonMissingPath('data.id');
 
         $this->assertDatabaseHas('users', [
             'phone_number' => '+237699200001',
@@ -241,7 +241,7 @@ final class StaffUserManagementTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($response);
-        $response->assertJsonPath('data.user.roles.0', 'auditor');
+        $response->assertJsonPath('data.roles.0', 'auditor');
         self::assertTrue($target->refresh()->hasRole('auditor'));
         $this->assertDatabaseHas('activity_log', [
             'log_name' => 'security',
@@ -300,7 +300,7 @@ final class StaffUserManagementTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($response);
-        $response->assertJsonPath('data.user.status', User::STATUS_SUSPENDED);
+        $response->assertJsonPath('data.status', User::STATUS_SUSPENDED);
         $this->assertDatabaseMissing('personal_access_tokens', [
             'tokenable_id' => $target->id,
             'tokenable_type' => User::class,

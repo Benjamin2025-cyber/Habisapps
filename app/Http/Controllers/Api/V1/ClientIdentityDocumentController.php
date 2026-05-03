@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use Dedoc\Scramble\Attributes\Response;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreClientIdentityDocumentRequest;
 use App\Http\Requests\Api\V1\UpdateClientIdentityDocumentRequest;
 use App\Http\Requests\Api\V1\UpdateClientIdentityDocumentStatusRequest;
-use App\Http\Resources\ClientIdentityDocumentResource;
 use App\Http\Resources\ClientIdentityDocumentCollection;
+use App\Http\Resources\ClientIdentityDocumentResource;
 use App\Models\Client;
 use App\Models\ClientIdentityDocument;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +31,7 @@ final class ClientIdentityDocumentController extends BaseController
      * List client identity documents.
      *
      * @authenticated
+     *
      * @response ClientIdentityDocumentCollection
      */
     #[Response(
@@ -138,6 +139,7 @@ final class ClientIdentityDocumentController extends BaseController
      * Show a client identity document record.
      *
      * @authenticated
+     *
      * @response ClientIdentityDocumentResource
      */
     #[Response(
@@ -157,7 +159,7 @@ final class ClientIdentityDocumentController extends BaseController
             return $this->respondNotFound();
         }
 
-return $this->respondSuccess(
+        return $this->respondSuccess(
             ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document']))
         );
     }
@@ -166,6 +168,7 @@ return $this->respondSuccess(
      * Update a client identity document record.
      *
      * @authenticated
+     *
      * @response ClientIdentityDocumentResource
      */
     #[Response(
@@ -257,14 +260,15 @@ return $this->respondSuccess(
         );
     }
 
-/**
- * Update client identity document lifecycle or verification status.
- *
- * Supported actions: submit, verify, reject, archive.
- *
- * @authenticated
- * @response ClientIdentityDocumentResource
- */
+    /**
+     * Update client identity document lifecycle or verification status.
+     *
+     * Supported actions: submit, verify, reject, archive.
+     *
+     * @authenticated
+     *
+     * @response ClientIdentityDocumentResource
+     */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{identity_document: \App\Http\Resources\ClientIdentityDocumentResource}, errors: null, meta: null}'

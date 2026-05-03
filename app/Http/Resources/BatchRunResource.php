@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Agency;
-use App\Models\BatchRun;
 use App\Models\BatchProcedure;
+use App\Models\BatchRun;
 use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;

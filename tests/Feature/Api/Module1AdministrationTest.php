@@ -13,6 +13,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 final class Module1AdministrationTest extends TestCase
@@ -42,8 +43,8 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($createResponse, 201);
-        $agencyPublicId = $this->requireStringJsonPath($createResponse, 'data.agency.public_id');
-        $createResponse->assertJsonPath('data.agency.code', 'AG-M1');
+        $agencyPublicId = $this->requireStringJsonPath($createResponse, 'data.public_id');
+        $createResponse->assertJsonPath('data.code', 'AG-M1');
 
         $agency = Agency::query()->where('public_id', $agencyPublicId)->firstOrFail();
 
@@ -55,7 +56,7 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($managerResponse);
-        $managerResponse->assertJsonPath('data.agency.manager_public_id', $manager->public_id);
+        $managerResponse->assertJsonPath('data.manager_public_id', $manager->public_id);
         $this->assertDatabaseHas('staff_agency_assignments', [
             'user_id' => $manager->id,
             'agency_id' => $agency->id,
@@ -69,7 +70,7 @@ final class Module1AdministrationTest extends TestCase
             ->deleteJson('/api/v1/agencies/'.$agency->public_id);
 
         $this->assertJsonSuccess($archiveResponse);
-        $archiveResponse->assertJsonPath('data.agency.status', Agency::STATUS_ARCHIVED);
+        $archiveResponse->assertJsonPath('data.status', Agency::STATUS_ARCHIVED);
     }
 
     public function test_agency_manager_can_only_view_own_agency(): void
@@ -83,7 +84,7 @@ final class Module1AdministrationTest extends TestCase
             ->getJson('/api/v1/agencies/'.$agencyA['public_id']);
 
         $this->assertJsonSuccess($ownResponse);
-        $ownResponse->assertJsonPath('data.agency.public_id', $agencyA['public_id']);
+        $ownResponse->assertJsonPath('data.public_id', $agencyA['public_id']);
 
         $forbiddenResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -290,7 +291,7 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($procedureResponse, 201);
-        $procedurePublicId = $this->requireStringJsonPath($procedureResponse, 'data.procedure.public_id');
+        $procedurePublicId = $this->requireStringJsonPath($procedureResponse, 'data.public_id');
         $procedure = BatchProcedure::query()->where('public_id', $procedurePublicId)->firstOrFail();
 
         $runPayload = [
@@ -306,15 +307,15 @@ final class Module1AdministrationTest extends TestCase
             ->postJson('/api/v1/batch-runs', $runPayload);
 
         $this->assertJsonSuccess($runResponse, 201);
-        $runResponse->assertJsonPath('data.run.batch_procedure_public_id', $procedure->public_id);
-        $runResponse->assertJsonPath('data.run.agency_code', $agency['code']);
+        $runResponse->assertJsonPath('data.batch_procedure_public_id', $procedure->public_id);
+        $runResponse->assertJsonPath('data.agency_code', $agency['code']);
 
         $runReplayResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
             ->postJson('/api/v1/batch-runs', $runPayload);
 
         $this->assertJsonSuccess($runReplayResponse);
-        $runReplayResponse->assertJsonPath('data.run.public_id', $runResponse->json('data.run.public_id'));
+        $runReplayResponse->assertJsonPath('data.public_id', $runResponse->json('data.public_id'));
 
         $conflictResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -328,7 +329,7 @@ final class Module1AdministrationTest extends TestCase
 
         $this->assertJsonError($conflictResponse, 409, 'Idempotency-Key has already been used for a different request.');
 
-        $run = BatchRun::query()->where('public_id', $this->requireStringJsonPath($runResponse, 'data.run.public_id'))->firstOrFail();
+        $run = BatchRun::query()->where('public_id', $this->requireStringJsonPath($runResponse, 'data.public_id'))->firstOrFail();
 
         $runningResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -337,7 +338,7 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($runningResponse);
-        $runningResponse->assertJsonPath('data.run.status', BatchRun::STATUS_RUNNING);
+        $runningResponse->assertJsonPath('data.status', BatchRun::STATUS_RUNNING);
 
         $successResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -347,7 +348,7 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($successResponse);
-        $successResponse->assertJsonPath('data.run.status', BatchRun::STATUS_SUCCEEDED);
+        $successResponse->assertJsonPath('data.status', BatchRun::STATUS_SUCCEEDED);
 
         $overwriteResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -373,7 +374,7 @@ final class Module1AdministrationTest extends TestCase
                 'schedule_metadata' => ['time' => '23:00'],
             ]);
 
-        $procedurePublicId = $this->requireStringJsonPath($procedureResponse, 'data.procedure.public_id');
+        $procedurePublicId = $this->requireStringJsonPath($procedureResponse, 'data.public_id');
 
         $firstResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actorOne->createToken('token-two')->plainTextToken])
@@ -396,7 +397,7 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($firstResponse, 201);
-        $firstRunPublicId = $this->requireStringJsonPath($firstResponse, 'data.run.public_id');
+        $firstRunPublicId = $this->requireStringJsonPath($firstResponse, 'data.public_id');
         self::assertNotNull(DB::table('batch_runs')->where('public_id', $firstRunPublicId)->value('scope_hash'));
         $this->assertJsonError($secondResponse, 409, 'Idempotency-Key has already been used for a different request.');
     }
@@ -415,7 +416,7 @@ final class Module1AdministrationTest extends TestCase
                 'schedule_metadata' => ['time' => '22:00'],
             ]);
 
-        $procedurePublicId = $this->requireStringJsonPath($procedureResponse, 'data.procedure.public_id');
+        $procedurePublicId = $this->requireStringJsonPath($procedureResponse, 'data.public_id');
         $procedure = BatchProcedure::query()->where('public_id', $procedurePublicId)->firstOrFail();
 
         DB::table('batch_runs')->insert([
@@ -526,7 +527,7 @@ final class Module1AdministrationTest extends TestCase
 
     private function requireStringJsonPath(mixed $response, string $path): string
     {
-        $value = $response instanceof \Illuminate\Testing\TestResponse ? $response->json($path) : null;
+        $value = $response instanceof TestResponse ? $response->json($path) : null;
         self::assertIsString($value);
 
         return $value;

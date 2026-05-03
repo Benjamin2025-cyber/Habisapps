@@ -6,8 +6,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreDocumentRequest;
-use App\Http\Resources\DocumentResource;
 use App\Http\Resources\DocumentCollection;
+use App\Http\Resources\DocumentResource;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -26,6 +26,7 @@ final class DocumentController extends BaseController
      * List documents
      *
      * @authenticated
+     *
      * @response DocumentCollection
      */
     public function index(Request $request): DocumentCollection|JsonResponse
@@ -60,6 +61,7 @@ final class DocumentController extends BaseController
      * @body metadata optional Additional metadata as key-value pairs. Each value max length: 255 characters.
      *
      * @authenticated
+     *
      * @response 201 DocumentResource
      */
     #[Response(
@@ -125,6 +127,7 @@ final class DocumentController extends BaseController
      * Retrieves metadata for a specific KYC document by its public ID. Note: This endpoint does not return the file content. File download is not currently exposed.
      *
      * @authenticated
+     *
      * @response DocumentResource
      */
     #[Response(
@@ -153,6 +156,7 @@ final class DocumentController extends BaseController
      * Archives a KYC document by changing its status to 'archived'. This changes the domain lifecycle state without physically deleting the underlying file.
      *
      * @authenticated
+     *
      * @response DocumentResource
      */
     #[Response(

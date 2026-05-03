@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
-use App\Http\Resources\StaffAgencyAssignmentResource;
 use App\Http\Resources\StaffAgencyAssignmentCollection;
+use App\Http\Resources\StaffAgencyAssignmentResource;
 use App\Models\Agency;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -31,6 +32,7 @@ final class StaffAssignmentController extends BaseController
      * List staff assignments
      *
      * @authenticated
+     *
      * @response StaffAgencyAssignmentCollection
      */
     public function index(Request $request, User $staffUser): StaffAgencyAssignmentCollection|JsonResponse
@@ -75,6 +77,7 @@ final class StaffAssignmentController extends BaseController
      * Create staff assignment
      *
      * @authenticated
+     *
      * @response 201 StaffAgencyAssignmentResource
      */
     public function store(Request $request, User $staffUser): JsonResponse
@@ -162,7 +165,7 @@ final class StaffAssignmentController extends BaseController
             }
 
             $assignment = StaffAgencyAssignment::query()->create([
-                'public_id' => (string) \Illuminate\Support\Str::ulid(),
+                'public_id' => (string) Str::ulid(),
                 'user_id' => $staffUser->id,
                 'agency_id' => $agency->id,
                 'role_at_agency' => $roleAtAgency,
@@ -206,6 +209,7 @@ final class StaffAssignmentController extends BaseController
      * Update staff assignment
      *
      * @authenticated
+     *
      * @response StaffAgencyAssignmentResource
      */
     public function update(Request $request, User $staffUser, StaffAgencyAssignment $assignment): JsonResponse

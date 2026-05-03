@@ -15,15 +15,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 final class ClientResource extends JsonResource
 {
-/**
- * @return array<string, mixed>
- */
-public function toArray(Request $request): array
-{
-    /** @var Client $client */
-    $client = $this->resource;
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(Request $request): array
+    {
+        /** @var Client $client */
+        $client = $this->resource;
 
-    $showPii = $this->canViewPii($request);
+        $showPii = $this->canViewPii($request);
 
         return [
             'public_id' => $client->public_id,

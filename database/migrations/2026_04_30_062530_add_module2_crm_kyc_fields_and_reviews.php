@@ -72,7 +72,7 @@ return new class extends Migration
             $table->index(['new_kyc_status']);
         });
 
-        DB::statement("ALTER TABLE clients ADD CONSTRAINT clients_collection_target_non_negative CHECK (collection_target_amount IS NULL OR collection_target_amount >= 0)");
+        DB::statement('ALTER TABLE clients ADD CONSTRAINT clients_collection_target_non_negative CHECK (collection_target_amount IS NULL OR collection_target_amount >= 0)');
     }
 
     public function down(): void

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AgencyController;
 use App\Http\Controllers\Api\V1\AuditEventController;
+use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BatchProcedureController;
 use App\Http\Controllers\Api\V1\BatchRunController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientGuarantorController;
 use App\Http\Controllers\Api\V1\ClientIdentityDocumentController;
 use App\Http\Controllers\Api\V1\ClientProxyController;
-use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\ReferenceNumberController;
 use App\Http\Controllers\Api\V1\RoleController;

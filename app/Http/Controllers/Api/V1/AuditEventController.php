@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
-use App\Http\Resources\AuditEventResource;
 use App\Http\Resources\AuditEventCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +16,7 @@ final class AuditEventController extends BaseController
      * List audit events
      *
      * @authenticated
+     *
      * @response AuditEventCollection
      */
     public function index(Request $request): AuditEventCollection|JsonResponse

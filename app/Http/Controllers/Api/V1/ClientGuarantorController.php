@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use Dedoc\Scramble\Attributes\Response;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreClientGuarantorRequest;
 use App\Http\Requests\Api\V1\UpdateClientGuarantorRequest;
-use App\HttpRequestsApiV1UpdateClientGuarantorStatusRequest;
-use App\Http\Resources\ClientGuarantorResource;
+use App\Http\Requests\Api\V1\UpdateClientGuarantorStatusRequest;
 use App\Http\Resources\ClientGuarantorCollection;
+use App\Http\Resources\ClientGuarantorResource;
 use App\Models\Client;
 use App\Models\ClientGuarantor;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -24,12 +24,13 @@ final class ClientGuarantorController extends BaseController
 {
     public function __construct(private readonly SecurityAudit $securityAudit) {}
 
-/**
- * List client guarantors.
- *
- * @authenticated
- * @response ClientGuarantorCollection
- */
+    /**
+     * List client guarantors.
+     *
+     * @authenticated
+     *
+     * @response ClientGuarantorCollection
+     */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{guarantors: array<int, \App\Http\Resources\ClientGuarantorResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}'
@@ -113,6 +114,7 @@ final class ClientGuarantorController extends BaseController
      * Show a client guarantor.
      *
      * @authenticated
+     *
      * @response ClientGuarantorResource
      */
     #[Response(

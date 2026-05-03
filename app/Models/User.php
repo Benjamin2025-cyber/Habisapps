@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Support\Traits\HasAuditLog;
 use App\Support\Staff\StaffAgencyScope;
+use App\Support\Traits\HasAuditLog;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;

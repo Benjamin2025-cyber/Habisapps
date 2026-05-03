@@ -15,6 +15,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 final class Module2CrmKycTest extends TestCase
@@ -45,9 +46,9 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($create, 201);
-        $clientPublicId = $this->requireStringJsonPath($create, 'data.client.public_id');
-        $create->assertJsonPath('data.client.first_name', 'Alice');
-        $create->assertJsonPath('data.client.client_reference', fn (mixed $value) => is_string($value) && str_starts_with($value, 'CLI'));
+        $clientPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+        $create->assertJsonPath('data.first_name', 'Alice');
+        $create->assertJsonPath('data.client_reference', fn (mixed $value) => is_string($value) && str_starts_with($value, 'CLI'));
 
         $update = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('token-2')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId, [
@@ -58,14 +59,14 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($update);
-        $update->assertJsonPath('data.client.collection_target_amount', '15000.50');
+        $update->assertJsonPath('data.collection_target_amount', '15000.50');
 
         $show = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('token-3')->plainTextToken])
             ->getJson('/api/v1/clients/'.$clientPublicId);
 
         $this->assertJsonSuccess($show);
-        $show->assertJsonPath('data.client.first_name', 'Alice');
-        $show->assertJsonPath('data.client.last_name', 'Ngono');
+        $show->assertJsonPath('data.first_name', 'Alice');
+        $show->assertJsonPath('data.last_name', 'Ngono');
     }
 
     public function test_agency_manager_cannot_create_client_in_other_agency(): void
@@ -140,7 +141,7 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($upload, 201);
-        $documentPublicId = $this->requireStringJsonPath($upload, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($upload, 'data.public_id');
 
         $identityCreate = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('token-v3')->plainTextToken])
             ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
@@ -152,7 +153,7 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($identityCreate, 201);
-        $identityPublicId = $this->requireStringJsonPath($identityCreate, 'data.identity_document.public_id');
+        $identityPublicId = $this->requireStringJsonPath($identityCreate, 'data.public_id');
 
         $selfVerify = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('token-v4')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
@@ -178,7 +179,7 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($verifyNow);
-        $verifyNow->assertJsonPath('data.client.kyc_status', Client::KYC_STATUS_VERIFIED);
+        $verifyNow->assertJsonPath('data.kyc_status', Client::KYC_STATUS_VERIFIED);
 
         $this->assertDatabaseHas('client_kyc_reviews', [
             'client_id' => $client->id,
@@ -296,8 +297,8 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($proxy, 201);
-        $proxy->assertJsonPath('data.proxy.status', 'expired');
-        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.proxy.public_id');
+        $proxy->assertJsonPath('data.status', 'expired');
+        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.public_id');
 
         $expire = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('token-g3')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$proxyPublicId.'/status', [
@@ -305,7 +306,7 @@ final class Module2CrmKycTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($expire);
-        $expire->assertJsonPath('data.proxy.status', 'expired');
+        $expire->assertJsonPath('data.status', 'expired');
     }
 
     public function test_self_verify_override_flags_do_not_bypass_verification_controls(): void
@@ -324,7 +325,7 @@ final class Module2CrmKycTest extends TestCase
                 'document_public_id' => $identityDocumentPublicId,
             ]);
         $this->assertJsonSuccess($identity, 201);
-        $identityPublicId = $this->requireStringJsonPath($identity, 'data.identity_document.public_id');
+        $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
 
         $identityVerify = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('self-v2')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
@@ -341,7 +342,7 @@ final class Module2CrmKycTest extends TestCase
                 'document_public_id' => $guarantorDocumentPublicId,
             ]);
         $this->assertJsonSuccess($guarantor, 201);
-        $guarantorPublicId = $this->requireStringJsonPath($guarantor, 'data.guarantor.public_id');
+        $guarantorPublicId = $this->requireStringJsonPath($guarantor, 'data.public_id');
 
         $guarantorVerify = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('self-v4')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId.'/status', [
@@ -359,7 +360,7 @@ final class Module2CrmKycTest extends TestCase
                 'document_public_id' => $proxyDocumentPublicId,
             ]);
         $this->assertJsonSuccess($proxy, 201);
-        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.proxy.public_id');
+        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.public_id');
 
         $proxyVerify = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('self-v6')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$proxyPublicId.'/status', [
@@ -389,7 +390,7 @@ final class Module2CrmKycTest extends TestCase
                 'document_public_id' => $documentPublicId,
             ]);
         $this->assertJsonSuccess($identity, 201);
-        $identityPublicId = $this->requireStringJsonPath($identity, 'data.identity_document.public_id');
+        $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
 
         DB::table('client_identity_documents')
             ->where('public_id', $identityPublicId)
@@ -425,7 +426,7 @@ final class Module2CrmKycTest extends TestCase
                 'force_override_expired_identity' => true,
             ]);
         $this->assertJsonSuccess($allowed);
-        $allowed->assertJsonPath('data.client.kyc_status', Client::KYC_STATUS_VERIFIED);
+        $allowed->assertJsonPath('data.kyc_status', Client::KYC_STATUS_VERIFIED);
 
         $this->assertDatabaseHas('client_kyc_reviews', [
             'client_id' => $client->id,
@@ -501,7 +502,7 @@ final class Module2CrmKycTest extends TestCase
                 'document_number' => 'METADATA-ONLY-1',
             ]);
         $this->assertJsonSuccess($identity, 201);
-        $identityPublicId = $this->requireStringJsonPath($identity, 'data.identity_document.public_id');
+        $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
 
         $identitySelfVerify = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('metadata-v2')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
@@ -521,7 +522,7 @@ final class Module2CrmKycTest extends TestCase
                 'guarantor_full_name' => 'Metadata Guarantor',
             ]);
         $this->assertJsonSuccess($guarantor, 201);
-        $guarantorPublicId = $this->requireStringJsonPath($guarantor, 'data.guarantor.public_id');
+        $guarantorPublicId = $this->requireStringJsonPath($guarantor, 'data.public_id');
 
         $guarantorVerify = $this->withApiHeaders()
             ->actingAsSanctum($reviewer)
@@ -536,7 +537,7 @@ final class Module2CrmKycTest extends TestCase
                 'mandate_type' => 'full',
             ]);
         $this->assertJsonSuccess($proxy, 201);
-        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.proxy.public_id');
+        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.public_id');
 
         $proxyVerify = $this->withApiHeaders()
             ->actingAsSanctum($reviewer)
@@ -559,7 +560,7 @@ final class Module2CrmKycTest extends TestCase
                 'starts_on' => now()->addDays(5)->toDateString(),
             ]);
         $this->assertJsonSuccess($futureProxy, 201);
-        $futureProxy->assertJsonPath('data.proxy.status', 'inactive');
+        $futureProxy->assertJsonPath('data.status', 'inactive');
 
         $activeProxy = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('proxy-v2')->plainTextToken])
             ->postJson('/api/v1/clients/'.$clientPublicId.'/proxies', [
@@ -569,14 +570,14 @@ final class Module2CrmKycTest extends TestCase
                 'ends_on' => now()->addDays(5)->toDateString(),
             ]);
         $this->assertJsonSuccess($activeProxy, 201);
-        $activeProxyPublicId = $this->requireStringJsonPath($activeProxy, 'data.proxy.public_id');
+        $activeProxyPublicId = $this->requireStringJsonPath($activeProxy, 'data.public_id');
 
         $updated = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('proxy-v3')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$activeProxyPublicId, [
                 'starts_on' => now()->addDays(3)->toDateString(),
             ]);
         $this->assertJsonSuccess($updated);
-        $updated->assertJsonPath('data.proxy.status', 'inactive');
+        $updated->assertJsonPath('data.status', 'inactive');
 
         $reactivated = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('proxy-v4')->plainTextToken])
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$activeProxyPublicId, [
@@ -584,7 +585,7 @@ final class Module2CrmKycTest extends TestCase
                 'ends_on' => now()->addDays(3)->toDateString(),
             ]);
         $this->assertJsonSuccess($reactivated);
-        $reactivated->assertJsonPath('data.proxy.status', 'active');
+        $reactivated->assertJsonPath('data.status', 'active');
     }
 
     private function createClientViaApi(User $actor, string $agencyPublicId): string
@@ -604,7 +605,7 @@ final class Module2CrmKycTest extends TestCase
 
         $this->assertJsonSuccess($response, 201);
 
-        return $this->requireStringJsonPath($response, 'data.client.public_id');
+        return $this->requireStringJsonPath($response, 'data.public_id');
     }
 
     private function createDocumentViaApi(User $actor, string $category = 'identity'): string
@@ -618,7 +619,7 @@ final class Module2CrmKycTest extends TestCase
 
         $this->assertJsonSuccess($response, 201);
 
-        return $this->requireStringJsonPath($response, 'data.document.public_id');
+        return $this->requireStringJsonPath($response, 'data.public_id');
     }
 
     private function createDocumentInAgency(int $agencyId): string
@@ -703,7 +704,7 @@ final class Module2CrmKycTest extends TestCase
 
     private function requireStringJsonPath(mixed $response, string $path): string
     {
-        $value = $response instanceof \Illuminate\Testing\TestResponse ? $response->json($path) : null;
+        $value = $response instanceof TestResponse ? $response->json($path) : null;
         self::assertIsString($value);
 
         return $value;

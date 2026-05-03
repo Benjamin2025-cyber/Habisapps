@@ -43,8 +43,8 @@ final class FoundationOperationsTest extends TestCase
 
         $this->assertJsonSuccess($uploadResponse, 201);
         $uploadResponse->assertJsonPath('message', 'Document uploaded successfully');
-        $uploadResponse->assertJsonPath('data.document.category', 'kyc');
-        $uploadResponse->assertJsonMissingPath('data.document.path');
+        $uploadResponse->assertJsonPath('data.category', 'kyc');
+        $uploadResponse->assertJsonMissingPath('data.path');
 
         $document = Document::query()->firstOrFail();
         $this->assertDatabaseHas('documents', [
@@ -63,7 +63,7 @@ final class FoundationOperationsTest extends TestCase
             ->patchJson('/api/v1/documents/'.$document->public_id.'/archive');
 
         $this->assertJsonSuccess($archiveResponse);
-        $archiveResponse->assertJsonPath('data.document.status', Document::STATUS_ARCHIVED);
+        $archiveResponse->assertJsonPath('data.status', Document::STATUS_ARCHIVED);
         $this->assertDatabaseHas('activity_log', [
             'log_name' => 'security',
             'event' => 'document.archived',
@@ -108,7 +108,7 @@ final class FoundationOperationsTest extends TestCase
                 'file' => UploadedFile::fake()->image('doc-a.jpg'),
             ]);
 
-        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.public_id');
         $document = Document::query()->where('public_id', $documentPublicId)->first();
 
         self::assertInstanceOf(Document::class, $document);
@@ -143,7 +143,7 @@ final class FoundationOperationsTest extends TestCase
                 'file' => UploadedFile::fake()->image('doc-a.jpg'),
             ]);
 
-        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.public_id');
         $document = Document::query()->where('public_id', $documentPublicId)->first();
 
         self::assertInstanceOf(Document::class, $document);
@@ -243,7 +243,7 @@ final class FoundationOperationsTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($response, 201);
-        $documentPublicId = $this->requireStringJsonPath($response, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($response, 'data.public_id');
 
         $document = Document::query()->where('public_id', $documentPublicId)->first();
         self::assertInstanceOf(Document::class, $document);
@@ -301,7 +301,7 @@ final class FoundationOperationsTest extends TestCase
                 'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
             ]);
 
-        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.public_id');
         $document = Document::query()->where('public_id', $documentPublicId)->first();
         self::assertInstanceOf(Document::class, $document);
         $media = $document->getMedia('kyc_documents')->first();
@@ -334,8 +334,8 @@ final class FoundationOperationsTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($response, 201);
-        $response->assertJsonMissingPath('data.document.path');
-        $response->assertJsonMissingPath('data.document.disk');
+        $response->assertJsonMissingPath('data.path');
+        $response->assertJsonMissingPath('data.disk');
     }
 
     public function test_path_traversal_payload_cannot_bypass_validation(): void
@@ -355,7 +355,7 @@ final class FoundationOperationsTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($response, 201);
-        $documentPublicId = $this->requireStringJsonPath($response, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($response, 'data.public_id');
 
         $document = Document::query()->where('public_id', $documentPublicId)->first();
         self::assertInstanceOf(Document::class, $document);
@@ -407,7 +407,7 @@ final class FoundationOperationsTest extends TestCase
                 'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
             ]);
 
-        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.public_id');
         $document = Document::query()->where('public_id', $documentPublicId)->first();
         self::assertInstanceOf(Document::class, $document);
         $media = $document->getMedia('kyc_documents')->first();
@@ -451,7 +451,7 @@ final class FoundationOperationsTest extends TestCase
                 'file' => UploadedFile::fake()->image('test.jpg', 640, 480),
             ]);
 
-        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.document.public_id');
+        $documentPublicId = $this->requireStringJsonPath($uploadResponse, 'data.public_id');
 
         $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])

@@ -9,8 +9,8 @@ use App\Http\Requests\Api\V1\CreateStaffUserRequest;
 use App\Http\Requests\Api\V1\UpdateStaffUserRequest;
 use App\Http\Requests\Api\V1\UpdateStaffUserRolesRequest;
 use App\Http\Requests\Api\V1\UpdateStaffUserStatusRequest;
-use App\Http\Resources\StaffUserResource;
 use App\Http\Resources\StaffUserCollection;
+use App\Http\Resources\StaffUserResource;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use App\Support\Otp\OtpService;
@@ -32,6 +32,7 @@ final class StaffUserController extends BaseController
      * List staff users
      *
      * @authenticated
+     *
      * @response StaffUserCollection
      */
     public function index(Request $request): StaffUserCollection|JsonResponse
@@ -64,6 +65,7 @@ final class StaffUserController extends BaseController
      * Create staff user
      *
      * @authenticated
+     *
      * @response 201 StaffUserResource
      */
     public function store(CreateStaffUserRequest $request, OtpService $otpService): JsonResponse
@@ -117,6 +119,7 @@ final class StaffUserController extends BaseController
      * Get staff user
      *
      * @authenticated
+     *
      * @response StaffUserResource
      */
     public function show(Request $request, User $staffUser): JsonResponse
@@ -138,6 +141,7 @@ final class StaffUserController extends BaseController
      * Update staff user
      *
      * @authenticated
+     *
      * @response StaffUserResource
      */
     public function update(UpdateStaffUserRequest $request, User $staffUser): JsonResponse
@@ -205,6 +209,7 @@ final class StaffUserController extends BaseController
      * Update staff user status
      *
      * @authenticated
+     *
      * @response StaffUserResource
      */
     public function updateStatus(UpdateStaffUserStatusRequest $request, User $staffUser): JsonResponse
@@ -247,6 +252,7 @@ final class StaffUserController extends BaseController
      * Update staff user roles
      *
      * @authenticated
+     *
      * @response StaffUserResource
      */
     public function updateRoles(UpdateStaffUserRolesRequest $request, User $staffUser): JsonResponse

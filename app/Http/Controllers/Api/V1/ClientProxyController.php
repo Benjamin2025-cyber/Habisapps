@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use Dedoc\Scramble\Attributes\Response;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreClientProxyRequest;
 use App\Http\Requests\Api\V1\UpdateClientProxyRequest;
 use App\Http\Requests\Api\V1\UpdateClientProxyStatusRequest;
-use App\Http\Resources\ClientProxyResource;
 use App\Http\Resources\ClientProxyCollection;
+use App\Http\Resources\ClientProxyResource;
 use App\Models\Client;
 use App\Models\ClientProxy;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +31,7 @@ final class ClientProxyController extends BaseController
      * Supports optional `current_only` filtering for currently active mandates.
      *
      * @authenticated
+     *
      * @response ClientProxyCollection
      */
     #[Response(
@@ -125,6 +126,7 @@ final class ClientProxyController extends BaseController
      * Show a client proxy/mandate record.
      *
      * @authenticated
+     *
      * @response ClientProxyResource
      */
     #[Response(
@@ -153,6 +155,7 @@ final class ClientProxyController extends BaseController
      * Update a client proxy/mandate record.
      *
      * @authenticated
+     *
      * @response ClientProxyResource
      */
     #[Response(
@@ -219,14 +222,15 @@ final class ClientProxyController extends BaseController
         );
     }
 
-/**
- * Update client proxy lifecycle or verification status.
- *
- * Supported actions: submit, verify, reject, archive, deactivate, expire.
- *
- * @authenticated
- * @response ClientProxyResource
- */
+    /**
+     * Update client proxy lifecycle or verification status.
+     *
+     * Supported actions: submit, verify, reject, archive, deactivate, expire.
+     *
+     * @authenticated
+     *
+     * @response ClientProxyResource
+     */
     #[Response(
         status: 200,
         type: 'array{success: bool, message: string, data: array{proxy: \App\Http\Resources\ClientProxyResource}, errors: null, meta: null}'

@@ -5,17 +5,17 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
-use App\Http\Resources\BatchRunResource;
 use App\Http\Resources\BatchRunCollection;
+use App\Http\Resources\BatchRunResource;
 use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
-use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use JsonException;
@@ -28,6 +28,7 @@ final class BatchRunController extends BaseController
      * List batch runs
      *
      * @authenticated
+     *
      * @response BatchRunCollection
      */
     public function index(Request $request): BatchRunCollection|JsonResponse
@@ -55,6 +56,7 @@ final class BatchRunController extends BaseController
      * Create batch run
      *
      * @authenticated
+     *
      * @response 201 BatchRunResource
      */
     public function store(Request $request): JsonResponse
@@ -128,7 +130,7 @@ final class BatchRunController extends BaseController
         }
 
         $run = BatchRun::query()->create([
-            'public_id' => (string) \Illuminate\Support\Str::ulid(),
+            'public_id' => (string) Str::ulid(),
             'batch_procedure_id' => $procedure->id,
             'agency_id' => $agency?->id,
             'business_date' => $validated['business_date'],
@@ -153,6 +155,7 @@ final class BatchRunController extends BaseController
      * Get batch run
      *
      * @authenticated
+     *
      * @response BatchRunResource
      */
     public function show(Request $request, BatchRun $batchRun): JsonResponse
@@ -170,6 +173,7 @@ final class BatchRunController extends BaseController
      * Update batch run status
      *
      * @authenticated
+     *
      * @response BatchRunResource
      */
     public function updateStatus(Request $request, BatchRun $batchRun): JsonResponse
@@ -202,7 +206,7 @@ final class BatchRunController extends BaseController
                 BatchRun::STATUS_SUCCEEDED => [],
             ];
 
-if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
+            if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
                 return $this->respondUnprocessable('Invalid batch run status transition.');
             }
 
@@ -278,7 +282,7 @@ if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], t
     }
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      */
     private function fingerprint(Request $request, array $validated): string
     {

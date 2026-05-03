@@ -5,15 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
-use App\Http\Resources\BatchProcedureResource;
 use App\Http\Resources\BatchProcedureCollection;
+use App\Http\Resources\BatchProcedureResource;
 use App\Models\BatchProcedure;
-use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 final class BatchProcedureController extends BaseController
@@ -24,6 +23,7 @@ final class BatchProcedureController extends BaseController
      * List batch procedures
      *
      * @authenticated
+     *
      * @response BatchProcedureCollection
      */
     public function index(Request $request): BatchProcedureCollection|JsonResponse
@@ -43,6 +43,7 @@ final class BatchProcedureController extends BaseController
      * Create batch procedure
      *
      * @authenticated
+     *
      * @response 201 BatchProcedureResource
      */
     public function store(Request $request): JsonResponse
@@ -61,7 +62,7 @@ final class BatchProcedureController extends BaseController
         ])->validate();
 
         $procedure = BatchProcedure::query()->create([
-            'public_id' => (string) \Illuminate\Support\Str::ulid(),
+            'public_id' => (string) Str::ulid(),
             'code' => $validated['code'],
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
@@ -82,6 +83,7 @@ final class BatchProcedureController extends BaseController
      * Get batch procedure
      *
      * @authenticated
+     *
      * @response BatchProcedureResource
      */
     public function show(Request $request, BatchProcedure $batchProcedure): JsonResponse
@@ -99,6 +101,7 @@ final class BatchProcedureController extends BaseController
      * Update batch procedure
      *
      * @authenticated
+     *
      * @response BatchProcedureResource
      */
     public function update(Request $request, BatchProcedure $batchProcedure): JsonResponse
@@ -130,6 +133,7 @@ final class BatchProcedureController extends BaseController
      * Update batch procedure status
      *
      * @authenticated
+     *
      * @response BatchProcedureResource
      */
     public function updateStatus(Request $request, BatchProcedure $batchProcedure): JsonResponse

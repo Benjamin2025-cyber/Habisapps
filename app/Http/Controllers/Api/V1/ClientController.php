@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use Dedoc\Scramble\Attributes\Response;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreClientRequest;
 use App\Http\Requests\Api\V1\UpdateClientKycStatusRequest;
 use App\Http\Requests\Api\V1\UpdateClientRequest;
+use App\Http\Resources\ClientCollection;
 use App\Http\Resources\ClientKycReviewResource;
 use App\Http\Resources\ClientResource;
-use App\Http\Resources\ClientCollection;
 use App\Models\Agency;
 use App\Models\Client;
 use App\Models\ClientIdentityDocument;
@@ -21,6 +20,7 @@ use App\Models\User;
 use App\Support\References\ReferenceNumberGenerator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +42,7 @@ final class ClientController extends BaseController
      * Returns a paginated client list scoped by agency permissions.
      *
      * @authenticated
+     *
      * @response ClientCollection
      */
     #[Response(
@@ -168,6 +169,7 @@ final class ClientController extends BaseController
      * Show a CRM client.
      *
      * @authenticated
+     *
      * @response ClientResource
      */
     #[Response(
@@ -196,6 +198,7 @@ final class ClientController extends BaseController
      * Update a CRM client.
      *
      * @authenticated
+     *
      * @response ClientResource
      */
     #[Response(
@@ -381,6 +384,7 @@ final class ClientController extends BaseController
      * List client KYC review history.
      *
      * @authenticated
+     *
      * @response array<int, ClientKycReviewResource>
      */
     #[Response(
@@ -422,7 +426,7 @@ final class ClientController extends BaseController
     }
 
     /**
-     * @param Builder<Client> $query
+     * @param  Builder<Client>  $query
      */
     private function applySafeFilters(Builder $query, Request $request, User $actor): void
     {

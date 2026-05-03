@@ -80,7 +80,7 @@ return new class extends Migration
     }
 
     /**
-     * @param array<string, mixed>|null $payload
+     * @param  array<string, mixed>|null  $payload
      * @return array<string, mixed>|null
      */
     private function normalizeSummaryPayload(?array $payload): ?array

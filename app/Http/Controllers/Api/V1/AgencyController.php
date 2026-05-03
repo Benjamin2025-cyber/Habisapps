@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -27,40 +28,41 @@ final class AgencyController extends BaseController
     ) {}
 
     /**
- * List agencies
- *
- * @authenticated
- */
-public function index(Request $request): AgencyCollection|JsonResponse
-{
-    if ($request->user()?->can('agencies.view') !== true) {
-        return $this->respondForbidden();
-    }
-
-    $actor = $request->user();
-    $query = Agency::query()->with('manager')->latest();
-
-    if (! $actor->hasRole('platform-admin')) {
-        $currentAgencyId = $actor->currentAgencyId();
-
-        if ($currentAgencyId === null) {
+     * List agencies
+     *
+     * @authenticated
+     */
+    public function index(Request $request): AgencyCollection|JsonResponse
+    {
+        if ($request->user()?->can('agencies.view') !== true) {
             return $this->respondForbidden();
         }
 
-        $query->whereKey($currentAgencyId);
+        $actor = $request->user();
+        $query = Agency::query()->with('manager')->latest();
+
+        if (! $actor->hasRole('platform-admin')) {
+            $currentAgencyId = $actor->currentAgencyId();
+
+            if ($currentAgencyId === null) {
+                return $this->respondForbidden();
+            }
+
+            $query->whereKey($currentAgencyId);
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+
+        return new AgencyCollection(
+            $query->paginate($perPage)
+        );
     }
-
-    $perPage = min(max($request->integer('per_page', 25), 1), 100);
-
-    return new AgencyCollection(
-        $query->paginate($perPage)
-    );
-}
 
     /**
      * Create agency
      *
      * @authenticated
+     *
      * @response 201 AgencyResource
      */
     public function store(Request $request): JsonResponse
@@ -124,6 +126,7 @@ public function index(Request $request): AgencyCollection|JsonResponse
      * Get agency
      *
      * @authenticated
+     *
      * @response AgencyResource
      */
     public function show(Request $request, Agency $agency): JsonResponse
@@ -145,6 +148,7 @@ public function index(Request $request): AgencyCollection|JsonResponse
      * Update agency
      *
      * @authenticated
+     *
      * @response AgencyResource
      */
     public function update(Request $request, Agency $agency): JsonResponse
@@ -180,6 +184,7 @@ public function index(Request $request): AgencyCollection|JsonResponse
      * Update agency status
      *
      * @authenticated
+     *
      * @response AgencyResource
      */
     public function updateStatus(Request $request, Agency $agency): JsonResponse
@@ -212,6 +217,7 @@ public function index(Request $request): AgencyCollection|JsonResponse
      * Archive agency
      *
      * @authenticated
+     *
      * @response AgencyResource
      */
     public function destroy(Request $request, Agency $agency): JsonResponse
@@ -240,6 +246,7 @@ public function index(Request $request): AgencyCollection|JsonResponse
      * Update agency manager
      *
      * @authenticated
+     *
      * @response AgencyResource
      */
     public function updateManager(Request $request, Agency $agency): JsonResponse
@@ -324,7 +331,7 @@ public function index(Request $request): AgencyCollection|JsonResponse
 
             if ($primaryAssignment === null) {
                 StaffAgencyAssignment::query()->create([
-                    'public_id' => (string) \Illuminate\Support\Str::ulid(),
+                    'public_id' => (string) Str::ulid(),
                     'user_id' => $manager->id,
                     'agency_id' => $agency->id,
                     'role_at_agency' => $roleAtAgency,

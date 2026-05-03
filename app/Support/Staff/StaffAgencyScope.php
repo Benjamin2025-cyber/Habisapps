@@ -30,9 +30,6 @@ final class StaffAgencyScope
         return null;
     }
 
-    /**
-     * @return Builder
-     */
     public function currentAgencyStaffIds(int $agencyId): Builder
     {
         $today = now()->toDateString();
