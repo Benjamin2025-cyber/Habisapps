@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use Dedoc\Scramble\Scramble;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Scramble::ignoreDefaultRoutes();
         FormRequest::failOnUnknownFields();
 
         RateLimiter::for('auth.login', function (Request $request): Limit {

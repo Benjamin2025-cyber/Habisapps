@@ -71,6 +71,8 @@ On the VPS, place the production `.env` file at `/srv/habis-finance-api/.env` be
 
 The API container is published through Traefik at `https://api.abbisapps.site`, and the container itself only exposes port `8000` on the Docker network.
 
+After each deploy, the workflow exports a static Scramble document to `public/docs/api.json` so `/docs/api` is served from that file instead of live-generating the specification on every request.
+
 ## API Documentation
 
 API documentation is generated from Laravel routes, Form Requests, controller signatures, and response types using Dedoc Scramble.
