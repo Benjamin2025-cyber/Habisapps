@@ -8,7 +8,9 @@ use Dedoc\Scramble\Scramble;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 final class AppServiceProvider extends ServiceProvider
@@ -28,6 +30,33 @@ final class AppServiceProvider extends ServiceProvider
     {
         Scramble::ignoreDefaultRoutes();
         FormRequest::failOnUnknownFields();
+
+        Route::get('/docs/api', function () {
+            $specPath = public_path('docs/api.json');
+
+            if (! File::exists($specPath)) {
+                abort(503, 'API documentation is not generated yet.');
+            }
+
+            $spec = json_decode(File::get($specPath), true, 512, JSON_THROW_ON_ERROR);
+
+            return view('scramble::docs', [
+                'spec' => $spec,
+                'config' => Scramble::getGeneratorConfig(Scramble::DEFAULT_API),
+            ]);
+        })->name('scramble.docs.ui');
+
+        Route::get('/docs/api.json', function () {
+            $specPath = public_path('docs/api.json');
+
+            if (! File::exists($specPath)) {
+                abort(503, 'API documentation is not generated yet.');
+            }
+
+            return response()->file($specPath, [
+                'Content-Type' => 'application/json',
+            ]);
+        })->name('scramble.docs.document');
 
         RateLimiter::for('auth.login', function (Request $request): Limit {
             $maxAttempts = $this->integerConfig('security.auth.login.max_attempts', 5);
