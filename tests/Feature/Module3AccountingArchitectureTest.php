@@ -1,0 +1,801 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\AccountHold;
+use App\Models\Client;
+use App\Models\CustomerAccount;
+use App\Models\JournalEntry;
+use App\Models\User;
+use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use Tests\TestCase;
+
+final class Module3AccountingArchitectureTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(RolesAndPermissionsSeeder::class);
+    }
+
+    public function test_platform_admin_can_create_and_view_ledger_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-01');
+
+        $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-create')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '1000',
+                'name' => 'Cash on Hand',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+                'status' => 'active',
+            ]);
+
+        $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.public_id', fn (mixed $value): bool => is_string($value) && $value !== '');
+        $create->assertJsonPath('data.code', '1000');
+
+        $ledgerPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $show = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-show')->plainTextToken])
+            ->getJson('/api/v1/ledger-accounts/'.$ledgerPublicId);
+
+        $this->assertJsonSuccess($show);
+        $show->assertJsonPath('data.code', '1000');
+        $show->assertJsonPath('data.account_class', 'asset');
+    }
+
+    public function test_ledger_account_creation_requires_agency_scope(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-no-agency')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'code' => '1001',
+                'name' => 'Global Ledger Attempt',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['agency_public_id']);
+    }
+
+    public function test_parent_account_must_exist_before_linking(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-02');
+
+        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-parent')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '2000',
+                'name' => 'Savings',
+                'account_class' => 'asset',
+                'parent_account_public_id' => (string) Str::ulid(),
+                'normal_balance_side' => 'debit',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['parent_account_public_id']);
+    }
+
+    public function test_parent_account_is_persisted_when_creating_ledger_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-12');
+
+        $parent = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-parent-create')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '2100',
+                'name' => 'Parent Cash',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $parentPublicId = $this->requireStringJsonPath($parent, 'data.public_id');
+
+        $child = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-child-create')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '2110',
+                'name' => 'Child Cash',
+                'account_class' => 'asset',
+                'parent_account_public_id' => $parentPublicId,
+                'normal_balance_side' => 'debit',
+            ]);
+
+        $this->assertJsonSuccess($child, 201);
+        $child->assertJsonPath('data.parent_account_public_id', $parentPublicId);
+    }
+
+    public function test_platform_admin_can_create_sector_and_sub_sector(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $sectorCreate = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('sector-create')->plainTextToken])
+            ->postJson('/api/v1/sectors', [
+                'code' => 'AGR',
+                'name' => 'Agriculture',
+                'status' => 'active',
+            ]);
+
+        $this->assertJsonSuccess($sectorCreate, 201);
+        $sectorPublicId = $this->requireStringJsonPath($sectorCreate, 'data.public_id');
+        $sectorCreate->assertJsonPath('data.code', 'AGR');
+
+        $subSectorCreate = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('sub-sector-create')->plainTextToken])
+            ->postJson('/api/v1/sub-sectors', [
+                'sector_public_id' => $sectorPublicId,
+                'code' => 'AGR-01',
+                'name' => 'Crop Production',
+                'status' => 'active',
+            ]);
+
+        $this->assertJsonSuccess($subSectorCreate, 201);
+        $subSectorCreate->assertJsonPath('data.sector_public_id', $sectorPublicId);
+        $subSectorCreate->assertJsonPath('data.code', 'AGR-01');
+    }
+
+    public function test_platform_admin_can_create_customer_account_and_hold(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-03');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-for-account')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '3000',
+                'name' => 'Customer Deposits',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $client = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+
+        $customerAccount = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledgerPublicId,
+                'account_number' => 'CA-1001',
+                'opened_on' => now()->toDateString(),
+                'status' => 'active',
+            ]);
+
+        $this->assertJsonSuccess($customerAccount, 201);
+        $customerAccountPublicId = $this->requireStringJsonPath($customerAccount, 'data.public_id');
+
+        $hold = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-hold')->plainTextToken])
+            ->postJson('/api/v1/account-holds', [
+                'customer_account_public_id' => $customerAccountPublicId,
+                'amount_minor' => 1500,
+                'currency' => 'XAF',
+                'reason_type' => 'kyc_review',
+            ]);
+
+        $this->assertJsonSuccess($hold, 201);
+        $hold->assertJsonPath('data.customer_account_public_id', $customerAccountPublicId);
+        $hold->assertJsonPath('data.amount_minor', 1500);
+    }
+
+    public function test_unverified_client_cannot_open_customer_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-05');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-unverified')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '3100',
+                'name' => 'Blocked Deposits',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $client = $this->createClient($agency['id'], Client::KYC_STATUS_DRAFT);
+
+        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account-unverified')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledgerPublicId,
+                'account_number' => 'CA-2001',
+                'opened_on' => now()->toDateString(),
+                'status' => 'active',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['client_public_id']);
+    }
+
+    public function test_customer_accounts_and_journal_lines_reject_inactive_ledger_accounts(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-19');
+
+        $inactiveLedger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '5500',
+                'name' => 'Inactive Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+                'status' => 'inactive',
+            ]);
+        $inactiveLedgerPublicId = $this->requireStringJsonPath($inactiveLedger, 'data.public_id');
+
+        $activeLedger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('active-ledger')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '5600',
+                'name' => 'Active Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $activeLedgerPublicId = $this->requireStringJsonPath($activeLedger, 'data.public_id');
+
+        $client = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+
+        $inactiveAccount = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-account')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $inactiveLedgerPublicId,
+                'account_number' => 'CA-6001',
+                'opened_on' => now()->toDateString(),
+            ]);
+        $inactiveAccount->assertStatus(422);
+        $inactiveAccount->assertJsonValidationErrors(['ledger_account_public_id']);
+
+        $account = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('active-ledger-account')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $activeLedgerPublicId,
+                'account_number' => 'CA-6002',
+                'opened_on' => now()->toDateString(),
+            ]);
+        $accountPublicId = $this->requireStringJsonPath($account, 'data.public_id');
+
+        $inactiveUpdate = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-account-update')->plainTextToken])
+            ->patchJson('/api/v1/customer-accounts/'.$accountPublicId, [
+                'ledger_account_public_id' => $inactiveLedgerPublicId,
+            ]);
+        $inactiveUpdate->assertStatus(422);
+        $inactiveUpdate->assertJsonValidationErrors(['ledger_account_public_id']);
+
+        $entry = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-entry')->plainTextToken])
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-4001',
+                'business_date' => now()->toDateString(),
+                'agency_public_id' => $agency['public_id'],
+            ]);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+
+        $line = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-line')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $inactiveLedgerPublicId,
+                'debit_minor' => 100,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+        $line->assertStatus(422);
+        $line->assertJsonValidationErrors(['ledger_account_public_id']);
+    }
+
+    public function test_customer_account_list_supports_filters(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-09');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-filter')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '5100',
+                'name' => 'Filter Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $client = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $accountA = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account-a')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledgerPublicId,
+                'account_number' => 'CA-4001',
+                'opened_on' => '2026-01-01',
+                'status' => CustomerAccount::STATUS_ACTIVE,
+            ]);
+        $accountAPublicId = $this->requireStringJsonPath($accountA, 'data.public_id');
+
+        $accountB = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account-b')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledgerPublicId,
+                'account_number' => 'CA-4002',
+                'opened_on' => '2026-02-01',
+                'status' => CustomerAccount::STATUS_SUSPENDED,
+            ]);
+        $accountBPublicId = $this->requireStringJsonPath($accountB, 'data.public_id');
+
+        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account-list')->plainTextToken])
+            ->getJson('/api/v1/customer-accounts?status='.CustomerAccount::STATUS_SUSPENDED.'&account_number=CA-4002');
+
+        $this->assertJsonSuccess($response);
+        $response->assertJsonCount(1, 'data.customer_accounts');
+        $response->assertJsonPath('data.customer_accounts.0.public_id', $accountBPublicId);
+        $response->assertJsonMissing(['public_id' => $accountAPublicId]);
+    }
+
+    public function test_agency_user_customer_account_list_is_scoped_to_active_agency(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('ACCT-14');
+        $agencyB = $this->createAgency('ACCT-15');
+        $agencyUser = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
+
+        $ledgerA = $this->withApiHeaders(['Authorization' => 'Bearer '.$admin->createToken('ledger-agency-a')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyA['public_id'],
+                'code' => '5200',
+                'name' => 'Agency A Customer Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerAPublicId = $this->requireStringJsonPath($ledgerA, 'data.public_id');
+
+        $ledgerB = $this->withApiHeaders(['Authorization' => 'Bearer '.$admin->createToken('ledger-agency-b')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyB['public_id'],
+                'code' => '5300',
+                'name' => 'Agency B Customer Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerBPublicId = $this->requireStringJsonPath($ledgerB, 'data.public_id');
+
+        $clientA = $this->createClient($agencyA['id'], Client::KYC_STATUS_VERIFIED);
+        $clientB = $this->createClient($agencyB['id'], Client::KYC_STATUS_VERIFIED);
+
+        $accountA = $this->withApiHeaders(['Authorization' => 'Bearer '.$admin->createToken('account-agency-a')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $clientA,
+                'agency_public_id' => $agencyA['public_id'],
+                'ledger_account_public_id' => $ledgerAPublicId,
+                'account_number' => 'CA-4101',
+                'opened_on' => now()->toDateString(),
+            ]);
+        $accountAPublicId = $this->requireStringJsonPath($accountA, 'data.public_id');
+
+        $accountB = $this->withApiHeaders(['Authorization' => 'Bearer '.$admin->createToken('account-agency-b')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $clientB,
+                'agency_public_id' => $agencyB['public_id'],
+                'ledger_account_public_id' => $ledgerBPublicId,
+                'account_number' => 'CA-4102',
+                'opened_on' => now()->toDateString(),
+            ]);
+        $accountBPublicId = $this->requireStringJsonPath($accountB, 'data.public_id');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($agencyUser)
+            ->getJson('/api/v1/customer-accounts');
+
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('data.customer_accounts.0.public_id', $accountAPublicId);
+        $response->assertJsonMissing(['public_id' => $accountBPublicId]);
+    }
+
+    public function test_platform_admin_can_create_journal_entry_and_line(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-04');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-ledger')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '4000',
+                'name' => 'Suspense',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $entry = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-entry')->plainTextToken])
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-1001',
+                'business_date' => now()->toDateString(),
+                'agency_public_id' => $agency['public_id'],
+                'description' => 'Initial journal entry',
+            ]);
+
+        $this->assertJsonSuccess($entry, 201);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+        $entry->assertJsonPath('data.reference', 'JE-1001');
+
+        $line = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-line')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 2500,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+                'line_memo' => 'Opening debit',
+            ]);
+
+        $this->assertJsonSuccess($line, 201);
+        $line->assertJsonPath('data.journal_entry_public_id', $entryPublicId);
+        $line->assertJsonPath('data.ledger_account_public_id', $ledgerPublicId);
+        $line->assertJsonPath('data.debit_minor', 2500);
+
+        $creditLine = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-line-credit')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'credit_minor' => 2500,
+                'debit_minor' => 0,
+                'currency' => 'XAF',
+                'line_memo' => 'Opening credit',
+            ]);
+
+        $this->assertJsonSuccess($creditLine, 201);
+
+        $submit = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-submit')->plainTextToken])
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/submit');
+
+        $this->assertJsonSuccess($submit);
+        $submit->assertJsonPath('data.status', JournalEntry::STATUS_PENDING_REVIEW);
+
+        $reversal = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-reverse')->plainTextToken])
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/reverse');
+
+        $this->assertJsonSuccess($reversal, 201);
+        $reversal->assertJsonPath('data.reversal_of_public_id', $entryPublicId);
+    }
+
+    public function test_journal_entries_cannot_forge_final_status_on_create(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-16');
+
+        $entry = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-entry-forged')->plainTextToken])
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-3001',
+                'business_date' => now()->toDateString(),
+                'posted_at' => now()->toDateTimeString(),
+                'agency_public_id' => $agency['public_id'],
+                'status' => JournalEntry::STATUS_POSTED,
+            ]);
+
+        $entry->assertStatus(422);
+        $entry->assertJsonValidationErrors(['status', 'posted_at']);
+    }
+
+    public function test_journal_lines_cannot_mutate_after_submit(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-17');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-ledger')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '4300',
+                'name' => 'Mutability Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $entry = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-entry')->plainTextToken])
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-3002',
+                'business_date' => now()->toDateString(),
+                'agency_public_id' => $agency['public_id'],
+            ]);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+
+        $debitLine = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-debit')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 1000,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+        $debitLinePublicId = $this->requireStringJsonPath($debitLine, 'data.public_id');
+
+        $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-credit')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 0,
+                'credit_minor' => 1000,
+                'currency' => 'XAF',
+            ]);
+
+        $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-submit')->plainTextToken])
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/submit')
+            ->assertStatus(200);
+
+        $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-add')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 1,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ])
+            ->assertStatus(422);
+
+        $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-delete')->plainTextToken])
+            ->deleteJson('/api/v1/journal-lines/'.$debitLinePublicId)
+            ->assertStatus(422);
+    }
+
+    public function test_account_hold_can_be_released_once(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-08');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-hold-release')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '5000',
+                'name' => 'Hold Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $client = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $account = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account-hold-release')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledgerPublicId,
+                'account_number' => 'CA-3001',
+                'opened_on' => now()->toDateString(),
+                'status' => 'active',
+            ]);
+        $customerAccountPublicId = $this->requireStringJsonPath($account, 'data.public_id');
+
+        $hold = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-hold-create')->plainTextToken])
+            ->postJson('/api/v1/account-holds', [
+                'customer_account_public_id' => $customerAccountPublicId,
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'reason_type' => 'kyc_review',
+            ]);
+        $holdPublicId = $this->requireStringJsonPath($hold, 'data.public_id');
+
+        $release = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-hold-release')->plainTextToken])
+            ->postJson('/api/v1/account-holds/'.$holdPublicId.'/release', [
+                'reference' => 'REL-1',
+            ]);
+
+        $this->assertJsonSuccess($release);
+        $release->assertJsonPath('data.status', 'released');
+
+        $secondRelease = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-hold-release-again')->plainTextToken])
+            ->postJson('/api/v1/account-holds/'.$holdPublicId.'/release', [
+                'reference' => 'REL-2',
+            ]);
+        $secondRelease->assertStatus(422);
+
+        $editReleased = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-hold-edit-released')->plainTextToken])
+            ->patchJson('/api/v1/account-holds/'.$holdPublicId, [
+                'reference' => 'EDIT-AFTER-RELEASE',
+            ]);
+        $editReleased->assertStatus(422);
+    }
+
+    public function test_holds_reject_closed_accounts_and_invalid_status(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-18');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-closed-hold')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '5400',
+                'name' => 'Closed Hold Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $client = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $account = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('closed-hold-account')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledgerPublicId,
+                'account_number' => 'CA-5001',
+                'opened_on' => now()->toDateString(),
+            ]);
+        $customerAccountPublicId = $this->requireStringJsonPath($account, 'data.public_id');
+
+        $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('close-hold-account')->plainTextToken])
+            ->patchJson('/api/v1/customer-accounts/'.$customerAccountPublicId, [
+                'status' => CustomerAccount::STATUS_CLOSED,
+                'closed_on' => now()->toDateString(),
+            ])
+            ->assertStatus(200);
+
+        $closedAccountHold = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('closed-account-hold')->plainTextToken])
+            ->postJson('/api/v1/account-holds', [
+                'customer_account_public_id' => $customerAccountPublicId,
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'reason_type' => 'kyc_review',
+            ]);
+        $closedAccountHold->assertStatus(422);
+        $closedAccountHold->assertJsonValidationErrors(['customer_account_public_id']);
+
+        $invalidStatusHold = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('invalid-status-hold')->plainTextToken])
+            ->postJson('/api/v1/account-holds', [
+                'customer_account_public_id' => $customerAccountPublicId,
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'reason_type' => 'kyc_review',
+                'status' => AccountHold::STATUS_RELEASED,
+            ]);
+        $invalidStatusHold->assertStatus(422);
+        $invalidStatusHold->assertJsonValidationErrors(['status']);
+    }
+
+    public function test_journal_lines_reject_cross_agency_accounts(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('ACCT-06');
+        $agencyB = $this->createAgency('ACCT-07');
+
+        $ledgerA = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-ledger-a')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyA['public_id'],
+                'code' => '4100',
+                'name' => 'Agency A Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $ledgerAPublicId = $this->requireStringJsonPath($ledgerA, 'data.public_id');
+
+        $ledgerB = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-ledger-b')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyB['public_id'],
+                'code' => '4200',
+                'name' => 'Agency B Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $ledgerBPublicId = $this->requireStringJsonPath($ledgerB, 'data.public_id');
+
+        $entry = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-entry-cross')->plainTextToken])
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-2001',
+                'business_date' => now()->toDateString(),
+                'agency_public_id' => $agencyA['public_id'],
+            ]);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+
+        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-line-cross')->plainTextToken])
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerBPublicId,
+                'debit_minor' => 500,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['ledger_account_public_id']);
+    }
+
+    private function createUserWithRole(string $role, ?string $agencyCode = null, ?string $agencyName = null): User
+    {
+        $agency = null;
+        if ($agencyCode !== null) {
+            $agency = DB::table('agencies')
+                ->where('code', $agencyCode)
+                ->first(['id', 'code', 'name']);
+
+            if ($agency === null) {
+                $agency = (object) $this->createAgency($agencyCode, $agencyName);
+            }
+        }
+
+        $user = User::factory()->createOne([
+            'status' => User::STATUS_ACTIVE,
+            'phone_verified_at' => now(),
+            'agency_id' => $agency->id ?? null,
+            'agency_code' => $agency->code ?? null,
+            'agency_name' => $agency->name ?? null,
+        ]);
+
+        $user->assignRole($role);
+
+        if ($agency !== null) {
+            DB::table('staff_agency_assignments')->insert([
+                'public_id' => (string) Str::ulid(),
+                'user_id' => $user->id,
+                'agency_id' => $agency->id,
+                'role_at_agency' => $role,
+                'starts_on' => now()->toDateString(),
+                'is_primary' => true,
+                'status' => 'active',
+            ]);
+        }
+
+        return $user;
+    }
+
+    /**
+     * @return array{id:int, code:string, name:string, public_id:string}
+     */
+    private function createAgency(string $code, ?string $name = null): array
+    {
+        $name ??= $code.' Agency';
+        $id = DB::table('agencies')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => $code,
+            'name' => $name,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $agency = DB::table('agencies')->where('id', $id)->first(['public_id']);
+
+        return [
+            'id' => $id,
+            'code' => $code,
+            'name' => $name,
+            'public_id' => is_object($agency) && is_string($agency->public_id) ? $agency->public_id : '',
+        ];
+    }
+
+    private function createClient(int $agencyId, string $kycStatus = 'draft'): string
+    {
+        $clientId = DB::table('clients')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'client_reference' => 'CLI-'.Str::ulid(),
+            'first_name' => 'Client',
+            'last_name' => 'Account',
+            'status' => 'active',
+            'kyc_status' => $kycStatus,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $client = DB::table('clients')->where('id', $clientId)->first(['public_id']);
+
+        return is_object($client) && is_string($client->public_id) ? $client->public_id : '';
+    }
+
+    private function requireStringJsonPath(mixed $response, string $path): string
+    {
+        $value = $response instanceof TestResponse ? $response->json($path) : null;
+        self::assertIsString($value);
+
+        return $value;
+    }
+}

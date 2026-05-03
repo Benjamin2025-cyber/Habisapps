@@ -79,6 +79,7 @@ API documentation is generated from Laravel routes, Form Requests, controller si
 
 - Docs UI: `http://localhost:8000/docs/api`
 - OpenAPI JSON: `http://localhost:8000/docs/api.json`
+- Module 3 architecture notes: `docs/domain/module-3-accounting-architecture.md`
 - Export command: `php artisan scramble:export`
 
 Scramble restricts docs to the `local` environment by default unless a `viewApiDocs` gate is explicitly defined.
