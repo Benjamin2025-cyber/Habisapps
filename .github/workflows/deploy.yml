@@ -10,33 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Sync repository to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_SSH_PORT }}
-          source: "."
-          target: /srv/habis-finance-api
-          strip_components: 0
-          rm: true
-          exclude: |
-            .git
-            .github
-            node_modules
-            vendor
-            storage/logs
-            storage/framework/cache
-            storage/framework/sessions
-            storage/framework/testing
-            storage/app/public
-            .env
-            .env.*
-
-      - name: Build and restart API container
+      - name: Pull latest code and rebuild on VPS
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -47,4 +21,5 @@ jobs:
           script: |
             set -e
             cd /srv/habis-finance-api
+            git pull --ff-only origin main
             docker compose up -d --build --remove-orphans
