@@ -10,6 +10,7 @@ jobs:
     env:
       CI_POSTGRES_DB: habis_finance_api_test
       CI_POSTGRES_USER: habis_finance_ci
+      CI_POSTGRES_PASSWORD: habis_finance_ci_password
 
     services:
       postgres:
@@ -17,7 +18,7 @@ jobs:
         env:
           POSTGRES_DB: ${{ env.CI_POSTGRES_DB }}
           POSTGRES_USER: ${{ env.CI_POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
         ports:
           - 5432:5432
         options: >-
@@ -55,7 +56,7 @@ jobs:
           DB_PORT: 5432
           DB_DATABASE: ${{ env.CI_POSTGRES_DB }}
           DB_USERNAME: ${{ env.CI_POSTGRES_USER }}
-          DB_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          DB_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
 
       - name: Run Pint
         run: vendor/bin/pint --test
@@ -72,7 +73,7 @@ jobs:
           DB_PORT: 5432
           DB_DATABASE: ${{ env.CI_POSTGRES_DB }}
           DB_USERNAME: ${{ env.CI_POSTGRES_USER }}
-          DB_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          DB_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
 
       - name: Run test suite
         run: php artisan test
@@ -83,7 +84,7 @@ jobs:
           DB_PORT: 5432
           DB_DATABASE: ${{ env.CI_POSTGRES_DB }}
           DB_USERNAME: ${{ env.CI_POSTGRES_USER }}
-          DB_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          DB_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
 
       - name: Run production readiness checker
         run: |
@@ -92,7 +93,7 @@ jobs:
         env:
           APP_ENV: production
           APP_DEBUG: false
-          CACHE_STORE: redis
-          SESSION_DRIVER: redis
-          QUEUE_CONNECTION: redis
+          CACHE_STORE: database
+          SESSION_DRIVER: database
+          QUEUE_CONNECTION: database
           MONEY_DEFAULT_CURRENCY: XAF

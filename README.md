@@ -47,6 +47,30 @@ vendor/bin/phpstan analyze  # Static analysis
 vendor/bin/pint --test      # Code style gate
 ```
 
+## Docker Deployment
+
+The repository now includes a Docker-based deployment path for the API.
+
+### Local build
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+### GitHub auto-deploy
+
+The workflow in `.github/workflows/deploy.yml` expects these GitHub secrets:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_SSH_KEY`
+- `VPS_SSH_PORT`
+
+On the VPS, place the production `.env` file at `/srv/habis-finance-api/.env` before the first deployment. The workflow copies the repository contents to `/srv/habis-finance-api` and runs `docker compose up -d --build --remove-orphans`.
+
+The API container listens on port `8000` by default, and `APP_PORT` can be changed in the server `.env` if you want a different host port.
+
 ## API Documentation
 
 API documentation is generated from Laravel routes, Form Requests, controller signatures, and response types using Dedoc Scramble.
