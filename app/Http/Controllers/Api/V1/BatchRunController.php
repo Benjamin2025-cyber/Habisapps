@@ -194,26 +194,19 @@ final class BatchRunController extends BaseController
         ])->validate();
 
         $requestedStatus = $validated['status'];
-        if ($batchRun->status !== $requestedStatus) {
-            if ($this->isTerminalStatus($batchRun->status)) {
-                return $this->respondUnprocessable('Completed batch runs cannot be changed.');
-            }
+        if ($batchRun->status !== $requestedStatus && $this->isTerminalStatus($batchRun->status)) {
+            return $this->respondUnprocessable('Completed batch runs cannot be changed.');
+        }
 
-            $allowedTransitions = [
-                BatchRun::STATUS_PENDING => [BatchRun::STATUS_RUNNING, BatchRun::STATUS_FAILED],
-                BatchRun::STATUS_RUNNING => [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED],
-                BatchRun::STATUS_FAILED => [BatchRun::STATUS_PENDING, BatchRun::STATUS_RUNNING],
-                BatchRun::STATUS_SUCCEEDED => [],
-            ];
+        $allowedTransitions = [
+            BatchRun::STATUS_PENDING => [BatchRun::STATUS_RUNNING, BatchRun::STATUS_FAILED],
+            BatchRun::STATUS_RUNNING => [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED],
+            BatchRun::STATUS_FAILED => [BatchRun::STATUS_PENDING, BatchRun::STATUS_RUNNING],
+            BatchRun::STATUS_SUCCEEDED => [],
+        ];
 
-            if (! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
-                return $this->respondUnprocessable('Invalid batch run status transition.');
-            }
-
-            return $this->respondSuccess(
-                BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator'])),
-                'Batch run status updated successfully'
-            );
+        if ($batchRun->status !== $requestedStatus && ! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
+            return $this->respondUnprocessable('Invalid batch run status transition.');
         }
 
         $updates = [

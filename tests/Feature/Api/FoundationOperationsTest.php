@@ -464,7 +464,7 @@ final class FoundationOperationsTest extends TestCase
             ->getJson('/api/v1/documents/'.$documentPublicId);
 
         $viewResponse->assertOk();
-        $viewResponse->assertJsonPath('data.document.status', Document::STATUS_ARCHIVED);
+        $viewResponse->assertJsonPath('data.status', Document::STATUS_ARCHIVED);
     }
 
     public function test_audit_logs_capture_media_actions(): void

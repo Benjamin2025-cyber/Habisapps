@@ -117,8 +117,8 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($response, 201);
-        $newAssignmentPublicId = $this->requireStringJsonPath($response, 'data.assignment.public_id');
-        $response->assertJsonPath('data.assignment.agency_code', $agencyB['code']);
+        $newAssignmentPublicId = $this->requireStringJsonPath($response, 'data.public_id');
+        $response->assertJsonPath('data.agency_code', $agencyB['code']);
 
         self::assertSame('ended', $existingAssignment->refresh()->status);
         $this->assertDatabaseHas('staff_agency_assignments', [
