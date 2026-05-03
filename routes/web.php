@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Dedoc\Scramble\Scramble;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 
@@ -19,7 +20,7 @@ Route::get('/docs/api', function () {
         'spec' => $spec,
         'config' => Scramble::getGeneratorConfig(Scramble::DEFAULT_API),
     ]);
-})->name('scramble.docs.ui');
+})->withoutMiddleware([StartSession::class])->name('scramble.docs.ui');
 
 Route::get('/docs/api.json', function () {
     $specPath = public_path('docs/api.json');

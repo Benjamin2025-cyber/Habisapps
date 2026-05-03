@@ -24,4 +24,4 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose up -d --build --remove-orphans
-            docker compose exec -T api php artisan scramble:export public/docs/api.json
+            docker compose exec -T api sh -lc 'mkdir -p public/docs && php artisan scramble:export --path=public/docs/api.json'
