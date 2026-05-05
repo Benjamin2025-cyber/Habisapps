@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\ClientIdentityDocument;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class UpdateClientIdentityDocumentRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.identity_documents.update') === true;
+        $identityDocument = $this->route('identityDocument');
+
+        return $identityDocument instanceof ClientIdentityDocument
+            && $this->user()?->can('update', $identityDocument) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

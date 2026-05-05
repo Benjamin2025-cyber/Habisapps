@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\AccountHold;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,7 +15,11 @@ final class ReleaseAccountHoldRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        $accountHold = $this->route('accountHold');
+
+        return $user instanceof User
+            && $accountHold instanceof AccountHold
+            && $user->can('release', $accountHold);
     }
 
     /**

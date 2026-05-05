@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\JournalEntries\CreateJournalEntryReversal;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreJournalEntryRequest;
 use App\Http\Requests\UpdateJournalEntryRequest;
@@ -16,7 +17,6 @@ use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class JournalEntryController extends BaseController
@@ -28,7 +28,8 @@ final class JournalEntryController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{journal_entries: array<int, \App\Http\Resources\JournalEntryResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request): JournalEntryCollection|JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('viewAny', JournalEntry::class)) {
             return $this->respondForbidden();
         }
 
@@ -72,7 +73,8 @@ final class JournalEntryController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{journal_entry: \App\Http\Resources\JournalEntryResource}, errors: null, meta: null}')]
     public function show(Request $request, JournalEntry $journalEntry): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $journalEntry)) {
             return $this->respondForbidden();
         }
 
@@ -98,7 +100,8 @@ final class JournalEntryController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{journal_entry: \App\Http\Resources\JournalEntryResource}, errors: null, meta: null}')]
     public function submit(Request $request, JournalEntry $journalEntry): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('submit', $journalEntry)) {
             return $this->respondForbidden();
         }
 
@@ -124,31 +127,14 @@ final class JournalEntryController extends BaseController
     }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{journal_entry: \App\Http\Resources\JournalEntryResource}, errors: null, meta: null}')]
-    public function reverse(Request $request, JournalEntry $journalEntry): JsonResponse
+    public function reverse(Request $request, JournalEntry $journalEntry, CreateJournalEntryReversal $createJournalEntryReversal): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('reverse', $journalEntry)) {
             return $this->respondForbidden();
         }
 
-        $reversal = DB::transaction(function () use ($journalEntry, $request): JournalEntry {
-            return JournalEntry::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'reference' => $journalEntry->reference.'-REV-'.Str::upper(Str::random(6)),
-                'business_date' => $journalEntry->business_date,
-                'posted_at' => null,
-                'agency_id' => $journalEntry->agency_id,
-                'source_module' => $journalEntry->source_module,
-                'source_type' => $journalEntry->source_type,
-                'source_public_id' => $journalEntry->source_public_id,
-                'status' => JournalEntry::STATUS_DRAFT,
-                'description' => 'Reversal of '.$journalEntry->reference,
-                'created_by_user_id' => $request->user()->id,
-                'posted_by_user_id' => null,
-                'reversed_by_user_id' => null,
-                'reversal_of_journal_entry_id' => $journalEntry->id,
-                'idempotency_key' => null,
-            ]);
-        });
+        $reversal = $createJournalEntryReversal->execute($actor, $journalEntry);
 
         $this->securityAudit->record('journal_entry.reversal_created', actor: $request->user(), subject: $reversal, properties: [
             'reversal_of_reference' => $journalEntry->reference,
@@ -159,7 +145,8 @@ final class JournalEntryController extends BaseController
 
     public function destroy(Request $request, JournalEntry $journalEntry): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('delete', $journalEntry)) {
             return $this->respondForbidden();
         }
 

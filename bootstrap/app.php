@@ -43,6 +43,27 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontReportDuplicates();
+
+        $exceptions->context(function (): array {
+            if (! app()->bound('request')) {
+                return [
+                    'app_env' => app()->environment(),
+                ];
+            }
+
+            $request = request();
+            $requestId = $request->headers->get('X-Request-ID');
+            $apiVersion = $request->headers->get('X-API-Version');
+
+            return array_filter([
+                'app_env' => app()->environment(),
+                'api_version' => is_string($apiVersion) && $apiVersion !== '' ? $apiVersion : null,
+                'request_id' => is_string($requestId) && preg_match('/^[A-Za-z0-9._:-]{1,128}$/', $requestId) === 1 ? $requestId : null,
+                'route_name' => $request->route()?->getName(),
+            ], static fn (mixed $value): bool => $value !== null);
+        });
+
         $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e): bool {
             return $request->is('api/*') || $request->expectsJson();
         });

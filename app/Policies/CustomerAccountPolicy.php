@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
 use App\Models\CustomerAccount;
@@ -9,7 +11,7 @@ final class CustomerAccountPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasRole('platform-admin');
+        return $user->hasRole('platform-admin') || $user->can('customer.accounts.view');
     }
 
     public function view(User $user, CustomerAccount $customerAccount): bool

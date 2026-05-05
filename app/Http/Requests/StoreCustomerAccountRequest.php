@@ -16,7 +16,7 @@ final class StoreCustomerAccountRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        return $user instanceof User && $user->can('create', CustomerAccount::class);
     }
 
     /**

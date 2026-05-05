@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\AccountHold;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -15,7 +16,7 @@ final class StoreAccountHoldRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        return $user instanceof User && $user->can('create', AccountHold::class);
     }
 
     /**

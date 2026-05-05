@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
 use App\Models\AccountHold;
@@ -28,6 +30,11 @@ final class AccountHoldPolicy
     }
 
     public function delete(User $user, AccountHold $accountHold): bool
+    {
+        return $user->hasRole('platform-admin');
+    }
+
+    public function release(User $user, AccountHold $accountHold): bool
     {
         return $user->hasRole('platform-admin');
     }

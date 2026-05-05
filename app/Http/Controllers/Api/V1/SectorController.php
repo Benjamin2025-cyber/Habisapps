@@ -26,7 +26,8 @@ final class SectorController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{sectors: array<int, \App\Http\Resources\SectorResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request): SectorCollection|JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('viewAny', Sector::class)) {
             return $this->respondForbidden();
         }
 
@@ -53,7 +54,8 @@ final class SectorController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{sector: \App\Http\Resources\SectorResource}, errors: null, meta: null}')]
     public function show(Request $request, Sector $sector): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $sector)) {
             return $this->respondForbidden();
         }
 
@@ -74,7 +76,8 @@ final class SectorController extends BaseController
 
     public function destroy(Request $request, Sector $sector): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('delete', $sector)) {
             return $this->respondForbidden();
         }
 

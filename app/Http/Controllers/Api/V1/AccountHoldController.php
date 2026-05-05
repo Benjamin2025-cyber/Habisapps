@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Accounting\ReleaseAccountHold;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\ReleaseAccountHoldRequest;
 use App\Http\Requests\StoreAccountHoldRequest;
@@ -23,12 +24,14 @@ final class AccountHoldController extends BaseController
 {
     public function __construct(
         private readonly SecurityAudit $securityAudit,
+        private readonly ReleaseAccountHold $releaseAccountHold,
     ) {}
 
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{account_holds: array<int, \App\Http\Resources\AccountHoldResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request): AccountHoldCollection|JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('viewAny', AccountHold::class)) {
             return $this->respondForbidden();
         }
 
@@ -68,7 +71,8 @@ final class AccountHoldController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{account_hold: \App\Http\Resources\AccountHoldResource}, errors: null, meta: null}')]
     public function show(Request $request, AccountHold $accountHold): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $accountHold)) {
             return $this->respondForbidden();
         }
 
@@ -94,25 +98,26 @@ final class AccountHoldController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{account_hold: \App\Http\Resources\AccountHoldResource}, errors: null, meta: null}')]
     public function release(ReleaseAccountHoldRequest $request, AccountHold $accountHold): JsonResponse
     {
-        if ($accountHold->status !== AccountHold::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['account_hold' => ['Only active holds can be released.']]);
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
         }
 
-        $accountHold->update([
-            'status' => AccountHold::STATUS_RELEASED,
-            'released_at' => now(),
-            'released_by_user_id' => $request->user()?->id,
-            'reference' => $request->input('reference', $accountHold->reference),
-        ]);
+        $accountHold = $this->releaseAccountHold->handle(
+            $accountHold,
+            $actor,
+            is_string($request->input('reference')) ? $request->string('reference')->toString() : null,
+        );
 
-        $this->securityAudit->record('account_hold.released', actor: $request->user(), subject: $accountHold, request: $request);
+        $this->securityAudit->record('account_hold.released', actor: $actor, subject: $accountHold, request: $request);
 
         return $this->respondSuccess(AccountHoldResource::make($accountHold->loadMissing('customerAccount')), 'Account hold released successfully');
     }
 
     public function destroy(Request $request, AccountHold $accountHold): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('delete', $accountHold)) {
             return $this->respondForbidden();
         }
 

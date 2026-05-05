@@ -30,7 +30,7 @@ final class LedgerAccountController extends BaseController
     public function index(Request $request): LedgerAccountCollection|JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || (! $actor->hasRole('platform-admin') && ! $actor->can('ledger.accounts.view'))) {
+        if (! $actor instanceof User || $actor->cannot('viewAny', LedgerAccount::class)) {
             return $this->respondForbidden();
         }
 
@@ -111,7 +111,7 @@ final class LedgerAccountController extends BaseController
     public function show(Request $request, LedgerAccount $ledgerAccount): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || (! $actor->hasRole('platform-admin') && ! $actor->can('ledger.accounts.view'))) {
+        if (! $actor instanceof User || $actor->cannot('view', $ledgerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -161,7 +161,8 @@ final class LedgerAccountController extends BaseController
 
     public function destroy(Request $request, LedgerAccount $ledgerAccount): JsonResponse
     {
-        if ($request->user() instanceof User && ($request->user()->hasRole('platform-admin') || $request->user()->can('ledger.accounts.archive'))) {
+        $actor = $request->user();
+        if ($actor instanceof User && $actor->can('delete', $ledgerAccount)) {
             $ledgerAccount->update(['status' => LedgerAccount::STATUS_ARCHIVED]);
 
             return $this->respondSuccess(message: 'Ledger account archived successfully');

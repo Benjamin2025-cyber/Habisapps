@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
+use App\Models\Client;
 use App\Models\ClientGuarantor;
 use App\Models\User;
 use App\Support\Staff\StaffAgencyScope;
@@ -23,6 +24,11 @@ final class ClientGuarantorPolicy
     public function create(User $user): bool
     {
         return $user->can('crm.guarantors.create');
+    }
+
+    public function createForClient(User $user, Client $client): bool
+    {
+        return $user->can('crm.guarantors.create') && $this->canManageInScope($user, $client->agency_id);
     }
 
     public function update(User $user, ClientGuarantor $guarantor): bool

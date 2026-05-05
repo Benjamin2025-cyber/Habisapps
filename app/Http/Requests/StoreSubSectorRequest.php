@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\SubSector;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,7 +15,7 @@ final class StoreSubSectorRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        return $user instanceof User && $user->can('create', SubSector::class);
     }
 
     /**

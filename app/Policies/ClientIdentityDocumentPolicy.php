@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
+use App\Models\Client;
 use App\Models\ClientIdentityDocument;
 use App\Models\User;
 use App\Support\Staff\StaffAgencyScope;
@@ -23,6 +24,11 @@ final class ClientIdentityDocumentPolicy
     public function create(User $user): bool
     {
         return $user->can('crm.identity_documents.create');
+    }
+
+    public function createForClient(User $user, Client $client): bool
+    {
+        return $user->can('crm.identity_documents.create') && $this->canManageInScope($user, $client->agency_id);
     }
 
     public function update(User $user, ClientIdentityDocument $document): bool

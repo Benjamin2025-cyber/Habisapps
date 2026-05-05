@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\ClientIdentityDocument;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class StoreClientIdentityDocumentRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.identity_documents.create') === true;
+        return $this->user()?->can('create', ClientIdentityDocument::class) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

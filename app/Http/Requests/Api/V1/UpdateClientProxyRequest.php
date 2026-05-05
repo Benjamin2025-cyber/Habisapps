@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\ClientProxy;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class UpdateClientProxyRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.proxies.update') === true;
+        $proxy = $this->route('proxy');
+
+        return $proxy instanceof ClientProxy
+            && $this->user()?->can('update', $proxy) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

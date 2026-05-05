@@ -29,7 +29,8 @@ final class JournalLineController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{journal_lines: array<int, \App\Http\Resources\JournalLineResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request): JournalLineCollection|JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('viewAny', JournalLine::class)) {
             return $this->respondForbidden();
         }
 
@@ -100,7 +101,8 @@ final class JournalLineController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{journal_line: \App\Http\Resources\JournalLineResource}, errors: null, meta: null}')]
     public function show(Request $request, JournalLine $journalLine): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $journalLine)) {
             return $this->respondForbidden();
         }
 
@@ -133,7 +135,8 @@ final class JournalLineController extends BaseController
 
     public function destroy(Request $request, JournalLine $journalLine): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('delete', $journalLine)) {
             return $this->respondForbidden();
         }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Crm\CreateClient;
+use App\Application\Crm\UpdateClientKycStatus;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreClientRequest;
 use App\Http\Requests\Api\V1\UpdateClientKycStatusRequest;
@@ -25,7 +27,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 final class ClientController extends BaseController
@@ -34,6 +35,8 @@ final class ClientController extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly ReferenceNumberGenerator $referenceNumberGenerator,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly CreateClient $createClient,
+        private readonly UpdateClientKycStatus $updateClientKycStatus,
     ) {}
 
     /**
@@ -52,7 +55,7 @@ final class ClientController extends BaseController
     public function index(Request $request): ClientCollection|JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasPermissionTo('crm.clients.view')) {
+        if (! $actor instanceof User || $actor->cannot('viewAny', Client::class)) {
             return $this->respondForbidden();
         }
 
@@ -122,37 +125,29 @@ final class ClientController extends BaseController
             return $this->respondUnprocessable(errors: $exception->errors());
         }
 
-        $client = DB::transaction(function () use ($request, $agency, $prospectorId, $collectionAgentId): Client {
-            $clientReference = $this->referenceNumberGenerator->reserve('client');
-
-            return Client::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'agency_id' => $agency->id,
-                'prospector_id' => $prospectorId,
-                'collection_agent_id' => $collectionAgentId,
-                'client_reference' => $clientReference,
-                'first_name' => $request->string('first_name')->toString(),
-                'last_name' => $request->string('last_name')->toString(),
-                'middle_name' => $request->input('middle_name'),
-                'date_of_birth' => $request->input('date_of_birth'),
-                'place_of_birth' => $request->input('place_of_birth'),
-                'gender' => $request->input('gender'),
-                'phone_number' => $request->input('phone_number'),
-                'email' => $request->input('email'),
-                'address_line_1' => $request->input('address_line_1'),
-                'address_line_2' => $request->input('address_line_2'),
-                'city' => $request->input('city'),
-                'region' => $request->input('region'),
-                'occupation' => $request->input('occupation'),
-                'employer_name' => $request->input('employer_name'),
-                'collection_type' => $request->input('collection_type'),
-                'collection_frequency' => $request->input('collection_frequency'),
-                'collection_target_amount' => $request->input('collection_target_amount'),
-                'status' => $request->input('status', Client::STATUS_ACTIVE),
-                'kyc_status' => Client::KYC_STATUS_DRAFT,
-                'onboarded_on' => $request->input('onboarded_on'),
-            ]);
-        });
+        $client = $this->createClient->execute($agency->id, [
+            'prospector_id' => $prospectorId,
+            'collection_agent_id' => $collectionAgentId,
+            'first_name' => $request->string('first_name')->toString(),
+            'last_name' => $request->string('last_name')->toString(),
+            'middle_name' => $request->input('middle_name'),
+            'date_of_birth' => $request->input('date_of_birth'),
+            'place_of_birth' => $request->input('place_of_birth'),
+            'gender' => $request->input('gender'),
+            'phone_number' => $request->input('phone_number'),
+            'email' => $request->input('email'),
+            'address_line_1' => $request->input('address_line_1'),
+            'address_line_2' => $request->input('address_line_2'),
+            'city' => $request->input('city'),
+            'region' => $request->input('region'),
+            'occupation' => $request->input('occupation'),
+            'employer_name' => $request->input('employer_name'),
+            'collection_type' => $request->input('collection_type'),
+            'collection_frequency' => $request->input('collection_frequency'),
+            'collection_target_amount' => $request->input('collection_target_amount'),
+            'status' => $request->input('status', Client::STATUS_ACTIVE),
+            'onboarded_on' => $request->input('onboarded_on'),
+        ], $this->referenceNumberGenerator);
 
         $this->securityAudit->record('crm.client.created', actor: $actor, subject: $client, properties: [
             'agency_public_id' => $agency->public_id,
@@ -179,7 +174,7 @@ final class ClientController extends BaseController
     public function show(Request $request, Client $client): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasPermissionTo('crm.clients.view') || ! $this->canReadClient($actor, $client)) {
+        if (! $actor instanceof User || $actor->cannot('view', $client)) {
             return $this->respondForbidden();
         }
 
@@ -208,7 +203,7 @@ final class ClientController extends BaseController
     public function update(UpdateClientRequest $request, Client $client): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasPermissionTo('crm.clients.update') || ! $this->canManageClient($actor, $client)) {
+        if (! $actor instanceof User || $actor->cannot('update', $client)) {
             return $this->respondForbidden();
         }
 
@@ -312,10 +307,6 @@ final class ClientController extends BaseController
             );
         }
 
-        if (! $this->isKycTransitionAllowed($client->kyc_status, $transition)) {
-            return $this->respondUnprocessable('Invalid KYC transition.');
-        }
-
         if ($transition === Client::KYC_STATUS_VERIFIED
             && ! $this->hasVerifiedIdentityEvidence($client, $allowExpiredIdentityOverride)) {
             return $this->respondUnprocessable('Client must have at least one active verified identity document before KYC verification.');
@@ -325,49 +316,13 @@ final class ClientController extends BaseController
         $reason = $request->input('reason');
         $comment = $request->input('comment');
 
-        DB::transaction(function () use ($client, $transition, $actor, $reason, $comment, $previousStatus): void {
-            $update = [
-                'kyc_status' => $transition,
-            ];
-
-            if ($transition === Client::KYC_STATUS_PENDING_REVIEW) {
-                $update['kyc_submitted_at'] = now();
-            }
-
-            if ($transition === Client::KYC_STATUS_VERIFIED) {
-                $update['kyc_verified_at'] = now();
-                $update['kyc_verified_by_user_id'] = $actor->id;
-                $update['kyc_rejected_at'] = null;
-                $update['kyc_rejection_reason'] = null;
-            }
-
-            if ($transition === Client::KYC_STATUS_REJECTED) {
-                $update['kyc_rejected_at'] = now();
-                $update['kyc_rejection_reason'] = is_string($reason) ? $reason : null;
-            }
-
-            if ($transition === Client::KYC_STATUS_SUSPENDED) {
-                $update['kyc_suspended_at'] = now();
-            }
-
-            if ($transition === Client::KYC_STATUS_ARCHIVED) {
-                $update['kyc_archived_at'] = now();
-                $update['status'] = Client::STATUS_ARCHIVED;
-            }
-
-            $client->update($update);
-
-            ClientKycReview::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'client_id' => $client->id,
-                'agency_id' => $client->agency_id,
-                'previous_kyc_status' => $previousStatus,
-                'new_kyc_status' => $transition,
-                'reason' => is_string($reason) ? $reason : null,
-                'comment' => is_string($comment) ? $comment : null,
-                'acted_by_user_id' => $actor->id,
-            ]);
-        });
+        $client = $this->updateClientKycStatus->handle(
+            $client,
+            $actor,
+            $transition,
+            is_string($reason) ? $reason : null,
+            is_string($comment) ? $comment : null,
+        );
 
         $this->securityAudit->record('crm.client.kyc_status_changed', actor: $actor, subject: $client, properties: [
             'previous_kyc_status' => $previousStatus,
@@ -375,7 +330,7 @@ final class ClientController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent'])),
             'Client KYC status updated successfully'
         );
     }
@@ -394,7 +349,7 @@ final class ClientController extends BaseController
     public function kycReviews(Request $request, Client $client): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasPermissionTo('crm.reviews.view') || ! $this->canReadClient($actor, $client)) {
+        if (! $actor instanceof User || $actor->cannot('viewKycReviews', $client)) {
             return $this->respondForbidden();
         }
 
@@ -514,33 +469,13 @@ final class ClientController extends BaseController
     private function canApplyKycAction(User $actor, Client $client, string $action): bool
     {
         return match ($action) {
-            'submit' => $actor->hasPermissionTo('crm.kyc.submit') && $this->canManageClient($actor, $client),
-            'verify' => $actor->hasPermissionTo('crm.kyc.verify') && $this->canReviewClient($actor, $client),
-            'reject' => $actor->hasPermissionTo('crm.kyc.reject') && $this->canReviewClient($actor, $client),
-            'suspend' => $actor->hasPermissionTo('crm.kyc.review') && $this->canReviewClient($actor, $client),
-            'archive' => $actor->hasPermissionTo('crm.clients.archive') && $this->canManageClient($actor, $client),
+            'submit' => $actor->can('submitKyc', $client),
+            'verify' => $actor->can('verifyKyc', $client),
+            'reject' => $actor->can('rejectKyc', $client),
+            'suspend' => $actor->can('suspendKyc', $client),
+            'archive' => $actor->can('archive', $client),
             default => false,
         };
-    }
-
-    private function canReadClient(User $actor, Client $client): bool
-    {
-        return $this->hasInstitutionReadScope($actor) || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function canReviewClient(User $actor, Client $client): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.review')
-            || $actor->hasPermissionTo('crm.scope.institution.manage')
-            || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function canManageClient(User $actor, Client $client): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.manage')
-            || $actor->currentAgencyId() === $client->agency_id;
     }
 
     private function hasInstitutionReadScope(User $actor): bool
@@ -561,37 +496,6 @@ final class ClientController extends BaseController
             'archive' => Client::KYC_STATUS_ARCHIVED,
             default => null,
         };
-    }
-
-    private function isKycTransitionAllowed(string $current, string $target): bool
-    {
-        $allowed = [
-            Client::KYC_STATUS_DRAFT => [
-                Client::KYC_STATUS_PENDING_REVIEW,
-                Client::KYC_STATUS_ARCHIVED,
-            ],
-            Client::KYC_STATUS_PENDING_REVIEW => [
-                Client::KYC_STATUS_VERIFIED,
-                Client::KYC_STATUS_REJECTED,
-                Client::KYC_STATUS_ARCHIVED,
-                Client::KYC_STATUS_SUSPENDED,
-            ],
-            Client::KYC_STATUS_REJECTED => [
-                Client::KYC_STATUS_PENDING_REVIEW,
-                Client::KYC_STATUS_ARCHIVED,
-            ],
-            Client::KYC_STATUS_VERIFIED => [
-                Client::KYC_STATUS_SUSPENDED,
-                Client::KYC_STATUS_ARCHIVED,
-            ],
-            Client::KYC_STATUS_SUSPENDED => [
-                Client::KYC_STATUS_PENDING_REVIEW,
-                Client::KYC_STATUS_ARCHIVED,
-            ],
-            Client::KYC_STATUS_ARCHIVED => [],
-        ];
-
-        return in_array($target, $allowed[$current] ?? [], true);
     }
 
     private function hasVerifiedIdentityEvidence(Client $client, bool $forceOverrideExpiredIdentity): bool

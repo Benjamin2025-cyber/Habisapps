@@ -16,7 +16,11 @@ final class UpdateCustomerAccountRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        $customerAccount = $this->route('customerAccount');
+
+        return $user instanceof User
+            && $customerAccount instanceof CustomerAccount
+            && $user->can('update', $customerAccount);
     }
 
     /**

@@ -42,8 +42,8 @@ final class ClientIdentityDocumentController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.identity_documents.view')
-            || ! $this->canReadClient($actor, $client)) {
+            || $actor->cannot('viewAny', ClientIdentityDocument::class)
+            || $actor->cannot('view', $client)) {
             return $this->respondForbidden();
         }
 
@@ -74,8 +74,7 @@ final class ClientIdentityDocumentController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.identity_documents.create')
-            || ! $this->canManageClient($actor, $client)) {
+            || $actor->cannot('createForClient', [ClientIdentityDocument::class, $client])) {
             return $this->respondForbidden();
         }
 
@@ -150,8 +149,8 @@ final class ClientIdentityDocumentController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.identity_documents.view')
-            || ! $this->canReadClient($actor, $client)) {
+            || $actor->cannot('view', $client)
+            || $actor->cannot('view', $identityDocument)) {
             return $this->respondForbidden();
         }
 
@@ -179,8 +178,7 @@ final class ClientIdentityDocumentController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.identity_documents.update')
-            || ! $this->canManageClient($actor, $client)) {
+            || $actor->cannot('update', $identityDocument)) {
             return $this->respondForbidden();
         }
 
@@ -285,7 +283,7 @@ final class ClientIdentityDocumentController extends BaseController
         }
 
         $action = $request->string('action')->toString();
-        if (! $this->canApplyStatusAction($actor, $client, $action)) {
+        if (! $this->canApplyStatusAction($actor, $identityDocument, $action)) {
             return $this->respondForbidden();
         }
 
@@ -390,43 +388,15 @@ final class ClientIdentityDocumentController extends BaseController
         return false;
     }
 
-    private function canApplyStatusAction(User $actor, Client $client, string $action): bool
+    private function canApplyStatusAction(User $actor, ClientIdentityDocument $identityDocument, string $action): bool
     {
         return match ($action) {
-            'submit' => $actor->hasPermissionTo('crm.identity_documents.update') && $this->canManageClient($actor, $client),
-            'verify' => $actor->hasPermissionTo('crm.identity_documents.verify') && $this->canReviewClient($actor, $client),
-            'reject' => $actor->hasPermissionTo('crm.identity_documents.reject') && $this->canReviewClient($actor, $client),
-            'archive' => $actor->hasPermissionTo('crm.identity_documents.archive') && $this->canManageClient($actor, $client),
+            'submit' => $actor->can('update', $identityDocument),
+            'verify' => $actor->can('verify', $identityDocument),
+            'reject' => $actor->can('reject', $identityDocument),
+            'archive' => $actor->can('archive', $identityDocument),
             default => false,
         };
-    }
-
-    private function canReadClient(User $actor, Client $client): bool
-    {
-        return $this->hasInstitutionReadScope($actor) || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function canReviewClient(User $actor, Client $client): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.review')
-            || $actor->hasPermissionTo('crm.scope.institution.manage')
-            || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function canManageClient(User $actor, Client $client): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.manage')
-            || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function hasInstitutionReadScope(User $actor): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.read')
-            || $actor->hasPermissionTo('crm.scope.institution.review')
-            || $actor->hasPermissionTo('crm.scope.institution.manage');
     }
 
     private function resolveLinkableDocument(Client $client, string $documentPublicId, ?int $currentIdentityDocumentId): ?Document

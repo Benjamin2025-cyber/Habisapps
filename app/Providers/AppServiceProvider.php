@@ -4,14 +4,31 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\Agency;
+use App\Models\BatchProcedure;
+use App\Models\BatchRun;
+use App\Models\Document;
+use App\Models\StaffAgencyAssignment;
+use App\Models\User;
+use App\Policies\AgencyPolicy;
+use App\Policies\AuditEventPolicy;
+use App\Policies\BatchProcedurePolicy;
+use App\Policies\BatchRunPolicy;
+use App\Policies\DocumentPolicy;
+use App\Policies\RolePolicy;
+use App\Policies\StaffAssignmentPolicy;
+use App\Policies\UserPolicy;
 use Dedoc\Scramble\Scramble;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Activitylog\Models\Activity;
+use Spatie\Permission\Models\Role;
 
 final class AppServiceProvider extends ServiceProvider
 {
@@ -28,6 +45,15 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(Role::class, RolePolicy::class);
+        Gate::policy(Activity::class, AuditEventPolicy::class);
+        Gate::policy(Agency::class, AgencyPolicy::class);
+        Gate::policy(User::class, UserPolicy::class);
+        Gate::policy(StaffAgencyAssignment::class, StaffAssignmentPolicy::class);
+        Gate::policy(BatchProcedure::class, BatchProcedurePolicy::class);
+        Gate::policy(BatchRun::class, BatchRunPolicy::class);
+        Gate::policy(Document::class, DocumentPolicy::class);
+
         Scramble::ignoreDefaultRoutes();
         FormRequest::failOnUnknownFields();
 
@@ -81,6 +107,31 @@ final class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($maxAttempts, $decayMinutes)
                 ->by((string) $request->ip());
         });
+
+        RateLimiter::for('document.upload', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.document_upload.max_attempts', 30),
+            $this->integerConfig('security.rate_limits.document_upload.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
+
+        RateLimiter::for('client.create', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.client_create.max_attempts', 30),
+            $this->integerConfig('security.rate_limits.client_create.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
+
+        RateLimiter::for('journal.write', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.journal_write.max_attempts', 60),
+            $this->integerConfig('security.rate_limits.journal_write.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
+
+        RateLimiter::for('audit.browse', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.audit_browse.max_attempts', 120),
+            $this->integerConfig('security.rate_limits.audit_browse.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
+
+        RateLimiter::for('reference.reserve', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.reference_reserve.max_attempts', 60),
+            $this->integerConfig('security.rate_limits.reference_reserve.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
     }
 
     private function integerConfig(string $key, int $default): int
@@ -88,5 +139,14 @@ final class AppServiceProvider extends ServiceProvider
         $value = config($key, $default);
 
         return is_int($value) ? $value : $default;
+    }
+
+    private function rateLimitKey(Request $request): string
+    {
+        $user = $request->user();
+
+        return $user instanceof User && $user->public_id !== ''
+            ? 'user:'.$user->public_id
+            : 'ip:'.((string) $request->ip());
     }
 }

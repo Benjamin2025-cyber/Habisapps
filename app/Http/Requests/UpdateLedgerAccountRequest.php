@@ -16,7 +16,11 @@ final class UpdateLedgerAccountRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && ($user->hasRole('platform-admin') || $user->can('ledger.accounts.update'));
+        $ledgerAccount = $this->route('ledgerAccount');
+
+        return $user instanceof User
+            && $ledgerAccount instanceof LedgerAccount
+            && $user->can('update', $ledgerAccount);
     }
 
     /**

@@ -32,15 +32,15 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::delete('account-holds/{accountHold}', [AccountHoldController::class, 'destroy']);
 
     Route::get('journal-entries', [JournalEntryController::class, 'index']);
-    Route::post('journal-entries', [JournalEntryController::class, 'store']);
+    Route::post('journal-entries', [JournalEntryController::class, 'store'])->middleware('throttle:journal.write');
     Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show']);
     Route::patch('journal-entries/{journalEntry}', [JournalEntryController::class, 'update']);
-    Route::post('journal-entries/{journalEntry}/submit', [JournalEntryController::class, 'submit']);
-    Route::post('journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse']);
+    Route::post('journal-entries/{journalEntry}/submit', [JournalEntryController::class, 'submit'])->middleware('throttle:journal.write');
+    Route::post('journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->middleware('throttle:journal.write');
     Route::delete('journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy']);
 
     Route::get('journal-lines', [JournalLineController::class, 'index']);
-    Route::post('journal-lines', [JournalLineController::class, 'store']);
+    Route::post('journal-lines', [JournalLineController::class, 'store'])->middleware('throttle:journal.write');
     Route::get('journal-lines/{journalLine}', [JournalLineController::class, 'show']);
     Route::patch('journal-lines/{journalLine}', [JournalLineController::class, 'update']);
     Route::delete('journal-lines/{journalLine}', [JournalLineController::class, 'destroy']);

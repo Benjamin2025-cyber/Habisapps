@@ -4,27 +4,26 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Agencies\AssignAgencyManager;
+use App\Application\Agencies\CreateAgency;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\AgencyCollection;
 use App\Http\Resources\AgencyResource;
 use App\Models\Agency;
-use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 final class AgencyController extends BaseController
 {
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly CreateAgency $createAgency,
     ) {}
 
     /**
@@ -34,14 +33,15 @@ final class AgencyController extends BaseController
      */
     public function index(Request $request): AgencyCollection|JsonResponse
     {
-        if ($request->user()?->can('agencies.view') !== true) {
-            return $this->respondForbidden();
-        }
-
         $actor = $request->user();
+        $this->authorize('viewAny', Agency::class);
         $query = Agency::query()->with('manager')->latest();
 
-        if (! $actor->hasRole('platform-admin')) {
+        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+            if (! $actor instanceof User) {
+                return $this->respondForbidden();
+            }
+
             $currentAgencyId = $actor->currentAgencyId();
 
             if ($currentAgencyId === null) {
@@ -67,9 +67,7 @@ final class AgencyController extends BaseController
      */
     public function store(Request $request): JsonResponse
     {
-        if ($request->user()?->can('agencies.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('create', Agency::class);
 
         $validated = Validator::make($request->all(), [
             'code' => ['required', 'string', 'max:32', 'unique:agencies,code'],
@@ -91,28 +89,7 @@ final class AgencyController extends BaseController
             'manager_public_id' => ['nullable', 'string', 'exists:users,public_id'],
         ])->validate();
 
-        $agency = DB::transaction(function () use ($validated): Agency {
-            /** @var Agency $agency */
-            $agency = Agency::query()->create([
-                'code' => $validated['code'],
-                'name' => $validated['name'],
-                'region' => $validated['region'] ?? null,
-                'city' => $validated['city'] ?? null,
-                'branch_name' => $validated['branch_name'] ?? null,
-                'phone_number' => $validated['phone_number'] ?? null,
-                'email' => $validated['email'] ?? null,
-                'address_line_1' => $validated['address_line_1'] ?? null,
-                'address_line_2' => $validated['address_line_2'] ?? null,
-                'creation_date' => $validated['creation_date'] ?? null,
-                'status' => $validated['status'] ?? Agency::STATUS_ACTIVE,
-            ]);
-
-            if (isset($validated['manager_public_id'])) {
-                $this->assignManager($agency, $validated['manager_public_id']);
-            }
-
-            return $agency->refresh()->loadMissing('manager');
-        });
+        $agency = $this->createAgency->execute($validated);
 
         $this->securityAudit->record('agency.created', actor: $request->user(), subject: $agency, request: $request);
 
@@ -131,13 +108,7 @@ final class AgencyController extends BaseController
      */
     public function show(Request $request, Agency $agency): JsonResponse
     {
-        if ($request->user()?->can('agencies.view') !== true) {
-            return $this->respondForbidden();
-        }
-
-        if (! $this->canViewAgency($request, $agency)) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('view', $agency);
 
         return $this->respondSuccess(
             AgencyResource::make($agency->loadMissing('manager'))
@@ -153,9 +124,7 @@ final class AgencyController extends BaseController
      */
     public function update(Request $request, Agency $agency): JsonResponse
     {
-        if ($request->user()?->can('agencies.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('update', $agency);
 
         $validated = Validator::make($request->all(), [
             'name' => ['sometimes', 'string', 'max:255'],
@@ -189,9 +158,7 @@ final class AgencyController extends BaseController
      */
     public function updateStatus(Request $request, Agency $agency): JsonResponse
     {
-        if ($request->user()?->can('agencies.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('updateStatus', $agency);
 
         $validated = Validator::make($request->all(), [
             'status' => ['required', 'string', Rule::in([
@@ -222,9 +189,7 @@ final class AgencyController extends BaseController
      */
     public function destroy(Request $request, Agency $agency): JsonResponse
     {
-        if ($request->user()?->can('agencies.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('delete', $agency);
 
         if ($agency->status === Agency::STATUS_ARCHIVED) {
             return $this->respondSuccess(
@@ -251,9 +216,7 @@ final class AgencyController extends BaseController
      */
     public function updateManager(Request $request, Agency $agency): JsonResponse
     {
-        if ($request->user()?->can('agencies.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('updateManager', $agency);
 
         $validated = Validator::make($request->all(), [
             'manager_public_id' => ['nullable', 'string', 'exists:users,public_id'],
@@ -282,7 +245,7 @@ final class AgencyController extends BaseController
                 return $this->respondForbidden('Manager must belong to the selected agency.');
             }
 
-            $this->assignManager($agency, $managerPublicId, $roleAtAgency);
+            app(AssignAgencyManager::class)->execute($agency, $manager, $roleAtAgency);
         } else {
             $agency->forceFill(['manager_id' => null])->save();
         }
@@ -296,58 +259,5 @@ final class AgencyController extends BaseController
             AgencyResource::make($agency->refresh()->loadMissing('manager')),
             'Agency manager updated successfully'
         );
-    }
-
-    private function canViewAgency(Request $request, Agency $agency): bool
-    {
-        $actor = $request->user();
-
-        if ($actor === null) {
-            return false;
-        }
-
-        if ($actor->hasRole('platform-admin')) {
-            return true;
-        }
-
-        return $actor->currentAgencyId() === $agency->id;
-    }
-
-    private function assignManager(Agency $agency, string $managerPublicId, string $roleAtAgency = 'agency-manager'): void
-    {
-        $manager = User::query()->where('public_id', $managerPublicId)->first();
-        if ($manager === null) {
-            throw ValidationException::withMessages(['manager_public_id' => ['The selected manager is invalid.']]);
-        }
-
-        DB::transaction(function () use ($agency, $manager, $roleAtAgency): void {
-            $primaryAssignment = StaffAgencyAssignment::query()
-                ->where('user_id', $manager->id)
-                ->where('agency_id', $agency->id)
-                ->where('is_primary', true)
-                ->where('status', StaffAgencyAssignment::STATUS_ACTIVE)
-                ->latest('starts_on')
-                ->first();
-
-            if ($primaryAssignment === null) {
-                StaffAgencyAssignment::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'user_id' => $manager->id,
-                    'agency_id' => $agency->id,
-                    'role_at_agency' => $roleAtAgency,
-                    'starts_on' => now()->toDateString(),
-                    'is_primary' => true,
-                    'status' => StaffAgencyAssignment::STATUS_ACTIVE,
-                ]);
-            }
-
-            $manager->forceFill([
-                'agency_id' => $agency->id,
-                'agency_code' => $agency->code,
-                'agency_name' => $agency->name,
-            ])->save();
-
-            $agency->forceFill(['manager_id' => $manager->id])->save();
-        });
     }
 }

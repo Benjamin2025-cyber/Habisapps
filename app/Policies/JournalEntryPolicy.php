@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
 use App\Models\JournalEntry;
@@ -28,6 +30,16 @@ final class JournalEntryPolicy
     }
 
     public function delete(User $user, JournalEntry $journalEntry): bool
+    {
+        return $user->hasRole('platform-admin');
+    }
+
+    public function submit(User $user, JournalEntry $journalEntry): bool
+    {
+        return $user->hasRole('platform-admin');
+    }
+
+    public function reverse(User $user, JournalEntry $journalEntry): bool
     {
         return $user->hasRole('platform-admin');
     }

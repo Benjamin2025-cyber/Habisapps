@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Authorization\SyncRolePermissions;
 use App\Http\Controllers\BaseController;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
 
 final class RoleController extends BaseController
 {
@@ -20,9 +19,7 @@ final class RoleController extends BaseController
 
     public function index(Request $request): JsonResponse
     {
-        if ($request->user()?->can('roles.view') !== true && $request->user()?->can('roles.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('viewAny', Role::class);
 
         return $this->respondSuccess([
             'roles' => $this->roleCatalog(),
@@ -30,11 +27,9 @@ final class RoleController extends BaseController
         ]);
     }
 
-    public function updatePermissions(Request $request, string $role): JsonResponse
+    public function updatePermissions(Request $request, string $role, SyncRolePermissions $syncRolePermissions): JsonResponse
     {
-        if ($request->user()?->can('roles.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('updatePermissions', [Role::class, $role]);
 
         $permissionNames = $this->permissionNames();
 
@@ -66,10 +61,7 @@ final class RoleController extends BaseController
             }
         }
 
-        DB::transaction(function () use ($roleModel, $permissions): void {
-            $roleModel->syncPermissions($permissions);
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
-        });
+        $syncRolePermissions->execute($roleModel, $permissions);
 
         $roleModel->load('permissions');
 

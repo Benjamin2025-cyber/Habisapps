@@ -32,7 +32,7 @@ final class CustomerAccountController extends BaseController
     public function index(Request $request): CustomerAccountCollection|JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || (! $actor->hasRole('platform-admin') && ! $actor->can('customer.accounts.view'))) {
+        if (! $actor instanceof User || $actor->cannot('viewAny', CustomerAccount::class)) {
             return $this->respondForbidden();
         }
 
@@ -43,7 +43,7 @@ final class CustomerAccountController extends BaseController
         $agencyId = $this->staffAgencyScope->currentAgencyId($actor) ?? $actor->agency_id;
         if ($agencyId !== null) {
             $query->where('agency_id', $agencyId);
-        } elseif (! $actor->can('customer.accounts.create')) {
+        } elseif ($actor->cannot('create', CustomerAccount::class)) {
             return $this->respondForbidden();
         }
 
@@ -138,7 +138,8 @@ final class CustomerAccountController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{customer_account: \App\Http\Resources\CustomerAccountResource}, errors: null, meta: null}')]
     public function show(Request $request, CustomerAccount $customerAccount): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $customerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -184,7 +185,8 @@ final class CustomerAccountController extends BaseController
 
     public function destroy(Request $request, CustomerAccount $customerAccount): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('delete', $customerAccount)) {
             return $this->respondForbidden();
         }
 

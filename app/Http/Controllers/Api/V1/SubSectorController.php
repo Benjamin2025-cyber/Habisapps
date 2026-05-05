@@ -27,7 +27,8 @@ final class SubSectorController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{sub_sectors: array<int, \App\Http\Resources\SubSectorResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request): SubSectorCollection|JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('viewAny', SubSector::class)) {
             return $this->respondForbidden();
         }
 
@@ -60,7 +61,8 @@ final class SubSectorController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{sub_sector: \App\Http\Resources\SubSectorResource}, errors: null, meta: null}')]
     public function show(Request $request, SubSector $subSector): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $subSector)) {
             return $this->respondForbidden();
         }
 
@@ -93,7 +95,8 @@ final class SubSectorController extends BaseController
 
     public function destroy(Request $request, SubSector $subSector): JsonResponse
     {
-        if (! $request->user() instanceof User || ! $request->user()->hasRole('platform-admin')) {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('delete', $subSector)) {
             return $this->respondForbidden();
         }
 

@@ -26,11 +26,9 @@ final class BatchProcedureController extends BaseController
      *
      * @response BatchProcedureCollection
      */
-    public function index(Request $request): BatchProcedureCollection|JsonResponse
+    public function index(Request $request): BatchProcedureCollection
     {
-        if ($request->user()?->can('batch.procedures.view') !== true && $request->user()?->can('batch.procedures.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('viewAny', BatchProcedure::class);
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
@@ -48,9 +46,7 @@ final class BatchProcedureController extends BaseController
      */
     public function store(Request $request): JsonResponse
     {
-        if ($request->user()?->can('batch.procedures.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('create', BatchProcedure::class);
 
         $validated = Validator::make($request->all(), [
             'code' => ['required', 'string', 'max:64', 'unique:batch_procedures,code'],
@@ -88,9 +84,7 @@ final class BatchProcedureController extends BaseController
      */
     public function show(Request $request, BatchProcedure $batchProcedure): JsonResponse
     {
-        if ($request->user()?->can('batch.procedures.view') !== true && $request->user()?->can('batch.procedures.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('view', $batchProcedure);
 
         return $this->respondSuccess(
             BatchProcedureResource::make($batchProcedure)
@@ -106,9 +100,7 @@ final class BatchProcedureController extends BaseController
      */
     public function update(Request $request, BatchProcedure $batchProcedure): JsonResponse
     {
-        if ($request->user()?->can('batch.procedures.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('update', $batchProcedure);
 
         $validated = Validator::make($request->all(), [
             'name' => ['sometimes', 'string', 'max:255'],
@@ -138,9 +130,7 @@ final class BatchProcedureController extends BaseController
      */
     public function updateStatus(Request $request, BatchProcedure $batchProcedure): JsonResponse
     {
-        if ($request->user()?->can('batch.procedures.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('updateStatus', $batchProcedure);
 
         $validated = Validator::make($request->all(), [
             'status' => ['required', 'string', Rule::in([BatchProcedure::STATUS_ACTIVE, BatchProcedure::STATUS_INACTIVE])],

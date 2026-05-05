@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\JournalEntry;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,7 +15,11 @@ final class UpdateJournalEntryRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        $journalEntry = $this->route('journalEntry');
+
+        return $user instanceof User
+            && $journalEntry instanceof JournalEntry
+            && $user->can('update', $journalEntry);
     }
 
     /**

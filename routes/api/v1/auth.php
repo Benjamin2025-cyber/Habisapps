@@ -45,34 +45,36 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::patch('staff-users/{staffUser}/assignments/{assignment}', [StaffAssignmentController::class, 'update']);
 
     Route::get('documents', [DocumentController::class, 'index']);
-    Route::post('documents', [DocumentController::class, 'store']);
+    Route::post('documents', [DocumentController::class, 'store'])->middleware('throttle:document.upload');
     Route::get('documents/{document}', [DocumentController::class, 'show']);
     Route::patch('documents/{document}/archive', [DocumentController::class, 'archive']);
 
     Route::get('clients', [ClientController::class, 'index']);
-    Route::post('clients', [ClientController::class, 'store']);
+    Route::post('clients', [ClientController::class, 'store'])->middleware('throttle:client.create');
     Route::get('clients/{client}', [ClientController::class, 'show']);
     Route::patch('clients/{client}', [ClientController::class, 'update']);
     Route::patch('clients/{client}/kyc-status', [ClientController::class, 'updateKycStatus']);
     Route::get('clients/{client}/kyc-reviews', [ClientController::class, 'kycReviews']);
 
-    Route::get('clients/{client}/identity-documents', [ClientIdentityDocumentController::class, 'index']);
-    Route::post('clients/{client}/identity-documents', [ClientIdentityDocumentController::class, 'store']);
-    Route::get('clients/{client}/identity-documents/{identityDocument}', [ClientIdentityDocumentController::class, 'show']);
-    Route::patch('clients/{client}/identity-documents/{identityDocument}', [ClientIdentityDocumentController::class, 'update']);
-    Route::patch('clients/{client}/identity-documents/{identityDocument}/status', [ClientIdentityDocumentController::class, 'updateStatus']);
+    Route::scopeBindings()->group(function (): void {
+        Route::get('clients/{client}/identity-documents', [ClientIdentityDocumentController::class, 'index']);
+        Route::post('clients/{client}/identity-documents', [ClientIdentityDocumentController::class, 'store']);
+        Route::get('clients/{client}/identity-documents/{identityDocument}', [ClientIdentityDocumentController::class, 'show']);
+        Route::patch('clients/{client}/identity-documents/{identityDocument}', [ClientIdentityDocumentController::class, 'update']);
+        Route::patch('clients/{client}/identity-documents/{identityDocument}/status', [ClientIdentityDocumentController::class, 'updateStatus']);
 
-    Route::get('clients/{client}/guarantors', [ClientGuarantorController::class, 'index']);
-    Route::post('clients/{client}/guarantors', [ClientGuarantorController::class, 'store']);
-    Route::get('clients/{client}/guarantors/{guarantor}', [ClientGuarantorController::class, 'show']);
-    Route::patch('clients/{client}/guarantors/{guarantor}', [ClientGuarantorController::class, 'update']);
-    Route::patch('clients/{client}/guarantors/{guarantor}/status', [ClientGuarantorController::class, 'updateStatus']);
+        Route::get('clients/{client}/guarantors', [ClientGuarantorController::class, 'index']);
+        Route::post('clients/{client}/guarantors', [ClientGuarantorController::class, 'store']);
+        Route::get('clients/{client}/guarantors/{guarantor}', [ClientGuarantorController::class, 'show']);
+        Route::patch('clients/{client}/guarantors/{guarantor}', [ClientGuarantorController::class, 'update']);
+        Route::patch('clients/{client}/guarantors/{guarantor}/status', [ClientGuarantorController::class, 'updateStatus']);
 
-    Route::get('clients/{client}/proxies', [ClientProxyController::class, 'index']);
-    Route::post('clients/{client}/proxies', [ClientProxyController::class, 'store']);
-    Route::get('clients/{client}/proxies/{proxy}', [ClientProxyController::class, 'show']);
-    Route::patch('clients/{client}/proxies/{proxy}', [ClientProxyController::class, 'update']);
-    Route::patch('clients/{client}/proxies/{proxy}/status', [ClientProxyController::class, 'updateStatus']);
+        Route::get('clients/{client}/proxies', [ClientProxyController::class, 'index']);
+        Route::post('clients/{client}/proxies', [ClientProxyController::class, 'store']);
+        Route::get('clients/{client}/proxies/{proxy}', [ClientProxyController::class, 'show']);
+        Route::patch('clients/{client}/proxies/{proxy}', [ClientProxyController::class, 'update']);
+        Route::patch('clients/{client}/proxies/{proxy}/status', [ClientProxyController::class, 'updateStatus']);
+    });
 
     Route::get('roles', [RoleController::class, 'index']);
     Route::put('roles/{role}/permissions', [RoleController::class, 'updatePermissions']);
@@ -88,7 +90,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('batch-runs/{batchRun}', [BatchRunController::class, 'show']);
     Route::patch('batch-runs/{batchRun}/status', [BatchRunController::class, 'updateStatus']);
 
-    Route::post('reference-numbers', [ReferenceNumberController::class, 'store']);
+    Route::post('reference-numbers', [ReferenceNumberController::class, 'store'])->middleware('throttle:reference.reserve');
 
-    Route::get('audit-events', [AuditEventController::class, 'index']);
+    Route::get('audit-events', [AuditEventController::class, 'index'])->middleware('throttle:audit.browse');
 });

@@ -12,7 +12,7 @@ final class StoreClientRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.clients.create') === true;
+        return $this->user()?->can('create', Client::class) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

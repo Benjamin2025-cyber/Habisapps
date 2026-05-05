@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\ClientGuarantor;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class UpdateClientGuarantorRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.guarantors.update') === true;
+        $guarantor = $this->route('guarantor');
+
+        return $guarantor instanceof ClientGuarantor
+            && $this->user()?->can('update', $guarantor) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

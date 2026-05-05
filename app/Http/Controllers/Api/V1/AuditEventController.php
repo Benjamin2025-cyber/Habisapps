@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\AuditEventCollection;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Spatie\Activitylog\Models\Activity;
 
@@ -19,11 +18,9 @@ final class AuditEventController extends BaseController
      *
      * @response AuditEventCollection
      */
-    public function index(Request $request): AuditEventCollection|JsonResponse
+    public function index(Request $request): AuditEventCollection
     {
-        if ($request->user()?->can('audit.view') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('viewAny', Activity::class);
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 

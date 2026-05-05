@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\ClientGuarantor;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class StoreClientGuarantorRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.guarantors.create') === true;
+        return $this->user()?->can('create', ClientGuarantor::class) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

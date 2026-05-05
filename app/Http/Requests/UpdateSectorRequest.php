@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\Sector;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -14,7 +15,11 @@ final class UpdateSectorRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && $user->hasRole('platform-admin');
+        $sector = $this->route('sector');
+
+        return $user instanceof User
+            && $sector instanceof Sector
+            && $user->can('update', $sector);
     }
 
     /**

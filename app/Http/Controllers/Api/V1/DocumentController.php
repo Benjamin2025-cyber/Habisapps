@@ -31,9 +31,7 @@ final class DocumentController extends BaseController
      */
     public function index(Request $request): DocumentCollection|JsonResponse
     {
-        if ($request->user()?->can('documents.view') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('viewAny', Document::class);
 
         $agencyId = $this->resolveAgencyId($request);
         if ($agencyId === null) {
@@ -136,14 +134,7 @@ final class DocumentController extends BaseController
     )]
     public function show(Request $request, Document $document): JsonResponse
     {
-        if ($request->user()?->can('documents.view') !== true) {
-            return $this->respondForbidden();
-        }
-
-        $requestAgencyId = $this->resolveAgencyId($request);
-        if ($document->agency_id !== $requestAgencyId) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('view', $document);
 
         return $this->respondSuccess(
             DocumentResource::make($document)
@@ -165,13 +156,7 @@ final class DocumentController extends BaseController
     )]
     public function archive(Request $request, Document $document): JsonResponse
     {
-        if ($request->user()?->can('documents.archive') !== true) {
-            return $this->respondForbidden();
-        }
-
-        if ($document->agency_id !== $this->resolveAgencyId($request)) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('archive', $document);
 
         $document->forceFill([
             'status' => Document::STATUS_ARCHIVED,

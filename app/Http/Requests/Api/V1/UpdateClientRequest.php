@@ -12,7 +12,9 @@ final class UpdateClientRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('crm.clients.update') === true;
+        $client = $this->route('client');
+
+        return $client instanceof Client && $this->user()?->can('update', $client) === true;
     }
 
     /** @return array<string, array<int, mixed>> */

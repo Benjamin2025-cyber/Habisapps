@@ -42,8 +42,8 @@ final class ClientProxyController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.proxies.view')
-            || ! $this->canReadClient($actor, $client)) {
+            || $actor->cannot('viewAny', ClientProxy::class)
+            || $actor->cannot('view', $client)) {
             return $this->respondForbidden();
         }
 
@@ -81,8 +81,7 @@ final class ClientProxyController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.proxies.create')
-            || ! $this->canManageClient($actor, $client)) {
+            || $actor->cannot('createForClient', [ClientProxy::class, $client])) {
             return $this->respondForbidden();
         }
 
@@ -137,8 +136,8 @@ final class ClientProxyController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.proxies.view')
-            || ! $this->canReadClient($actor, $client)) {
+            || $actor->cannot('view', $client)
+            || $actor->cannot('view', $proxy)) {
             return $this->respondForbidden();
         }
 
@@ -166,8 +165,7 @@ final class ClientProxyController extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User
-            || ! $actor->hasPermissionTo('crm.proxies.update')
-            || ! $this->canManageClient($actor, $client)) {
+            || $actor->cannot('update', $proxy)) {
             return $this->respondForbidden();
         }
 
@@ -247,7 +245,7 @@ final class ClientProxyController extends BaseController
         }
 
         $action = $request->string('action')->toString();
-        if (! $this->canApplyStatusAction($actor, $client, $action)) {
+        if (! $this->canApplyStatusAction($actor, $proxy, $action)) {
             return $this->respondForbidden();
         }
 
@@ -342,44 +340,16 @@ final class ClientProxyController extends BaseController
         return $document->id;
     }
 
-    private function canApplyStatusAction(User $actor, Client $client, string $action): bool
+    private function canApplyStatusAction(User $actor, ClientProxy $proxy, string $action): bool
     {
         return match ($action) {
-            'submit' => $actor->hasPermissionTo('crm.proxies.update') && $this->canManageClient($actor, $client),
-            'verify' => $actor->hasPermissionTo('crm.proxies.verify') && $this->canReviewClient($actor, $client),
-            'reject' => $actor->hasPermissionTo('crm.proxies.reject') && $this->canReviewClient($actor, $client),
-            'archive', 'deactivate' => $actor->hasPermissionTo('crm.proxies.archive') && $this->canManageClient($actor, $client),
-            'expire' => $actor->hasPermissionTo('crm.proxies.expire') && $this->canReviewClient($actor, $client),
+            'submit' => $actor->can('update', $proxy),
+            'verify' => $actor->can('verify', $proxy),
+            'reject' => $actor->can('reject', $proxy),
+            'archive', 'deactivate' => $actor->can('archive', $proxy),
+            'expire' => $actor->can('expire', $proxy),
             default => false,
         };
-    }
-
-    private function canReadClient(User $actor, Client $client): bool
-    {
-        return $this->hasInstitutionReadScope($actor) || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function canReviewClient(User $actor, Client $client): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.review')
-            || $actor->hasPermissionTo('crm.scope.institution.manage')
-            || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function canManageClient(User $actor, Client $client): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.manage')
-            || $actor->currentAgencyId() === $client->agency_id;
-    }
-
-    private function hasInstitutionReadScope(User $actor): bool
-    {
-        return $actor->hasRole('platform-admin')
-            || $actor->hasPermissionTo('crm.scope.institution.read')
-            || $actor->hasPermissionTo('crm.scope.institution.review')
-            || $actor->hasPermissionTo('crm.scope.institution.manage');
     }
 
     private function isPastDateValue(mixed $value): bool

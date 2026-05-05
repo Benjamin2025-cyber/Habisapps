@@ -16,7 +16,7 @@ final class StoreLedgerAccountRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && ($user->hasRole('platform-admin') || $user->can('ledger.accounts.create'));
+        return $user instanceof User && $user->can('create', LedgerAccount::class);
     }
 
     /**

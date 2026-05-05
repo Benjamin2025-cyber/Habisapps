@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\BatchRuns\UpdateBatchRunStatus;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\BatchRunCollection;
 use App\Http\Resources\BatchRunResource;
 use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
+use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,11 +33,9 @@ final class BatchRunController extends BaseController
      *
      * @response BatchRunCollection
      */
-    public function index(Request $request): BatchRunCollection|JsonResponse
+    public function index(Request $request): BatchRunCollection
     {
-        if ($request->user()?->can('batch.runs.view') !== true && $request->user()?->can('batch.runs.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('viewAny', BatchRun::class);
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $query = BatchRun::query()->with(['batchProcedure', 'agency', 'operator'])->latest();
@@ -61,9 +61,7 @@ final class BatchRunController extends BaseController
      */
     public function store(Request $request): JsonResponse
     {
-        if ($request->user()?->can('batch.runs.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('create', BatchRun::class);
 
         $validated = Validator::make($request->all(), [
             'batch_procedure_public_id' => ['required', 'string', 'exists:batch_procedures,public_id'],
@@ -129,13 +127,18 @@ final class BatchRunController extends BaseController
             );
         }
 
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
         $run = BatchRun::query()->create([
             'public_id' => (string) Str::ulid(),
             'batch_procedure_id' => $procedure->id,
             'agency_id' => $agency?->id,
             'business_date' => $validated['business_date'],
             'status' => BatchRun::STATUS_PENDING,
-            'operator_user_id' => $request->user()->id,
+            'operator_user_id' => $actor->id,
             'actor_context' => $actorContext,
             'scope_hash' => isset($validated['idempotency_key']) ? $scopeHash : null,
             'idempotency_key' => $validated['idempotency_key'] ?? null,
@@ -143,7 +146,7 @@ final class BatchRunController extends BaseController
             'summary_payload' => $validated['summary_payload'] ?? null,
         ])->load(['batchProcedure', 'agency', 'operator']);
 
-        $this->securityAudit->record('batch.run.created', actor: $request->user(), subject: $run, request: $request);
+        $this->securityAudit->record('batch.run.created', actor: $actor, subject: $run, request: $request);
 
         return $this->respondCreated(
             BatchRunResource::make($run),
@@ -160,9 +163,7 @@ final class BatchRunController extends BaseController
      */
     public function show(Request $request, BatchRun $batchRun): JsonResponse
     {
-        if ($request->user()?->can('batch.runs.view') !== true && $request->user()?->can('batch.runs.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('view', $batchRun);
 
         return $this->respondSuccess(
             BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))
@@ -176,11 +177,9 @@ final class BatchRunController extends BaseController
      *
      * @response BatchRunResource
      */
-    public function updateStatus(Request $request, BatchRun $batchRun): JsonResponse
+    public function updateStatus(Request $request, BatchRun $batchRun, UpdateBatchRunStatus $updateBatchRunStatus): JsonResponse
     {
-        if ($request->user()?->can('batch.runs.manage') !== true) {
-            return $this->respondForbidden();
-        }
+        $this->authorize('updateStatus', $batchRun);
 
         $validated = Validator::make($request->all(), [
             'status' => ['required', 'string', Rule::in([
@@ -227,11 +226,7 @@ final class BatchRunController extends BaseController
             throw ValidationException::withMessages(['failure_reason' => ['A failure reason is required for failed runs.']]);
         }
 
-        $run = DB::transaction(function () use ($batchRun, $updates): BatchRun {
-            $batchRun->forceFill($updates)->save();
-
-            return $batchRun->refresh()->loadMissing(['batchProcedure', 'agency', 'operator']);
-        });
+        $run = $updateBatchRunStatus->execute($batchRun, $updates);
 
         $this->securityAudit->record('batch.run.status_changed', actor: $request->user(), subject: $run, properties: [
             'status' => $run->status,
