@@ -93,6 +93,19 @@ final class StaffAssignmentController extends BaseController
             return $this->respondForbidden('Platform authority cannot be assigned through agency assignments.');
         }
 
+        $transferFromPublicId = $validated['transfer_from_assignment_public_id'] ?? null;
+        if (is_string($transferFromPublicId) && $transferFromPublicId !== '') {
+            $transferFromAssignment = StaffAgencyAssignment::query()
+                ->where('public_id', $transferFromPublicId)
+                ->first();
+
+            if (! $transferFromAssignment instanceof StaffAgencyAssignment
+                || $transferFromAssignment->user_id !== $staffUser->id
+                || $actor->cannot('update', [StaffAgencyAssignment::class, $staffUser, $transferFromAssignment])) {
+                return $this->respondForbidden();
+            }
+        }
+
         try {
             $assignment = $this->manageStaffAssignment->create($actor, $staffUser, $validated);
         } catch (ValidationException $exception) {

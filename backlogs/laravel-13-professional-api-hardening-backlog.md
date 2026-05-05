@@ -33,12 +33,9 @@ Implemented and verified:
 - [x] API-0301
 - [x] API-0302
 - [x] API-0701
-
-Still open:
-
 - [x] API-0801
 
-Verification to complete during implementation:
+Verification completed during implementation:
 
 - [x] `vendor/bin/pint --test`
 - [x] `vendor/bin/phpstan analyze`
@@ -47,13 +44,13 @@ Verification to complete during implementation:
 
 ## Guiding Rules
 
-- [ ] Do not change business behavior while doing framework hardening unless a test proves the existing behavior is unsafe.
-- [ ] Prefer Laravel 13 native mechanisms: policies, Form Requests, scoped route bindings, middleware, service container bindings, API Resources, exception configuration, rate limiters, and feature tests.
+- [x] Do not change business behavior while doing framework hardening unless a test proves the existing behavior is unsafe.
+- [x] Prefer Laravel 13 native mechanisms: policies, Form Requests, scoped route bindings, middleware, service container bindings, API Resources, exception configuration, rate limiters, and feature tests.
 - [x] Use Laravel/Artisan scaffolding commands whenever Laravel provides them, then adjust manually.
 - [x] Record exact Artisan commands used under the relevant story.
-- [ ] Keep API responses backward-compatible unless the current response leaks internal IDs, sensitive data, or ambiguous authorization semantics.
-- [ ] Keep finance formula behavior out of scope. This backlog must not implement balance, posting, interest, fee, repayment, cash, or reporting formulas.
-- [ ] Every completed epic must include an adversarial review before moving to the next epic.
+- [x] Keep API responses backward-compatible unless the current response leaks internal IDs, sensitive data, or ambiguous authorization semantics.
+- [x] Keep finance formula behavior out of scope. This backlog must not implement balance, posting, interest, fee, repayment, cash, or reporting formulas.
+- [x] Every completed epic must include an adversarial review before moving to the next epic.
 
 ## Epic 1: Policy-First Authorization
 
@@ -94,6 +91,7 @@ Adversarial review:
 
 - [x] Searched migrated CRM/accounting controllers for leftover duplicated scope helpers and raw resource permission checks.
 - [x] Fixed the finding that nested CRM create endpoints still used controller-local parent-client scope helpers by adding `createForClient` policy methods.
+- [x] Fixed the final verification finding that staff assignment transfer creation accepted a `transfer_from_assignment_public_id` outside the actor agency scope.
 - [x] Left explicit override and PII checks in controllers because they gate non-resource-sensitive branches and audit behavior.
 - [x] Verified serially with `php artisan test --filter=PolicyAuthorizationHardeningTest`, `php artisan test --filter=Module2CrmKycTest`, and `php artisan test --filter=Module3AccountingArchitectureTest`.
 
@@ -315,6 +313,7 @@ Adversarial review:
 
 - [x] Static scan found `AuditEventResource` internal integer IDs.
 - [x] Fixed by removing `id`, `subject_id`, and `causer_id` from API output.
+- [x] Fixed the follow-up finding that raw audit `properties` could still expose nested internal IDs or sensitive values by sanitizing resource properties recursively.
 - [x] Verified with `php artisan test --filter=PolicyAuthorizationHardeningTest` and `php artisan scramble:export`.
 
 ## Epic 7: Testing Architecture
@@ -335,6 +334,12 @@ Command log:
 
 - [x] `php artisan make:test Application/Crm/UpdateClientKycStatusTest --unit`
 - [x] `php artisan make:test Application/Accounting/ReleaseAccountHoldTest --unit`
+
+Adversarial review:
+
+- [x] Confirmed service-level tests target extracted application services rather than duplicating controller-only assertions.
+- [x] Confirmed HTTP feature tests remain the authorization and API contract safety net.
+- [x] Confirmed test helpers keep agency, role, and domain setup explicit enough for authorization-sensitive reviews.
 
 ## Epic 8: Documentation And Migration Plan
 
@@ -366,29 +371,29 @@ Adversarial review:
 
 ## Recommended Implementation Order
 
-- [ ] Epic 1 first: policy-first authorization, because it reduces security drift before route and service refactors.
-- [ ] Epic 2 second: scoped route model binding, because it narrows resource resolution before controller extraction.
-- [ ] Epic 4 third: exception/logging hardening, because it improves production safety with limited business risk.
-- [ ] Epic 5 fourth: rate limiting and token abilities, because it changes security surface and needs stable authorization semantics.
-- [ ] Epic 6 fifth: API Resource hardening, because it may affect response contracts and docs.
-- [ ] Epic 3 sixth: service extraction, because it is higher churn and safer after authorization is canonical.
-- [ ] Epic 7 seventh: service-level testing expands naturally once services exist.
-- [ ] Epic 8 continuous: docs and backlog updates after each epic.
+- [x] Epic 1 first: policy-first authorization, because it reduces security drift before route and service refactors.
+- [x] Epic 2 second: scoped route model binding, because it narrows resource resolution before controller extraction.
+- [x] Epic 4 third: exception/logging hardening, because it improves production safety with limited business risk.
+- [x] Epic 5 fourth: rate limiting and token abilities, because it changes security surface and needs stable authorization semantics.
+- [x] Epic 6 fifth: API Resource hardening, because it may affect response contracts and docs.
+- [x] Epic 3 sixth: service extraction, because it is higher churn and safer after authorization is canonical.
+- [x] Epic 7 seventh: service-level testing expands naturally once services exist.
+- [x] Epic 8 continuous: docs and backlog updates after each epic.
 
 ## Out Of Scope
 
-- [ ] Business module implementation.
-- [ ] Formula engines, balance calculations, posting workflows, cash workflows, loan workflows, or reporting metrics.
-- [ ] Frontend work.
-- [ ] Database redesign unless required by a specific hardening story and reviewed separately.
-- [ ] Rewriting the whole API to resource controllers in one pass.
+- [x] Business module implementation.
+- [x] Formula engines, balance calculations, posting workflows, cash workflows, loan workflows, or reporting metrics.
+- [x] Frontend work.
+- [x] Database redesign unless required by a specific hardening story and reviewed separately.
+- [x] Rewriting the whole API to resource controllers in one pass.
 
 ## Completion Gate
 
 - [x] All non-deferred stories are checked.
 - [x] Every completed story has evidence in tests, docs, or code review notes.
-- [ ] `vendor/bin/pint --test` passes.
-- [ ] `vendor/bin/phpstan analyze` passes.
-- [ ] `php artisan test` passes.
-- [ ] `php artisan scramble:export` passes.
-- [ ] Final adversarial review finds no unresolved high or medium risks introduced by the hardening work.
+- [x] `vendor/bin/pint --test` passes.
+- [x] `vendor/bin/phpstan analyze` passes.
+- [x] `php artisan test` passes.
+- [x] `php artisan scramble:export` passes.
+- [x] Final adversarial review finds no unresolved high or medium risks introduced by the hardening work.

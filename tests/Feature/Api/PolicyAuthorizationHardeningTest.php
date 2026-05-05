@@ -165,6 +165,17 @@ final class PolicyAuthorizationHardeningTest extends TestCase
             ->event('resource.contract.checked')
             ->causedBy($auditor)
             ->performedOn($subject)
+            ->withProperties([
+                'public_id' => $subject->public_id,
+                'id' => $subject->id,
+                'subject_id' => $subject->id,
+                'causer_id' => $auditor->id,
+                'phone_number' => '+237699000000',
+                'nested' => [
+                    'user_id' => $subject->id,
+                    'safe_public_id' => $subject->public_id,
+                ],
+            ])
             ->log('resource.contract.checked');
 
         $response = $this->actingAsSanctum($auditor)
@@ -175,6 +186,13 @@ final class PolicyAuthorizationHardeningTest extends TestCase
         $response->assertJsonMissingPath('data.events.0.id');
         $response->assertJsonMissingPath('data.events.0.subject_id');
         $response->assertJsonMissingPath('data.events.0.causer_id');
+        $response->assertJsonPath('data.events.0.properties.public_id', $subject->public_id);
+        $response->assertJsonPath('data.events.0.properties.nested.safe_public_id', $subject->public_id);
+        $response->assertJsonMissingPath('data.events.0.properties.id');
+        $response->assertJsonMissingPath('data.events.0.properties.subject_id');
+        $response->assertJsonMissingPath('data.events.0.properties.causer_id');
+        $response->assertJsonMissingPath('data.events.0.properties.phone_number');
+        $response->assertJsonMissingPath('data.events.0.properties.nested.user_id');
     }
 
     private function assertSafeForbidden(TestResponse $response): void
