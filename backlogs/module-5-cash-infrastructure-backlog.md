@@ -13,181 +13,222 @@ Progress convention:
 
 ## Implementation Status
 
-Not started:
+Implemented and verified:
 
-- [ ] DEV-0101
-- [ ] DEV-0102
-- [ ] DEV-0201
-- [ ] DEV-0202
-- [ ] SEC-0101
-- [ ] DEV-0301
-- [ ] DEV-0302
+- [x] DEV-0101
+- [x] DEV-0102
+- [x] DEV-0201
+- [x] DEV-0202
+- [x] SEC-0101
+- [x] DEV-0301
+- [x] DEV-0302
 
 Verification to complete during implementation:
 
-- [ ] `vendor/bin/pint --test`
-- [ ] `vendor/bin/phpstan analyze`
-- [ ] `php artisan test --filter=Module5CashInfrastructureTest`
-- [ ] `php artisan test`
-- [ ] `php artisan scramble:export`
+- [x] `vendor/bin/pint --test`
+- [x] `vendor/bin/phpstan analyze`
+- [x] `php artisan test --filter=Module5CashInfrastructureTest`
+- [x] `php artisan test`
+- [x] `php artisan scramble:export`
 
 Scaffolding and generator command log:
 
-- [ ] Record all `php artisan make:*` commands used for models, controllers, requests, resources, policies, and tests.
-- [ ] No Composer package installation is expected for this safe slice.
+- [x] `php artisan make:model Denomination`
+- [x] `php artisan make:model Till`
+- [x] `php artisan make:controller Api/V1/DenominationController`
+- [x] `php artisan make:controller Api/V1/TillController`
+- [x] `php artisan make:request StoreDenominationRequest`
+- [x] `php artisan make:request UpdateDenominationRequest`
+- [x] `php artisan make:request StoreTillRequest`
+- [x] `php artisan make:request UpdateTillRequest`
+- [x] `php artisan make:resource DenominationResource`
+- [x] `php artisan make:resource DenominationCollection`
+- [x] `php artisan make:resource TillResource`
+- [x] `php artisan make:resource TillCollection`
+- [x] `php artisan make:policy DenominationPolicy --model=Denomination`
+- [x] `php artisan make:policy TillPolicy --model=Till`
+- [x] `php artisan make:test Module5CashInfrastructureTest`
+- [x] No Composer package installation is expected for this safe slice.
 
 ## Guiding Rules
 
-- [ ] Laravel scaffolding must be generated through Laravel/Artisan commands whenever Laravel provides a command for the artifact, then reviewed and adjusted manually.
-- [ ] Public APIs must expose `public_id`, denomination codes, till codes, and agency public IDs, not internal integer IDs.
-- [ ] Every mutation must be authenticated, authorized, agency-scoped where applicable, and audit logged.
-- [ ] Denominations are reference data only. They must not compute cash counts, reconciliation totals, or accepted tender policies beyond active/inactive validation.
-- [ ] Tills are setup records only. They must not open sessions, close sessions, accept deposits, process withdrawals, calculate balances, or post ledger entries.
-- [ ] The existing `tills` schema is the implementation boundary for this safe slice: `agency_id`, `code`, `name`, `type`, `status`, and optional `assigned_user_id`.
-- [ ] ER-mapping fields not present in the current schema are deferred unless a dedicated design and migration backlog is approved: `gl_account_id`, `opening_balance`, `last_closing_balance`, `last_closing_date`, `daily_state`, `requires_denominations`, `nature`, `is_central_till`, `max_balance_limit`, and `max_withdrawal_limit`.
-- [ ] Money-like denomination values must be stored and returned as integer minor units with explicit currency; no rounding or conversion is allowed.
-- [ ] Agency users must never view or mutate tills outside their active agency unless explicitly granted cross-agency cash administration authority.
-- [ ] Formula-dependent behavior must link back to `docs/domain/stakeholder-formula-questions.md` and remain unchecked until approved.
+- [x] Laravel scaffolding must be generated through Laravel/Artisan commands whenever Laravel provides a command for the artifact, then reviewed and adjusted manually.
+- [x] Public APIs must expose `public_id`, denomination codes, till codes, and agency public IDs, not internal integer IDs.
+- [x] Every mutation must be authenticated, authorized, agency-scoped where applicable, and audit logged.
+- [x] Denominations are reference data only. They must not compute cash counts, reconciliation totals, or accepted tender policies beyond active/inactive validation.
+- [x] Tills are setup records only. They must not open sessions, close sessions, accept deposits, process withdrawals, calculate balances, or post ledger entries.
+- [x] The existing `tills` schema is the implementation boundary for this safe slice: `agency_id`, `code`, `name`, `type`, `status`, and optional `assigned_user_id`.
+- [x] ER-mapping fields not present in the current schema are deferred unless a dedicated design and migration backlog is approved: `gl_account_id`, `opening_balance`, `last_closing_balance`, `last_closing_date`, `daily_state`, `requires_denominations`, `nature`, `is_central_till`, `max_balance_limit`, and `max_withdrawal_limit`.
+- [x] Money-like denomination values must be stored and returned as integer minor units with explicit currency; no rounding or conversion is allowed.
+- [x] Agency users must never view or mutate tills outside their active agency unless explicitly granted cross-agency cash administration authority.
+- [x] Formula-dependent behavior must link back to `docs/domain/stakeholder-formula-questions.md` and remain unchecked until approved.
 
 ## Why This Safe Slice Is Next
 
-- [ ] It is explicitly part of stakeholder Module 5: denominations and tills are listed as cash infrastructure.
-- [ ] Existing foundation migrations already created structural tables for `denominations` and `tills`.
-- [ ] The work is CRUD, lifecycle, authorization, audit, public contract, and agency-scope hardening.
-- [ ] It prepares stable references for future teller sessions and reconciliation without implementing cash movement or formulas.
-- [ ] It avoids the unsafe parts of the ER mapping: calculated balances, transaction posting, reconciliation differences, and denomination line totals.
+- [x] It is explicitly part of stakeholder Module 5: denominations and tills are listed as cash infrastructure.
+- [x] Existing foundation migrations already created structural tables for `denominations` and `tills`.
+- [x] The work is CRUD, lifecycle, authorization, audit, public contract, and agency-scope hardening.
+- [x] It prepares stable references for future teller sessions and reconciliation without implementing cash movement or formulas.
+- [x] It avoids the unsafe parts of the ER mapping: calculated balances, transaction posting, reconciliation differences, and denomination line totals.
 
 ## Epic 1: Currency Denomination Reference Data
 
-- [ ] DEV-0101: Implement denomination model, resource, requests, policy, controller, and routes.
+- [x] DEV-0101: Implement denomination model, resource, requests, policy, controller, and routes.
 
 As a cash administrator, I want to manage accepted currency denominations so future cash-counting screens can reference stable denomination codes.
 
 Acceptance criteria:
 
-- [ ] `Denomination` model exists with ULID public route key.
-- [ ] API supports create, list, show, update, activate/deactivate where safe.
-- [ ] Request validation requires code, label/name, currency, value in minor units, type, and status.
-- [ ] Denomination value must be positive integer minor units.
-- [ ] Denomination code and value uniqueness follow the existing database constraints by currency.
-- [ ] Responses expose public ID, code, label, value minor units, currency, type, status, and timestamps.
-- [ ] No response exposes internal integer IDs.
-- [ ] No endpoint computes cash count totals or reconciliation line totals.
-- [ ] Mutations are audit logged with safe properties only.
+- [x] `Denomination` model exists with ULID public route key.
+- [x] API supports create, list, show, update, activate/deactivate where safe.
+- [x] Request validation requires code, label/name, currency, value in minor units, type, and status.
+- [x] Denomination value must be positive integer minor units.
+- [x] Denomination code and value uniqueness follow the existing database constraints by currency.
+- [x] Responses expose public ID, code, label, value minor units, currency, type, status, and timestamps.
+- [x] No response exposes internal integer IDs.
+- [x] No endpoint computes cash count totals or reconciliation line totals.
+- [x] Mutations are audit logged with safe properties only.
 
 Command log:
 
-- [ ] Record exact Artisan commands here.
+- [x] See scaffolding and generator command log above.
 
-- [ ] DEV-0102: Add denomination API tests.
+- [x] DEV-0102: Add denomination API tests.
 
 As a reviewer, I want executable proof that denomination APIs are safe reference-data endpoints only.
 
 Acceptance criteria:
 
-- [ ] Tests cover authorized create/list/show/update/lifecycle behavior.
-- [ ] Tests cover duplicate code/value validation by currency.
-- [ ] Tests cover invalid zero or negative values.
-- [ ] Tests prove unauthenticated and unauthorized users cannot mutate denominations.
-- [ ] Tests prove responses do not expose internal integer IDs.
-- [ ] Tests prove no teller session, transaction, reconciliation, or journal record is created by denomination endpoints.
+- [x] Tests cover authorized create/list/show/update/lifecycle behavior.
+- [x] Tests cover duplicate code/value validation by currency.
+- [x] Tests cover invalid zero or negative values.
+- [x] Tests prove unauthenticated and unauthorized users cannot mutate denominations.
+- [x] Tests prove responses do not expose internal integer IDs.
+- [x] Tests prove no teller session, transaction, reconciliation, or journal record is created by denomination endpoints.
 
 Command log:
 
-- [ ] Record exact Artisan commands here.
+- [x] `php artisan make:test Module5CashInfrastructureTest`
+
+Adversarial review:
+
+- [x] Confirmed denomination endpoints return only public IDs/reference fields and no internal integer IDs.
+- [x] Confirmed denomination endpoints do not create teller sessions, teller transactions, till reconciliations, reconciliation lines, journal entries, or journal lines.
+- [x] Confirmed invalid zero values, duplicate code, duplicate value, unauthenticated mutation, and unauthorized mutation fail closed.
+- [x] Fixed the review finding that test authentication state could mask the intended validation path by switching the affected assertion to explicit Sanctum acting user state.
 
 ## Epic 2: Minimal Till Setup Records
 
-- [ ] DEV-0201: Implement minimal till model, resource, requests, policy, controller, and routes.
+- [x] DEV-0201: Implement minimal till model, resource, requests, policy, controller, and routes.
 
 As a cash administrator, I want to register physical or logical tills inside an agency without enabling cash movement.
 
 Acceptance criteria:
 
-- [ ] `Till` model exists with ULID public route key.
-- [ ] API supports create, list, show, update, activate/deactivate where safe.
-- [ ] Request validation accepts only fields present in the current safe schema: agency reference when authorized, code, name, type, status, and assigned user reference.
-- [ ] Till code uniqueness is enforced inside agency scope.
-- [ ] Assigned user, when supplied, must be active staff in the same agency scope.
-- [ ] Agency-scoped users can only create, view, and update tills in their active agency.
-- [ ] Cross-agency cash administration, if allowed for platform roles, is explicit and tested.
-- [ ] Responses expose public ID, agency public ID, code, name, type, status, assigned user public ID, and timestamps.
-- [ ] No response exposes internal integer IDs.
-- [ ] No endpoint opens a till, closes a till, starts a teller session, calculates balances, enforces cash limits, or posts ledger entries.
-- [ ] Mutations are audit logged with safe properties only.
+- [x] `Till` model exists with ULID public route key.
+- [x] API supports create, list, show, update, activate/deactivate where safe.
+- [x] Request validation accepts only fields present in the current safe schema: agency reference when authorized, code, name, type, status, and assigned user reference.
+- [x] Till code uniqueness is enforced inside agency scope.
+- [x] Assigned user, when supplied, must be active staff in the same agency scope.
+- [x] Agency-scoped users can only create, view, and update tills in their active agency.
+- [x] Cross-agency cash administration, if allowed for platform roles, is explicit and tested.
+- [x] Responses expose public ID, agency public ID, code, name, type, status, assigned user public ID, and timestamps.
+- [x] No response exposes internal integer IDs.
+- [x] No endpoint opens a till, closes a till, starts a teller session, calculates balances, enforces cash limits, or posts ledger entries.
+- [x] Mutations are audit logged with safe properties only.
 
 Command log:
 
-- [ ] Record exact Artisan commands here.
+- [x] See scaffolding and generator command log above.
 
-- [ ] DEV-0202: Add minimal till API tests.
+- [x] DEV-0202: Add minimal till API tests.
 
 As a reviewer, I want executable proof that till setup APIs cannot be used as cash movement or session lifecycle endpoints.
 
 Acceptance criteria:
 
-- [ ] Tests cover authorized create/list/show/update/lifecycle behavior.
-- [ ] Tests cover agency scoping and cross-agency denial for agency-scoped users.
-- [ ] Tests cover assigned user same-agency validation.
-- [ ] Tests cover duplicate till code rejection inside an agency.
-- [ ] Tests prove unauthenticated and unauthorized users cannot mutate tills.
-- [ ] Tests prove responses do not expose internal integer IDs.
-- [ ] Tests prove no teller session, teller transaction, till reconciliation, reconciliation line, or journal record is created by till setup endpoints.
+- [x] Tests cover authorized create/list/show/update/lifecycle behavior.
+- [x] Tests cover agency scoping and cross-agency denial for agency-scoped users.
+- [x] Tests cover assigned user same-agency validation.
+- [x] Tests cover duplicate till code rejection inside an agency.
+- [x] Tests prove unauthenticated and unauthorized users cannot mutate tills.
+- [x] Tests prove responses do not expose internal integer IDs.
+- [x] Tests prove no teller session, teller transaction, till reconciliation, reconciliation line, or journal record is created by till setup endpoints.
 
 Command log:
 
-- [ ] Record exact Artisan commands here.
+- [x] `php artisan make:test Module5CashInfrastructureTest`
+
+Adversarial review:
+
+- [x] Confirmed till endpoints accept only the current safe schema fields and reject deferred ER fields such as `opening_balance`.
+- [x] Confirmed agency manager till access is scoped to the active agency and cross-agency show/update attempts fail closed.
+- [x] Confirmed assigned users must be active staff in the till agency.
+- [x] Fixed the review finding that cross-agency tests were still using the previous request header state by switching the affected assertions to explicit Sanctum acting user state.
 
 ## Epic 3: Security, Documentation, And Operational Readiness
 
-- [ ] SEC-0101: Adversarial review of cash infrastructure APIs.
+- [x] SEC-0101: Adversarial review of cash infrastructure APIs.
 
 As a security reviewer, I want to prove this slice cannot become a backdoor for cash movement, cross-agency till access, or balance leakage.
 
 Acceptance criteria:
 
-- [ ] Cross-agency till access is denied for agency-scoped users.
-- [ ] Denomination endpoints are protected from unauthorized mutation.
-- [ ] Till setup endpoints do not accept deferred ER fields such as opening balance, closing balance, daily state, limits, or ledger account ID.
-- [ ] API responses do not expose internal IDs, balance fields, ledger posting state, teller session state, or reconciliation state.
-- [ ] Audit event properties remain safe and do not include internal integer IDs or sensitive data.
-- [ ] Final adversarial review records any findings and fixes under this story.
+- [x] Cross-agency till access is denied for agency-scoped users.
+- [x] Denomination endpoints are protected from unauthorized mutation.
+- [x] Till setup endpoints do not accept deferred ER fields such as opening balance, closing balance, daily state, limits, or ledger account ID.
+- [x] API responses do not expose internal IDs, balance fields, ledger posting state, teller session state, or reconciliation state.
+- [x] Audit event properties remain safe and do not include internal integer IDs or sensitive data.
+- [x] Final adversarial review records any findings and fixes under this story.
 
 Command log:
 
-- [ ] No generator command expected unless adding a documentation or test artifact.
+- [x] No generator command expected; review findings were addressed in tests and controller typing.
 
-- [ ] DEV-0301: Update API documentation and operational runbook.
+- [x] DEV-0301: Update API documentation and operational runbook.
 
 As an operator, I want the cash infrastructure endpoints documented with clear non-cash-movement boundaries.
 
 Acceptance criteria:
 
-- [ ] Scramble/OpenAPI export includes denomination and till setup endpoints.
-- [ ] Operational docs explain that denominations and tills are setup/reference records only.
-- [ ] Docs explicitly state that teller sessions, deposits, withdrawals, journal posting, cash limits, opening/closing balances, and reconciliation remain unavailable in this safe slice.
-- [ ] Docs link blocked formula/calculation areas to `docs/domain/stakeholder-formula-questions.md` and `docs/domain/formula-guardrails.md`.
+- [x] Scramble/OpenAPI export includes denomination and till setup endpoints.
+- [x] Operational docs explain that denominations and tills are setup/reference records only.
+- [x] Docs explicitly state that teller sessions, deposits, withdrawals, journal posting, cash limits, opening/closing balances, and reconciliation remain unavailable in this safe slice.
+- [x] Docs link blocked formula/calculation areas to `docs/domain/stakeholder-formula-questions.md` and `docs/domain/formula-guardrails.md`.
 
 Command log:
 
-- [ ] Record exact commands here.
+- [x] Documentation added manually: `docs/domain/module-5-cash-infrastructure.md`.
+- [x] Documentation updated manually: `docs/domain/cash-operations.md`.
+- [x] `php artisan scramble:export`
 
-- [ ] DEV-0302: Run final verification gates.
+- [x] DEV-0302: Run final verification gates.
 
 As a maintainer, I want the safe slice merged only after static analysis, tests, formatting, and API export pass.
 
 Acceptance criteria:
 
-- [ ] `vendor/bin/pint --test` passes.
-- [ ] `vendor/bin/phpstan analyze` passes.
-- [ ] `php artisan test --filter=Module5CashInfrastructureTest` passes.
-- [ ] `php artisan test` passes.
-- [ ] `php artisan scramble:export` passes.
-- [ ] This backlog is updated with completed stories, command logs, and adversarial review notes.
+- [x] `vendor/bin/pint --test` passes.
+- [x] `vendor/bin/phpstan analyze` passes.
+- [x] `php artisan test --filter=Module5CashInfrastructureTest` passes.
+- [x] `php artisan test` passes.
+- [x] `php artisan scramble:export` passes.
+- [x] This backlog is updated with completed stories, command logs, and adversarial review notes.
 
 Command log:
 
-- [ ] Record exact commands here.
+- [x] `vendor/bin/pint --test`
+- [x] `vendor/bin/phpstan analyze`
+- [x] `php artisan test --filter=Module5CashInfrastructureTest`
+- [x] `php artisan test`
+- [x] `php artisan scramble:export`
+
+Adversarial review:
+
+- [x] Confirmed focused Module 5 tests cover authorization, agency scoping, duplicate protection, deferred-field rejection, no internal IDs, and no cash workflow side effects.
+- [x] Confirmed static scan of Module 5 controllers/resources/requests does not expose or accept deferred balance, reconciliation, posting, teller transaction, or session fields except as negative test payloads.
+- [x] Fixed PHPStan findings around nullable agency handling, mixed currency input handling, and Eloquent builder dynamic call style.
+- [x] Verified final gates with `vendor/bin/pint --test`, `vendor/bin/phpstan analyze`, `php artisan test --filter=Module5CashInfrastructureTest`, `php artisan test`, and `php artisan scramble:export`.
 
 ## Explicitly Deferred From This Safe Slice
 
@@ -216,11 +257,11 @@ Command log:
 
 ## Completion Gate
 
-- [ ] All non-deferred stories are checked.
-- [ ] Every completed story has evidence in tests, docs, or code review notes.
-- [ ] All command logs are filled in for generated artifacts.
-- [ ] `vendor/bin/pint --test` passes.
-- [ ] `vendor/bin/phpstan analyze` passes.
-- [ ] `php artisan test` passes.
-- [ ] `php artisan scramble:export` passes.
-- [ ] Final adversarial review finds no unresolved high or medium risks introduced by the cash infrastructure work.
+- [x] All non-deferred stories are checked.
+- [x] Every completed story has evidence in tests, docs, or code review notes.
+- [x] All command logs are filled in for generated artifacts.
+- [x] `vendor/bin/pint --test` passes.
+- [x] `vendor/bin/phpstan analyze` passes.
+- [x] `php artisan test` passes.
+- [x] `php artisan scramble:export` passes.
+- [x] Final adversarial review finds no unresolved high or medium risks introduced by the cash infrastructure work.

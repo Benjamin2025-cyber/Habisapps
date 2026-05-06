@@ -228,6 +228,10 @@ final class RoleController extends BaseController
             'crm.proxies.verify',
             'crm.proxies.reject',
             'crm.proxies.expire',
+            'cash.denominations.view',
+            'cash.denominations.manage',
+            'cash.tills.view',
+            'cash.tills.manage',
         ];
     }
 
@@ -258,6 +262,7 @@ final class RoleController extends BaseController
             'crm.guarantors.reject',
             'crm.proxies.verify',
             'crm.proxies.reject',
+            'cash.denominations.manage',
         ];
     }
 

@@ -2,6 +2,12 @@
 
 This document defines teller and cash-control implementation guidance.
 
+## Current Safe Slice
+
+The implemented Module 5 safe slice is limited to denomination reference data and minimal till setup records. See `docs/domain/module-5-cash-infrastructure.md`.
+
+This safe slice does not open or close tills, start teller sessions, move cash, post journals, calculate balances, calculate reconciliation differences, or calculate denomination count totals.
+
 ## Till Setup
 
 Tills represent physical or logical cash drawers.

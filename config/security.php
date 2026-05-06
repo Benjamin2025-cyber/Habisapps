@@ -133,6 +133,10 @@ return [
                 'sub-sectors.create',
                 'sub-sectors.update',
                 'sub-sectors.archive',
+                'cash.denominations.view',
+                'cash.denominations.manage',
+                'cash.tills.view',
+                'cash.tills.manage',
                 'accounting.audit.view',
             ],
             // Deprecated compatibility alias for agency-scoped staff administration.
@@ -165,6 +169,8 @@ return [
                 'journal.lines.view',
                 'sectors.view',
                 'sub-sectors.view',
+                'cash.denominations.view',
+                'cash.tills.view',
             ],
             'agency-manager' => [
                 'agencies.view',
@@ -197,6 +203,9 @@ return [
                 'journal.lines.view',
                 'sectors.view',
                 'sub-sectors.view',
+                'cash.denominations.view',
+                'cash.tills.view',
+                'cash.tills.manage',
             ],
             'regional-manager' => [
                 'users.view',
@@ -208,6 +217,8 @@ return [
                 'crm.identity_documents.view',
                 'crm.guarantors.view',
                 'crm.proxies.view',
+                'cash.denominations.view',
+                'cash.tills.view',
             ],
             'teller' => [
                 'system.view-health',
@@ -215,6 +226,8 @@ return [
                 'documents.view',
                 'documents.create',
                 'references.reserve',
+                'cash.denominations.view',
+                'cash.tills.view',
             ],
             'loan-officer' => [
                 'system.view-health',
@@ -228,6 +241,8 @@ return [
                 'crm.identity_documents.view',
                 'crm.guarantors.view',
                 'crm.proxies.view',
+                'cash.denominations.view',
+                'cash.tills.view',
             ],
             'accountant' => [
                 'system.view-health',
@@ -302,6 +317,8 @@ return [
                 'crm.proxies.verify',
                 'crm.proxies.reject',
                 'accounting.audit.view',
+                'cash.denominations.view',
+                'cash.tills.view',
             ],
             'auditor' => [
                 'system.view-health',
@@ -316,6 +333,8 @@ return [
                 'crm.proxies.view',
                 'crm.reviews.view',
                 'accounting.audit.view',
+                'cash.denominations.view',
+                'cash.tills.view',
             ],
             'staff' => [
                 'system.view-health',

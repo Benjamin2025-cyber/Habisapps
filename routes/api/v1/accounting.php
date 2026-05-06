@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AccountHoldController;
 use App\Http\Controllers\Api\V1\CustomerAccountController;
+use App\Http\Controllers\Api\V1\DenominationController;
 use App\Http\Controllers\Api\V1\JournalEntryController;
 use App\Http\Controllers\Api\V1\JournalLineController;
 use App\Http\Controllers\Api\V1\LedgerAccountController;
 use App\Http\Controllers\Api\V1\SectorController;
 use App\Http\Controllers\Api\V1\SubSectorController;
+use App\Http\Controllers\Api\V1\TillController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function (): void {
@@ -56,4 +58,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('sub-sectors/{subSector}', [SubSectorController::class, 'show']);
     Route::patch('sub-sectors/{subSector}', [SubSectorController::class, 'update']);
     Route::delete('sub-sectors/{subSector}', [SubSectorController::class, 'destroy']);
+
+    Route::get('denominations', [DenominationController::class, 'index']);
+    Route::post('denominations', [DenominationController::class, 'store']);
+    Route::get('denominations/{denomination}', [DenominationController::class, 'show']);
+    Route::patch('denominations/{denomination}', [DenominationController::class, 'update']);
+
+    Route::get('tills', [TillController::class, 'index']);
+    Route::post('tills', [TillController::class, 'store']);
+    Route::get('tills/{till}', [TillController::class, 'show']);
+    Route::patch('tills/{till}', [TillController::class, 'update']);
 });
