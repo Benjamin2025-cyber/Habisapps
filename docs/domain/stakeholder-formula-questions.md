@@ -4,6 +4,8 @@ This guide is for stakeholders, product owners, accountants, branch managers, cr
 
 The base operating currency is `XAF`. The open questions are not about which currency to use. They are about how amounts are rounded, how interest is calculated, how repayments are allocated, and how accounting/cash values are derived.
 
+Stakeholder responses have been extracted into `docs/domain/stakeholder-formula-responses.md`. Use that response register for implementation readiness and follow-up questions; keep this document as the original question guide.
+
 ## How To Use This Document
 
 For each section:
@@ -1076,4 +1078,3 @@ Please confirm these items before backend implementation starts:
 | Bank notes and coins |  | Pending |  |
 | Teller reconciliation |  | Pending |  |
 | Reporting metrics |  | Pending |  |
-

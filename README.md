@@ -116,7 +116,18 @@ Domain developer docs generated from stakeholder resources:
 - `docs/domain/cash-operations.md`
 - `docs/domain/implementation-roadmap.md`
 - `docs/domain/stakeholder-formula-questions.md`
+- `docs/domain/stakeholder-formula-responses.md`
+- `docs/domain/stakeholder-formula-items-to-explain.md`
+- `docs/domain/stakeholder-response-scope-audit.md`
 - `docs/domain/module-2-crm-kyc-operations.md`
+
+Backlog analysis:
+
+- `backlogs/stakeholder-formula-response-unblock-analysis.md`
+- `backlogs/stakeholder-warning-notes-migration-impact.md`
+- `backlogs/stakeholder-complete-migration-finalization-backlog.md`
+- `backlogs/stakeholder-complete-migration-completion-audit.md`
+- `backlogs/islamic-finance-discovery-backlog.md`
 
 ## API Design
 
