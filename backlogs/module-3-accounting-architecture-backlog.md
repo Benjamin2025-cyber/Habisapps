@@ -10,6 +10,10 @@ Progress convention:
 - `[x]` Completed.
 - Keep a story unchecked until all its acceptance criteria are checked.
 
+Completion note (2026-05-16): this original structural backlog is superseded for final accounting scope by
+`backlogs/module-3-accounting-completion-backlog.md`. Safe-slice deferrals below are retained as historical context
+and are checked when the completion backlog has implemented or explicitly assigned them to another owning module.
+
 ## Implementation Status
 
 Implemented and verified:
@@ -21,10 +25,10 @@ Implemented and verified:
 - [x] DEV-0501, SEC-0501
 - [x] DEV-0601, DEV-0602
 
-Still open:
+Completion backlog resolution:
 
-- [ ] DEV-0502
-- [ ] Production decision: global/shared ledger accounts are not supported by the current agency-scoped database constraints. Revisit only with stakeholder/accounting sign-off and a dedicated migration design.
+- [x] DEV-0502 is implemented in `backlogs/module-3-accounting-completion-backlog.md`.
+- [x] Production decision: operational ledger accounts remain agency-scoped; institution-level EMF/COBAC references live in `emf_regulatory_accounts`.
 
 Verification to complete during implementation:
 
@@ -89,17 +93,17 @@ Scaffolding and generator command log:
 - [x] `php artisan make:test Module3AccountingArchitectureTest`
 - [x] `php artisan make:migration add_public_id_to_journal_lines_table --table=journal_lines`
 
-Still pending stakeholder confirmation:
+Completion backlog resolution:
 
-- [ ] All balance, movement, availability, posting, rounding, cash, reporting, fee, interest, penalty, and repayment-allocation formulas remain unresolved and intentionally unimplemented.
-- [ ] Final chart-of-accounts taxonomy, account-product catalog, and manual journal approval policy require stakeholder/accounting sign-off before production use.
+- [x] Balance, movement, availability, posting, and accounting reporting are implemented in the completion backlog. Fee, interest, penalty, and repayment-allocation formulas remain with their owning loan/cash modules.
+- [x] Chart-of-accounts taxonomy, account-product catalog, and manual journal approval policy are implemented in the completion backlog.
 
 ## Guiding Rules
 
 - [x] Laravel scaffolding must be generated through Laravel/Artisan commands whenever Laravel provides a command for the artifact, then reviewed and adjusted manually as needed.
 - [x] Each implementation story must record the exact Artisan commands used, for example `php artisan make:model`, `php artisan make:controller`, `php artisan make:request`, `php artisan make:policy`, `php artisan make:resource`, and `php artisan make:test`.
 - [x] Do not hand-create Laravel models, controllers, requests, resources, policies, tests, seeders, or migrations when an Artisan generator exists.
-- [ ] Composer must be used for package installation; package config and migrations must be published through Laravel/vendor publish commands where provided.
+- [x] Composer must be used for package installation; package config and migrations must be published through Laravel/vendor publish commands where provided.
 - [x] Public APIs must expose `public_id`, account numbers, and business references, not internal integer IDs.
 - [x] Every mutation must be authenticated, authorized, agency-scoped where applicable, idempotency-aware where retryable, and audit logged.
 - [x] Agency users must never view or mutate records outside their active agency unless explicitly granted cross-agency accounting authority.
@@ -304,15 +308,15 @@ Acceptance criteria:
 - [x] No endpoint computes exposure, portfolio-at-risk, concentration, collection, or reporting metrics.
 - [x] Mutations are audit logged.
 
-- [ ] DEV-0502: Integrate sector references safely with existing client metadata where approved.
+- [x] DEV-0502: Integrate sector references safely with existing client metadata where approved.
 
 As a future credit/reporting implementer, I want sector references available without implying report calculations.
 
 Acceptance criteria:
 
-- [ ] Any client-sector link is metadata only and optional unless already approved.
-- [ ] Linking a sector to a client does not compute risk, loan eligibility, or portfolio metrics.
-- [ ] Tests prove invalid/deactivated sector references are rejected.
+- [x] Any client-sector link is metadata only and optional unless already approved.
+- [x] Linking a sector to a client does not compute risk, loan eligibility, or portfolio metrics.
+- [x] Tests prove invalid/deactivated sector references are rejected.
 
 - [x] SEC-0501: Review reference-data abuse paths.
 
@@ -353,24 +357,24 @@ Acceptance criteria:
 
 ## Not In Module 3 Safe Slice
 
-- [ ] Authoritative accounting balance calculation.
-- [ ] Available balance or unavailable balance calculation.
-- [ ] Debit/credit movement totals.
-- [ ] Trial balance, account statements, PAR, portfolio reports, or collection reports.
-- [ ] Teller deposits, teller withdrawals, cash receipts, denominations, till sessions, or reconciliation differences.
-- [ ] Loan product setup, loan schedules, disbursement, repayment, penalties, arrears, or portfolio transfer workflows.
-- [ ] Interest, fee, tax, insurance, guarantee deposit, rounding, repayment allocation, or early settlement formulas.
-- [ ] End-of-day jobs that compute balances, cash differences, report metrics, interest, penalties, or movements.
+- [x] Authoritative accounting balance calculation is implemented in the completion backlog.
+- [x] Available balance or unavailable balance calculation is implemented in the completion backlog.
+- [x] Debit/credit movement totals are implemented in accounting projections.
+- [x] Trial balance and account statements are implemented; PAR, portfolio reports, and collection reports remain with credit/reporting modules.
+- [x] Teller deposits, teller withdrawals, cash receipts, denominations, till sessions, and reconciliation differences belong to Module 5.
+- [x] Loan product setup, loan schedules, disbursement, repayment, penalties, arrears, and portfolio transfer workflows belong to Module 4.
+- [x] Interest, fee, tax, insurance, guarantee deposit, repayment allocation, and early settlement formulas belong to Module 4 policy and tests. XAF precision is approved.
+- [x] End-of-day jobs that compute accounting balances and report metrics are implemented where owned by Module 3; cash, interest, penalties, and loan movements remain with their owning modules.
 
 ## Open Questions Before Full Module 3 Completion
 
-- [ ] Confirm final chart-of-accounts classes, account types, and normal balance sides.
-- [ ] Confirm whether customer account opening requires verified KYC in all cases.
-- [ ] Confirm account number format and whether it is generated internally or supplied by operations.
-- [ ] Confirm whether customer accounts can exist without a linked ledger account.
-- [ ] Confirm whether account holds require pre-checking funds before placement.
-- [ ] Confirm available-balance formula and whether holds reduce availability immediately.
-- [ ] Confirm journal draft, review, approval, posting, and reversal workflow vocabulary.
-- [ ] Confirm whether manual journal entries are allowed before teller/cash modules exist.
-- [ ] Confirm whether sector/sub-sector taxonomy follows a regulatory catalog.
-- [ ] Confirm production requirements for accounting audit exports and retention.
+- [x] Confirm final chart-of-accounts classes, account types, and normal balance sides.
+- [x] Confirm whether customer account opening requires verified KYC in all cases.
+- [x] Confirm account number format and whether it is generated internally or supplied by operations.
+- [x] Confirm whether customer accounts can exist without a linked ledger account.
+- [x] Confirm whether account holds require pre-checking funds before placement.
+- [x] Confirm available-balance formula and whether holds reduce availability immediately.
+- [x] Confirm journal draft, review, approval, posting, and reversal workflow vocabulary.
+- [x] Confirm whether manual journal entries are allowed before teller/cash modules exist.
+- [x] Confirm whether sector/sub-sector taxonomy follows a regulatory catalog.
+- [x] Confirm production requirements for accounting audit exports and retention.

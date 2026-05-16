@@ -18,6 +18,8 @@ use App\Models\Client;
 use App\Models\ClientIdentityDocument;
 use App\Models\ClientKycReview;
 use App\Models\Document;
+use App\Models\Sector;
+use App\Models\SubSector;
 use App\Models\User;
 use App\Support\References\ReferenceNumberGenerator;
 use App\Support\Security\SecurityAudit;
@@ -61,7 +63,7 @@ final class ClientController extends BaseController
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $query = Client::query()
-            ->with(['agency', 'prospector', 'collectionAgent'])
+            ->with(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector'])
             ->latest();
 
         if (! $this->shouldUseInstitutionScope($actor, $request)) {
@@ -121,20 +123,34 @@ final class ClientController extends BaseController
                 $request->input('collection_agent_public_id'),
                 'collection_agent_public_id',
             );
+            $profilePhotoDocumentId = $this->resolveProfilePhotoDocumentId(
+                $agency->id,
+                $request->input('profile_photo_document_public_id'),
+            );
+            [$sectorId, $subSectorId] = $this->resolveSectorClassification(
+                $request->input('sector_public_id'),
+                $request->input('sub_sector_public_id'),
+            );
         } catch (ValidationException $exception) {
             return $this->respondUnprocessable(errors: $exception->errors());
         }
 
         $client = $this->createClient->execute($agency->id, [
+            'profile_photo_document_id' => $profilePhotoDocumentId,
             'prospector_id' => $prospectorId,
             'collection_agent_id' => $collectionAgentId,
+            'sector_id' => $sectorId,
+            'sub_sector_id' => $subSectorId,
             'first_name' => $request->string('first_name')->toString(),
             'last_name' => $request->string('last_name')->toString(),
             'middle_name' => $request->input('middle_name'),
+            'father_name' => $request->input('father_name'),
+            'mother_name' => $request->input('mother_name'),
             'date_of_birth' => $request->input('date_of_birth'),
             'place_of_birth' => $request->input('place_of_birth'),
             'gender' => $request->input('gender'),
             'phone_number' => $request->input('phone_number'),
+            'home_phone_number' => $request->input('home_phone_number'),
             'email' => $request->input('email'),
             'address_line_1' => $request->input('address_line_1'),
             'address_line_2' => $request->input('address_line_2'),
@@ -142,6 +158,12 @@ final class ClientController extends BaseController
             'region' => $request->input('region'),
             'occupation' => $request->input('occupation'),
             'employer_name' => $request->input('employer_name'),
+            'business_started_on' => $request->input('business_started_on'),
+            'business_activity_started_on' => $request->input('business_activity_started_on'),
+            'business_address_line_1' => $request->input('business_address_line_1'),
+            'business_address_line_2' => $request->input('business_address_line_2'),
+            'business_city' => $request->input('business_city'),
+            'business_region' => $request->input('business_region'),
             'collection_type' => $request->input('collection_type'),
             'collection_frequency' => $request->input('collection_frequency'),
             'collection_target_amount' => $request->input('collection_target_amount'),
@@ -155,7 +177,7 @@ final class ClientController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            ClientResource::make($client->loadMissing(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector'])),
             'Client created successfully'
         );
     }
@@ -185,7 +207,7 @@ final class ClientController extends BaseController
         }
 
         return $this->respondSuccess(
-            ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent']))
+            ClientResource::make($client->loadMissing(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector']))
         );
     }
 
@@ -220,6 +242,16 @@ final class ClientController extends BaseController
                 'collection_agent_public_id',
                 true,
             );
+            $profilePhotoDocumentId = $this->resolveProfilePhotoDocumentId(
+                $client->agency_id,
+                $request->input('profile_photo_document_public_id'),
+                true,
+            );
+            [$sectorId, $subSectorId] = $this->resolveSectorClassification(
+                $request->input('sector_public_id'),
+                $request->input('sub_sector_public_id'),
+                true,
+            );
         } catch (ValidationException $exception) {
             return $this->respondUnprocessable(errors: $exception->errors());
         }
@@ -229,10 +261,13 @@ final class ClientController extends BaseController
             'first_name',
             'last_name',
             'middle_name',
+            'father_name',
+            'mother_name',
             'date_of_birth',
             'place_of_birth',
             'gender',
             'phone_number',
+            'home_phone_number',
             'email',
             'address_line_1',
             'address_line_2',
@@ -240,6 +275,12 @@ final class ClientController extends BaseController
             'region',
             'occupation',
             'employer_name',
+            'business_started_on',
+            'business_activity_started_on',
+            'business_address_line_1',
+            'business_address_line_2',
+            'business_city',
+            'business_region',
             'collection_type',
             'collection_frequency',
             'collection_target_amount',
@@ -255,6 +296,24 @@ final class ClientController extends BaseController
             $attributes['collection_agent_id'] = $collectionAgentId;
         }
 
+        if (array_key_exists('profile_photo_document_public_id', $request->all())) {
+            $attributes['profile_photo_document_id'] = $profilePhotoDocumentId;
+        }
+
+        if (array_key_exists('sector_public_id', $request->all())) {
+            $attributes['sector_id'] = $sectorId;
+            if (! array_key_exists('sub_sector_public_id', $request->all())) {
+                $attributes['sub_sector_id'] = null;
+            }
+        }
+
+        if (array_key_exists('sub_sector_public_id', $request->all())) {
+            $attributes['sub_sector_id'] = $subSectorId;
+            if ($subSectorId !== null) {
+                $attributes['sector_id'] = $sectorId;
+            }
+        }
+
         $client->update($attributes);
 
         $this->securityAudit->record('crm.client.updated', actor: $actor, subject: $client, properties: [
@@ -262,7 +321,7 @@ final class ClientController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientResource::make($client->refresh()->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            ClientResource::make($client->refresh()->loadMissing(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector'])),
             'Client updated successfully'
         );
     }
@@ -302,7 +361,7 @@ final class ClientController extends BaseController
 
         if ($client->kyc_status === $transition) {
             return $this->respondSuccess(
-                ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+                ClientResource::make($client->loadMissing(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector'])),
                 'KYC status already applied.'
             );
         }
@@ -310,6 +369,12 @@ final class ClientController extends BaseController
         if ($transition === Client::KYC_STATUS_VERIFIED
             && ! $this->hasVerifiedIdentityEvidence($client, $allowExpiredIdentityOverride)) {
             return $this->respondUnprocessable('Client must have at least one active verified identity document before KYC verification.');
+        }
+
+        $allowSelfVerify = $request->boolean('allow_self_verify', false);
+        if ($transition === Client::KYC_STATUS_VERIFIED
+            && ! $this->canVerifySubmittedKyc($client, $actor, $allowSelfVerify)) {
+            return $this->respondForbidden('KYC verification requires a checker different from the submitter.');
         }
 
         $previousStatus = $client->kyc_status;
@@ -327,10 +392,14 @@ final class ClientController extends BaseController
         $this->securityAudit->record('crm.client.kyc_status_changed', actor: $actor, subject: $client, properties: [
             'previous_kyc_status' => $previousStatus,
             'new_kyc_status' => $transition,
+            'maker_checker_override_used' => $transition === Client::KYC_STATUS_VERIFIED
+                && $allowSelfVerify
+                && (bool) config('security.crm.kyc.enforce_maker_checker', true),
+            'kyc_submitted_by_user_id' => $client->kyc_submitted_by_user_id,
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientResource::make($client->loadMissing(['agency', 'prospector', 'collectionAgent'])),
+            ClientResource::make($client->loadMissing(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector'])),
             'Client KYC status updated successfully'
         );
     }
@@ -466,6 +535,78 @@ final class ClientController extends BaseController
         return $user->id;
     }
 
+    private function resolveProfilePhotoDocumentId(int $agencyId, mixed $publicId, bool $allowNull = false): ?int
+    {
+        if (! is_string($publicId) || $publicId === '') {
+            return $allowNull ? null : null;
+        }
+
+        $document = Document::query()
+            ->where('public_id', $publicId)
+            ->where('agency_id', $agencyId)
+            ->where('status', Document::STATUS_ACTIVE)
+            ->first();
+
+        if (! $document instanceof Document
+            || $document->category !== 'profile_photo'
+            || ! $document->hasMedia('kyc_documents')) {
+            throw ValidationException::withMessages([
+                'profile_photo_document_public_id' => 'Selected profile photo document must be an active profile_photo document in the same agency.',
+            ]);
+        }
+
+        return $document->id;
+    }
+
+    /**
+     * @return array{0: int|null, 1: int|null}
+     */
+    private function resolveSectorClassification(mixed $sectorPublicId, mixed $subSectorPublicId, bool $allowNull = false): array
+    {
+        $sector = null;
+        if (is_string($sectorPublicId) && $sectorPublicId !== '') {
+            $sector = Sector::query()
+                ->where('public_id', $sectorPublicId)
+                ->where('status', Sector::STATUS_ACTIVE)
+                ->first();
+
+            if (! $sector instanceof Sector) {
+                throw ValidationException::withMessages([
+                    'sector_public_id' => 'Selected sector must be active.',
+                ]);
+            }
+        }
+
+        $subSector = null;
+        if (is_string($subSectorPublicId) && $subSectorPublicId !== '') {
+            $subSector = SubSector::query()
+                ->with('sector')
+                ->where('public_id', $subSectorPublicId)
+                ->where('status', SubSector::STATUS_ACTIVE)
+                ->first();
+
+            if (! $subSector instanceof SubSector || ! $subSector->sector instanceof Sector || $subSector->sector->status !== Sector::STATUS_ACTIVE) {
+                throw ValidationException::withMessages([
+                    'sub_sector_public_id' => 'Selected sub-sector must be active and belong to an active sector.',
+                ]);
+            }
+
+            if ($sector instanceof Sector && $subSector->sector_id !== $sector->id) {
+                throw ValidationException::withMessages([
+                    'sub_sector_public_id' => 'Selected sub-sector must belong to the selected sector.',
+                ]);
+            }
+
+            $sector = $subSector->sector;
+        }
+
+        if (! $sector instanceof Sector && ! $allowNull) {
+            return [null, null];
+        }
+
+        return [$sector?->id, $subSector?->id];
+    }
+
     private function canApplyKycAction(User $actor, Client $client, string $action): bool
     {
         return match ($action) {
@@ -476,6 +617,19 @@ final class ClientController extends BaseController
             'archive' => $actor->can('archive', $client),
             default => false,
         };
+    }
+
+    private function canVerifySubmittedKyc(Client $client, User $actor, bool $allowSelfVerify): bool
+    {
+        if (! (bool) config('security.crm.kyc.enforce_maker_checker', true)) {
+            return true;
+        }
+
+        if ($client->kyc_submitted_by_user_id === null || $client->kyc_submitted_by_user_id !== $actor->id) {
+            return true;
+        }
+
+        return $allowSelfVerify && $actor->hasPermissionTo('crm.kyc.override.self_verify');
     }
 
     private function hasInstitutionReadScope(User $actor): bool

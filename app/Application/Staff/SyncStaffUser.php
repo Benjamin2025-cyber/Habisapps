@@ -34,6 +34,7 @@ final class SyncStaffUser
                 $this->createPrimaryAssignment($user, $attributes['agency_id'], $user->job_title ?? 'staff');
             }
 
+            $this->syncProfessionalProfile($user, $attributes);
             $user->assignRole('staff');
 
             return $user;
@@ -52,6 +53,8 @@ final class SyncStaffUser
                 $agencyId = $attributes['agency_id'];
                 $this->replacePrimaryAssignment($staffUser, is_int($agencyId) ? $agencyId : null, $staffUser->job_title ?? 'staff');
             }
+
+            $this->syncProfessionalProfile($staffUser->refresh(), $attributes);
         });
     }
 
@@ -161,5 +164,99 @@ final class SyncStaffUser
         if ($agencyId !== null) {
             $this->createPrimaryAssignment($user, $agencyId, $roleAtAgency);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function syncProfessionalProfile(User $user, array $attributes): void
+    {
+        $profileKeys = [
+            'gender',
+            'birth_date',
+            'birth_place',
+            'service_name',
+            'supervisor_id',
+            'portfolio_code',
+        ];
+
+        $hasProfileInput = array_key_exists('name', $attributes)
+            || array_key_exists('phone_number', $attributes)
+            || array_key_exists('email', $attributes)
+            || array_key_exists('job_title', $attributes)
+            || array_key_exists('agency_id', $attributes);
+
+        foreach ($profileKeys as $key) {
+            $hasProfileInput = $hasProfileInput || array_key_exists($key, $attributes);
+        }
+
+        if (! $hasProfileInput) {
+            return;
+        }
+
+        [$firstName, $lastName] = $this->splitName($user->name);
+        $employeeNumber = $user->matricule;
+        if (! is_string($employeeNumber) || $employeeNumber === '') {
+            $employeeNumber = 'STAFF-'.$user->public_id;
+        }
+
+        $profile = [
+            'agency_id' => $user->agency_id,
+            'employee_number' => $employeeNumber,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'phone_number' => $user->phone_number,
+            'email' => $user->email,
+            'job_title' => $user->job_title,
+            'status' => $user->status === User::STATUS_DEACTIVATED ? 'inactive' : 'active',
+            'metadata' => [
+                'source' => 'module_1_staff_profile_handoff',
+                'hr_owned_fields_not_exposed' => [
+                    'identity_number',
+                    'base_salary_minor',
+                    'emergency_contact',
+                    'professional_history',
+                ],
+            ],
+        ];
+
+        foreach ($profileKeys as $key) {
+            if (array_key_exists($key, $attributes)) {
+                $profile[$key] = $attributes[$key];
+            }
+        }
+
+        $profile['metadata'] = json_encode($profile['metadata'], JSON_THROW_ON_ERROR);
+        $existingId = DB::table('hr_employees')->where('user_id', $user->id)->value('id');
+
+        if (is_int($existingId)) {
+            DB::table('hr_employees')
+                ->where('id', $existingId)
+                ->update(array_merge($profile, ['updated_at' => now()]));
+
+            return;
+        }
+
+        DB::table('hr_employees')->insert(array_merge($profile, [
+            'public_id' => (string) Str::ulid(),
+            'user_id' => $user->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+    }
+
+    /**
+     * @return array{0:string, 1:string}
+     */
+    private function splitName(string $name): array
+    {
+        $parts = preg_split('/\s+/', trim($name));
+        if ($parts === false) {
+            $parts = [];
+        }
+        $firstName = is_string($parts[0] ?? null) && $parts[0] !== '' ? $parts[0] : $name;
+        $lastName = trim(implode(' ', array_slice($parts, 1)));
+
+        return [$firstName, $lastName !== '' ? $lastName : $firstName];
     }
 }

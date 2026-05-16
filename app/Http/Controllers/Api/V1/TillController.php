@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateTillRequest;
 use App\Http\Resources\TillCollection;
 use App\Http\Resources\TillResource;
 use App\Models\Agency;
+use App\Models\LedgerAccount;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -17,6 +18,7 @@ use App\Support\Staff\StaffAgencyScope;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -35,7 +37,7 @@ final class TillController extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = Till::query()->with(['agency', 'assignedUser'])->latest();
+        $query = Till::query()->with(['agency', 'assignedUser', 'ledgerAccount'])->latest();
 
         if (! $actor->hasRole('platform-admin')) {
             $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
@@ -74,14 +76,38 @@ final class TillController extends BaseController
             return $this->respondUnprocessable(errors: $exception->errors());
         }
 
+        $ledgerAccount = $this->resolveLedgerAccount($request->input('ledger_account_public_id'));
+        if ($ledgerAccount === false) {
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+        }
+
+        if ($ledgerAccount instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($ledgerAccount, $agency)) {
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be an active asset ledger account in the till agency.']]);
+        }
+
+        $status = $request->input('status', Till::STATUS_ACTIVE);
+        if ($assignedUserId !== null && $status === Till::STATUS_ACTIVE && $this->activeTillAlreadyAssigned($agency->id, $assignedUserId)) {
+            return $this->respondUnprocessable(errors: ['assigned_user_public_id' => ['The selected teller is already assigned to another active till.']]);
+        }
+
         $till = Till::query()->create([
             'public_id' => (string) Str::ulid(),
             'agency_id' => $agency->id,
             'code' => $request->string('code')->toString(),
             'name' => $request->string('name')->toString(),
             'type' => $request->input('type', Till::TYPE_COUNTER),
-            'status' => $request->input('status', Till::STATUS_ACTIVE),
+            'status' => $status,
+            'daily_state' => $request->input('daily_state', Till::DAILY_STATE_CLOSED),
+            'opening_balance_minor' => $request->input('opening_balance_minor'),
+            'last_closing_balance_minor' => $request->input('last_closing_balance_minor'),
+            'requires_denominations' => $request->boolean('requires_denominations', true),
+            'nature' => $request->input('nature'),
+            'is_central_till' => $request->boolean('is_central_till'),
+            'max_balance_limit_minor' => $request->input('max_balance_limit_minor'),
+            'max_withdrawal_limit_minor' => $request->input('max_withdrawal_limit_minor'),
+            'currency' => $this->normalizedCurrency($request->input('currency')),
             'assigned_user_id' => $assignedUserId,
+            'ledger_account_id' => $ledgerAccount instanceof LedgerAccount ? $ledgerAccount->id : null,
         ]);
 
         $this->securityAudit->record('cash.till.created', actor: $actor, subject: $till, properties: [
@@ -90,7 +116,7 @@ final class TillController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            TillResource::make($till->loadMissing(['agency', 'assignedUser'])),
+            TillResource::make($till->loadMissing(['agency', 'assignedUser', 'ledgerAccount'])),
             'Till created successfully'
         );
     }
@@ -103,7 +129,7 @@ final class TillController extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(TillResource::make($till->loadMissing(['agency', 'assignedUser'])));
+        return $this->respondSuccess(TillResource::make($till->loadMissing(['agency', 'assignedUser', 'ledgerAccount'])));
     }
 
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{till: \App\Http\Resources\TillResource}, errors: null, meta: null}')]
@@ -144,6 +170,39 @@ final class TillController extends BaseController
             unset($validated['assigned_user_public_id']);
         }
 
+        if (array_key_exists('ledger_account_public_id', $validated)) {
+            $ledgerAccount = $this->resolveLedgerAccount($validated['ledger_account_public_id']);
+            if ($ledgerAccount === false) {
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+            }
+
+            if ($ledgerAccount instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($ledgerAccount, $agency)) {
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be an active asset ledger account in the till agency.']]);
+            }
+
+            $validated['ledger_account_id'] = $ledgerAccount instanceof LedgerAccount ? $ledgerAccount->id : null;
+            unset($validated['ledger_account_public_id']);
+        } elseif (array_key_exists('agency_id', $validated) && $till->ledger_account_id !== null) {
+            $ledgerAccount = $till->ledgerAccount;
+            if (! $ledgerAccount instanceof LedgerAccount || ! $this->ledgerAccountIsCompatible($ledgerAccount, $agency)) {
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The current ledger account is not compatible with the selected agency.']]);
+            }
+        }
+
+        if (array_key_exists('currency', $validated) && is_string($validated['currency'])) {
+            $validated['currency'] = $this->normalizedCurrency($validated['currency']);
+        }
+
+        $effectiveStatus = is_string($validated['status'] ?? null) ? $validated['status'] : $till->status;
+        $effectiveAssignedUserId = array_key_exists('assigned_user_id', $validated)
+            ? $validated['assigned_user_id']
+            : $till->assigned_user_id;
+        if (is_int($effectiveAssignedUserId)
+            && $effectiveStatus === Till::STATUS_ACTIVE
+            && $this->activeTillAlreadyAssigned($agency->id, $effectiveAssignedUserId, $till->id)) {
+            return $this->respondUnprocessable(errors: ['assigned_user_public_id' => ['The selected teller is already assigned to another active till.']]);
+        }
+
         $till->fill($validated)->save();
 
         $this->securityAudit->record('cash.till.updated', actor: $actor, subject: $till, properties: [
@@ -151,7 +210,7 @@ final class TillController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            TillResource::make($till->refresh()->loadMissing(['agency', 'assignedUser'])),
+            TillResource::make($till->refresh()->loadMissing(['agency', 'assignedUser', 'ledgerAccount'])),
             'Till updated successfully'
         );
     }
@@ -195,6 +254,10 @@ final class TillController extends BaseController
             throw ValidationException::withMessages(['assigned_user_public_id' => ['The selected assigned user must be active staff in the same agency.']]);
         }
 
+        if (! $this->canBeAssignedToTill($assignedUser, $agencyId)) {
+            throw ValidationException::withMessages(['assigned_user_public_id' => ['The selected assigned user must be an active teller or cashier in the same agency.']]);
+        }
+
         return $assignedUser->id;
     }
 
@@ -203,6 +266,63 @@ final class TillController extends BaseController
         $query = Till::query()
             ->where('agency_id', $agencyId)
             ->where('code', $code);
+
+        if ($ignoreTillId !== null) {
+            $query->whereKeyNot($ignoreTillId);
+        }
+
+        return $query->first() instanceof Till;
+    }
+
+    private function resolveLedgerAccount(mixed $publicId): LedgerAccount|false|null
+    {
+        if ($publicId === null || $publicId === '') {
+            return null;
+        }
+
+        if (! is_string($publicId)) {
+            return false;
+        }
+
+        $ledgerAccount = LedgerAccount::query()->where('public_id', $publicId)->first();
+
+        return $ledgerAccount instanceof LedgerAccount ? $ledgerAccount : false;
+    }
+
+    private function ledgerAccountIsCompatible(LedgerAccount $ledgerAccount, Agency $agency): bool
+    {
+        return $ledgerAccount->status === LedgerAccount::STATUS_ACTIVE
+            && $ledgerAccount->agency_id === $agency->id
+            && $ledgerAccount->account_class === LedgerAccount::ACCOUNT_CLASS_ASSET;
+    }
+
+    private function normalizedCurrency(mixed $currency): string
+    {
+        return is_string($currency) && $currency !== '' ? strtoupper($currency) : 'XAF';
+    }
+
+    private function canBeAssignedToTill(User $user, int $agencyId): bool
+    {
+        if ($user->hasRole('teller') || $user->hasRole('cashier')) {
+            return true;
+        }
+
+        return DB::table('staff_agency_assignments')
+            ->where('user_id', $user->id)
+            ->where('agency_id', $agencyId)
+            ->where('status', 'active')
+            ->where('starts_on', '<=', now()->toDateString())
+            ->whereRaw('(ends_on IS NULL OR ends_on >= ?)', [now()->toDateString()])
+            ->whereIn('role_at_agency', ['teller', 'cashier'])
+            ->exists();
+    }
+
+    private function activeTillAlreadyAssigned(int $agencyId, int $assignedUserId, ?int $ignoreTillId = null): bool
+    {
+        $query = Till::query()
+            ->where('agency_id', $agencyId)
+            ->where('assigned_user_id', $assignedUserId)
+            ->where('status', Till::STATUS_ACTIVE);
 
         if ($ignoreTillId !== null) {
             $query->whereKeyNot($ignoreTillId);

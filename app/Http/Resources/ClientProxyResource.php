@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\ClientProxy;
+use App\Models\CustomerAccount;
 use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ final class ClientProxyResource extends JsonResource
         return [
             'public_id' => $record->public_id,
             'client_public_id' => $record->relationLoaded('client') ? $record->client?->public_id : null,
+            'customer_account_public_id' => $this->customerAccountPublicId($record),
             'document_public_id' => $record->relationLoaded('document') ? $record->document?->public_id : null,
             'proxy_full_name' => $showPii ? $record->proxy_full_name : $this->maskName($record->proxy_full_name),
             'proxy_phone_number' => $showPii ? $record->proxy_phone_number : $this->maskPhone($record->proxy_phone_number),
@@ -35,6 +37,9 @@ final class ClientProxyResource extends JsonResource
             'proxy_id_document_type' => $record->proxy_id_document_type,
             'proxy_id_document_number' => $showPii ? $record->proxy_id_document_number : $this->maskDocumentNumber($record->proxy_id_document_number),
             'mandate_type' => $record->mandate_type,
+            'operation_types' => $record->operation_types,
+            'max_amount_minor' => $record->max_amount_minor,
+            'limit_currency' => $record->limit_currency,
             'starts_on' => $this->formatDate($record->starts_on),
             'ends_on' => $this->formatDate($record->ends_on),
             'status' => $record->status,
@@ -47,6 +52,13 @@ final class ClientProxyResource extends JsonResource
             'created_at' => $this->formatDate($record->created_at),
             'updated_at' => $this->formatDate($record->updated_at),
         ];
+    }
+
+    private function customerAccountPublicId(ClientProxy $record): ?string
+    {
+        $account = $record->relationLoaded('customerAccount') ? $record->customerAccount : null;
+
+        return $account instanceof CustomerAccount ? $account->public_id : null;
     }
 
     private function maskName(?string $value): ?string

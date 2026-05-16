@@ -36,7 +36,8 @@ These fields must not be exposed in public API responses unless the endpoint is 
 
 - Mask identity document numbers by default, exposing only the minimum suffix needed for staff recognition.
 - Mask phone numbers and email addresses outside KYC, compliance, and authorized staff-management workflows.
-- Review at-rest encryption requirements before storing high-sensitivity identity document numbers in production.
+- Store `client_identity_documents.document_number` and `client_identity_documents.issuing_authority` encrypted at the application layer.
+- Use `client_identity_documents.document_number_hash` for normalized duplicate detection and search/uniqueness paths that must not query plaintext document numbers.
 - Audit every read endpoint that exposes full identity document numbers or full customer contact details.
 - Expose `public_id` and business references externally; never expose internal integer identifiers.
 - Return generic duplicate/conflict responses for identity lookups to avoid identity-existence enumeration.
@@ -44,5 +45,5 @@ These fields must not be exposed in public API responses unless the endpoint is 
 ## Reviewer Checklist
 
 - [x] PII fields introduced by foundation migrations are listed.
-- [x] Masking and encryption review requirements are explicitly documented.
+- [x] Masking, encrypted storage, and hash-based lookup requirements are explicitly documented.
 - [x] Authorization and audit expectations are documented before feature APIs are built.

@@ -12,6 +12,7 @@ use App\Http\Resources\ClientProxyCollection;
 use App\Http\Resources\ClientProxyResource;
 use App\Models\Client;
 use App\Models\ClientProxy;
+use App\Models\CustomerAccount;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -54,6 +55,7 @@ final class ClientProxyController extends BaseController
         return new ClientProxyCollection(
             ClientProxy::query()
                 ->with(['client', 'document'])
+                ->with('customerAccount')
                 ->where('client_id', $client->id)
                 ->where('agency_id', $client->agency_id)
                 ->when($onlyCurrent, function (Builder $query) use ($today): void {
@@ -89,17 +91,25 @@ final class ClientProxyController extends BaseController
         if ($documentId === false) {
             return $this->respondUnprocessable('Document attachment is invalid for this client.');
         }
+        $accountId = $this->resolveCustomerAccountId($client, $request->input('customer_account_public_id'));
+        if ($accountId === false) {
+            return $this->respondUnprocessable('Customer account mandate scope is invalid for this client.');
+        }
 
         $record = ClientProxy::query()->create([
             'public_id' => (string) Str::ulid(),
             'agency_id' => $client->agency_id,
             'client_id' => $client->id,
+            'customer_account_id' => is_int($accountId) ? $accountId : null,
             'proxy_full_name' => $request->string('proxy_full_name')->toString(),
             'proxy_phone_number' => $request->input('proxy_phone_number'),
             'proxy_email' => $request->input('proxy_email'),
             'proxy_id_document_type' => $request->input('proxy_id_document_type'),
             'proxy_id_document_number' => $request->input('proxy_id_document_number'),
             'mandate_type' => $request->string('mandate_type')->toString(),
+            'operation_types' => $request->input('operation_types'),
+            'max_amount_minor' => $request->input('max_amount_minor'),
+            'limit_currency' => $request->input('limit_currency'),
             'starts_on' => $request->input('starts_on'),
             'ends_on' => $request->input('ends_on'),
             'status' => $this->deriveLifecycleStatus(
@@ -116,7 +126,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            ClientProxyResource::make($record->loadMissing(['client', 'document'])),
+            ClientProxyResource::make($record->loadMissing(['client', 'customerAccount', 'document'])),
             'Client proxy created successfully'
         );
     }
@@ -146,7 +156,7 @@ final class ClientProxyController extends BaseController
         }
 
         return $this->respondSuccess(
-            ClientProxyResource::make($proxy->loadMissing(['client', 'document']))
+            ClientProxyResource::make($proxy->loadMissing(['client', 'customerAccount', 'document']))
         );
     }
 
@@ -180,9 +190,21 @@ final class ClientProxyController extends BaseController
             'proxy_id_document_type',
             'proxy_id_document_number',
             'mandate_type',
+            'operation_types',
+            'max_amount_minor',
+            'limit_currency',
             'starts_on',
             'ends_on',
         ]);
+
+        if ($request->has('customer_account_public_id')) {
+            $accountId = $this->resolveCustomerAccountId($client, $request->input('customer_account_public_id'));
+            if ($accountId === false) {
+                return $this->respondUnprocessable('Customer account mandate scope is invalid for this client.');
+            }
+
+            $attributes['customer_account_id'] = is_int($accountId) ? $accountId : null;
+        }
 
         if ($request->has('document_public_id')) {
             $documentId = $this->resolveDocumentId($client, $request->input('document_public_id'));
@@ -194,7 +216,7 @@ final class ClientProxyController extends BaseController
         }
 
         if ($proxy->verification_status === ClientProxy::VERIFICATION_VERIFIED
-            && array_intersect(array_keys($attributes), ['proxy_full_name', 'proxy_id_document_number', 'document_id']) !== []) {
+            && array_intersect(array_keys($attributes), ['proxy_full_name', 'proxy_id_document_number', 'document_id', 'customer_account_id', 'operation_types', 'max_amount_minor']) !== []) {
             $attributes['verification_status'] = ClientProxy::VERIFICATION_PENDING_REVIEW;
             $attributes['verified_at'] = null;
             $attributes['verified_by_user_id'] = null;
@@ -215,7 +237,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document'])),
+            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'customerAccount', 'document'])),
             'Client proxy updated successfully'
         );
     }
@@ -309,7 +331,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'document'])),
+            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'customerAccount', 'document'])),
             'Client proxy status updated successfully'
         );
     }
@@ -338,6 +360,22 @@ final class ClientProxyController extends BaseController
         }
 
         return $document->id;
+    }
+
+    private function resolveCustomerAccountId(Client $client, mixed $publicId): int|bool|null
+    {
+        if (! is_string($publicId) || $publicId === '') {
+            return null;
+        }
+
+        $account = CustomerAccount::query()
+            ->where('public_id', $publicId)
+            ->where('client_id', $client->id)
+            ->where('agency_id', $client->agency_id)
+            ->where('status', CustomerAccount::STATUS_ACTIVE)
+            ->first();
+
+        return $account instanceof CustomerAccount ? $account->id : false;
     }
 
     private function canApplyStatusAction(User $actor, ClientProxy $proxy, string $action): bool

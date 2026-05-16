@@ -105,14 +105,17 @@ Decision:
 - Multi-currency support is out of scope unless a future ADR explicitly introduces it.
 - Decimal storage is acceptable for early implementation only with explicit precision/scale and `brick/money` in PHP.
 
-Open decision:
+Approved decision:
 
-- Confirm rounding policy for `XAF` amounts before implementing accounting, accounts, cash, or loans.
+- `XAF` account and loan ledger amounts use 2-decimal precision.
+- Physical `XAF` cash handling uses whole-cash precision.
+- Loan/account debt is not rounded to cash denominations.
+- Final installment residuals absorb decimal split differences so approved totals reconcile exactly.
 
 Implementation guidance:
 
 - Do not create money columns without an adjacent currency column unless the currency is guaranteed by table-level invariant and documented.
-- Use one precision/scale convention across the system. For user-facing `XAF` amounts, assume whole monetary units unless stakeholders approve fractional accounting precision.
+- Use the approved precision split: 2-decimal loan/account ledger values, whole-XAF physical cash values.
 - Never use floating-point types.
 
 ## ADR-008: Audit, Retention, And PII

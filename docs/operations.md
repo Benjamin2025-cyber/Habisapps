@@ -28,6 +28,18 @@
 - The queue connection may remain `sync` during early development, but production should use an async queue before heavy background work is introduced.
 - Logs should be sent to a centralized sink before handling real customer traffic.
 
+## Scheduler And Queue Failure Modes
+
+- Batch procedures must be triggered through `batch_runs`; operators should not mark formula or close jobs complete outside the batch-run execution API.
+- Duplicate batch execution is blocked by procedure, business date, and agency scope. If a run is stuck in `running`, cancel it through the batch-run control endpoint before retrying.
+- Dependency failures are terminal for that run. Fix the prerequisite batch, then retry the dependent run so the dependency summary remains auditable.
+- Formula-dependent handlers must fail closed when their owning formula policy is disabled or unapproved. Do not replace that failure with a default calculation.
+- Queue workers must not retry financial jobs by blindly re-posting side effects. Jobs should call idempotent application services or resume from the recorded `batch_runs`/delivery state.
+- Notification and OTP delivery failures are retryable only while `retry_count < max_attempts`; once marked `permanently_failed`, a new operator action or new delivery row is required.
+- Failure reasons must be sanitized before storage. OTPs, passwords, tokens, secrets, and phone numbers must not be copied into `failure_reason` or `error_summary`.
+- If scheduler execution is delayed, use the intended business date on the batch run. Do not infer the business date from wall-clock retry time.
+- A failed agency-scoped batch must not mark an institution/global close as complete. Global close orchestration should inspect child agency run statuses.
+
 ## Quality gate
 
 - Required checks: `vendor/bin/pint --test`, `vendor/bin/phpstan analyze`, `php artisan test`.

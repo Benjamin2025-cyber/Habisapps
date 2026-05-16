@@ -16,12 +16,12 @@ Objective restated as concrete deliverables:
 | Implement migration changes | `database/migrations/2026_05_11_000000_finalize_stakeholder_complete_schema.php`. |
 | Add migration integrity tests like previous migrations | `tests/Feature/Database/StakeholderCompleteSchemaIntegrityTest.php`. |
 | Link backlog for discoverability | `README.md` Backlog analysis section. |
-| Verify fresh migration path | `php artisan migrate:fresh --env=testing` passed. |
+| Verify fresh migration path | Initial run: `php artisan migrate:fresh --env=testing` passed. Post-implementation run on 2026-05-16: `php artisan migrate:fresh --env=testing` rebuilt the full testing schema through migration `2026_05_16_040000_add_retry_state_to_notification_and_otp_deliveries`. |
 | Verify rollback path for new migration | `php artisan migrate:rollback --step=1 --env=testing` passed. |
 | Verify re-apply after rollback | `php artisan migrate --env=testing` passed. |
 | Verify created schema exists in test DB | `php artisan tinker --env=testing --execute="..."` listed the new tables including `account_products`, `loan_approvals`, `insurance_products`, `hr_employees`, `fx_transactions`, `islamic_financings`, `emf_regulatory_accounts`, `report_runs`, and `sms_messages`. |
-| Run dedicated stakeholder schema integrity test | `php artisan test tests/Feature/Database/StakeholderCompleteSchemaIntegrityTest.php` passed: 10 tests, 58 assertions. |
-| Run existing regression suite | `php artisan test` passed after adding dedicated schema tests: 155 tests, 920 assertions. |
+| Run dedicated stakeholder schema integrity test | Initial run: `php artisan test tests/Feature/Database/StakeholderCompleteSchemaIntegrityTest.php` passed with 10 tests / 58 assertions. Post-implementation run on 2026-05-16 after fresh migration rebuild: `php artisan test tests/Feature/Database/FoundationSchemaIntegrityTest.php tests/Feature/Database/StakeholderCompleteSchemaIntegrityTest.php` passed with 34 tests / 96 assertions. |
+| Run existing regression suite | `php artisan test` passed after adding dedicated schema tests: 155 tests / 920 assertions. A later full-suite rerun was intentionally cancelled on 2026-05-16 because it was too slow; use the post-implementation schema integrity, focused module tests, PHPStan, and Pint evidence for the current verification state. |
 
 ## Stakeholder Questionnaire Sections 1-30
 
@@ -29,7 +29,7 @@ Objective restated as concrete deliverables:
 |---|---|
 | 1. XAF precision and rounding | Existing minor-unit money columns across ledger, loans, cash, charges, HR, FX, and insurance tables. |
 | 2. Loan interest method | `loan_products.interest_policy_key`, `loan_products.interest_rate`, `loans.formula_policy_snapshot`, `loan_schedule_snapshots`, `loan_schedule_lines.interest_minor`. |
-| 3. Day-count convention | `loan_products.rules`, `loans.formula_policy_snapshot`, `loan_schedule_snapshots.formula_engine_key/version/policy_snapshot_hash`. |
+| 3. Day-count convention | Standard flat-interest schedules do not require day-count or partial-month proration. If future day-based/value-date workflows are implemented, use `loan_products.rules`, `loans.formula_policy_snapshot`, and `loan_schedule_snapshots.formula_engine_key/version/policy_snapshot_hash`. |
 | 4. Installment amount | `loan_schedule_lines.total_installment_minor`, component columns, `loans.installment_amount_minor`. |
 | 5. Principal and interest split | `loan_schedule_lines.principal_minor`, `interest_minor`, `remaining_principal_minor`, `loans.outstanding_principal_minor`, repayment projection totals. |
 | 6. Dossier/application fees | `loan_products.fee_policy_key`, `loans.dossier_fees_minor`, `loans.dossier_fees_tax_minor`, `loan_charge_assessments`. |

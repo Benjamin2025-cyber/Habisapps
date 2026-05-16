@@ -28,16 +28,16 @@ final class FinanceFoundationTest extends TestCase
 
         $this->expectException(FormulaPolicyNotApproved::class);
 
-        $registry->requireApproved(FormulaPolicyKey::LoanInterestMethod);
+        $registry->requireApproved(FormulaPolicyKey::PenaltiesAndArrears);
     }
 
     public function test_formula_policy_gate_passes_when_explicitly_approved(): void
     {
-        config(['formulas.policies.loan_interest_method.approved' => true]);
+        config(['formulas.policies.penalties_and_arrears.approved' => true]);
 
-        app(FormulaPolicyRegistry::class)->requireApproved(FormulaPolicyKey::LoanInterestMethod);
+        app(FormulaPolicyRegistry::class)->requireApproved(FormulaPolicyKey::PenaltiesAndArrears);
 
-        self::assertTrue(app(FormulaPolicyRegistry::class)->isApproved(FormulaPolicyKey::LoanInterestMethod));
+        self::assertTrue(app(FormulaPolicyRegistry::class)->isApproved(FormulaPolicyKey::PenaltiesAndArrears));
     }
 
     public function test_money_amount_rejects_cross_currency_arithmetic(): void
@@ -45,6 +45,17 @@ final class FinanceFoundationTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         MoneyAmount::of('1000', 'XAF')->plus(MoneyAmount::of('1000', 'EUR'));
+    }
+
+    public function test_money_amount_uses_configured_account_scale_for_xaf_ledger_amounts(): void
+    {
+        config(['money.default_scale' => 2]);
+
+        $installment = MoneyAmount::of('833.33', 'XAF');
+
+        self::assertSame('833.33', $installment->amount());
+        self::assertSame('83333', $installment->minorAmount());
+        self::assertSame('850.00', MoneyAmount::ofMinor(85000, 'XAF')->amount());
     }
 
     public function test_percentage_rate_rejects_negative_values(): void
@@ -86,6 +97,8 @@ final class FinanceFoundationTest extends TestCase
 
     public function test_default_formula_engine_fails_closed_until_stakeholder_policy_is_approved(): void
     {
+        config(['formulas.policies.loan_interest_method.approved' => false]);
+
         $engine = app(FormulaEngineManager::class)->engine(FormulaEngineKey::LoanInterest);
 
         self::assertSame(FormulaEngineKey::LoanInterest, $engine->key());
@@ -119,7 +132,7 @@ final class FinanceFoundationTest extends TestCase
             DateRange::make(CarbonImmutable::parse('2026-04-01'), CarbonImmutable::parse('2026-04-30'))
         );
 
-        self::assertSame('1234', $interest->amount());
+        self::assertSame('1234.00', $interest->amount());
     }
 }
 

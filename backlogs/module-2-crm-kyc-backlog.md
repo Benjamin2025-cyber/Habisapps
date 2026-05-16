@@ -10,6 +10,10 @@ Progress convention:
 - `[x]` Completed.
 - Keep a story unchecked until all its acceptance criteria are checked.
 
+Completion note (2026-05-16): this original safe-slice backlog is superseded for final production scope by
+`backlogs/module-2-crm-completion-backlog.md`. Items below that say "Not In Module 2" describe the old safe-slice
+boundary, not remaining Module 2 work.
+
 ## Implementation Status (2026-04-30)
 
 Completed in code and verified in this implementation pass:
@@ -34,10 +38,10 @@ Verification completed in this pass:
 - [x] `vendor/bin/phpstan analyze`
 - [x] `php artisan scramble:export`
 
-Still pending stakeholder confirmation (tracked below in Open Questions):
+Completion backlog resolution:
 
-- [ ] Formula-adjacent business clarifications remain unresolved and intentionally unimplemented.
-- [ ] Final policy decisions for KYC vocabulary/encryption/segregation-of-duties semantics still require stakeholder sign-off.
+- [x] Formula-adjacent business clarifications that affect Module 2 have been resolved or moved to their owning modules.
+- [x] Final KYC vocabulary, encryption, and segregation-of-duties decisions are implemented in `backlogs/module-2-crm-completion-backlog.md`.
 
 ## Guiding Rules
 
@@ -397,22 +401,22 @@ Acceptance criteria:
 - [x] Documentation explicitly says Module 2 does not open accounts, approve loans, post ledger entries, or move cash.
 - [x] Documentation lists unresolved business questions and whether they block implementation.
 
-## Not In Module 2
+## Not In Module 2 Safe Slice
 
-- [ ] Customer account opening, account numbers, account balances, and account closure belong to Module 3.
-- [ ] Chart of accounts, journal entries, posting, reversals, and balance projections belong to Module 3.
-- [ ] Loan product setup, loan application workflow, collateral valuation, schedules, disbursement, repayment, penalties, arrears, and portfolio transfers belong to Module 4.
-- [ ] Tills, teller sessions, deposits, withdrawals, receipts, denominations, and cash reconciliation belong to Module 5.
-- [ ] End-of-day jobs that compute balances, penalties, interest, reconciliation differences, reports, or portfolio metrics remain blocked until formula policies are approved.
-- [ ] Rounding, precision, interest, fees, tax, insurance, repayment allocation, installment, penalty, available-balance, till-difference, and reporting calculations remain blocked until `docs/domain/stakeholder-formula-questions.md` is answered and approved.
-- [ ] Public or temporary KYC file download endpoints are not included unless separately approved by security review.
+- [x] Customer account opening, account numbers, account balances, and account closure belong to Module 3.
+- [x] Chart of accounts, journal entries, posting, reversals, and balance projections belong to Module 3.
+- [x] Loan product setup, loan application workflow, collateral valuation, schedules, disbursement, repayment, penalties, arrears, and portfolio transfers belong to Module 4.
+- [x] Tills, teller sessions, deposits, withdrawals, receipts, denominations, and cash reconciliation belong to Module 5.
+- [x] End-of-day jobs that compute balances, penalties, interest, reconciliation differences, reports, or portfolio metrics belong to their owning modules after formula policy approval.
+- [x] Rounding, precision, interest, fees, tax, insurance, repayment allocation, installment, penalty, available-balance, till-difference, and reporting calculations are handled by the formula policy docs and owning module completion backlogs.
+- [x] Public or temporary KYC file download endpoints are not included unless separately approved by security review.
 
 ## Open Questions Before Implementation
 
-- [ ] Confirm the exact KYC status vocabulary to use with existing `clients.kyc_status` values.
-- [ ] Confirm whether identity document numbers must be encrypted at rest before production.
-- [ ] Confirm whether KYC verification requires maker-checker segregation.
-- [ ] Confirm whether duplicate identity documents are globally unique or unique by document type plus owner category.
-- [ ] Confirm whether collection amount is required for all clients or only clients enrolled in field collection.
-- [ ] Confirm whether standalone guarantors should become independent `guarantors` records later, or remain client-scoped until loans are implemented.
-- [ ] Confirm whether proxies should be client-only in Module 2 or prepared for account-specific mandates after Module 3.
+- [x] Confirm the exact KYC status vocabulary to use with existing `clients.kyc_status` values.
+- [x] Confirm whether identity document numbers must be encrypted at rest before production.
+- [x] Confirm whether KYC verification requires maker-checker segregation.
+- [x] Confirm whether duplicate identity documents are globally unique or unique by document type plus owner category.
+- [x] Confirm whether collection amount is required for all clients or only clients enrolled in field collection.
+- [x] Confirm whether standalone guarantors should become independent `guarantors` records later, or remain client-scoped until loans are implemented.
+- [x] Confirm whether proxies should be client-only in Module 2 or prepared for account-specific mandates after Module 3.

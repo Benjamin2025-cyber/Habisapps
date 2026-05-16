@@ -8,6 +8,9 @@ Progress convention:
 - `[x]` Completed.
 - Keep a story unchecked until all its acceptance criteria are checked.
 
+Completion note (2026-05-16): this original administration/security backlog is superseded for final Module 1 scope by
+`backlogs/module-1-administration-completion-backlog.md`.
+
 ## Guiding Rules
 
 - [x] Laravel scaffolding must be generated through Laravel/Artisan commands whenever Laravel provides a command for the artifact, then reviewed and adjusted manually as needed.
@@ -352,8 +355,8 @@ Acceptance criteria:
 
 ## Not In Module 1
 
-- [ ] Client KYC profile implementation belongs to Module 2.
-- [ ] Customer accounts, chart of accounts APIs, postings, and balances belong to Module 3.
-- [ ] Loan product, approval, schedules, penalties, arrears, and portfolio transfer workflows belong to Module 4.
-- [ ] Tills, teller sessions, deposits, withdrawals, denominations, and cash reconciliation workflows belong to Module 5.
-- [ ] End-of-day jobs that compute balances, penalties, interest, reconciliation differences, reports, or portfolio metrics remain blocked until formula policies are approved.
+- [x] Client KYC profile implementation belongs to Module 2.
+- [x] Customer accounts, chart of accounts APIs, postings, and balances belong to Module 3.
+- [x] Loan product, approval, schedules, penalties, arrears, and portfolio transfer workflows belong to Module 4.
+- [x] Tills, teller sessions, deposits, withdrawals, denominations, and cash reconciliation workflows belong to Module 5.
+- [x] End-of-day jobs that compute balances, penalties, interest, reconciliation differences, reports, or portfolio metrics are implemented only in their owning modules after formula policy approval.

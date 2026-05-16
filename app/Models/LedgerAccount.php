@@ -91,4 +91,10 @@ final class LedgerAccount extends Model
     {
         return $this->hasMany(self::class, 'parent_account_id');
     }
+
+    /** @return HasMany<EmfLedgerAccountMapping, $this> */
+    public function emfMappings(): HasMany
+    {
+        return $this->hasMany(EmfLedgerAccountMapping::class);
+    }
 }

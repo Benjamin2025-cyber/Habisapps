@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Agency;
+use App\Models\HrEmployee;
 use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ final class StaffUserResource extends JsonResource
                 'phone_verified_at' => null,
                 'activated_at' => null,
                 'last_login_at' => null,
+                'professional_profile' => null,
                 'created_at' => null,
                 'updated_at' => null,
             ];
@@ -56,6 +58,7 @@ final class StaffUserResource extends JsonResource
             'phone_verified_at' => $this->formatDate($user->phone_verified_at),
             'activated_at' => $this->formatDate($user->activated_at),
             'last_login_at' => $this->formatDate($user->last_login_at),
+            'professional_profile' => $this->professionalProfile($user),
             'roles' => $user->getRoleNames()->values()->all(),
         ];
     }
@@ -106,5 +109,27 @@ final class StaffUserResource extends JsonResource
         }
 
         return $user->agency_name;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function professionalProfile(User $user): ?array
+    {
+        $employee = $user->relationLoaded('hrEmployee') ? $user->hrEmployee : null;
+        if (! $employee instanceof HrEmployee) {
+            return null;
+        }
+
+        return [
+            'gender' => $employee->gender,
+            'birth_date' => $employee->birth_date?->toDateString(),
+            'birth_place' => $employee->birth_place,
+            'job_title' => $employee->job_title,
+            'service_name' => $employee->service_name,
+            'supervisor_public_id' => $employee->relationLoaded('supervisor') ? $employee->supervisor?->public_id : null,
+            'portfolio_code' => $employee->portfolio_code,
+            'source' => 'hr_handoff',
+        ];
     }
 }

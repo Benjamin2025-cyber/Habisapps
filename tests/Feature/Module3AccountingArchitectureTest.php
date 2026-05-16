@@ -8,6 +8,7 @@ use App\Models\AccountHold;
 use App\Models\Client;
 use App\Models\CustomerAccount;
 use App\Models\JournalEntry;
+use App\Models\LedgerAccount;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -407,6 +408,7 @@ final class Module3AccountingArchitectureTest extends TestCase
     public function test_platform_admin_can_create_journal_entry_and_line(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
         $agency = $this->createAgency('ACCT-04');
 
         $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-ledger')->plainTextToken])
@@ -464,11 +466,56 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->assertJsonSuccess($submit);
         $submit->assertJsonPath('data.status', JournalEntry::STATUS_PENDING_REVIEW);
 
-        $reversal = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-reverse')->plainTextToken])
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/approve', [
+                'comment' => 'Ready to post.',
+            ]);
+        $this->assertJsonSuccess($approve);
+        $approve->assertJsonPath('data.status', JournalEntry::STATUS_APPROVED);
+
+        $post = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/post');
+        $this->assertJsonSuccess($post);
+        $post->assertJsonPath('data.status', JournalEntry::STATUS_POSTED);
+
+        $editPosted = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->patchJson('/api/v1/journal-entries/'.$entryPublicId, [
+                'description' => 'Edited after posting',
+            ]);
+        $editPosted->assertStatus(422);
+
+        $addPostedLine = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 1,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+        $addPostedLine->assertStatus(422);
+
+        $duplicatePost = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/post');
+        $this->assertJsonSuccess($duplicatePost);
+        $duplicatePost->assertJsonPath('data.status', JournalEntry::STATUS_POSTED);
+
+        $reversal = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
             ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/reverse');
 
         $this->assertJsonSuccess($reversal, 201);
         $reversal->assertJsonPath('data.reversal_of_public_id', $entryPublicId);
+        $reversal->assertJsonPath('data.status', JournalEntry::STATUS_POSTED);
+
+        $this->assertDatabaseHas('journal_entries', [
+            'public_id' => $entryPublicId,
+            'status' => JournalEntry::STATUS_REVERSED,
+        ]);
     }
 
     public function test_journal_entries_cannot_forge_final_status_on_create(): void
@@ -487,6 +534,67 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $entry->assertStatus(422);
         $entry->assertJsonValidationErrors(['status', 'posted_at']);
+    }
+
+    public function test_journal_review_workflow_requires_reviewer_and_valid_transitions(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-19');
+
+        $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$maker->createToken('journal-review-ledger')->plainTextToken])
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '4400',
+                'name' => 'Review Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $entryPublicId = $this->createBalancedJournalEntry($maker, $agency['public_id'], $ledgerPublicId, 'JE-4001');
+
+        $submit = $this->withApiHeaders(['Authorization' => 'Bearer '.$maker->createToken('journal-review-submit')->plainTextToken])
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/submit');
+        $this->assertJsonSuccess($submit);
+        $submit->assertJsonPath('data.status', JournalEntry::STATUS_SUBMITTED);
+
+        $makerApproval = $this->withApiHeaders(['Authorization' => 'Bearer '.$maker->createToken('journal-review-maker-approve')->plainTextToken])
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/approve', [
+                'comment' => 'Looks balanced.',
+            ]);
+        $makerApproval->assertForbidden();
+
+        $approval = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/approve', [
+                'comment' => 'Approved for posting.',
+            ]);
+        $this->assertJsonSuccess($approval);
+        $approval->assertJsonPath('data.status', JournalEntry::STATUS_APPROVED);
+        $approval->assertJsonPath('data.reviewed_by_user_public_id', $reviewer->public_id);
+        $approval->assertJsonPath('data.review_comment', 'Approved for posting.');
+
+        $rejectApproved = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/reject', [
+                'reason' => 'Too late.',
+            ]);
+        $rejectApproved->assertStatus(422);
+
+        $rejectedEntryPublicId = $this->createBalancedJournalEntry($maker, $agency['public_id'], $ledgerPublicId, 'JE-4002');
+        $this->withApiHeaders(['Authorization' => 'Bearer '.$maker->createToken('journal-review-submit-reject')->plainTextToken])
+            ->postJson('/api/v1/journal-entries/'.$rejectedEntryPublicId.'/submit')
+            ->assertStatus(200);
+
+        $rejection = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$rejectedEntryPublicId.'/reject', [
+                'reason' => 'Missing supporting evidence.',
+            ]);
+        $this->assertJsonSuccess($rejection);
+        $rejection->assertJsonPath('data.status', JournalEntry::STATUS_REJECTED);
+        $rejection->assertJsonPath('data.rejection_reason', 'Missing supporting evidence.');
     }
 
     public function test_journal_lines_cannot_mutate_after_submit(): void
@@ -548,6 +656,342 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-delete')->plainTextToken])
             ->deleteJson('/api/v1/journal-lines/'.$debitLinePublicId)
             ->assertStatus(422);
+    }
+
+    public function test_accounting_balances_are_derived_from_posted_journal_lines(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-20');
+
+        $cashLedger = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '4500',
+                'name' => 'Cash Balance Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $cashLedgerPublicId = $this->requireStringJsonPath($cashLedger, 'data.public_id');
+
+        $depositLedger = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '2500',
+                'name' => 'Customer Deposit Ledger',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $depositLedgerPublicId = $this->requireStringJsonPath($depositLedger, 'data.public_id');
+
+        $clientPublicId = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $customerAccount = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $clientPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $depositLedgerPublicId,
+                'account_number' => 'CA-BAL-1',
+                'opened_on' => '2026-05-01',
+            ]);
+        $customerAccountPublicId = $this->requireStringJsonPath($customerAccount, 'data.public_id');
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-BAL-1', '2026-05-01', [
+            ['ledger_account_public_id' => $cashLedgerPublicId, 'debit_minor' => 10000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $depositLedgerPublicId, 'customer_account_public_id' => $customerAccountPublicId, 'debit_minor' => 0, 'credit_minor' => 10000],
+        ]);
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-BAL-2', '2026-05-02', [
+            ['ledger_account_public_id' => $depositLedgerPublicId, 'customer_account_public_id' => $customerAccountPublicId, 'debit_minor' => 3000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cashLedgerPublicId, 'debit_minor' => 0, 'credit_minor' => 3000],
+        ]);
+
+        $draftOnlyEntry = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-BAL-DRAFT',
+                'business_date' => '2026-05-03',
+                'agency_public_id' => $agency['public_id'],
+            ]);
+        $draftOnlyEntryPublicId = $this->requireStringJsonPath($draftOnlyEntry, 'data.public_id');
+        $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $draftOnlyEntryPublicId,
+                'ledger_account_public_id' => $cashLedgerPublicId,
+                'debit_minor' => 50000,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ])
+            ->assertStatus(201);
+
+        $cashBalance = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$cashLedgerPublicId.'/balance?currency=XAF');
+        $this->assertJsonSuccess($cashBalance);
+        $cashBalance->assertJsonPath('data.scope', 'ledger_account');
+        $cashBalance->assertJsonPath('data.debit_total_minor', 10000);
+        $cashBalance->assertJsonPath('data.credit_total_minor', 3000);
+        $cashBalance->assertJsonPath('data.balance_minor', 7000);
+
+        $depositBalance = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$depositLedgerPublicId.'/balance?currency=XAF');
+        $this->assertJsonSuccess($depositBalance);
+        $depositBalance->assertJsonPath('data.debit_total_minor', 3000);
+        $depositBalance->assertJsonPath('data.credit_total_minor', 10000);
+        $depositBalance->assertJsonPath('data.balance_minor', 7000);
+        $depositBalance->assertJsonPath('data.normal_balance_side', LedgerAccount::NORMAL_BALANCE_CREDIT);
+
+        $customerBalance = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/customer-accounts/'.$customerAccountPublicId.'/balance?currency=XAF');
+        $this->assertJsonSuccess($customerBalance);
+        $customerBalance->assertJsonPath('data.scope', 'customer_account');
+        $customerBalance->assertJsonPath('data.balance_minor', 7000);
+
+        $accountProductId = DB::table('account_products')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'ledger_account_id' => DB::table('ledger_accounts')->where('public_id', $depositLedgerPublicId)->value('id'),
+            'code' => 'SAV-BAL-1',
+            'name' => 'Balance Savings',
+            'account_family' => 'savings',
+            'minimum_balance_minor' => 5000,
+            'currency' => 'XAF',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $customerAccountId = DB::table('customer_accounts')->where('public_id', $customerAccountPublicId)->value('id');
+        self::assertIsInt($customerAccountId);
+        DB::table('customer_accounts')
+            ->where('id', $customerAccountId)
+            ->update([
+                'account_product_id' => $accountProductId,
+                'unavailable_amount_minor' => 500,
+            ]);
+        DB::table('account_holds')->insert([
+            [
+                'public_id' => (string) Str::ulid(),
+                'customer_account_id' => $customerAccountId,
+                'amount_minor' => 1000,
+                'currency' => 'XAF',
+                'reason_type' => 'legal_hold',
+                'status' => AccountHold::STATUS_ACTIVE,
+                'placed_at' => now(),
+                'released_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'public_id' => (string) Str::ulid(),
+                'customer_account_id' => $customerAccountId,
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'reason_type' => 'released_hold',
+                'status' => AccountHold::STATUS_RELEASED,
+                'placed_at' => now(),
+                'released_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $availableBalance = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/customer-accounts/'.$customerAccountPublicId.'/available-balance?currency=XAF');
+        $this->assertJsonSuccess($availableBalance);
+        $availableBalance->assertJsonPath('data.accounting_balance_minor', 7000);
+        $availableBalance->assertJsonPath('data.minimum_balance_minor', 5000);
+        $availableBalance->assertJsonPath('data.unavailable_amount_minor', 500);
+        $availableBalance->assertJsonPath('data.active_hold_amount_minor', 1000);
+        $availableBalance->assertJsonPath('data.available_balance_minor', 500);
+
+        $periodBalance = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/customer-accounts/'.$customerAccountPublicId.'/balance?currency=XAF&from=2026-05-02&to=2026-05-02');
+        $this->assertJsonSuccess($periodBalance);
+        $periodBalance->assertJsonPath('data.debit_total_minor', 3000);
+        $periodBalance->assertJsonPath('data.credit_total_minor', 0);
+        $periodBalance->assertJsonPath('data.balance_minor', -3000);
+
+        $statement = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/customer-accounts/'.$customerAccountPublicId.'/statement?currency=XAF&from=2026-05-02&to=2026-05-02&per_page=1');
+        $this->assertJsonSuccess($statement);
+        $statement->assertJsonPath('data.statement.opening_balance_minor', 10000);
+        $statement->assertJsonPath('data.statement.debit_total_minor', 3000);
+        $statement->assertJsonPath('data.statement.credit_total_minor', 0);
+        $statement->assertJsonPath('data.statement.closing_balance_minor', 7000);
+        $statement->assertJsonPath('data.movements.0.signed_amount_minor', -3000);
+        $statement->assertJsonPath('meta.pagination.total', 1);
+        $statement->assertJsonMissing(['id' => 1]);
+
+        $ledgerMovements = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$cashLedgerPublicId.'/movements?currency=XAF&per_page=1');
+        $this->assertJsonSuccess($ledgerMovements);
+        $ledgerMovements->assertJsonPath('data.statement.opening_balance_minor', 0);
+        $ledgerMovements->assertJsonPath('data.statement.closing_balance_minor', 7000);
+        $ledgerMovements->assertJsonPath('meta.pagination.total', 2);
+        $ledgerMovements->assertJsonPath('meta.pagination.per_page', 1);
+
+        $reportDefinitionId = DB::table('report_definitions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'TB-TEST',
+            'name' => 'Trial Balance Test',
+            'report_type' => 'trial_balance',
+            'module' => 'accounting',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $reportDefinition = DB::table('report_definitions')->where('id', $reportDefinitionId)->first(['public_id']);
+        self::assertIsObject($reportDefinition);
+        self::assertIsString($reportDefinition->public_id);
+        $documentId = DB::table('documents')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'category' => 'report_export',
+            'title' => 'Trial Balance Export',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $document = DB::table('documents')->where('id', $documentId)->first(['public_id']);
+        self::assertIsObject($document);
+        self::assertIsString($document->public_id);
+
+        $reportRun = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $reportDefinition->public_id,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-02',
+                'currency' => 'XAF',
+                'document_public_id' => $document->public_id,
+            ]);
+        $this->assertJsonSuccess($reportRun, 201);
+        $reportRun->assertJsonPath('data.status', 'completed');
+        $reportRun->assertJsonPath('data.document_public_id', $document->public_id);
+        $reportRun->assertJsonPath('data.summary.report_type', 'trial_balance');
+        $reportRun->assertJsonPath('data.summary.debit_total_minor', 13000);
+        $reportRun->assertJsonPath('data.summary.credit_total_minor', 13000);
+        $reportRun->assertJsonPath('data.summary.row_count', 2);
+
+        $generalLedgerDefinitionId = DB::table('report_definitions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'GL-TEST',
+            'name' => 'General Ledger Test',
+            'report_type' => 'general_ledger',
+            'module' => 'accounting',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $generalLedgerDefinition = DB::table('report_definitions')->where('id', $generalLedgerDefinitionId)->first(['public_id']);
+        self::assertIsObject($generalLedgerDefinition);
+        self::assertIsString($generalLedgerDefinition->public_id);
+
+        $generalLedgerRun = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $generalLedgerDefinition->public_id,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-02',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($generalLedgerRun, 201);
+        $generalLedgerRun->assertJsonPath('data.summary.report_type', 'general_ledger');
+        $generalLedgerRun->assertJsonPath('data.summary.line_count', 4);
+        $generalLedgerRun->assertJsonPath('data.summary.debit_total_minor', 13000);
+        $generalLedgerRun->assertJsonPath('data.summary.credit_total_minor', 13000);
+
+        $emfDefinitionId = DB::table('report_definitions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'EMF-TB-TEST',
+            'name' => 'EMF Trial Balance Test',
+            'report_type' => 'emf_trial_balance',
+            'module' => 'accounting',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $emfDefinition = DB::table('report_definitions')->where('id', $emfDefinitionId)->first(['public_id']);
+        self::assertIsObject($emfDefinition);
+        self::assertIsString($emfDefinition->public_id);
+
+        $missingMappingRun = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $emfDefinition->public_id,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-02',
+                'currency' => 'XAF',
+            ]);
+        $missingMappingRun->assertStatus(422);
+        $missingMappingRun->assertJsonValidationErrors(['ledger_accounts']);
+
+        $cashLedgerId = DB::table('ledger_accounts')->where('public_id', $cashLedgerPublicId)->value('id');
+        $depositLedgerId = DB::table('ledger_accounts')->where('public_id', $depositLedgerPublicId)->value('id');
+        self::assertIsInt($cashLedgerId);
+        self::assertIsInt($depositLedgerId);
+        $cashEmfId = DB::table('emf_regulatory_accounts')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'EMF-101',
+            'name' => 'EMF Cash',
+            'account_class' => 'asset',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $depositEmfId = DB::table('emf_regulatory_accounts')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'EMF-201',
+            'name' => 'EMF Customer Deposits',
+            'account_class' => 'liability',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('emf_ledger_account_mappings')->insert([
+            [
+                'public_id' => (string) Str::ulid(),
+                'emf_regulatory_account_id' => $cashEmfId,
+                'ledger_account_id' => $cashLedgerId,
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'public_id' => (string) Str::ulid(),
+                'emf_regulatory_account_id' => $depositEmfId,
+                'ledger_account_id' => $depositLedgerId,
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $emfRun = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $emfDefinition->public_id,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-02',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($emfRun, 201);
+        $emfRun->assertJsonPath('data.summary.report_type', 'emf_trial_balance');
+        $emfRun->assertJsonPath('data.summary.row_count', 2);
+        $emfRun->assertJsonPath('data.summary.debit_total_minor', 13000);
+        $emfRun->assertJsonPath('data.summary.credit_total_minor', 13000);
     }
 
     public function test_account_hold_can_be_released_once(): void
@@ -745,6 +1189,95 @@ final class Module3AccountingArchitectureTest extends TestCase
         }
 
         return $user;
+    }
+
+    private function createBalancedJournalEntry(User $actor, string $agencyPublicId, string $ledgerPublicId, string $reference): string
+    {
+        $entry = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => $reference,
+                'business_date' => now()->toDateString(),
+                'agency_public_id' => $agencyPublicId,
+            ]);
+        $this->assertJsonSuccess($entry, 201);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 1000,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ])
+            ->assertStatus(201);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $ledgerPublicId,
+                'debit_minor' => 0,
+                'credit_minor' => 1000,
+                'currency' => 'XAF',
+            ])
+            ->assertStatus(201);
+
+        return $entryPublicId;
+    }
+
+    /**
+     * @param  array<int, array{ledger_account_public_id:string, customer_account_public_id?:string, debit_minor:int, credit_minor:int}>  $lines
+     */
+    private function createPostedJournalEntryWithLines(User $maker, User $reviewer, string $agencyPublicId, string $reference, string $businessDate, array $lines): string
+    {
+        $entry = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => $reference,
+                'business_date' => $businessDate,
+                'agency_public_id' => $agencyPublicId,
+            ]);
+        $this->assertJsonSuccess($entry, 201);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+
+        foreach ($lines as $line) {
+            $payload = [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $line['ledger_account_public_id'],
+                'debit_minor' => $line['debit_minor'],
+                'credit_minor' => $line['credit_minor'],
+                'currency' => 'XAF',
+            ];
+
+            if (isset($line['customer_account_public_id'])) {
+                $payload['customer_account_public_id'] = $line['customer_account_public_id'];
+            }
+
+            $this->withApiHeaders()
+                ->actingAsSanctum($maker)
+                ->postJson('/api/v1/journal-lines', $payload)
+                ->assertStatus(201);
+        }
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/submit')
+            ->assertStatus(200);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/approve')
+            ->assertStatus(200);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/post')
+            ->assertStatus(200);
+
+        return $entryPublicId;
     }
 
     /**

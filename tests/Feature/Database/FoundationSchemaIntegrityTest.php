@@ -453,7 +453,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
             'first_name' => 'Jane',
             'last_name' => 'Doe',
             'status' => 'active',
-            'kyc_status' => 'pending',
+            'kyc_status' => 'draft',
         ]);
     }
 

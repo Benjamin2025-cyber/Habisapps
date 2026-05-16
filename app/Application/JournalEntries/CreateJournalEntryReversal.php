@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\JournalEntries;
 
 use App\Models\JournalEntry;
+use App\Models\JournalLine;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,23 +15,47 @@ final class CreateJournalEntryReversal
     public function execute(User $actor, JournalEntry $journalEntry): JournalEntry
     {
         return DB::transaction(function () use ($actor, $journalEntry): JournalEntry {
-            return JournalEntry::query()->create([
+            $journalEntry->loadMissing('lines');
+
+            $reversal = JournalEntry::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'reference' => $journalEntry->reference.'-REV-'.Str::upper(Str::random(6)),
                 'business_date' => $journalEntry->business_date,
-                'posted_at' => null,
+                'posted_at' => now(),
                 'agency_id' => $journalEntry->agency_id,
                 'source_module' => $journalEntry->source_module,
                 'source_type' => $journalEntry->source_type,
                 'source_public_id' => $journalEntry->source_public_id,
-                'status' => JournalEntry::STATUS_DRAFT,
+                'status' => JournalEntry::STATUS_POSTED,
                 'description' => 'Reversal of '.$journalEntry->reference,
                 'created_by_user_id' => $actor->id,
-                'posted_by_user_id' => null,
+                'posted_by_user_id' => $actor->id,
                 'reversed_by_user_id' => null,
                 'reversal_of_journal_entry_id' => $journalEntry->id,
                 'idempotency_key' => null,
             ]);
+
+            foreach ($journalEntry->lines as $line) {
+                JournalLine::query()->create([
+                    'public_id' => (string) Str::ulid(),
+                    'agency_id' => $line->agency_id,
+                    'journal_entry_id' => $reversal->id,
+                    'ledger_account_id' => $line->ledger_account_id,
+                    'customer_account_id' => $line->customer_account_id,
+                    'loan_id' => $line->loan_id,
+                    'debit_minor' => $line->credit_minor,
+                    'credit_minor' => $line->debit_minor,
+                    'currency' => $line->currency,
+                    'line_memo' => 'Reversal: '.$line->line_memo,
+                ]);
+            }
+
+            $journalEntry->update([
+                'status' => JournalEntry::STATUS_REVERSED,
+                'reversed_by_user_id' => $actor->id,
+            ]);
+
+            return $reversal;
         });
     }
 }

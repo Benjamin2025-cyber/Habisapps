@@ -20,6 +20,13 @@ The examples are illustrative only. They are not proposed final formulas unless 
 
 ## 1. XAF Precision And Rounding
 
+Latest stakeholder clarification:
+
+- Physical XAF cash deposits are whole amounts, because customers cannot deposit decimal cash.
+- Loan/account balances and deductions may still use exact 2-decimal XAF amounts.
+- If an installment due is `833.33 XAF` and the customer deposits `850 XAF`, the system deducts `833.33 XAF` from the account and leaves `16.67 XAF` on the customer account.
+- Final installment components apply the remaining-balance logic so approved totals, such as `10,000 XAF` interest, are fully collected.
+
 ### What This Means
 
 The system will calculate interest, fees, taxes, penalties, balances, and schedules. Some formulas can produce fractional values, for example `333.33 XAF`. Stakeholders must decide how the system rounds these values.

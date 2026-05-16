@@ -204,7 +204,10 @@ Similar to client identity/contact structure, with agency and unique guarantor c
 
 Rules:
 
-- A guarantor record can be linked to multiple loans/collaterals over time.
+- `client_guarantors` remains the CRM/KYC identity record. It may point to an existing same-agency client through `guarantor_client_id`, or store standalone guarantor contact details when the guarantor is not a client.
+- `loan_guarantee_obligations` stores the loan-specific legal/financial obligation that references a guarantor identity record.
+- Loan guarantee obligations must snapshot the guarantor identity facts used at obligation creation so later CRM contact updates do not rewrite historical loan obligations.
+- A guarantor identity record can be linked to multiple loan obligations or collaterals over time.
 
 ### proxies
 

@@ -34,6 +34,7 @@ final class UpdateClientKycStatusTest extends TestCase
 
         self::assertSame(Client::KYC_STATUS_PENDING_REVIEW, $updated->kyc_status);
         self::assertNotNull($updated->kyc_submitted_at);
+        self::assertSame($actor->id, $updated->kyc_submitted_by_user_id);
 
         $this->assertDatabaseHas('client_kyc_reviews', [
             'client_id' => $client->id,

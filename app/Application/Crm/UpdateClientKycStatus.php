@@ -39,6 +39,7 @@ final class UpdateClientKycStatus
 
             if ($targetStatus === Client::KYC_STATUS_PENDING_REVIEW) {
                 $update['kyc_submitted_at'] = now();
+                $update['kyc_submitted_by_user_id'] = $actor->id;
             }
 
             if ($targetStatus === Client::KYC_STATUS_VERIFIED) {

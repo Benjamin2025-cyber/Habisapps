@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $public_id
  * @property int $agency_id
+ * @property int|null $profile_photo_document_id
  * @property int|null $prospector_id
  * @property int|null $collection_agent_id
  * @property string $client_reference
@@ -25,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $status
  * @property string $kyc_status
  * @property Carbon|null $kyc_submitted_at
+ * @property int|null $kyc_submitted_by_user_id
  * @property Carbon|null $kyc_verified_at
  * @property Carbon|null $kyc_rejected_at
  * @property Carbon|null $kyc_suspended_at
@@ -33,16 +35,22 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'public_id',
     'agency_id',
+    'profile_photo_document_id',
     'prospector_id',
     'collection_agent_id',
+    'sector_id',
+    'sub_sector_id',
     'client_reference',
     'first_name',
     'last_name',
     'middle_name',
+    'father_name',
+    'mother_name',
     'date_of_birth',
     'place_of_birth',
     'gender',
     'phone_number',
+    'home_phone_number',
     'email',
     'address_line_1',
     'address_line_2',
@@ -50,6 +58,12 @@ use Illuminate\Support\Carbon;
     'region',
     'occupation',
     'employer_name',
+    'business_started_on',
+    'business_activity_started_on',
+    'business_address_line_1',
+    'business_address_line_2',
+    'business_city',
+    'business_region',
     'collection_type',
     'collection_frequency',
     'collection_target_amount',
@@ -57,6 +71,7 @@ use Illuminate\Support\Carbon;
     'kyc_status',
     'onboarded_on',
     'kyc_submitted_at',
+    'kyc_submitted_by_user_id',
     'kyc_verified_at',
     'kyc_verified_by_user_id',
     'kyc_rejected_at',
@@ -108,6 +123,8 @@ final class Client extends Model
     {
         return [
             'date_of_birth' => 'date',
+            'business_started_on' => 'date',
+            'business_activity_started_on' => 'date',
             'onboarded_on' => 'date',
             'kyc_submitted_at' => 'datetime',
             'kyc_verified_at' => 'datetime',
@@ -124,6 +141,12 @@ final class Client extends Model
         return $this->belongsTo(Agency::class);
     }
 
+    /** @return BelongsTo<Document, $this> */
+    public function profilePhotoDocument(): BelongsTo
+    {
+        return $this->belongsTo(Document::class, 'profile_photo_document_id');
+    }
+
     /** @return BelongsTo<User, $this> */
     public function prospector(): BelongsTo
     {
@@ -136,10 +159,28 @@ final class Client extends Model
         return $this->belongsTo(User::class, 'collection_agent_id');
     }
 
+    /** @return BelongsTo<Sector, $this> */
+    public function sector(): BelongsTo
+    {
+        return $this->belongsTo(Sector::class);
+    }
+
+    /** @return BelongsTo<SubSector, $this> */
+    public function subSector(): BelongsTo
+    {
+        return $this->belongsTo(SubSector::class);
+    }
+
     /** @return BelongsTo<User, $this> */
     public function kycVerifiedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'kyc_verified_by_user_id');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function kycSubmittedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'kyc_submitted_by_user_id');
     }
 
     /** @return HasMany<ClientIdentityDocument, $this> */

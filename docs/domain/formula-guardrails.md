@@ -1,12 +1,12 @@
-# Formula Guardrails While Stakeholder Decisions Are Pending
+# Formula Guardrails For Approved And Pending Formula Rules
 
-The backend must not calculate customer balances, loan schedules, interest, penalties, repayment allocation, teller reconciliation, or portfolio reports from assumptions.
+The backend must not calculate customer balances, loan schedules, interest, penalties, repayment allocation, teller reconciliation, or portfolio reports from assumptions. A formula gate may open only when the rule is explicit and the implementation is tested.
 
 ## Implemented Safe Foundation
 
 - Formula policy gates live in `config/formulas.php`.
 - Calculation services must call `FormulaPolicyRegistry::requireApproved(...)` before executing formula-dependent behavior.
-- The default for every formula policy is `approved: false`.
+- Formula policies default to `approved: false` until we intentionally approve a rule. `xaf_rounding` is approved because the stakeholder answer clearly separates whole-XAF physical cash from exact 2-decimal loan/account ledger amounts.
 - If a future service tries to execute without approval, it must fail closed with `FormulaPolicyNotApproved`.
 - Formula engines are plug-and-play drivers resolved by `FormulaEngineManager`, similar to payment gateway drivers.
 - Every critical calculation area maps to a configured engine key: rounding, loan interest, installments, repayment allocation, fees/taxes/insurance, penalties/arrears, account balances, cash/till reconciliation, and portfolio reporting.
@@ -14,7 +14,7 @@ The backend must not calculate customer balances, loan schedules, interest, pena
 - Reusable value objects exist for amounts, percentage rates, date ranges, and journal entry drafts.
 - Journal entry drafts validate accounting invariants such as balanced debits and credits without choosing business formulas.
 
-## Allowed Before Stakeholder Sign-Off
+## Allowed Before Formula Approval
 
 - Validate money currencies and prevent cross-currency arithmetic.
 - Validate percentage and date-range inputs.
@@ -22,7 +22,7 @@ The backend must not calculate customer balances, loan schedules, interest, pena
 - Build API/resource/request scaffolding that does not compute amounts owed.
 - Add tests proving formula-dependent services fail closed.
 
-## Not Allowed Before Stakeholder Sign-Off
+## Not Allowed Before Formula Approval
 
 - Generating repayment schedules.
 - Calculating interest, penalties, taxes, insurance, or fees.
@@ -33,12 +33,11 @@ The backend must not calculate customer balances, loan schedules, interest, pena
 
 ## Approval Flow
 
-1. Stakeholders complete `docs/domain/stakeholder-formula-questions.md`.
-2. The approved rule is documented in the relevant domain document.
-3. The relevant key in `config/formulas.php` is explicitly approved with owner and date.
-4. A driver class implementing the relevant formula contract is added.
-5. `config/formulas.php` maps the engine key to the approved driver.
-6. The implementation adds tests for the approved rule and calls the engine through `FormulaEngineManager`, not directly by class name.
+1. Capture the stakeholder answer or implementation decision in the relevant domain document.
+2. Confirm the rule is finance-aligned and exact enough to test.
+3. Approve the relevant key in `config/formulas.php`.
+4. Add or update the implementation and tests for the approved rule.
+5. Use a driver through `FormulaEngineManager` where the formula is a replaceable calculation engine.
 
 ## Driver Pattern
 

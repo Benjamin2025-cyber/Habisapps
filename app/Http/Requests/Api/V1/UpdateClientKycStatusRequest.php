@@ -22,6 +22,7 @@ final class UpdateClientKycStatusRequest extends FormRequest
             'reason' => ['nullable', 'string', 'max:1000', 'required_if:action,reject'],
             'comment' => ['nullable', 'string', 'max:1000'],
             'force_override_expired_identity' => ['sometimes', 'boolean'],
+            'allow_self_verify' => ['sometimes', 'boolean'],
         ];
     }
 }

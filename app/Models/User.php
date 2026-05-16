@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -132,6 +133,14 @@ class User extends Authenticatable
     public function agencyAssignments(): HasMany
     {
         return $this->hasMany(StaffAgencyAssignment::class);
+    }
+
+    /**
+     * @return HasOne<HrEmployee, $this>
+     */
+    public function hrEmployee(): HasOne
+    {
+        return $this->hasOne(HrEmployee::class);
     }
 
     public function currentAgencyId(): ?int

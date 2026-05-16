@@ -29,6 +29,12 @@ final class UpdateStaffUserRequest extends FormRequest
             'email' => ['sometimes', 'nullable', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
             'matricule' => ['sometimes', 'nullable', 'string', 'max:64', Rule::unique('users', 'matricule')->ignore($userId)],
             'job_title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'gender' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'birth_date' => ['sometimes', 'nullable', 'date', 'before:today'],
+            'birth_place' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'service_name' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'supervisor_public_id' => ['sometimes', 'nullable', 'string', 'exists:users,public_id'],
+            'portfolio_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'agency_code' => ['sometimes', 'nullable', 'string', 'max:64', 'exists:agencies,code'],
             'agency_name' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];

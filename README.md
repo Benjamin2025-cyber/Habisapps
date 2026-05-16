@@ -128,6 +128,13 @@ Backlog analysis:
 - `backlogs/stakeholder-complete-migration-finalization-backlog.md`
 - `backlogs/stakeholder-complete-migration-completion-audit.md`
 - `backlogs/islamic-finance-discovery-backlog.md`
+- `backlogs/defined-modules-implementation-audit.md`
+- `backlogs/defined-modules-adversarial-review.md`
+- `backlogs/module-1-administration-completion-backlog.md`
+- `backlogs/module-2-crm-completion-backlog.md`
+- `backlogs/module-3-accounting-completion-backlog.md`
+- `backlogs/module-4-credit-loans-backlog.md`
+- `backlogs/module-5-cash-operations-completion-backlog.md`
 
 ## API Design
 

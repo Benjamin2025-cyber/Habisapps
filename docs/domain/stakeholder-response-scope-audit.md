@@ -28,7 +28,7 @@ Do not treat the added sections 26-30 or embedded operational notes as approved 
 
 | Response area | Added or expanded requirement | Risk | Disposition |
 |---|---|---|---|
-| Section 3, day-count convention | `Date de valeur proposee: 5 jours apres la date d'operation` | Value-date behavior changes transaction effective dating and accounting timing; it was not part of the day-count question. | Needs separate accounting/cash/loan posting decision before implementation. |
+| Section 3, day-count convention | `Date de valeur proposee: 5 jours apres la date d'operation` | Value-date behavior changes transaction effective dating and accounting timing; it was not part of the day-count question. | Not blocking ordinary flat-interest schedules. Needs separate accounting/cash/loan posting decision before value-date workflows are implemented. |
 | Section 15, early repayment | `Automatiser toutes les recuperations`: debit credit account first, then any other client account; client identification by code | This creates an automatic cross-account recovery engine and account-linking requirement. It affects authorization, account holds, customer consent, reversals, audit, and failed debit handling. | Reject from formula scope. Requires a dedicated recovery/autodebit workflow design. |
 | Section 17, accounting balance | New account categories: recovery accounts and ordinary savings accounts | Account taxonomy can be useful, but it is not a complete balance formula and may affect product/account design. | Capture as open account-type discovery, not approved formula. |
 | Section 20, billetage | `Configurer l'interface de fermeture de caisse` | UI/workflow request, not a denomination formula. | Keep denomination decisions; route interface request to cash-operations backlog only after teller-session scope is approved. |
@@ -40,18 +40,22 @@ Do not treat the added sections 26-30 or embedded operational notes as approved 
 Some answers in sections 1-25 provide useful direction but remain ambiguous or contradictory:
 
 - Section 1 approves decimal customer-facing `XAF` values with no rounding, while the architecture currently assumes `XAF` as base currency and leaves rounding precision open. This must be converted into a precise storage/display standard.
-- Section 2 says flat interest on initial principal, but the formula `Capital initial * taux / duree` is ambiguous unless `taux` is explicitly defined as total-period, annual, monthly, or per-cycle.
-- Section 4 describes included components as `(Capital * taux) / duree + Taxes`, which appears to omit principal from the installment amount unless "capital" is implied elsewhere.
-- Section 7 taxes `Capital + Interets`; taxing principal is materially different from taxing interest/fees and should be confirmed with accounting/legal.
+- Section 7 taxes `Capital + Interets`; implement it as the institution's approved setup tax rule: granted principal plus total flat interest. Accounting labels and statutory reporting remain accounting configuration, but the system formula is no longer blocked.
 - Section 10 defines penalties as `5,000 + 2% unpaid`, but also says the cap is determined by PAR and after 90 days the credit becomes CTX. CTX status and cap behavior are not a numeric penalty cap.
 - Section 11 leaves `due_amount` and `total_unpaid_amount` formulas incomplete.
 - Section 14 says "approved" but all capitalization trigger/formula/accounting fields remain `A preciser`.
 - Sections 17-19 leave balance and movement formulas partially undefined.
 - Section 25 says penalties are included in expected collection, but the stated expected formula is only `Capital prevu + Interets prevus`; the actual collection formula also appears inverted.
 
+## Formula Responses Approved For Implementation
+
+- Section 1: `XAF` precision split is approved. Account and loan ledger amounts use 2 decimals, physical cash uses whole `XAF`, debt is not rounded to cash denomination, and final installment residuals reconcile approved totals.
+- Section 2: flat interest on initial principal is approved. Implement `taux` as the product's total flat percentage for the loan term: total interest is `initial principal * rate / 100`, and scheduled interest per installment is `total interest / duration`.
+- Section 4: installment amount is approved for implementation. Standard schedules include scheduled principal plus scheduled flat interest plus configured taxes/fees/insurance where applicable; regular installments are as equal as possible, and final installment components absorb residual differences.
+
 ## Recommended Handling
 
-1. Accept the response as raw stakeholder input, not as implementation approval.
+1. Accept the response as raw stakeholder input, except for sections explicitly approved for implementation in this audit.
 2. Extract a clean formula decision table for sections 1-25 with statuses: approved, ambiguous, contradictory, or out-of-scope addition.
 3. Keep formula gates in `config/formulas.php` closed until each calculation rule is precise, internally consistent, and mapped to an approved owner/date.
 4. Create separate product-discovery items for HR/payroll, bancassurance, FX/multi-currency, Islamic finance, COBAC reporting, SMS banking, dashboards, and automatic alerts.

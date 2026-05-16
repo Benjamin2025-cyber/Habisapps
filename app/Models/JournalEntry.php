@@ -24,6 +24,12 @@ use Illuminate\Support\Carbon;
     'status',
     'description',
     'created_by_user_id',
+    'submitted_by_user_id',
+    'submitted_at',
+    'reviewed_by_user_id',
+    'reviewed_at',
+    'review_comment',
+    'rejection_reason',
     'posted_by_user_id',
     'reversed_by_user_id',
     'reversal_of_journal_entry_id',
@@ -49,7 +55,13 @@ final class JournalEntry extends Model
 
     public const STATUS_DRAFT = 'draft';
 
-    public const STATUS_PENDING_REVIEW = 'pending_review';
+    public const STATUS_SUBMITTED = 'submitted';
+
+    public const STATUS_PENDING_REVIEW = self::STATUS_SUBMITTED;
+
+    public const STATUS_APPROVED = 'approved';
+
+    public const STATUS_REJECTED = 'rejected';
 
     public const STATUS_POSTED = 'posted';
 
@@ -79,6 +91,8 @@ final class JournalEntry extends Model
     {
         return [
             'business_date' => 'date',
+            'submitted_at' => 'datetime',
+            'reviewed_at' => 'datetime',
             'posted_at' => 'datetime',
         ];
     }
@@ -93,6 +107,18 @@ final class JournalEntry extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function submittedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'submitted_by_user_id');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function reviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by_user_id');
     }
 
     /** @return BelongsTo<User, $this> */

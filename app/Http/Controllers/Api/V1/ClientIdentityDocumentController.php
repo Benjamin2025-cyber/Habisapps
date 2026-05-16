@@ -92,7 +92,7 @@ final class ClientIdentityDocumentController extends BaseController
         }
 
         try {
-            $normalizedNumber = $this->normalizeDocumentNumber($request->string('document_number')->toString());
+            $normalizedNumber = ClientIdentityDocument::normalizeDocumentNumber($request->string('document_number')->toString());
             if ($this->hasDuplicateDocumentNumber(
                 clientId: $client->id,
                 documentType: $request->string('document_type')->toString(),
@@ -107,6 +107,7 @@ final class ClientIdentityDocumentController extends BaseController
                 'client_id' => $client->id,
                 'document_type' => $request->string('document_type')->toString(),
                 'document_number' => $normalizedNumber,
+                'document_number_hash' => ClientIdentityDocument::documentNumberHash($normalizedNumber),
                 'issuing_authority' => $request->input('issuing_authority'),
                 'issued_on' => $request->input('issued_on'),
                 'expires_on' => $request->input('expires_on'),
@@ -203,7 +204,8 @@ final class ClientIdentityDocumentController extends BaseController
         ]);
 
         if ($request->has('document_number')) {
-            $attributes['document_number'] = $this->normalizeDocumentNumber($request->string('document_number')->toString());
+            $attributes['document_number'] = ClientIdentityDocument::normalizeDocumentNumber($request->string('document_number')->toString());
+            $attributes['document_number_hash'] = ClientIdentityDocument::documentNumberHash($attributes['document_number']);
         }
 
         $type = array_key_exists('document_type', $attributes)
@@ -351,13 +353,6 @@ final class ClientIdentityDocumentController extends BaseController
         return $identityDocument->client_id === $client->id && $identityDocument->agency_id === $client->agency_id;
     }
 
-    private function normalizeDocumentNumber(string $value): string
-    {
-        $normalized = preg_replace('/[^A-Za-z0-9]+/', '', strtoupper($value));
-
-        return is_string($normalized) ? $normalized : strtoupper($value);
-    }
-
     private function isUniqueConstraintViolation(QueryException $exception): bool
     {
         $sqlState = $exception->errorInfo[0] ?? null;
@@ -370,7 +365,7 @@ final class ClientIdentityDocumentController extends BaseController
         $query = DB::table('client_identity_documents')
             ->where('client_id', '!=', $clientId)
             ->where('document_type', $documentType)
-            ->where('document_number', $normalizedNumber);
+            ->where('document_number_hash', ClientIdentityDocument::documentNumberHash($normalizedNumber));
 
         if ($exceptId !== null) {
             $query->where('id', '!=', $exceptId);

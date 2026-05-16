@@ -56,6 +56,8 @@ final class BatchRun extends Model
 
     public const string STATUS_FAILED = 'failed';
 
+    public const string STATUS_CANCELLED = 'cancelled';
+
     /**
      * @return array<int, string>
      */

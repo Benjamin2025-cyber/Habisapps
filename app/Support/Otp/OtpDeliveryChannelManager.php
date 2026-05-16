@@ -15,6 +15,7 @@ final class OtpDeliveryChannelManager
 
         return match ($providerName) {
             'log' => app(LogOtpDeliveryChannel::class),
+            'http_sms' => app(HttpSmsOtpDeliveryChannel::class),
             default => throw new InvalidArgumentException(sprintf('Unsupported OTP delivery provider [%s].', $providerName)),
         };
     }

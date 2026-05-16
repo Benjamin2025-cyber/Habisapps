@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Support\Finance;
 
+use Brick\Math\BigDecimal;
+use Brick\Money\Context\CustomContext;
 use Brick\Money\Money;
 use InvalidArgumentException;
 
@@ -15,7 +17,14 @@ final readonly class MoneyAmount
     {
         $resolvedCurrency = $currency ?? self::defaultCurrency();
 
-        return new self(Money::of((string) $amount, $resolvedCurrency));
+        return new self(Money::of((string) $amount, $resolvedCurrency, self::accountContext()));
+    }
+
+    public static function ofMinor(int|string $minorAmount, ?string $currency = null): self
+    {
+        $amount = BigDecimal::of($minorAmount)->withPointMovedLeft(self::accountScale());
+
+        return self::of((string) $amount, $currency);
     }
 
     public static function zero(?string $currency = null): self
@@ -31,6 +40,11 @@ final readonly class MoneyAmount
     public function amount(): string
     {
         return (string) $this->money->getAmount();
+    }
+
+    public function minorAmount(): string
+    {
+        return (string) $this->money->getAmount()->withPointMovedRight(self::accountScale());
     }
 
     public function plus(self $other): self
@@ -75,5 +89,17 @@ final readonly class MoneyAmount
         $currency = config('money.default_currency', 'XAF');
 
         return is_string($currency) && $currency !== '' ? $currency : 'XAF';
+    }
+
+    private static function accountContext(): CustomContext
+    {
+        return new CustomContext(scale: self::accountScale());
+    }
+
+    private static function accountScale(): int
+    {
+        $scale = config('money.default_scale', 2);
+
+        return is_int($scale) ? max(0, $scale) : 2;
     }
 }

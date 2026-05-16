@@ -33,7 +33,17 @@ final class UpdateTillRequest extends FormRequest
             'name' => ['sometimes', 'string', 'max:255'],
             'type' => ['sometimes', 'string', 'max:32'],
             'status' => ['sometimes', 'string', Rule::in([Till::STATUS_ACTIVE, Till::STATUS_INACTIVE])],
+            'daily_state' => ['sometimes', 'string', Rule::in([Till::DAILY_STATE_OPEN, Till::DAILY_STATE_CLOSED])],
+            'opening_balance_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'last_closing_balance_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'requires_denominations' => ['sometimes', 'boolean'],
+            'nature' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'is_central_till' => ['sometimes', 'boolean'],
+            'max_balance_limit_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'max_withdrawal_limit_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'currency' => ['sometimes', 'string', 'size:3'],
             'assigned_user_public_id' => ['sometimes', 'nullable', 'string', 'exists:users,public_id'],
+            'ledger_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
         ];
     }
 }

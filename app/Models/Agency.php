@@ -19,10 +19,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $region
  * @property string|null $city
  * @property string|null $branch_name
+ * @property string|null $branch_type
  * @property string|null $phone_number
+ * @property string|null $fax_number
  * @property string|null $email
  * @property string|null $address_line_1
  * @property string|null $address_line_2
+ * @property string|null $po_box
+ * @property string|null $geographic_description
  * @property string|null $creation_date
  * @property string $status
  */
@@ -33,10 +37,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'region',
     'city',
     'branch_name',
+    'branch_type',
     'phone_number',
+    'fax_number',
     'email',
     'address_line_1',
     'address_line_2',
+    'po_box',
+    'geographic_description',
     'creation_date',
     'status',
     'manager_id',

@@ -17,8 +17,14 @@ use Illuminate\Support\Carbon;
     'client_id',
     'agency_id',
     'ledger_account_id',
+    'account_product_id',
+    'manager_user_id',
     'account_number',
+    'account_title',
     'account_type',
+    'currency',
+    'unavailable_amount_minor',
+    'signature_path',
     'opened_on',
     'closed_on',
     'status',
@@ -29,8 +35,12 @@ use Illuminate\Support\Carbon;
  * @property int $client_id
  * @property int $agency_id
  * @property int|null $ledger_account_id
+ * @property int|null $account_product_id
  * @property string $account_number
+ * @property string|null $account_title
  * @property string|null $account_type
+ * @property string $currency
+ * @property int $unavailable_amount_minor
  * @property Carbon|null $opened_on
  * @property Carbon|null $closed_on
  * @property string $status
@@ -69,6 +79,7 @@ final class CustomerAccount extends Model
         return [
             'opened_on' => 'date',
             'closed_on' => 'date',
+            'unavailable_amount_minor' => 'integer',
         ];
     }
 
@@ -88,6 +99,12 @@ final class CustomerAccount extends Model
     public function ledgerAccount(): BelongsTo
     {
         return $this->belongsTo(LedgerAccount::class);
+    }
+
+    /** @return BelongsTo<AccountProduct, $this> */
+    public function accountProduct(): BelongsTo
+    {
+        return $this->belongsTo(AccountProduct::class);
     }
 
     /** @return HasMany<AccountHold, $this> */

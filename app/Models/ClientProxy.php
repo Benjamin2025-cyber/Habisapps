@@ -9,17 +9,50 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $public_id
+ * @property int $agency_id
+ * @property int $client_id
+ * @property int|null $customer_account_id
+ * @property string $proxy_full_name
+ * @property string|null $proxy_phone_number
+ * @property string|null $proxy_email
+ * @property string|null $proxy_id_document_type
+ * @property string|null $proxy_id_document_number
+ * @property string $mandate_type
+ * @property array<int, string>|null $operation_types
+ * @property int|null $max_amount_minor
+ * @property string|null $limit_currency
+ * @property Carbon|null $starts_on
+ * @property Carbon|null $ends_on
+ * @property string $status
+ * @property string $verification_status
+ * @property Carbon|null $submitted_at
+ * @property Carbon|null $verified_at
+ * @property int|null $verified_by_user_id
+ * @property Carbon|null $rejected_at
+ * @property string|null $rejection_reason
+ * @property int|null $document_id
+ * @property int|null $created_by_user_id
+ * @property Carbon|null $archived_at
+ */
 #[Fillable([
     'public_id',
     'agency_id',
     'client_id',
+    'customer_account_id',
     'proxy_full_name',
     'proxy_phone_number',
     'proxy_email',
     'proxy_id_document_type',
     'proxy_id_document_number',
     'mandate_type',
+    'operation_types',
+    'max_amount_minor',
+    'limit_currency',
     'starts_on',
     'ends_on',
     'status',
@@ -74,6 +107,8 @@ final class ClientProxy extends Model
         return [
             'starts_on' => 'date',
             'ends_on' => 'date',
+            'operation_types' => 'array',
+            'max_amount_minor' => 'integer',
             'submitted_at' => 'datetime',
             'verified_at' => 'datetime',
             'rejected_at' => 'datetime',
@@ -85,6 +120,12 @@ final class ClientProxy extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    /** @return BelongsTo<CustomerAccount, $this> */
+    public function customerAccount(): BelongsTo
+    {
+        return $this->belongsTo(CustomerAccount::class);
     }
 
     /** @return BelongsTo<Document, $this> */

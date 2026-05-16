@@ -14,6 +14,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'destination_hash',
     'destination_masked',
     'status',
+    'retry_count',
+    'max_attempts',
+    'last_attempt_at',
+    'next_attempt_at',
     'provider_reference',
     'error_summary',
     'sent_at',
@@ -34,6 +38,8 @@ final class OtpDelivery extends Model
         return [
             'sent_at' => 'datetime',
             'failed_at' => 'datetime',
+            'last_attempt_at' => 'datetime',
+            'next_attempt_at' => 'datetime',
         ];
     }
 

@@ -88,6 +88,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('batch-runs', [BatchRunController::class, 'index']);
     Route::post('batch-runs', [BatchRunController::class, 'store']);
     Route::get('batch-runs/{batchRun}', [BatchRunController::class, 'show']);
+    Route::post('batch-runs/{batchRun}/execute', [BatchRunController::class, 'execute']);
+    Route::post('batch-runs/{batchRun}/retry', [BatchRunController::class, 'retry']);
+    Route::post('batch-runs/{batchRun}/cancel', [BatchRunController::class, 'cancel']);
     Route::patch('batch-runs/{batchRun}/status', [BatchRunController::class, 'updateStatus']);
 
     Route::post('reference-numbers', [ReferenceNumberController::class, 'store'])->middleware('throttle:reference.reserve');

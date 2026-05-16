@@ -40,7 +40,7 @@ final class StaffUserController extends BaseController
         $this->authorize('viewAny', User::class);
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $query = User::query()->with('agency')->latest();
+        $query = User::query()->with(['agency', 'hrEmployee.supervisor'])->latest();
 
         if (! $actor instanceof User) {
             return $this->respondForbidden();
@@ -91,6 +91,12 @@ final class StaffUserController extends BaseController
             'email' => $request->filled('email') ? $request->string('email')->toString() : null,
             'matricule' => $request->filled('matricule') ? $request->string('matricule')->toString() : null,
             'job_title' => $request->filled('job_title') ? $request->string('job_title')->toString() : null,
+            'gender' => $request->filled('gender') ? $request->string('gender')->toString() : null,
+            'birth_date' => $request->filled('birth_date') ? $request->date('birth_date')?->toDateString() : null,
+            'birth_place' => $request->filled('birth_place') ? $request->string('birth_place')->toString() : null,
+            'service_name' => $request->filled('service_name') ? $request->string('service_name')->toString() : null,
+            'supervisor_id' => $this->supervisorId($request->input('supervisor_public_id')),
+            'portfolio_code' => $request->filled('portfolio_code') ? $request->string('portfolio_code')->toString() : null,
             'agency_id' => $agencyAttributes['agency_id'],
             'agency_code' => $agencyAttributes['agency_code'],
             'agency_name' => $agencyAttributes['agency_name'],
@@ -100,7 +106,7 @@ final class StaffUserController extends BaseController
         $this->securityAudit->record('staff.created', actor: $actor, subject: $user, request: $request);
 
         return $this->respondCreated(
-            StaffUserResource::make($user->loadMissing('agency')),
+            StaffUserResource::make($user->loadMissing(['agency', 'hrEmployee.supervisor'])),
             'Staff user created successfully'
         );
     }
@@ -117,7 +123,7 @@ final class StaffUserController extends BaseController
         $this->authorize('view', $staffUser);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->loadMissing('agency'))
+            StaffUserResource::make($staffUser->loadMissing(['agency', 'hrEmployee.supervisor']))
         );
     }
 
@@ -138,9 +144,18 @@ final class StaffUserController extends BaseController
             'email',
             'matricule',
             'job_title',
+            'gender',
+            'birth_date',
+            'birth_place',
+            'service_name',
+            'portfolio_code',
             'agency_code',
             'agency_name',
         ]);
+
+        if ($request->has('supervisor_public_id')) {
+            $attributes['supervisor_id'] = $this->supervisorId($request->input('supervisor_public_id'));
+        }
 
         unset($attributes['agency_name']);
 
@@ -171,7 +186,7 @@ final class StaffUserController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->refresh()->loadMissing('agency')),
+            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor'])),
             'Staff user updated successfully'
         );
     }
@@ -208,7 +223,7 @@ final class StaffUserController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->refresh()->loadMissing('agency')),
+            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor'])),
             'Staff user status updated successfully'
         );
     }
@@ -248,7 +263,7 @@ final class StaffUserController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->refresh()->loadMissing('agency')),
+            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor'])),
             'Staff user roles updated successfully'
         );
     }
@@ -258,5 +273,16 @@ final class StaffUserController extends BaseController
         foreach ($user->tokens()->get() as $token) {
             $token->delete();
         }
+    }
+
+    private function supervisorId(mixed $publicId): ?int
+    {
+        if (! is_string($publicId) || $publicId === '') {
+            return null;
+        }
+
+        $id = User::query()->where('public_id', $publicId)->value('id');
+
+        return is_int($id) ? $id : null;
     }
 }

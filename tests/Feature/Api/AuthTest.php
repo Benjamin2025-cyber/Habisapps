@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Otp\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class AuthTest extends TestCase
@@ -180,6 +181,67 @@ final class AuthTest extends TestCase
 
         self::assertTrue($otpService->verifyActivationCode($user, '123456'));
         self::assertFalse($otpService->verifyActivationCode($user, '123456'));
+    }
+
+    public function test_http_sms_otp_provider_records_success_without_persisting_raw_destination(): void
+    {
+        config([
+            'security.otp.delivery_provider' => 'http_sms',
+            'security.otp.delivery_channels' => ['sms'],
+            'security.otp.http_sms.endpoint' => 'https://sms.example.test/send',
+            'security.otp.http_sms.token' => 'secret-token',
+            'security.otp.http_sms.sender' => 'HABIS',
+        ]);
+        Http::fake([
+            'https://sms.example.test/send' => Http::response(['message_id' => 'sms-provider-123'], 202),
+        ]);
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000019',
+            'password' => null,
+        ]);
+
+        app(OtpService::class)->issueActivationChallenge($user, request());
+
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer secret-token')
+            && $request->data()['to'] === '+237699000019'
+            && $request->data()['sender'] === 'HABIS'
+            && str_contains((string) $request->data()['message'], '123456'));
+        $this->assertDatabaseHas('otp_deliveries', [
+            'channel' => 'sms',
+            'destination_masked' => '*********0019',
+            'destination_hash' => hash('sha256', '+237699000019'),
+            'status' => 'sent',
+            'provider_reference' => 'sms-provider-123',
+        ]);
+        $this->assertDatabaseMissing('otp_deliveries', [
+            'destination_masked' => '+237699000019',
+        ]);
+    }
+
+    public function test_http_sms_otp_provider_failure_is_recorded_without_throwing(): void
+    {
+        config([
+            'security.otp.delivery_provider' => 'http_sms',
+            'security.otp.delivery_channels' => ['sms'],
+            'security.otp.http_sms.endpoint' => null,
+            'security.otp.http_sms.token' => null,
+        ]);
+        Http::fake();
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000020',
+            'password' => null,
+        ]);
+
+        app(OtpService::class)->issueActivationChallenge($user, request());
+
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('otp_deliveries', [
+            'channel' => 'sms',
+            'destination_masked' => '*********0020',
+            'status' => 'failed',
+            'provider_reference' => null,
+            'error_summary' => 'HTTP SMS OTP provider is not configured.',
+        ]);
     }
 
     public function test_otp_attempt_limit_is_enforced_atomically(): void

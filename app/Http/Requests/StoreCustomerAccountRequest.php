@@ -28,8 +28,11 @@ final class StoreCustomerAccountRequest extends FormRequest
             'client_public_id' => ['required', 'string', 'exists:clients,public_id'],
             'agency_public_id' => ['nullable', 'string', 'exists:agencies,public_id'],
             'ledger_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
+            'account_product_public_id' => ['nullable', 'string', 'exists:account_products,public_id'],
             'account_number' => ['required', 'string', 'max:64', 'unique:customer_accounts,account_number'],
+            'account_title' => ['nullable', 'string', 'max:255'],
             'account_type' => ['nullable', 'string', 'max:64'],
+            'currency' => ['nullable', 'string', 'size:3'],
             'opened_on' => ['required', 'date'],
             'closed_on' => ['nullable', 'date', 'after_or_equal:opened_on'],
             'status' => ['nullable', Rule::in([

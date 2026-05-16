@@ -30,7 +30,10 @@ final class UpdateCustomerAccountRequest extends FormRequest
     {
         return [
             'ledger_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
+            'account_product_public_id' => ['sometimes', 'nullable', 'string', 'exists:account_products,public_id'],
+            'account_title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'account_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'currency' => ['sometimes', 'string', 'size:3'],
             'closed_on' => ['sometimes', 'nullable', 'date'],
             'status' => ['sometimes', Rule::in([
                 CustomerAccount::STATUS_ACTIVE,

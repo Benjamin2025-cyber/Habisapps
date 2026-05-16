@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\BatchRuns\ExecuteRegisteredBatchRun;
 use App\Application\BatchRuns\UpdateBatchRunStatus;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\BatchRunCollection;
@@ -12,7 +13,9 @@ use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\User;
+use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Security\SecurityAudit;
+use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +23,15 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use JsonException;
 
 final class BatchRunController extends BaseController
 {
-    public function __construct(private readonly SecurityAudit $securityAudit) {}
+    public function __construct(
+        private readonly SecurityAudit $securityAudit,
+        private readonly StaffAgencyScope $staffAgencyScope,
+    ) {}
 
     /**
      * List batch runs
@@ -39,11 +46,62 @@ final class BatchRunController extends BaseController
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $query = BatchRun::query()->with(['batchProcedure', 'agency', 'operator'])->latest();
+        $actor = $request->user();
 
-        if ($request->filled('batch_procedure_public_id')) {
-            $procedure = BatchProcedure::query()->where('public_id', $request->string('batch_procedure_public_id')->toString())->first();
+        if (! $actor instanceof User) {
+            return new BatchRunCollection($query->where('id', -1)->paginate($perPage));
+        }
+
+        if (! $actor->can('batch.runs.manage')) {
+            $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
+            if ($agencyId === null) {
+                return new BatchRunCollection($query->where('id', -1)->paginate($perPage));
+            }
+
+            $query->where('agency_id', $agencyId);
+        }
+
+        $batchProcedurePublicId = $request->query('batch_procedure_public_id');
+        if (is_string($batchProcedurePublicId) && $batchProcedurePublicId !== '') {
+            $procedure = BatchProcedure::query()->where('public_id', $batchProcedurePublicId)->first();
             if ($procedure !== null) {
                 $query->where('batch_procedure_id', $procedure->id);
+            }
+        }
+
+        $status = $request->query('status');
+        if (is_string($status) && $status !== '') {
+            if (in_array($status, [
+                BatchRun::STATUS_PENDING,
+                BatchRun::STATUS_RUNNING,
+                BatchRun::STATUS_SUCCEEDED,
+                BatchRun::STATUS_FAILED,
+                BatchRun::STATUS_CANCELLED,
+            ], true)) {
+                $query->where('status', $status);
+            }
+        }
+
+        $businessDate = $request->query('business_date');
+        if (is_string($businessDate) && $businessDate !== '') {
+            $query->where('business_date', $businessDate);
+        }
+
+        $businessDateFrom = $request->query('business_date_from');
+        if (is_string($businessDateFrom) && $businessDateFrom !== '') {
+            $query->where('business_date', '>=', $businessDateFrom);
+        }
+
+        $businessDateTo = $request->query('business_date_to');
+        if (is_string($businessDateTo) && $businessDateTo !== '') {
+            $query->where('business_date', '<=', $businessDateTo);
+        }
+
+        $agencyCode = $request->query('agency_code');
+        if (is_string($agencyCode) && $agencyCode !== '' && $actor->can('batch.runs.manage')) {
+            $agency = Agency::query()->where('code', $agencyCode)->first();
+            if ($agency !== null) {
+                $query->where('agency_id', $agency->id);
             }
         }
 
@@ -187,6 +245,7 @@ final class BatchRunController extends BaseController
                 BatchRun::STATUS_RUNNING,
                 BatchRun::STATUS_SUCCEEDED,
                 BatchRun::STATUS_FAILED,
+                BatchRun::STATUS_CANCELLED,
             ])],
             'summary_payload' => ['sometimes', 'nullable', 'array'],
             'failure_reason' => ['sometimes', 'nullable', 'string'],
@@ -201,6 +260,7 @@ final class BatchRunController extends BaseController
             BatchRun::STATUS_PENDING => [BatchRun::STATUS_RUNNING, BatchRun::STATUS_FAILED],
             BatchRun::STATUS_RUNNING => [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED],
             BatchRun::STATUS_FAILED => [BatchRun::STATUS_PENDING, BatchRun::STATUS_RUNNING],
+            BatchRun::STATUS_CANCELLED => [BatchRun::STATUS_PENDING],
             BatchRun::STATUS_SUCCEEDED => [],
         ];
 
@@ -238,9 +298,101 @@ final class BatchRunController extends BaseController
         );
     }
 
+    /**
+     * Execute supported batch run
+     *
+     * @authenticated
+     *
+     * @response BatchRunResource
+     */
+    public function execute(
+        Request $request,
+        BatchRun $batchRun,
+        ExecuteRegisteredBatchRun $executeRegisteredBatchRun,
+    ): JsonResponse {
+        $this->authorize('execute', $batchRun);
+
+        try {
+            $run = $executeRegisteredBatchRun->execute($batchRun);
+        } catch (FormulaPolicyNotApproved $exception) {
+            return $this->respondUnprocessable($exception->getMessage());
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable($exception->getMessage());
+        }
+
+        $this->securityAudit->record('batch.run.executed', actor: $request->user(), subject: $run, properties: [
+            'status' => $run->status,
+            'summary_payload' => $run->summary_payload,
+        ], request: $request);
+
+        return $this->respondSuccess(
+            BatchRunResource::make($run),
+            'Batch run executed successfully'
+        );
+    }
+
+    /**
+     * Retry a failed or cancelled batch run
+     *
+     * @authenticated
+     *
+     * @response BatchRunResource
+     */
+    public function retry(Request $request, BatchRun $batchRun, UpdateBatchRunStatus $updateBatchRunStatus): JsonResponse
+    {
+        $this->authorize('retry', $batchRun);
+
+        if (! in_array($batchRun->status, [BatchRun::STATUS_FAILED, BatchRun::STATUS_CANCELLED], true)) {
+            return $this->respondUnprocessable('Only failed or cancelled batch runs can be retried.');
+        }
+
+        $run = $updateBatchRunStatus->execute($batchRun, [
+            'status' => BatchRun::STATUS_PENDING,
+            'started_at' => null,
+            'finished_at' => null,
+            'failure_reason' => null,
+        ]);
+
+        $this->securityAudit->record('batch.run.retry_requested', actor: $request->user(), subject: $run, request: $request);
+
+        return $this->respondSuccess(
+            BatchRunResource::make($run),
+            'Batch run retry requested successfully'
+        );
+    }
+
+    /**
+     * Cancel a batch run before execution starts
+     *
+     * @authenticated
+     *
+     * @response BatchRunResource
+     */
+    public function cancel(Request $request, BatchRun $batchRun, UpdateBatchRunStatus $updateBatchRunStatus): JsonResponse
+    {
+        $this->authorize('cancel', $batchRun);
+
+        if ($batchRun->status !== BatchRun::STATUS_PENDING || $batchRun->started_at !== null) {
+            return $this->respondUnprocessable('Only pending batch runs that have not started can be cancelled.');
+        }
+
+        $run = $updateBatchRunStatus->execute($batchRun, [
+            'status' => BatchRun::STATUS_CANCELLED,
+            'failure_reason' => 'Cancelled by operator before execution started.',
+            'finished_at' => now(),
+        ]);
+
+        $this->securityAudit->record('batch.run.cancelled', actor: $request->user(), subject: $run, request: $request);
+
+        return $this->respondSuccess(
+            BatchRunResource::make($run),
+            'Batch run cancelled successfully'
+        );
+    }
+
     private function isTerminalStatus(string $status): bool
     {
-        return in_array($status, [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED], true);
+        return in_array($status, [BatchRun::STATUS_SUCCEEDED, BatchRun::STATUS_FAILED, BatchRun::STATUS_CANCELLED], true);
     }
 
     private function actorContext(Request $request): string

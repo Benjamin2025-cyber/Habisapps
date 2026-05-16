@@ -23,6 +23,10 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
             'loan_approvals',
             'collateral_items',
             'loan_transfers',
+            'loan_guarantee_obligations',
+            'loan_disbursements',
+            'loan_repayments',
+            'loan_repayment_allocations',
             'delinquency_trackings',
             'loan_charge_assessments',
             'loan_arrears',
@@ -90,6 +94,146 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
             'is_central_till',
             'max_balance_limit_minor',
         ]));
+
+        self::assertTrue(Schema::hasColumns('agencies', [
+            'branch_type',
+            'fax_number',
+            'po_box',
+            'geographic_description',
+        ]));
+
+        self::assertTrue(Schema::hasColumns('clients', [
+            'profile_photo_document_id',
+            'father_name',
+            'mother_name',
+            'home_phone_number',
+            'kyc_submitted_by_user_id',
+            'business_started_on',
+            'business_activity_started_on',
+            'business_address_line_1',
+            'business_address_line_2',
+            'business_city',
+            'business_region',
+            'sector_id',
+            'sub_sector_id',
+        ]));
+
+        self::assertTrue(Schema::hasColumns('client_identity_documents', [
+            'document_number_hash',
+        ]));
+
+        self::assertTrue(Schema::hasColumns('journal_entries', [
+            'submitted_at',
+            'submitted_by_user_id',
+            'reviewed_at',
+            'reviewed_by_user_id',
+            'review_comment',
+            'rejection_reason',
+        ]));
+
+        self::assertTrue(Schema::hasColumns('loan_repayments', [
+            'loan_id',
+            'journal_entry_id',
+            'customer_account_id',
+            'received_amount_minor',
+            'allocated_amount_minor',
+            'overpayment_retained_minor',
+        ]));
+
+        self::assertTrue(Schema::hasColumns('loan_repayment_allocations', [
+            'loan_repayment_id',
+            'loan_schedule_line_id',
+            'component',
+            'amount_minor',
+        ]));
+    }
+
+    public function test_client_kyc_status_vocabulary_is_enforced(): void
+    {
+        $agencyId = $this->createAgency('KV01');
+
+        $clientId = DB::table('clients')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'client_reference' => 'CL-KYC-'.Str::ulid(),
+            'first_name' => 'Default',
+            'last_name' => 'Vocabulary',
+            'status' => 'active',
+        ]);
+
+        self::assertSame('draft', DB::table('clients')->where('id', $clientId)->value('kyc_status'));
+
+        $this->expectException(QueryException::class);
+
+        DB::table('clients')->insert([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'client_reference' => 'CL-BAD-KYC-'.Str::ulid(),
+            'first_name' => 'Invalid',
+            'last_name' => 'Vocabulary',
+            'status' => 'active',
+            'kyc_status' => 'pending',
+        ]);
+    }
+
+    public function test_client_sector_and_sub_sector_must_match_in_database(): void
+    {
+        $agencyId = $this->createAgency('SC01');
+        $sectorA = $this->createSectorAndSubSector('SC-A', 'SC-A1');
+        $sectorB = $this->createSectorAndSubSector('SC-B', 'SC-B1');
+
+        $this->expectException(QueryException::class);
+
+        DB::table('clients')->insert([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'client_reference' => 'CL-SC-'.Str::ulid(),
+            'first_name' => 'Invalid',
+            'last_name' => 'Classification',
+            'status' => 'active',
+            'sector_id' => $sectorA['sector_id'],
+            'sub_sector_id' => $sectorB['sub_sector_id'],
+        ]);
+    }
+
+    public function test_loan_sector_and_sub_sector_must_match_in_database(): void
+    {
+        $agencyId = $this->createAgency('SL01');
+        $clientId = $this->createClient($agencyId);
+        $loanProductId = $this->createLoanProduct();
+        $sectorA = $this->createSectorAndSubSector('SL-A', 'SL-A1');
+        $sectorB = $this->createSectorAndSubSector('SL-B', 'SL-B1');
+
+        $this->expectException(QueryException::class);
+
+        DB::table('loans')->insert([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agencyId,
+            'loan_product_id' => $loanProductId,
+            'loan_number' => 'LN-SC-'.Str::ulid(),
+            'requested_amount_minor' => 100000,
+            'currency' => 'XAF',
+            'applied_on' => '2026-05-11',
+            'status' => 'application',
+            'sector_id' => $sectorA['sector_id'],
+            'sub_sector_id' => $sectorB['sub_sector_id'],
+        ]);
+    }
+
+    public function test_journal_entry_review_status_vocabulary_is_enforced(): void
+    {
+        $agencyId = $this->createAgency('JR01');
+
+        $this->expectException(QueryException::class);
+
+        DB::table('journal_entries')->insert([
+            'public_id' => (string) Str::ulid(),
+            'reference' => 'JR-BAD-'.Str::ulid(),
+            'business_date' => '2026-05-11',
+            'agency_id' => $agencyId,
+            'status' => 'pending_review',
+        ]);
     }
 
     public function test_account_product_minimum_balance_cannot_be_negative(): void
@@ -168,6 +312,75 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
             'recovered_amount_minor' => 0,
             'currency' => 'XAF',
             'status' => 'pending',
+        ]);
+    }
+
+    public function test_loan_guarantee_obligation_preserves_guarantor_snapshot_and_agency_scope(): void
+    {
+        $agencyA = $this->createAgency('LG01');
+        $agencyB = $this->createAgency('LG02');
+        $clientId = $this->createClient($agencyA);
+        $loanId = $this->createLoan($agencyA, $clientId);
+
+        $guarantorId = DB::table('client_guarantors')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyA,
+            'client_id' => $clientId,
+            'guarantor_full_name' => 'Original Guarantor',
+            'guarantor_phone_number' => '+237600000111',
+            'status' => 'active',
+            'verification_status' => 'verified',
+        ]);
+
+        DB::table('loan_guarantee_obligations')->insert([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyA,
+            'loan_id' => $loanId,
+            'client_guarantor_id' => $guarantorId,
+            'obligation_type' => 'personal_guarantee',
+            'obligation_amount_minor' => 100000,
+            'currency' => 'XAF',
+            'status' => 'active',
+            'starts_on' => '2026-05-11',
+            'release_condition' => 'full_settlement',
+            'guarantor_identity_snapshot' => json_encode([
+                'guarantor_full_name' => 'Original Guarantor',
+                'guarantor_phone_number' => '+237600000111',
+            ], JSON_THROW_ON_ERROR),
+        ]);
+
+        DB::table('client_guarantors')
+            ->where('id', $guarantorId)
+            ->update(['guarantor_full_name' => 'Updated Guarantor']);
+
+        $snapshot = DB::table('loan_guarantee_obligations')
+            ->where('client_guarantor_id', $guarantorId)
+            ->value('guarantor_identity_snapshot');
+
+        self::assertIsString($snapshot);
+        $decodedSnapshot = json_decode($snapshot, true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($decodedSnapshot);
+        self::assertSame('Original Guarantor', $decodedSnapshot['guarantor_full_name']);
+
+        $crossAgencyClientId = $this->createClient($agencyB);
+        $crossAgencyGuarantorId = DB::table('client_guarantors')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyB,
+            'client_id' => $crossAgencyClientId,
+            'guarantor_full_name' => 'Cross Agency',
+            'status' => 'active',
+            'verification_status' => 'verified',
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        DB::table('loan_guarantee_obligations')->insert([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyA,
+            'loan_id' => $loanId,
+            'client_guarantor_id' => $crossAgencyGuarantorId,
+            'obligation_percentage' => 50,
+            'status' => 'active',
         ]);
     }
 
@@ -350,6 +563,7 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
         ]);
 
         DB::table('operation_account_mappings')->insert([
+            'public_id' => (string) Str::ulid(),
             'operation_code_id' => $operationCodeId,
             'debit_ledger_account_id' => $ledgerAccountId,
             'currency' => 'XAF',
@@ -430,8 +644,34 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
             'first_name' => 'Jane',
             'last_name' => 'Doe',
             'status' => 'active',
-            'kyc_status' => 'pending',
+            'kyc_status' => 'draft',
         ]);
+    }
+
+    /**
+     * @return array{sector_id:int, sub_sector_id:int}
+     */
+    private function createSectorAndSubSector(string $sectorCode, string $subSectorCode): array
+    {
+        $sectorId = DB::table('sectors')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => $sectorCode,
+            'name' => 'Sector '.$sectorCode,
+            'status' => 'active',
+        ]);
+
+        $subSectorId = DB::table('sub_sectors')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'sector_id' => $sectorId,
+            'code' => $subSectorCode,
+            'name' => 'Sub-sector '.$subSectorCode,
+            'status' => 'active',
+        ]);
+
+        return [
+            'sector_id' => $sectorId,
+            'sub_sector_id' => $subSectorId,
+        ];
     }
 
     private function createLedgerAccount(int $agencyId): int
@@ -515,4 +755,3 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
         ]);
     }
 }
-

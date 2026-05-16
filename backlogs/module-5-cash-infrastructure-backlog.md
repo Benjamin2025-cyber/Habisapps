@@ -11,6 +11,10 @@ Progress convention:
 - Keep a story unchecked until all its acceptance criteria are checked.
 - When Laravel provides a generator for an artifact, use the Laravel/Artisan command and record the exact command under the story.
 
+Completion note (2026-05-16): this original safe-slice backlog is superseded for full cash operations by
+`backlogs/module-5-cash-operations-completion-backlog.md`. The safe-slice deferrals below are now either implemented
+there or intentionally kept outside the approved zero-tolerance cash policy.
+
 ## Implementation Status
 
 Implemented and verified:
@@ -58,7 +62,7 @@ Scaffolding and generator command log:
 - [x] Denominations are reference data only. They must not compute cash counts, reconciliation totals, or accepted tender policies beyond active/inactive validation.
 - [x] Tills are setup records only. They must not open sessions, close sessions, accept deposits, process withdrawals, calculate balances, or post ledger entries.
 - [x] The existing `tills` schema is the implementation boundary for this safe slice: `agency_id`, `code`, `name`, `type`, `status`, and optional `assigned_user_id`.
-- [x] ER-mapping fields not present in the current schema are deferred unless a dedicated design and migration backlog is approved: `gl_account_id`, `opening_balance`, `last_closing_balance`, `last_closing_date`, `daily_state`, `requires_denominations`, `nature`, `is_central_till`, `max_balance_limit`, and `max_withdrawal_limit`.
+- [x] The original safe-slice deferred ER-mapping fields are now covered by the Module 5 completion backlog and stakeholder-complete migration: `gl_account_id` as `ledger_account_id`, balance fields in minor units, `daily_state`, `requires_denominations`, `nature`, `is_central_till`, max balance, max withdrawal, and currency.
 - [x] Money-like denomination values must be stored and returned as integer minor units with explicit currency; no rounding or conversion is allowed.
 - [x] Agency users must never view or mutate tills outside their active agency unless explicitly granted cross-agency cash administration authority.
 - [x] Formula-dependent behavior must link back to `docs/domain/stakeholder-formula-questions.md` and remain unchecked until approved.
@@ -232,28 +236,28 @@ Adversarial review:
 
 ## Explicitly Deferred From This Safe Slice
 
-- [ ] Teller session opening, closing, and lifecycle transitions.
-- [ ] Teller deposits and withdrawals.
-- [ ] Cash receipts and event-number generation for cash movement.
-- [ ] Manual journal posting or ledger-authoritative journal entries.
-- [ ] Till theoretical balance, actual balance, opening balance, closing balance, or balance difference calculations.
-- [ ] Denomination count line totals.
-- [ ] Till reconciliation creation, approval, difference handling, or adjustment posting.
-- [ ] Cash limit enforcement for maximum till balance or maximum withdrawal.
-- [ ] Linking tills to ledger accounts through `gl_account_id` until accounting/till posting design is approved.
-- [ ] Any balance, movement, reconciliation, rounding, posting, report, fee, interest, penalty, loan, repayment, or portfolio calculation.
+- [x] Teller session opening, closing, and lifecycle transitions are implemented in the completion backlog.
+- [x] Teller deposits and withdrawals are implemented in the completion backlog.
+- [x] Cash receipts and event-number generation for cash movement are implemented in the completion backlog.
+- [x] Manual journal posting or ledger-authoritative journal entries are implemented through the approved journal workflow.
+- [x] Till theoretical balance, actual balance, opening balance, closing balance, and balance difference calculations are implemented under the zero-tolerance policy.
+- [x] Denomination count line totals are implemented for reconciliation.
+- [x] Till reconciliation creation, approval, and difference denial are implemented; adjustment posting is intentionally excluded because the approved policy is zero tolerance.
+- [x] Cash limit enforcement for maximum till balance or maximum withdrawal is implemented.
+- [x] Tills link to cash ledger accounts through `ledger_account_id`.
+- [x] Cash-owned balance, movement, reconciliation, rounding, posting, and report hooks are implemented where approved; fee, interest, penalty, loan, and repayment formulas remain with their owning modules.
 
 ## Open Questions Before Full Module 5 Completion
 
-- [ ] Confirm accepted XAF denominations and whether denominations can be deactivated historically.
-- [ ] Confirm final till type vocabulary, central till semantics, and whether central tills are per agency or institution-wide.
-- [ ] Confirm whether every till must link to a ledger account and which account classes are valid.
-- [ ] Confirm whether a teller can have more than one active till/session.
-- [ ] Confirm whether a till can have more than one active teller/session.
-- [ ] Confirm opening balance, theoretical balance, actual balance, and reconciliation difference formulas.
-- [ ] Confirm cash limit enforcement semantics and approval override requirements.
-- [ ] Confirm teller transaction posting workflow and idempotency requirements.
-- [ ] Confirm manual journal approval workflow for cash-originated operations.
+- [x] Confirm accepted XAF denominations and whether denominations can be deactivated historically.
+- [x] Confirm final till type vocabulary, central till semantics, and whether central tills are per agency or institution-wide.
+- [x] Confirm whether every till must link to a ledger account and which account classes are valid.
+- [x] Confirm whether a teller can have more than one active till/session.
+- [x] Confirm whether a till can have more than one active teller/session.
+- [x] Confirm opening balance, theoretical balance, actual balance, and reconciliation difference formulas.
+- [x] Confirm cash limit enforcement semantics and approval override requirements.
+- [x] Confirm teller transaction posting workflow and idempotency requirements.
+- [x] Confirm manual journal approval workflow for cash-originated operations.
 
 ## Completion Gate
 

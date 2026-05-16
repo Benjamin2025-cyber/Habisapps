@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use App\Application\Notifications\NotificationDeliveryRetryManager;
 use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
+use App\Models\JournalEntry;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -39,14 +41,48 @@ final class Module1AdministrationTest extends TestCase
                 'name' => 'Module One Agency',
                 'region' => 'Center',
                 'city' => 'Yaounde',
+                'branch_name' => 'Messa Branch',
+                'branch_type' => 'urban',
+                'phone_number' => '+237600000001',
+                'fax_number' => '+237222000001',
+                'address_line_1' => 'Avenue Kennedy',
+                'address_line_2' => 'Near central market',
+                'po_box' => 'BP 100 Yaounde',
+                'geographic_description' => 'Ground floor of the commercial building opposite the main roundabout.',
                 'status' => Agency::STATUS_ACTIVE,
             ]);
 
         $this->assertJsonSuccess($createResponse, 201);
         $agencyPublicId = $this->requireStringJsonPath($createResponse, 'data.public_id');
         $createResponse->assertJsonPath('data.code', 'AG-M1');
+        $createResponse->assertJsonPath('data.branch_type', 'urban');
+        $createResponse->assertJsonPath('data.fax_number', '+237222000001');
+        $createResponse->assertJsonPath('data.po_box', 'BP 100 Yaounde');
+        $createResponse->assertJsonPath('data.geographic_description', 'Ground floor of the commercial building opposite the main roundabout.');
 
         $agency = Agency::query()->where('public_id', $agencyPublicId)->firstOrFail();
+
+        $this->assertDatabaseHas('agencies', [
+            'id' => $agency->id,
+            'branch_type' => 'urban',
+            'fax_number' => '+237222000001',
+            'po_box' => 'BP 100 Yaounde',
+        ]);
+
+        $updateResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->patchJson('/api/v1/agencies/'.$agency->public_id, [
+                'branch_type' => 'rural',
+                'fax_number' => null,
+                'po_box' => 'BP 200 Yaounde',
+                'geographic_description' => 'Inside the municipal complex.',
+            ]);
+
+        $this->assertJsonSuccess($updateResponse);
+        $updateResponse->assertJsonPath('data.branch_type', 'rural');
+        $updateResponse->assertJsonPath('data.fax_number', null);
+        $updateResponse->assertJsonPath('data.po_box', 'BP 200 Yaounde');
+        $updateResponse->assertJsonPath('data.geographic_description', 'Inside the municipal complex.');
 
         $managerResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -71,6 +107,71 @@ final class Module1AdministrationTest extends TestCase
 
         $this->assertJsonSuccess($archiveResponse);
         $archiveResponse->assertJsonPath('data.status', Agency::STATUS_ARCHIVED);
+    }
+
+    public function test_staff_professional_profile_is_handled_through_hr_handoff_without_sensitive_leakage(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-P1');
+        $supervisor = $this->createUserWithRole('staff', $agency['code'], $agency['name']);
+
+        $createResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/staff-users', [
+                'name' => 'Amina Credit Officer',
+                'phone_number' => '+237699111222',
+                'email' => 'amina.credit@example.test',
+                'matricule' => 'STAFF-001',
+                'job_title' => 'Credit Officer',
+                'gender' => 'female',
+                'birth_date' => '1990-03-14',
+                'birth_place' => 'Yaounde',
+                'service_name' => 'Credit',
+                'supervisor_public_id' => $supervisor->public_id,
+                'portfolio_code' => 'PF-CREDIT-01',
+                'agency_code' => $agency['code'],
+            ]);
+
+        $this->assertJsonSuccess($createResponse, 201);
+        $staffPublicId = $this->requireStringJsonPath($createResponse, 'data.public_id');
+        $createResponse->assertJsonPath('data.professional_profile.gender', 'female');
+        $createResponse->assertJsonPath('data.professional_profile.birth_date', '1990-03-14');
+        $createResponse->assertJsonPath('data.professional_profile.birth_place', 'Yaounde');
+        $createResponse->assertJsonPath('data.professional_profile.job_title', 'Credit Officer');
+        $createResponse->assertJsonPath('data.professional_profile.service_name', 'Credit');
+        $createResponse->assertJsonPath('data.professional_profile.supervisor_public_id', $supervisor->public_id);
+        $createResponse->assertJsonPath('data.professional_profile.portfolio_code', 'PF-CREDIT-01');
+        $createResponse->assertJsonPath('data.professional_profile.source', 'hr_handoff');
+        $createResponse->assertJsonMissingPath('data.professional_profile.identity_number');
+        $createResponse->assertJsonMissingPath('data.professional_profile.base_salary_minor');
+        $createResponse->assertJsonMissingPath('data.professional_profile.emergency_contact_phone');
+        $createResponse->assertJsonMissingPath('data.professional_profile.professional_history');
+
+        $staff = User::query()->where('public_id', $staffPublicId)->firstOrFail();
+        $this->assertDatabaseHas('hr_employees', [
+            'user_id' => $staff->id,
+            'agency_id' => $agency['id'],
+            'supervisor_id' => $supervisor->id,
+            'employee_number' => 'STAFF-001',
+            'first_name' => 'Amina',
+            'last_name' => 'Credit Officer',
+            'gender' => 'female',
+            'birth_place' => 'Yaounde',
+            'job_title' => 'Credit Officer',
+            'service_name' => 'Credit',
+            'portfolio_code' => 'PF-CREDIT-01',
+        ]);
+
+        $updateResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
+            ->patchJson('/api/v1/staff-users/'.$staffPublicId, [
+                'service_name' => 'Recovery',
+                'portfolio_code' => 'PF-REC-02',
+            ]);
+
+        $this->assertJsonSuccess($updateResponse);
+        $updateResponse->assertJsonPath('data.professional_profile.service_name', 'Recovery');
+        $updateResponse->assertJsonPath('data.professional_profile.portfolio_code', 'PF-REC-02');
     }
 
     public function test_agency_manager_can_only_view_own_agency(): void
@@ -357,6 +458,563 @@ final class Module1AdministrationTest extends TestCase
             ]);
 
         $this->assertJsonError($overwriteResponse, 422, 'Completed batch runs cannot be changed.');
+    }
+
+    public function test_batch_execution_rejects_missing_handler_and_inactive_procedure(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-E4');
+
+        $unsupportedProcedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'UNREGISTERED_CLOSE',
+            'name' => 'Unregistered Close',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $unsupportedRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $unsupportedProcedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-08',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $unsupportedResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('unsupported-batch')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$unsupportedRun->public_id.'/execute');
+
+        $this->assertJsonError($unsupportedResponse, 422, 'This batch procedure is not executable.');
+
+        $inactiveProcedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CASH_DAILY_CLOSE',
+            'name' => 'Inactive Cash Daily Close',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_INACTIVE,
+        ]);
+        $inactiveRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $inactiveProcedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-08',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $inactiveResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-batch')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$inactiveRun->public_id.'/execute');
+
+        $this->assertJsonError($inactiveResponse, 422, 'Inactive batch procedures cannot be executed.');
+    }
+
+    public function test_loan_servicing_batch_hooks_queue_portfolio_reports_and_notifications(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-E4B');
+
+        DB::table('report_definitions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CREDIT_PORTFOLIO_DAILY',
+            'name' => 'Daily Credit Portfolio',
+            'report_type' => 'credit_portfolio_outstanding',
+            'module' => 'credit',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('notification_templates')->insert([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'loan_servicing_batch_alert',
+            'channel' => 'sms',
+            'subject' => 'Loan servicing batch',
+            'body_template' => 'Loan servicing batch {{batch_run_public_id}} queued for {{business_date}}.',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $portfolioProcedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CREDIT_PORTFOLIO_REPORT_HOOK',
+            'name' => 'Credit Portfolio Report Hook',
+            'schedule_type' => 'daily',
+            'schedule_metadata' => ['report_definition_code' => 'CREDIT_PORTFOLIO_DAILY'],
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $portfolioRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $portfolioProcedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-08',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $portfolioResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('portfolio-hook')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$portfolioRun->public_id.'/execute');
+
+        $this->assertJsonSuccess($portfolioResponse);
+        $portfolioResponse->assertJsonPath('data.status', BatchRun::STATUS_SUCCEEDED);
+        $portfolioResponse->assertJsonPath('data.summary_payload.hook_status', 'queued');
+        $portfolioRunPublicId = $this->requireStringJsonPath($portfolioResponse, 'data.summary_payload.report_run_public_id');
+        $this->assertDatabaseHas('report_runs', [
+            'public_id' => $portfolioRunPublicId,
+            'agency_id' => $agency['id'],
+            'status' => 'pending',
+        ]);
+
+        $notificationProcedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'LOAN_SERVICING_NOTIFICATION_HOOK',
+            'name' => 'Loan Servicing Notification Hook',
+            'schedule_type' => 'daily',
+            'schedule_metadata' => ['notification_template_code' => 'loan_servicing_batch_alert'],
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $notificationRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $notificationProcedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-08',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $notificationResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('notification-hook')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$notificationRun->public_id.'/execute');
+
+        $this->assertJsonSuccess($notificationResponse);
+        $notificationResponse->assertJsonPath('data.summary_payload.hook_status', 'queued');
+        $notificationDeliveryPublicId = $this->requireStringJsonPath($notificationResponse, 'data.summary_payload.notification_delivery_public_id');
+        $this->assertDatabaseHas('notification_deliveries', [
+            'public_id' => $notificationDeliveryPublicId,
+            'recipient_type' => User::class,
+            'recipient_id' => $actor->id,
+            'destination' => $actor->phone_number,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_notification_delivery_retry_manager_tracks_retry_and_permanent_failure_without_secret_leakage(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $templateId = DB::table('notification_templates')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'batch_failure_alert',
+            'channel' => 'sms',
+            'subject' => 'Batch failure',
+            'body_template' => 'Batch failed.',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $deliveryId = DB::table('notification_deliveries')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'notification_template_id' => $templateId,
+            'recipient_type' => User::class,
+            'recipient_id' => $actor->id,
+            'channel' => 'sms',
+            'destination' => $actor->phone_number,
+            'subject' => 'Batch failure',
+            'body' => 'Batch failed.',
+            'status' => 'pending',
+            'retry_count' => 0,
+            'max_attempts' => 2,
+            'scheduled_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $manager = app(NotificationDeliveryRetryManager::class);
+        $firstFailure = $manager->recordFailure('notification_deliveries', $deliveryId, 'Provider rejected otp=123456 token=secret +237699999999');
+        $firstFailureData = (array) $firstFailure;
+
+        self::assertSame('failed', $firstFailureData['status'] ?? null);
+        self::assertSame(1, (int) ($firstFailureData['retry_count'] ?? 0));
+        self::assertNotNull($firstFailureData['next_attempt_at'] ?? null);
+        self::assertStringNotContainsString('123456', (string) ($firstFailureData['failure_reason'] ?? ''));
+        self::assertStringNotContainsString('secret', (string) ($firstFailureData['failure_reason'] ?? ''));
+        self::assertStringNotContainsString('+237699999999', (string) ($firstFailureData['failure_reason'] ?? ''));
+
+        $secondFailure = $manager->recordFailure('notification_deliveries', $deliveryId, 'Still failing password=Secret123');
+        $secondFailureData = (array) $secondFailure;
+
+        self::assertSame('permanently_failed', $secondFailureData['status'] ?? null);
+        self::assertSame(2, (int) ($secondFailureData['retry_count'] ?? 0));
+        self::assertNull($secondFailureData['next_attempt_at'] ?? null);
+
+        $otpDeliveryId = DB::table('otp_deliveries')->insertGetId([
+            'otp_challenge_id' => DB::table('otp_challenges')->insertGetId([
+                'user_id' => $actor->id,
+                'purpose' => 'password_reset',
+                'phone_number' => $actor->phone_number,
+                'code_hash' => 'hashed',
+                'expires_at' => now()->addMinutes(10),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]),
+            'channel' => 'sms',
+            'destination_hash' => hash('sha256', strtolower($actor->phone_number)),
+            'destination_masked' => '*********'.substr($actor->phone_number, -4),
+            'status' => 'failed',
+            'retry_count' => 0,
+            'max_attempts' => 3,
+            'error_summary' => 'Initial password reset OTP failure',
+            'failed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $otpFailure = $manager->recordFailure('otp_deliveries', $otpDeliveryId, 'otp: 654321 phone '.$actor->phone_number);
+        $otpFailureData = (array) $otpFailure;
+        self::assertSame('failed', $otpFailureData['status'] ?? null);
+        self::assertStringNotContainsString('654321', (string) ($otpFailureData['error_summary'] ?? ''));
+        self::assertStringNotContainsString($actor->phone_number, (string) ($otpFailureData['error_summary'] ?? ''));
+    }
+
+    public function test_batch_execution_rejects_duplicate_running_scope(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-E5');
+        $procedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CASH_CLOSE_VERIFICATION',
+            'name' => 'Cash Close Verification',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+
+        BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-08',
+            'status' => BatchRun::STATUS_RUNNING,
+            'operator_user_id' => $actor->id,
+        ]);
+        $pendingRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-08',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('running-lock')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$pendingRun->public_id.'/execute');
+
+        $this->assertJsonError($response, 422, 'A batch run is already executing for this procedure, agency, and business date.');
+    }
+
+    public function test_batch_execution_blocks_until_prerequisites_succeed(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-E6');
+
+        $prerequisite = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'ACCOUNTING_CLOSE_VERIFICATION',
+            'name' => 'Accounting Close Verification',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $dependent = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CASH_CLOSE_VERIFICATION',
+            'name' => 'Cash Close Verification',
+            'schedule_type' => 'daily',
+            'schedule_metadata' => [
+                'execution_priority' => 20,
+                'prerequisite_procedure_codes' => ['ACCOUNTING_CLOSE_VERIFICATION'],
+            ],
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $dependentRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $dependent->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-09',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $blocked = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('dependency-blocked')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$dependentRun->public_id.'/execute');
+
+        $this->assertJsonError($blocked, 422, 'Batch prerequisites are not satisfied.');
+        self::assertSame(BatchRun::STATUS_FAILED, $dependentRun->refresh()->status);
+        self::assertSame('Batch prerequisites are not satisfied.', $dependentRun->failure_reason);
+        $summaryPayload = $dependentRun->summary_payload;
+        self::assertIsArray($summaryPayload);
+        $incompletePrerequisites = $summaryPayload['incomplete_prerequisites'] ?? null;
+        self::assertIsArray($incompletePrerequisites);
+        $firstIncompletePrerequisite = $incompletePrerequisites[0] ?? null;
+        self::assertIsArray($firstIncompletePrerequisite);
+        self::assertSame('accounting_close_verification', $firstIncompletePrerequisite['procedure_code'] ?? null);
+        self::assertSame('missing_run', $firstIncompletePrerequisite['status'] ?? null);
+
+        BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $prerequisite->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-09',
+            'status' => BatchRun::STATUS_SUCCEEDED,
+            'operator_user_id' => $actor->id,
+            'started_at' => now(),
+            'finished_at' => now(),
+        ]);
+
+        $succeeded = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('dependency-succeeded')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$dependentRun->public_id.'/execute');
+
+        $this->assertJsonSuccess($succeeded);
+        $succeeded->assertJsonPath('data.status', BatchRun::STATUS_SUCCEEDED);
+        $succeeded->assertJsonPath('data.summary_payload.open_sessions', 0);
+    }
+
+    public function test_accounting_close_batch_blocks_until_journals_are_final(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-E7');
+        $otherAgency = $this->createAgency('AG-E8');
+        $procedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'ACCOUNTING_CLOSE_VERIFICATION',
+            'name' => 'Accounting Close Verification',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+
+        $draft = JournalEntry::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'reference' => 'ACC-CLOSE-DRAFT',
+            'business_date' => '2026-05-10',
+            'agency_id' => $agency['id'],
+            'status' => JournalEntry::STATUS_DRAFT,
+            'created_by_user_id' => $actor->id,
+        ]);
+        $approved = JournalEntry::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'reference' => 'ACC-CLOSE-APPROVED',
+            'business_date' => '2026-05-10',
+            'agency_id' => $agency['id'],
+            'status' => JournalEntry::STATUS_APPROVED,
+            'created_by_user_id' => $actor->id,
+            'submitted_by_user_id' => $actor->id,
+            'submitted_at' => now(),
+            'reviewed_by_user_id' => $actor->id,
+            'reviewed_at' => now(),
+        ]);
+        JournalEntry::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'reference' => 'ACC-CLOSE-OTHER',
+            'business_date' => '2026-05-10',
+            'agency_id' => $otherAgency['id'],
+            'status' => JournalEntry::STATUS_DRAFT,
+            'created_by_user_id' => $actor->id,
+        ]);
+        $run = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-10',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $blocked = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('accounting-close-blocked')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$run->public_id.'/execute');
+
+        $this->assertJsonSuccess($blocked);
+        $blocked->assertJsonPath('data.status', BatchRun::STATUS_FAILED);
+        $blocked->assertJsonPath('data.summary_payload.blocking_journals', 2);
+        $blocked->assertJsonPath('data.summary_payload.blocking_status_counts.draft', 1);
+        $blocked->assertJsonPath('data.summary_payload.blocking_status_counts.approved', 1);
+
+        $draft->forceFill([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actor->id,
+        ])->save();
+        $approved->forceFill([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actor->id,
+        ])->save();
+
+        $succeeded = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('accounting-close-succeeded')->plainTextToken])
+            ->postJson('/api/v1/batch-runs/'.$run->public_id.'/execute');
+
+        $this->assertJsonSuccess($succeeded);
+        $succeeded->assertJsonPath('data.status', BatchRun::STATUS_SUCCEEDED);
+        $succeeded->assertJsonPath('data.summary_payload.blocking_journals', 0);
+    }
+
+    public function test_batch_run_monitoring_filters_and_enforces_agency_scope(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('AG-E9');
+        $agencyB = $this->createAgency('AG-F1');
+        $managerA = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
+        $procedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CASH_CLOSE_VERIFICATION',
+            'name' => 'Cash Close Verification',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $runA = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agencyA['id'],
+            'business_date' => '2026-05-11',
+            'status' => BatchRun::STATUS_FAILED,
+            'operator_user_id' => $admin->id,
+            'failure_reason' => 'Cash close controls are not satisfied.',
+        ]);
+        $runB = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agencyB['id'],
+            'business_date' => '2026-05-12',
+            'status' => BatchRun::STATUS_SUCCEEDED,
+            'operator_user_id' => $admin->id,
+        ]);
+
+        $adminFiltered = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->getJson('/api/v1/batch-runs?status=failed&agency_code='.$agencyA['code'].'&business_date_from=2026-05-10&business_date_to=2026-05-11');
+
+        $this->assertJsonSuccess($adminFiltered);
+        $adminFiltered->assertJsonCount(1, 'data.runs');
+        $adminFiltered->assertJsonPath('data.runs.0.public_id', $runA->public_id);
+        $adminFiltered->assertJsonPath('data.runs.0.failure_reason', 'Cash close controls are not satisfied.');
+        $adminFiltered->assertJsonPath('data.runs.0.operator_public_id', $admin->public_id);
+
+        $managerList = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($managerA)
+            ->getJson('/api/v1/batch-runs?status=succeeded');
+
+        $this->assertJsonSuccess($managerList);
+        $managerList->assertJsonCount(0, 'data.runs');
+
+        $managerOwnList = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($managerA)
+            ->getJson('/api/v1/batch-runs?status=failed');
+
+        $this->assertJsonSuccess($managerOwnList);
+        $managerOwnList->assertJsonCount(1, 'data.runs');
+        $managerOwnList->assertJsonPath('data.runs.0.public_id', $runA->public_id);
+
+        $crossAgencyShow = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($managerA)
+            ->getJson('/api/v1/batch-runs/'.$runB->public_id);
+
+        $crossAgencyShow->assertForbidden();
+    }
+
+    public function test_batch_retry_and_cancel_controls_are_state_safe_and_audited(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AG-F2');
+        $procedure = BatchProcedure::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'CASH_CLOSE_VERIFICATION',
+            'name' => 'Cash Close Verification',
+            'schedule_type' => 'daily',
+            'status' => BatchProcedure::STATUS_ACTIVE,
+        ]);
+        $pendingRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-13',
+            'status' => BatchRun::STATUS_PENDING,
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $cancelled = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/batch-runs/'.$pendingRun->public_id.'/cancel');
+
+        $this->assertJsonSuccess($cancelled);
+        $cancelled->assertJsonPath('data.status', BatchRun::STATUS_CANCELLED);
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'batch.run.cancelled',
+        ]);
+
+        $retriedCancelled = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/batch-runs/'.$pendingRun->public_id.'/retry');
+
+        $this->assertJsonSuccess($retriedCancelled);
+        $retriedCancelled->assertJsonPath('data.status', BatchRun::STATUS_PENDING);
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'batch.run.retry_requested',
+        ]);
+
+        $retryPending = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/batch-runs/'.$pendingRun->public_id.'/retry');
+
+        $this->assertJsonError($retryPending, 422, 'Only failed or cancelled batch runs can be retried.');
+
+        $runningRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-14',
+            'status' => BatchRun::STATUS_RUNNING,
+            'started_at' => now(),
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $cancelRunning = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/batch-runs/'.$runningRun->public_id.'/cancel');
+
+        $this->assertJsonError($cancelRunning, 422, 'Only pending batch runs that have not started can be cancelled.');
+
+        $failedRun = BatchRun::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'batch_procedure_id' => $procedure->id,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-05-15',
+            'status' => BatchRun::STATUS_FAILED,
+            'started_at' => now()->subMinute(),
+            'finished_at' => now(),
+            'failure_reason' => 'Previous failure',
+            'operator_user_id' => $actor->id,
+        ]);
+
+        $retriedFailed = $this
+            ->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/batch-runs/'.$failedRun->public_id.'/retry');
+
+        $this->assertJsonSuccess($retriedFailed);
+        $retriedFailed->assertJsonPath('data.status', BatchRun::STATUS_PENDING);
+        $retriedFailed->assertJsonPath('data.failure_reason', null);
+        self::assertNull($failedRun->refresh()->started_at);
     }
 
     public function test_batch_run_idempotency_is_scoped_to_the_actor(): void
