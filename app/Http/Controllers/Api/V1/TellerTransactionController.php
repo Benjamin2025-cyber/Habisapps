@@ -11,6 +11,7 @@ use App\Http\Requests\StoreCashManualJournalRequest;
 use App\Http\Requests\StoreCashWithdrawalRequest;
 use App\Http\Resources\JournalEntryResource;
 use App\Http\Resources\TellerTransactionResource;
+use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
@@ -21,6 +22,7 @@ use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\Crm\ClientProxyMandateAuthorizer;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
@@ -36,7 +38,59 @@ final class TellerTransactionController extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly AccountingBalanceCalculator $balanceCalculator,
+        private readonly ClientProxyMandateAuthorizer $proxyMandateAuthorizer,
     ) {}
+
+    /**
+     * Resolve the initiator metadata for a cash transaction. When the
+     * initiator is a registered proxy, the mandate authorizer must approve
+     * the operation against the chosen customer account before any
+     * teller/journal write happens.
+     *
+     * @return array{ok: true, initiator_type: string, proxy_id: int|null}|array{ok: false, errors: array<string, array<int, string>>}
+     */
+    private function resolveInitiator(
+        Request $request,
+        CustomerAccount $customerAccount,
+        string $operationType,
+        int $amountMinor,
+        string $currency,
+    ): array {
+        $initiatorType = $request->input('initiator_type');
+        if (! is_string($initiatorType) || $initiatorType === '') {
+            $initiatorType = TellerTransaction::INITIATOR_STAFF_ON_BEHALF;
+        }
+
+        $proxyPublicId = $request->input('initiator_proxy_public_id');
+        $proxyPublicId = is_string($proxyPublicId) && $proxyPublicId !== '' ? $proxyPublicId : null;
+
+        if ($initiatorType !== TellerTransaction::INITIATOR_PROXY && $proxyPublicId !== null) {
+            return ['ok' => false, 'errors' => ['initiator_proxy_public_id' => ['A proxy public id is only valid when initiator_type is proxy.']]];
+        }
+
+        if ($initiatorType === TellerTransaction::INITIATOR_PROXY) {
+            if ($proxyPublicId === null) {
+                return ['ok' => false, 'errors' => ['initiator_proxy_public_id' => ['A proxy public id is required when initiator_type is proxy.']]];
+            }
+
+            $proxy = ClientProxy::query()->where('public_id', $proxyPublicId)->first();
+            if (! $proxy instanceof ClientProxy) {
+                return ['ok' => false, 'errors' => ['initiator_proxy_public_id' => ['The proxy does not exist.']]];
+            }
+
+            if (! $this->proxyMandateAuthorizer->allows($proxy, $customerAccount, $operationType, $amountMinor, $currency)) {
+                return ['ok' => false, 'errors' => ['initiator_proxy_public_id' => ['The proxy is not authorized for this operation on the selected customer account.']]];
+            }
+
+            return ['ok' => true, 'initiator_type' => TellerTransaction::INITIATOR_PROXY, 'proxy_id' => $proxy->id];
+        }
+
+        if ($initiatorType === TellerTransaction::INITIATOR_HOLDER) {
+            return ['ok' => true, 'initiator_type' => TellerTransaction::INITIATOR_HOLDER, 'proxy_id' => null];
+        }
+
+        return ['ok' => true, 'initiator_type' => $initiatorType, 'proxy_id' => null];
+    }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{teller_transaction: \App\Http\Resources\TellerTransactionResource, journal_entry: \App\Http\Resources\JournalEntryResource}, errors: null, meta: null}')]
     public function storeDeposit(StoreCashDepositRequest $request, TellerSession $tellerSession): JsonResponse
@@ -94,6 +148,16 @@ final class TellerTransactionController extends BaseController
             return $this->respondUnprocessable(errors: ['amount_minor' => [PhysicalCashAmount::validationMessage($currency)]]);
         }
 
+        $initiator = $this->resolveInitiator($request, $customerAccount, TellerTransaction::TYPE_CASH_DEPOSIT, $amountMinor, $currency);
+        if ($initiator['ok'] === false) {
+            return $this->respondUnprocessable(errors: $initiator['errors']);
+        }
+
+        if ($till->max_balance_limit_minor !== null
+            && $this->postedTillBalanceMinor($tellerSession) + $amountMinor > $till->max_balance_limit_minor) {
+            return $this->respondUnprocessable(errors: ['amount_minor' => ['Deposit would push till balance above its maximum balance limit.']]);
+        }
+
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
@@ -105,7 +169,7 @@ final class TellerTransactionController extends BaseController
             }
         }
 
-        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey): TellerTransaction {
+        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator): TellerTransaction {
             $publicId = (string) Str::ulid();
             $reference = 'CD-'.Str::upper(Str::random(10));
 
@@ -127,6 +191,8 @@ final class TellerTransactionController extends BaseController
                 'operation_code' => $request->input('operation_code', 'cash_deposit'),
                 'depositor_name' => $request->input('depositor_name'),
                 'depositor_address' => $request->input('depositor_address'),
+                'initiator_type' => $initiator['initiator_type'],
+                'initiator_proxy_id' => $initiator['proxy_id'],
                 'description' => $request->input('description'),
             ]);
 
@@ -134,15 +200,15 @@ final class TellerTransactionController extends BaseController
                 'public_id' => (string) Str::ulid(),
                 'reference' => 'JE-'.$reference,
                 'business_date' => $tellerSession->business_date,
-                'posted_at' => now(),
+                'posted_at' => null,
                 'agency_id' => $tellerSession->agency_id,
                 'source_module' => 'cash_operations',
                 'source_type' => TellerTransaction::TYPE_CASH_DEPOSIT,
                 'source_public_id' => $transaction->public_id,
-                'status' => JournalEntry::STATUS_POSTED,
+                'status' => JournalEntry::STATUS_DRAFT,
                 'description' => $request->input('description', 'Cash deposit '.$customerAccount->account_number),
                 'created_by_user_id' => $actor->id,
-                'posted_by_user_id' => $actor->id,
+                'posted_by_user_id' => null,
                 'idempotency_key' => $idempotencyKey,
             ]);
 
@@ -171,6 +237,7 @@ final class TellerTransactionController extends BaseController
             ]);
 
             $transaction->update(['journal_entry_id' => $journalEntry->id]);
+            $this->postSystemJournal($journalEntry, $actor);
 
             return $transaction->refresh();
         });
@@ -180,6 +247,8 @@ final class TellerTransactionController extends BaseController
             'customer_account_public_id' => $customerAccount->public_id,
             'amount_minor' => $amountMinor,
             'currency' => $currency,
+            'initiator_type' => $result->initiator_type,
+            'initiator_proxy_id' => $result->initiator_proxy_id,
         ], request: $request);
 
         return $this->transactionResponse($result, 'Cash deposit posted successfully');
@@ -249,9 +318,9 @@ final class TellerTransactionController extends BaseController
             return $this->respondUnprocessable(errors: ['amount_minor' => ['Withdrawal amount exceeds the posted till cash balance.']]);
         }
 
-        $availableBalance = $this->balanceCalculator->availableForCustomerAccount($customerAccount, $currency)['available_balance_minor'];
-        if ($amountMinor > $availableBalance) {
-            return $this->respondUnprocessable(errors: ['amount_minor' => ['Withdrawal amount exceeds the customer account available balance.']]);
+        $initiator = $this->resolveInitiator($request, $customerAccount, TellerTransaction::TYPE_CASH_WITHDRAWAL, $amountMinor, $currency);
+        if ($initiator['ok'] === false) {
+            return $this->respondUnprocessable(errors: $initiator['errors']);
         }
 
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
@@ -265,78 +334,94 @@ final class TellerTransactionController extends BaseController
             }
         }
 
-        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey): TellerTransaction {
-            $reference = 'CW-'.Str::upper(Str::random(10));
+        try {
+            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator): TellerTransaction {
+                DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
+                $lockedAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
+                $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedAccount, $currency)['available_balance_minor'];
+                if ($amountMinor > $availableBalance) {
+                    throw new \DomainException('Withdrawal amount exceeds the customer account available balance.');
+                }
 
-            $transaction = TellerTransaction::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'teller_session_id' => $tellerSession->id,
-                'agency_id' => $tellerSession->agency_id,
-                'transaction_date' => $tellerSession->business_date,
-                'till_id' => $till->id,
-                'transaction_type' => TellerTransaction::TYPE_CASH_WITHDRAWAL,
-                'client_id' => $customerAccount->client_id,
-                'customer_account_id' => $customerAccount->id,
-                'amount_minor' => $amountMinor,
-                'currency' => $currency,
-                'status' => TellerTransaction::STATUS_POSTED,
-                'reference' => $reference,
-                'event_number' => $reference,
-                'idempotency_key' => $idempotencyKey,
-                'operation_code' => $request->input('operation_code', 'cash_withdrawal'),
-                'description' => $request->input('description'),
-            ]);
+                $reference = 'CW-'.Str::upper(Str::random(10));
 
-            $journalEntry = JournalEntry::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'reference' => 'JE-'.$reference,
-                'business_date' => $tellerSession->business_date,
-                'posted_at' => now(),
-                'agency_id' => $tellerSession->agency_id,
-                'source_module' => 'cash_operations',
-                'source_type' => TellerTransaction::TYPE_CASH_WITHDRAWAL,
-                'source_public_id' => $transaction->public_id,
-                'status' => JournalEntry::STATUS_POSTED,
-                'description' => $request->input('description', 'Cash withdrawal '.$customerAccount->account_number),
-                'created_by_user_id' => $actor->id,
-                'posted_by_user_id' => $actor->id,
-                'idempotency_key' => $idempotencyKey,
-            ]);
+                $transaction = TellerTransaction::query()->create([
+                    'public_id' => (string) Str::ulid(),
+                    'teller_session_id' => $tellerSession->id,
+                    'agency_id' => $tellerSession->agency_id,
+                    'transaction_date' => $tellerSession->business_date,
+                    'till_id' => $till->id,
+                    'transaction_type' => TellerTransaction::TYPE_CASH_WITHDRAWAL,
+                    'client_id' => $customerAccount->client_id,
+                    'customer_account_id' => $customerAccount->id,
+                    'amount_minor' => $amountMinor,
+                    'currency' => $currency,
+                    'status' => TellerTransaction::STATUS_POSTED,
+                    'reference' => $reference,
+                    'event_number' => $reference,
+                    'idempotency_key' => $idempotencyKey,
+                    'operation_code' => $request->input('operation_code', 'cash_withdrawal'),
+                    'initiator_type' => $initiator['initiator_type'],
+                    'initiator_proxy_id' => $initiator['proxy_id'],
+                    'description' => $request->input('description'),
+                ]);
 
-            JournalLine::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'agency_id' => $tellerSession->agency_id,
-                'journal_entry_id' => $journalEntry->id,
-                'ledger_account_id' => $customerLedger->id,
-                'customer_account_id' => $customerAccount->id,
-                'debit_minor' => $amountMinor,
-                'credit_minor' => 0,
-                'currency' => $currency,
-                'line_memo' => 'Cash withdrawn from customer account',
-            ]);
+                $journalEntry = JournalEntry::query()->create([
+                    'public_id' => (string) Str::ulid(),
+                    'reference' => 'JE-'.$reference,
+                    'business_date' => $tellerSession->business_date,
+                    'posted_at' => null,
+                    'agency_id' => $tellerSession->agency_id,
+                    'source_module' => 'cash_operations',
+                    'source_type' => TellerTransaction::TYPE_CASH_WITHDRAWAL,
+                    'source_public_id' => $transaction->public_id,
+                    'status' => JournalEntry::STATUS_DRAFT,
+                    'description' => $request->input('description', 'Cash withdrawal '.$customerAccount->account_number),
+                    'created_by_user_id' => $actor->id,
+                    'posted_by_user_id' => null,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
 
-            JournalLine::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'agency_id' => $tellerSession->agency_id,
-                'journal_entry_id' => $journalEntry->id,
-                'ledger_account_id' => $tillLedger->id,
-                'customer_account_id' => null,
-                'debit_minor' => 0,
-                'credit_minor' => $amountMinor,
-                'currency' => $currency,
-                'line_memo' => 'Cash paid out from till',
-            ]);
+                JournalLine::query()->create([
+                    'public_id' => (string) Str::ulid(),
+                    'agency_id' => $tellerSession->agency_id,
+                    'journal_entry_id' => $journalEntry->id,
+                    'ledger_account_id' => $customerLedger->id,
+                    'customer_account_id' => $customerAccount->id,
+                    'debit_minor' => $amountMinor,
+                    'credit_minor' => 0,
+                    'currency' => $currency,
+                    'line_memo' => 'Cash withdrawn from customer account',
+                ]);
 
-            $transaction->update(['journal_entry_id' => $journalEntry->id]);
+                JournalLine::query()->create([
+                    'public_id' => (string) Str::ulid(),
+                    'agency_id' => $tellerSession->agency_id,
+                    'journal_entry_id' => $journalEntry->id,
+                    'ledger_account_id' => $tillLedger->id,
+                    'customer_account_id' => null,
+                    'debit_minor' => 0,
+                    'credit_minor' => $amountMinor,
+                    'currency' => $currency,
+                    'line_memo' => 'Cash paid out from till',
+                ]);
 
-            return $transaction->refresh();
-        });
+                $transaction->update(['journal_entry_id' => $journalEntry->id]);
+                $this->postSystemJournal($journalEntry, $actor);
+
+                return $transaction->refresh();
+            });
+        } catch (\DomainException $exception) {
+            return $this->respondUnprocessable(errors: ['amount_minor' => [$exception->getMessage()]]);
+        }
 
         $this->securityAudit->record('cash.withdrawal.posted', actor: $actor, subject: $result, properties: [
             'teller_session_public_id' => $tellerSession->public_id,
             'customer_account_public_id' => $customerAccount->public_id,
             'amount_minor' => $amountMinor,
             'currency' => $currency,
+            'initiator_type' => $result->initiator_type,
+            'initiator_proxy_id' => $result->initiator_proxy_id,
         ], request: $request);
 
         return $this->transactionResponse($result, 'Cash withdrawal posted successfully');
@@ -358,38 +443,56 @@ final class TellerTransactionController extends BaseController
             return $this->respondUnprocessable(errors: ['teller_transaction' => ['Only posted teller transactions linked to a journal entry can be reversed.']]);
         }
 
-        if (TellerTransaction::query()->where('reversal_of_teller_transaction_id', $tellerTransaction->id)->first() instanceof TellerTransaction) {
-            return $this->respondUnprocessable(errors: ['teller_transaction' => ['This teller transaction has already been reversed.']]);
+        $reversalResult = DB::transaction(function () use ($actor, $tellerTransaction, $createJournalEntryReversal): array {
+            DB::table('teller_transactions')->where('id', $tellerTransaction->id)->lockForUpdate()->first();
+            $locked = TellerTransaction::query()->whereKey($tellerTransaction->id)->firstOrFail();
+
+            if ($locked->status !== TellerTransaction::STATUS_POSTED) {
+                return ['ok' => false, 'message' => 'Only posted teller transactions can be reversed.'];
+            }
+
+            if (DB::table('teller_transactions')->where('reversal_of_teller_transaction_id', $locked->id)->exists()) {
+                return ['ok' => false, 'message' => 'This teller transaction has already been reversed.'];
+            }
+
+            $journalEntry = JournalEntry::query()->with(['lines'])->whereKey($locked->journal_entry_id)->first();
+            if (! $journalEntry instanceof JournalEntry || $journalEntry->status !== JournalEntry::STATUS_POSTED) {
+                return ['ok' => false, 'message' => 'The linked journal entry must be posted before it can be reversed.'];
+            }
+
+            $reversalJournal = $createJournalEntryReversal->execute($actor, $journalEntry, postImmediately: true);
+            $reversal = TellerTransaction::query()->create([
+                'public_id' => (string) Str::ulid(),
+                'teller_session_id' => $locked->teller_session_id,
+                'agency_id' => $locked->agency_id,
+                'transaction_date' => $locked->transaction_date,
+                'till_id' => $locked->till_id,
+                'transaction_type' => TellerTransaction::TYPE_REVERSAL,
+                'client_id' => $locked->client_id,
+                'customer_account_id' => $locked->customer_account_id,
+                'loan_id' => $locked->loan_id,
+                'amount_minor' => $locked->amount_minor,
+                'currency' => $locked->currency,
+                'status' => TellerTransaction::STATUS_POSTED,
+                'reference' => $locked->reference.'-REV',
+                'event_number' => $locked->event_number !== null ? $locked->event_number.'-REV' : null,
+                'journal_entry_id' => $reversalJournal->id,
+                'operation_code' => 'cash_reversal',
+                'description' => 'Reversal of '.$locked->reference,
+                'reversal_of_teller_transaction_id' => $locked->id,
+            ]);
+
+            $locked->update(['status' => TellerTransaction::STATUS_REVERSED]);
+
+            return ['ok' => true, 'reversal' => $reversal, 'reversal_journal' => $reversalJournal];
+        });
+
+        if ($reversalResult['ok'] === false) {
+            return $this->respondUnprocessable(errors: ['teller_transaction' => [$reversalResult['message']]]);
         }
 
-        $journalEntry = JournalEntry::query()->with(['lines'])->whereKey($tellerTransaction->journal_entry_id)->first();
-        if (! $journalEntry instanceof JournalEntry || $journalEntry->status !== JournalEntry::STATUS_POSTED) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['The linked journal entry must be posted before it can be reversed.']]);
-        }
-
-        $reversalJournal = $createJournalEntryReversal->execute($actor, $journalEntry);
-        $reversal = TellerTransaction::query()->create([
-            'public_id' => (string) Str::ulid(),
-            'teller_session_id' => $tellerTransaction->teller_session_id,
-            'agency_id' => $tellerTransaction->agency_id,
-            'transaction_date' => $tellerTransaction->transaction_date,
-            'till_id' => $tellerTransaction->till_id,
-            'transaction_type' => TellerTransaction::TYPE_REVERSAL,
-            'client_id' => $tellerTransaction->client_id,
-            'customer_account_id' => $tellerTransaction->customer_account_id,
-            'loan_id' => $tellerTransaction->loan_id,
-            'amount_minor' => $tellerTransaction->amount_minor,
-            'currency' => $tellerTransaction->currency,
-            'status' => TellerTransaction::STATUS_POSTED,
-            'reference' => $tellerTransaction->reference.'-REV',
-            'event_number' => $tellerTransaction->event_number !== null ? $tellerTransaction->event_number.'-REV' : null,
-            'journal_entry_id' => $reversalJournal->id,
-            'operation_code' => 'cash_reversal',
-            'description' => 'Reversal of '.$tellerTransaction->reference,
-            'reversal_of_teller_transaction_id' => $tellerTransaction->id,
-        ]);
-
-        $tellerTransaction->update(['status' => TellerTransaction::STATUS_REVERSED]);
+        $reversal = $reversalResult['reversal'];
+        $reversalJournal = $reversalResult['reversal_journal'];
 
         $this->securityAudit->record('cash.transaction.reversed', actor: $actor, subject: $reversal, properties: [
             'original_transaction_public_id' => $tellerTransaction->public_id,
@@ -492,7 +595,7 @@ final class TellerTransactionController extends BaseController
                 'transaction_type' => TellerTransaction::TYPE_MANUAL_JOURNAL,
                 'amount_minor' => $prepared['debit_total_minor'],
                 'currency' => $currency,
-                'status' => 'pending_review',
+                'status' => TellerTransaction::STATUS_PENDING_REVIEW,
                 'reference' => $reference,
                 'event_number' => $reference,
                 'idempotency_key' => $idempotencyKey,
@@ -691,12 +794,31 @@ final class TellerTransactionController extends BaseController
 
     private function transactionResponse(TellerTransaction $transaction, string $message): JsonResponse
     {
-        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
+        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
         $journalEntry = $transaction->journalEntry;
 
         return $this->respondCreated([
             'teller_transaction' => TellerTransactionResource::make($transaction),
             'journal_entry' => $journalEntry instanceof JournalEntry ? JournalEntryResource::make($journalEntry) : null,
         ], $message);
+    }
+
+    private function postSystemJournal(JournalEntry $journalEntry, User $actor): void
+    {
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_SUBMITTED,
+            'submitted_at' => now(),
+            'submitted_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_APPROVED,
+            'reviewed_at' => now(),
+            'reviewed_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actor->id,
+        ])->save();
     }
 }

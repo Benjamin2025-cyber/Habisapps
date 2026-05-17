@@ -65,6 +65,8 @@ Operational rules:
 
 - Direct client profile updates cannot set privileged KYC states.
 - Verification requires at least one active, verified identity document (unless explicit override is used).
+- Maker-checker segregation is mandatory for KYC verification. The submitter/uploader cannot verify the same client, identity document, guarantor, or proxy evidence unless the actor has the dedicated `crm.kyc.override.self_verify` permission.
+- The self-verification override is reserved for production exception handling only, such as documented branch-management or compliance-approved recovery cases. Every override must include a business reason and is audited with actor, target, timestamp, surface, reason, and request fingerprint metadata.
 - Rejection requires a reason.
 - `archived` KYC status also archives the client record state for downstream modules.
 - Every status change records immutable KYC review history.
@@ -117,6 +119,5 @@ See `docs/domain/stakeholder-formula-questions.md` and `docs/domain/formula-guar
 
 - Final KYC vocabulary lock with stakeholders for production policy.
 - Whether identity document numbers must be encrypted at rest before production.
-- Whether maker-checker segregation is mandatory for every verification action.
 - Final uniqueness scope for identity documents (global vs constrained).
 - Final semantics for optional collection target amount metadata.

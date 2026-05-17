@@ -41,6 +41,8 @@ final class UpdateAccountProductRequest extends FormRequest
             'allows_recovery_debit' => ['sometimes', 'boolean'],
             'is_recovery_account' => ['sometimes', 'boolean'],
             'is_ordinary_savings' => ['sometimes', 'boolean'],
+            'allows_overdraft' => ['sometimes', 'boolean'],
+            'overdraft_limit_minor' => ['sometimes', 'integer', 'min:0'],
             'status' => ['sometimes', Rule::in([
                 AccountProduct::STATUS_ACTIVE,
                 AccountProduct::STATUS_INACTIVE,

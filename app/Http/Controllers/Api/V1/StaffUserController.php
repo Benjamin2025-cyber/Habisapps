@@ -150,14 +150,11 @@ final class StaffUserController extends BaseController
             'service_name',
             'portfolio_code',
             'agency_code',
-            'agency_name',
         ]);
 
         if ($request->has('supervisor_public_id')) {
             $attributes['supervisor_id'] = $this->supervisorId($request->input('supervisor_public_id'));
         }
-
-        unset($attributes['agency_name']);
 
         if (array_key_exists('agency_code', $attributes)) {
             $agencyAttributes = $this->syncStaffUser->resolveAgencyAttributes(

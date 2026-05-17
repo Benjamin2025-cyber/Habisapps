@@ -271,11 +271,16 @@ final class ClientProxyController extends BaseController
             return $this->respondForbidden();
         }
 
+        $selfVerification = $proxy->created_by_user_id === $actor->id
+            || $proxy->document?->uploaded_by_user_id === $actor->id;
+
         if ($action === 'verify'
-            && ($proxy->created_by_user_id === $actor->id
-                || $proxy->document?->uploaded_by_user_id === $actor->id)
-            && ! $actor->hasPermissionTo('crm.kyc.override.self_verify')) {
-            return $this->respondForbidden('Uploader cannot verify their own mandate evidence.');
+            && $selfVerification
+            && (! $request->boolean('allow_self_verify')
+                || ! $actor->hasPermissionTo('crm.kyc.override.self_verify'))) {
+            return $this->respondUnprocessable(errors: [
+                'allow_self_verify' => ['Self-verification requires an explicit override flag and dedicated permission.'],
+            ]);
         }
 
         if ($action === 'verify' && ! $this->hasLinkedDocumentEvidence($proxy)) {
@@ -317,6 +322,11 @@ final class ClientProxyController extends BaseController
             return $this->respondUnprocessable('Unsupported status action.');
         }
 
+        $selfVerificationOverrideUsed = $action === 'verify'
+            && $selfVerification
+            && $request->boolean('allow_self_verify')
+            && $actor->hasPermissionTo('crm.kyc.override.self_verify');
+
         $proxy->update($update);
 
         if ($proxy->status === ClientProxy::STATUS_ACTIVE
@@ -328,6 +338,9 @@ final class ClientProxyController extends BaseController
             'action' => $action,
             'status' => $proxy->status,
             'verification_status' => $proxy->verification_status,
+            'self_verification_override_used' => $selfVerificationOverrideUsed,
+            'override_surface' => $selfVerificationOverrideUsed ? 'proxy_kyc' : null,
+            'override_reason' => $selfVerificationOverrideUsed && is_string($reason) ? $reason : null,
         ], request: $request);
 
         return $this->respondSuccess(

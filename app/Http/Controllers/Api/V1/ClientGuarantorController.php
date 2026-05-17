@@ -230,11 +230,16 @@ final class ClientGuarantorController extends BaseController
             return $this->respondForbidden();
         }
 
+        $selfVerification = $guarantor->created_by_user_id === $actor->id
+            || $guarantor->document?->uploaded_by_user_id === $actor->id;
+
         if ($action === 'verify'
-            && ($guarantor->created_by_user_id === $actor->id
-                || $guarantor->document?->uploaded_by_user_id === $actor->id)
-            && ! $actor->hasPermissionTo('crm.kyc.override.self_verify')) {
-            return $this->respondForbidden('Uploader cannot verify their own guarantor evidence.');
+            && $selfVerification
+            && (! $request->boolean('allow_self_verify')
+                || ! $actor->hasPermissionTo('crm.kyc.override.self_verify'))) {
+            return $this->respondUnprocessable(errors: [
+                'allow_self_verify' => ['Self-verification requires an explicit override flag and dedicated permission.'],
+            ]);
         }
 
         if ($action === 'verify' && ! $this->hasLinkedDocumentEvidence($guarantor)) {
@@ -273,12 +278,20 @@ final class ClientGuarantorController extends BaseController
             return $this->respondUnprocessable('Unsupported status action.');
         }
 
+        $selfVerificationOverrideUsed = $action === 'verify'
+            && $selfVerification
+            && $request->boolean('allow_self_verify')
+            && $actor->hasPermissionTo('crm.kyc.override.self_verify');
+
         $guarantor->update($update);
 
         $this->securityAudit->record('crm.guarantor.status_changed', actor: $actor, subject: $guarantor, properties: [
             'action' => $action,
             'status' => $guarantor->status,
             'verification_status' => $guarantor->verification_status,
+            'self_verification_override_used' => $selfVerificationOverrideUsed,
+            'override_surface' => $selfVerificationOverrideUsed ? 'guarantor_kyc' : null,
+            'override_reason' => $selfVerificationOverrideUsed && is_string($reason) ? $reason : null,
         ], request: $request);
 
         return $this->respondSuccess([

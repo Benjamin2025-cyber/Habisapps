@@ -347,15 +347,15 @@ final class LoanController extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'reference' => $reference,
                     'business_date' => $paidDate,
-                    'posted_at' => now(),
+                    'posted_at' => null,
                     'agency_id' => $loan->agency_id,
                     'source_module' => 'credit_loans',
                     'source_type' => 'loan_setup_charge_collection',
                     'source_public_id' => $chargePublicId,
-                    'status' => JournalEntry::STATUS_POSTED,
+                    'status' => JournalEntry::STATUS_DRAFT,
                     'description' => is_string($validated['notes'] ?? null) ? $validated['notes'] : 'Loan setup charge collection '.$loan->loan_number,
                     'created_by_user_id' => $actor->id,
-                    'posted_by_user_id' => $actor->id,
+                    'posted_by_user_id' => null,
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
@@ -414,6 +414,8 @@ final class LoanController extends BaseController
                         'description' => is_string($validated['notes'] ?? null) ? $validated['notes'] : 'Loan setup charge cash collection '.$loan->loan_number,
                     ]);
                 }
+
+                $this->postSystemJournal($journalEntry, $actor);
 
                 $metadata = $this->chargeMetadata($charge);
                 $metadata['collection'] = [
@@ -553,15 +555,15 @@ final class LoanController extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'reference' => $reference,
                     'business_date' => $paidDate,
-                    'posted_at' => now(),
+                    'posted_at' => null,
                     'agency_id' => $loan->agency_id,
                     'source_module' => 'credit_loans',
                     'source_type' => 'loan_insurance_premium_payment',
                     'source_public_id' => $premiumPublicId,
-                    'status' => JournalEntry::STATUS_POSTED,
+                    'status' => JournalEntry::STATUS_DRAFT,
                     'description' => is_string($validated['notes'] ?? null) ? $validated['notes'] : 'Loan insurance premium collection '.$loan->loan_number,
                     'created_by_user_id' => $actor->id,
-                    'posted_by_user_id' => $actor->id,
+                    'posted_by_user_id' => null,
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
@@ -590,6 +592,8 @@ final class LoanController extends BaseController
                     'currency' => $currency,
                     'line_memo' => 'Loan insurance premium collected',
                 ]);
+
+                $this->postSystemJournal($journalEntry, $actor);
 
                 $paymentId = DB::table('insurance_premium_payments')->insertGetId([
                     'public_id' => (string) Str::ulid(),
@@ -977,6 +981,7 @@ final class LoanController extends BaseController
             'paid_on' => ['sometimes', 'nullable', 'date'],
             'direction_interest_waiver' => ['sometimes', 'boolean'],
             'direction_negotiated_total_interest_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:128'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ])->validate();
 
@@ -1001,6 +1006,7 @@ final class LoanController extends BaseController
                 $directionInterestWaiver,
                 $directionNegotiatedTotalInterest,
                 is_string($validated['notes'] ?? null) ? $validated['notes'] : null,
+                is_string($validated['idempotency_key'] ?? null) ? $validated['idempotency_key'] : null,
             );
         } catch (FormulaPolicyNotApproved $exception) {
             return $this->respondUnprocessable(errors: ['repayment_allocation_order' => [$exception->getMessage()]]);
@@ -1379,12 +1385,61 @@ final class LoanController extends BaseController
             throw new InvalidArgumentException('Till cash ledger account must be active and belong to the loan agency.');
         }
 
+        if ($till->max_balance_limit_minor !== null
+            && $this->postedTillBalanceMinor($session) + $amountMinor > $till->max_balance_limit_minor) {
+            throw new InvalidArgumentException('Cash setup-charge collection would push the till above its maximum balance limit.');
+        }
+
         return [
             'ledger' => $tillLedger,
             'customer_account' => null,
             'teller_session' => $session,
             'till' => $till,
         ];
+    }
+
+    private function postSystemJournal(JournalEntry $journalEntry, User $actor): void
+    {
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_SUBMITTED,
+            'submitted_at' => now(),
+            'submitted_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_APPROVED,
+            'reviewed_at' => now(),
+            'reviewed_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actor->id,
+        ])->save();
+    }
+
+    private function postedTillBalanceMinor(TellerSession $session): int
+    {
+        $opening = $session->opening_declaration_minor ?? 0;
+        $transactions = DB::table('teller_transactions')
+            ->where('teller_session_id', $session->id)
+            ->where('status', TellerTransaction::STATUS_POSTED)
+            ->get(['transaction_type', 'amount_minor']);
+
+        $movement = 0;
+        foreach ($transactions as $transaction) {
+            $type = is_string($transaction->transaction_type) ? $transaction->transaction_type : '';
+            $amount = is_numeric($transaction->amount_minor) ? (int) $transaction->amount_minor : 0;
+
+            if ($type === TellerTransaction::TYPE_CASH_DEPOSIT) {
+                $movement += $amount;
+            }
+
+            if ($type === TellerTransaction::TYPE_CASH_WITHDRAWAL) {
+                $movement -= $amount;
+            }
+        }
+
+        return $opening + $movement;
     }
 
     /**

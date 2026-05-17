@@ -60,7 +60,8 @@ final class ClientGuarantorResource extends JsonResource
     {
         $user = $request->user();
 
-        return $user instanceof User && $user->hasPermissionTo('crm.pii.view');
+        return $user instanceof User
+            && ($user->hasPermissionTo('crm.guarantors.pii.view') || $user->hasPermissionTo('crm.pii.view'));
     }
 
     private function maskPhone(?string $value): ?string

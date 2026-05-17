@@ -28,6 +28,8 @@ final class StoreCashWithdrawalRequest extends FormRequest
             'amount_minor' => ['required', 'integer', 'min:1'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'operation_code' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'initiator_type' => ['sometimes', 'nullable', 'string', 'in:holder,proxy,staff_on_behalf,system'],
+            'initiator_proxy_public_id' => ['sometimes', 'nullable', 'string', 'exists:client_proxies,public_id'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ];

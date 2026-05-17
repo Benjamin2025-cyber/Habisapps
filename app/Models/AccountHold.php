@@ -17,11 +17,15 @@ use Illuminate\Support\Carbon;
     'amount_minor',
     'currency',
     'reason_type',
+    'source_type',
+    'source_public_id',
     'status',
     'placed_at',
+    'expires_at',
     'placed_by_user_id',
     'released_at',
     'released_by_user_id',
+    'release_reason',
     'reference',
 ])]
 /**
@@ -68,6 +72,7 @@ final class AccountHold extends Model
     {
         return [
             'placed_at' => 'datetime',
+            'expires_at' => 'datetime',
             'released_at' => 'datetime',
         ];
     }

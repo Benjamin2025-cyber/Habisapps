@@ -203,6 +203,12 @@ final class TillController extends BaseController
             return $this->respondUnprocessable(errors: ['assigned_user_public_id' => ['The selected teller is already assigned to another active till.']]);
         }
 
+        $reconciliationCriticalKeys = ['assigned_user_id', 'agency_id', 'ledger_account_id', 'currency'];
+        $touchesReconciliationCritical = array_intersect($reconciliationCriticalKeys, array_keys($validated)) !== [];
+        if ($touchesReconciliationCritical && $this->tillHasOpenSession($till->id)) {
+            return $this->respondUnprocessable(errors: ['till' => ['Close all open teller sessions before changing the till assignment, agency, ledger account, or currency.']]);
+        }
+
         $till->fill($validated)->save();
 
         $this->securityAudit->record('cash.till.updated', actor: $actor, subject: $till, properties: [
@@ -329,5 +335,13 @@ final class TillController extends BaseController
         }
 
         return $query->first() instanceof Till;
+    }
+
+    private function tillHasOpenSession(int $tillId): bool
+    {
+        return DB::table('teller_sessions')
+            ->where('till_id', $tillId)
+            ->where('status', 'open')
+            ->exists();
     }
 }

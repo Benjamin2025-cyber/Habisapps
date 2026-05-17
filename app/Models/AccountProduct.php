@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'allows_recovery_debit',
     'is_recovery_account',
     'is_ordinary_savings',
+    'allows_overdraft',
+    'overdraft_limit_minor',
     'status',
     'rules',
 ])]
@@ -67,6 +69,8 @@ final class AccountProduct extends Model
             'allows_recovery_debit' => 'boolean',
             'is_recovery_account' => 'boolean',
             'is_ordinary_savings' => 'boolean',
+            'allows_overdraft' => 'boolean',
+            'overdraft_limit_minor' => 'integer',
             'rules' => 'array',
         ];
     }

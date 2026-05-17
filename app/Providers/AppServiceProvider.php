@@ -132,7 +132,7 @@ final class AppServiceProvider extends ServiceProvider
             $decayMinutes = $this->integerConfig('security.auth.activation.decay_minutes', 1);
 
             return Limit::perMinute($maxAttempts, $decayMinutes)
-                ->by((string) $request->ip());
+                ->by($this->authVictimRateLimitKey($request));
         });
 
         RateLimiter::for('document.upload', fn (Request $request): Limit => Limit::perMinute(
@@ -175,5 +175,15 @@ final class AppServiceProvider extends ServiceProvider
         return $user instanceof User && $user->public_id !== ''
             ? 'user:'.$user->public_id
             : 'ip:'.((string) $request->ip());
+    }
+
+    private function authVictimRateLimitKey(Request $request): string
+    {
+        $victim = $request->input('phone_number', $request->input('email'));
+        $victimKey = is_string($victim) && $victim !== ''
+            ? hash('sha256', mb_strtolower(trim($victim)))
+            : 'anonymous';
+
+        return 'ip:'.((string) $request->ip()).'|victim:'.$victimKey;
     }
 }

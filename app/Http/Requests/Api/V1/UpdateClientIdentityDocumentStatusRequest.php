@@ -21,6 +21,7 @@ final class UpdateClientIdentityDocumentStatusRequest extends FormRequest
             'action' => ['required', Rule::in(['submit', 'verify', 'reject', 'archive'])],
             'reason' => ['nullable', 'string', 'max:1000', 'required_if:action,reject'],
             'comment' => ['nullable', 'string', 'max:1000'],
+            'allow_self_verify' => ['sometimes', 'boolean'],
         ];
     }
 }

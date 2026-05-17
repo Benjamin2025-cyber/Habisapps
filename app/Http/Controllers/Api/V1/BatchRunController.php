@@ -18,6 +18,7 @@ use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -318,6 +319,12 @@ final class BatchRunController extends BaseController
             return $this->respondUnprocessable($exception->getMessage());
         } catch (InvalidArgumentException $exception) {
             return $this->respondUnprocessable($exception->getMessage());
+        } catch (QueryException $exception) {
+            if ($this->isUniqueConstraintViolation($exception)) {
+                return $this->respondError('A batch run is already executing for this procedure, agency, and business date.', null, 409);
+            }
+
+            throw $exception;
         }
 
         $this->securityAudit->record('batch.run.executed', actor: $request->user(), subject: $run, properties: [
@@ -468,5 +475,12 @@ final class BatchRunController extends BaseController
         }
 
         return '';
+    }
+
+    private function isUniqueConstraintViolation(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+
+        return $sqlState === '23505';
     }
 }

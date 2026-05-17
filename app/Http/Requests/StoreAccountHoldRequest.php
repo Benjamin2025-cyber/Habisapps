@@ -29,6 +29,9 @@ final class StoreAccountHoldRequest extends FormRequest
             'amount_minor' => ['required', 'integer', 'min:1'],
             'currency' => ['required', 'string', 'size:3', 'uppercase'],
             'reason_type' => ['required', 'string', 'max:64'],
+            'source_type' => ['nullable', 'string', 'max:64'],
+            'source_public_id' => ['nullable', 'string', 'max:64'],
+            'expires_at' => ['nullable', 'date'],
             'status' => ['nullable', Rule::in(['active'])],
             'reference' => ['nullable', 'string', 'max:128'],
         ];

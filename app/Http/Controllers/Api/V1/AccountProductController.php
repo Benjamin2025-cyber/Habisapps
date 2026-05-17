@@ -106,6 +106,8 @@ final class AccountProductController extends BaseController
                 'allows_recovery_debit' => $request->boolean('allows_recovery_debit'),
                 'is_recovery_account' => $request->boolean('is_recovery_account'),
                 'is_ordinary_savings' => $request->boolean('is_ordinary_savings'),
+                'allows_overdraft' => $request->boolean('allows_overdraft'),
+                'overdraft_limit_minor' => $request->integer('overdraft_limit_minor', 0),
                 'status' => $request->input('status', AccountProduct::STATUS_ACTIVE),
                 'rules' => $request->input('rules'),
             ]);

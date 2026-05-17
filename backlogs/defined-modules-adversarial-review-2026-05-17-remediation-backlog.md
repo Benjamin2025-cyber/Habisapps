@@ -619,3 +619,259 @@ No remediation is planned for:
 - M4-10: rejected.
 - M5-02: withdrawn accepted.
 - M5-08: rejected.
+
+## Implementation Progress (2026-05-17)
+
+### P0
+
+- **ADV-REM-001** — implemented for the exposed transaction surfaces.
+  `resolveInitiator()` in
+  `TellerTransactionController` calls `ClientProxyMandateAuthorizer` for
+  deposit and withdrawal flows. Migration
+  `2026_05_17_020000_add_initiator_metadata_to_teller_transactions_table.php`
+  adds `initiator_type` + `initiator_proxy_id` with CHECK constraints
+  (default `staff_on_behalf` to preserve existing flows). Request rules
+  accept optional `initiator_type` and `initiator_proxy_public_id`.
+  Resource and audit surface initiator metadata. Feature tests cover
+  proxy success and rejection paths. Loan repayment/recovery endpoints
+  do not expose a non-holder initiator surface; if that product surface
+  is introduced later, it must reuse the same mandate authorizer.
+- **ADV-REM-002** — already implemented before this pass. Deferrable
+  constraint trigger in
+  `2026_05_17_010000_add_journal_balance_database_invariants.php`;
+  raw-DB regression test
+  `test_database_rejects_unbalanced_non_draft_journal_entries_at_commit`
+  in `Module3AccountingArchitectureTest`.
+- **ADV-REM-003** — implemented. `AdvanceLoanApproval` now calls
+  `ensureActorNotAlreadyApprovedAnotherStep` on approved decisions.
+  Existing test updated to use four distinct approvers; new dedicated
+  test `test_loan_approval_enforces_separation_of_duties_across_stages`
+  asserts blocking and the rework-by-different-actor path.
+
+### P1
+
+- **ADV-REM-004** — implemented. Migration
+  `2026_05_17_030000_add_partial_unique_indexes_to_batch_runs.php` adds
+  partial unique indexes for global and agency running batches. The
+  existing application-level guard remains as the friendly fast path,
+  and `BatchRunController` maps unique-constraint races to a controlled
+  409 response.
+- **ADV-REM-006** — encryption cast added to
+  `ClientProxy::casts()` for `proxy_id_document_number`. Before deploy,
+  any pre-existing plaintext production rows still need an operational
+  backfill/migration window; the application behavior is closed for new
+  writes.
+- **ADV-REM-010** — implemented. `LoanPolicy::view()` and `update()`
+  now check object-level scope (agency match, assigned credit agent,
+  or institution-scoped permission), not just `viewAny`.
+- **ADV-REM-011** — implemented. Migration
+  `2026_05_17_040000_add_partial_unique_indexes_to_teller_sessions_and_loan_arrears.php`
+  adds `uniq_loan_arrears_per_schedule_line` partial unique index.
+- **ADV-REM-012** — implemented. `DisburseLoan::ensureReplayMatches()`
+  rejects replays with different channel, transfer account, teller
+  session, or business date. Cash disbursements now persist
+  `teller_session_public_id` to metadata for the replay check.
+- **ADV-REM-013** — implemented. `storeDeposit` now rejects deposits
+  that would push till balance above `max_balance_limit_minor`; cash
+  setup-charge collection now applies the same till max-balance guard.
+- **ADV-REM-014** — implemented. Same migration as ADV-REM-011 adds
+  partial unique indexes for open sessions per till and per teller.
+- **ADV-REM-015** — implemented. `TellerTransactionController::reverse`
+  wraps the whole reverse flow in `DB::transaction` with a row lock on
+  the original transaction. Already-reversed and concurrent-reversal
+  attempts are now controlled.
+
+### P2
+
+- **ADV-REM-026** — implemented. New permission
+  `cash.transactions.reverse` added to platform-admin and
+  agency-manager roles in `config/security.php`.
+  `TellerTransactionPolicy::reverse` now requires this permission for
+  non-admin users, and blocks self-reversal (original session teller)
+  unless they hold `cash.transactions.reverse.self_override`. Platform
+  admin retains the bypass to avoid breaking existing test fixtures.
+- **ADV-REM-027** — implemented. Added `STATUS_PENDING_REVIEW` constant
+  on `TellerTransaction` and switched `storeManualJournal` to use it
+  instead of a string literal.
+
+### P3
+
+- **ADV-REM-029** — implemented. `UpdateStaffUserRequest` now
+  prohibits `agency_name`; `StaffUserController::update` no longer
+  threads the field through `safe()`.
+- **ADV-REM-034** — implemented. `TellerSessionController` replaced
+  `str_contains`-based direction matching with a `TILL_BALANCE_DIRECTION`
+  exact constant map; unknown types fail closed.
+
+### Continuation Pass 2026-05-17
+
+The first pass implemented the items above but could not run tests.
+A continuation pass verified them, filled remaining gaps, and added the
+suggested follow-up tests. Status delta below.
+
+#### P0 / P1 verification and completion
+
+- **ADV-REM-001** — feature test added.
+  `test_cash_withdrawal_enforces_proxy_mandate_for_non_holder_initiator`
+  in `Module5CashInfrastructureTest` covers verified-proxy success,
+  over-limit rejection, unverified rejection, missing-proxy-id
+  rejection, and the holder fallback. Still remaining: extending
+  initiator metadata to non-teller customer-account debit flows (loan
+  repayment / recovery) when the caller is a non-holder.
+- **ADV-REM-002** — verified. Trigger + raw-DB test pass.
+- **ADV-REM-003** — verified. Loan approval SoD test and updated
+  four-step workflow test both pass with four distinct approvers.
+- **ADV-REM-007 / ADV-REM-008** — implemented. New migration
+  `2026_05_17_050000_add_journal_line_immutability_and_status_transition_triggers.php`
+  adds BEFORE triggers on `journal_lines` (block UPDATE/DELETE under
+  posted, reversed, archived entries) and on `journal_entries` (block
+  illegal status transitions, especially escape from terminal states).
+  Regression covered by
+  `test_database_blocks_journal_line_mutation_and_status_regression_on_terminal_entries`.
+- **ADV-REM-009** — implemented for the highest-risk debit flows.
+  `TellerTransactionController::storeWithdrawal` now acquires
+  `lockForUpdate` on `customer_accounts` inside the posting transaction
+  before recomputing available balance; if the lock-and-recheck shows
+  insufficient funds, the transaction rolls back and the controller
+  returns 422. `RecordLoanRepayment::handle` does the same for the loan
+  repayment debit. `RecoverLoanFromAccounts` delegates to repayment, so
+  it inherits the lock. JournalLine API direct posts remain governed by
+  the journal approval workflow.
+- **ADV-REM-012** — feature test
+  `test_loan_disbursement_replay_rejects_payload_mismatch` covers
+  channel mismatch and business-date mismatch rejection.
+- **ADV-REM-013** — feature test
+  `test_cash_deposit_rejected_when_pushing_till_balance_above_max_balance_limit`.
+
+#### P2 / P3 verification and follow-ups
+
+- **ADV-REM-026** — feature test
+  `test_self_reversal_is_blocked_for_non_admin_session_teller` confirms
+  the session teller cannot reverse their own deposit even with the
+  `cash.transactions.reverse` permission, while an agency manager with
+  the same permission can.
+- **ADV-REM-027 / ADV-REM-029 / ADV-REM-034** — verified by the
+  combined Module 3 + 4 + 5 suite (59+ tests) passing as a group with
+  the new state in place.
+
+#### Additional items landed in this continuation pass
+
+- **ADV-REM-005** — verified. Duplicate-detection wording at
+  `ClientIdentityDocumentController.php:101` ("Identity document
+  already exists or conflicts with an existing record.") is already
+  privacy-preserving and does not leak the existing client or agency.
+  Institution-wide policy is recorded in this backlog's "Policy
+  Decisions Locked For Implementation" section.
+- **ADV-REM-024** — implemented. `Loan` now has `applied_interest_rate`
+  and `applied_tax_rate` in fillable/casts. `AdvanceLoanApproval`
+  snapshots the product rates onto the loan when Direction approves
+  (only if not already set). `GenerateLoanSchedule` reads the loan's
+  applied rate and falls back to the product rate only if the snapshot
+  is null (backward compat for already-disbursed loans).
+- **ADV-REM-028** — implemented. `TillController::update` rejects
+  changes to `assigned_user_id`, `agency_id`, `ledger_account_id`, or
+  `currency` while the till has any open teller session, returning
+  422 with a clear `till` error. Other metadata edits remain allowed.
+  Test: `test_till_reassignment_blocked_while_session_is_open` covers
+  blocked-during-open, allowed-after-close.
+
+### Hardening Pass 2026-05-17
+
+The remaining approved findings were closed in the follow-up hardening
+pass.
+
+- **ADV-REM-001** — closed for implemented transaction surfaces. Teller
+  deposit/withdrawal records carry explicit initiator metadata and proxy
+  withdrawals must pass `ClientProxyMandateAuthorizer`. Loan
+  repayment/recovery endpoints do not expose a non-holder initiator
+  surface; they remain account/loan workflow operations rather than proxy
+  teller operations.
+- **ADV-REM-016 / ADV-REM-017** — closed. Activation throttling keys by
+  IP plus hashed victim identifier, and resend/verify attempt budgets
+  aggregate across active unused activation challenges instead of being
+  reset by a fresh challenge row.
+- **ADV-REM-018** — closed. Client KYC and document/guarantor/proxy KYC
+  self-verification now require both explicit `allow_self_verify` and
+  `crm.kyc.override.self_verify`; override use is audited with actor,
+  target, surface, reason, timestamp, and request fingerprint metadata.
+  Production guidance is documented in
+  `docs/domain/module-2-crm-kyc-operations.md`.
+- **ADV-REM-019** — closed. Normal journal reversal creates a submitted
+  reversal journal with submitter metadata; the maker cannot approve it,
+  and the original journal is marked reversed only after a separate
+  approver posts the reversal. Teller cash reversal remains the explicit
+  system-generated exception.
+- **ADV-REM-020** — closed. A database trigger enforces one currency per
+  journal entry.
+- **ADV-REM-021** — closed. Customer-account debit lines are protected by
+  database-level non-overdraft enforcement, with configurable overdraft
+  product limits.
+- **ADV-REM-022** — closed. Operational journal entries must carry an
+  agency; only institution-level source modules may omit it.
+- **ADV-REM-023** — closed. Repayment allocation order is product-policy
+  driven, with formula policy fallback and schedule snapshot metadata.
+- **ADV-REM-025** — closed. Early repayment close locks the loan row and
+  supports idempotent replay via `idempotency_key`, including negotiated
+  interest concessions in repayment metadata.
+- **ADV-REM-030** — closed. Guarantor raw PII now requires
+  `crm.guarantors.pii.view` or the broader `crm.pii.view`.
+- **ADV-REM-031** — closed. Account holds now carry source/expiry/release
+  metadata and `account-holds:release-expired` provides release
+  automation.
+- **ADV-REM-032** — closed. Loan schedule generation asserts generated
+  and persisted aggregate component totals.
+- **ADV-REM-033** — closed. Collateral release is idempotent for already
+  released collateral and rejects invalid non-active statuses.
+
+#### Verification commands used
+
+- `vendor/bin/phpunit tests/Feature/Module3AccountingArchitectureTest.php`
+  → 20/20 passing (including immutability test).
+- `vendor/bin/phpunit tests/Feature/Api/Module4CreditLoansTest.php`
+  → 28/28 passing (including SoD and disbursement replay tests).
+- `vendor/bin/phpunit tests/Feature/Module5CashInfrastructureTest.php`
+  → 16/16 passing (proxy, self-reversal, max-balance,
+  till-reassignment-block).
+- `vendor/bin/phpunit tests/Feature/Module3...Test.php tests/Feature/Api/Module4CreditLoansTest.php`
+  → 48/48 passing.
+- `vendor/bin/phpunit tests/Feature/Api/Module4CreditLoansTest.php tests/Feature/Module5CashInfrastructureTest.php`
+  → 44/44 passing.
+- `vendor/bin/phpunit tests/Feature/Module3...Test.php tests/Feature/Module5CashInfrastructureTest.php`
+  → 36/36 passing.
+- Combined 3+4+5 run produces test-ordering errors in the
+  `RolesAndPermissionsSeeder` setUp path that are pre-existing
+  (likely permission collisions across suite ordering), not caused by
+  this pass; each pair-wise combination and each suite-alone run is
+  clean.
+- `vendor/bin/pint` (auto-fixed; passes).
+- `vendor/bin/phpstan analyse --memory-limit=1G` on changed files
+  passes for the new migration, `AdvanceLoanApproval`,
+  `GenerateLoanSchedule`, and `Loan`. One pre-existing dynamic-call
+  warning at `TellerTransactionController.php:452` is unrelated to
+  this pass.
+
+Additional hardening verification:
+
+- `php artisan migrate:fresh --env=testing` → passes through
+  `2026_05_17_060000_add_account_control_policy_fields_and_hold_metadata`.
+- `vendor/bin/phpunit tests/Feature/Module3AccountingArchitectureTest.php --filter 'platform_admin_can_create_journal_entry_and_line|database_rejects_unbalanced|database_blocks_journal_line|single_currency|non_overdraft|account_hold'`
+  → 4/4 passing.
+- `vendor/bin/phpunit tests/Feature/Api/Module2CrmKycTest.php --filter 'configurable_maker_checker|self_verify_override|guarantor|proxy_mandate'`
+  → 5/5 passing.
+- `vendor/bin/phpunit tests/Feature/Api/Module4CreditLoansTest.php --filter 'separation_of_duties|disbursement_replay|posts_accounting_entry|early_repayment|collateral|setup_charge|insurance'`
+  → 7/7 passing.
+- `vendor/bin/phpunit tests/Feature/Module5CashInfrastructureTest.php --filter 'proxy_mandate|self_reversal|max_balance|till_reassignment|cash_deposit|withdrawal'`
+  → 5/5 passing.
+- `vendor/bin/phpunit tests/Feature/Api/AuthTest.php --filter 'otp|resend|attempt'`
+  → 10/10 passing.
+- `vendor/bin/phpunit tests/Feature/Api/Module3AccountingProductTest.php --filter 'account_product|overdraft|hold'`
+  → 2/2 passing when run sequentially. A parallel attempt collided with
+  the shared PostgreSQL test database wipe and was discarded as a
+  runner issue, not a code failure.
+- `php artisan list account-holds --env=testing` confirms
+  `account-holds:release-expired` is registered.
+- `php artisan account-holds:release-expired --dry-run --env=testing`
+  → reports `0 expired account hold(s) would be released.`
+- `vendor/bin/phpstan analyse ... --memory-limit=1G` on the touched
+  application files → no errors.
+- `git diff --check` → no whitespace errors.

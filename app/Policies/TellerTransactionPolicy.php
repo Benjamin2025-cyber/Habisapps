@@ -27,7 +27,31 @@ final class TellerTransactionPolicy
 
     public function reverse(User $user, TellerTransaction $tellerTransaction): bool
     {
-        return $user->can('cash.transactions.manage') && $this->canAccessAgency($user, $tellerTransaction->agency_id);
+        if (! $this->canAccessAgency($user, $tellerTransaction->agency_id)) {
+            return false;
+        }
+
+        if ($user->hasRole('platform-admin')) {
+            return true;
+        }
+
+        if (! $user->can('cash.transactions.reverse')) {
+            return false;
+        }
+
+        if ($this->isSelfReversal($user, $tellerTransaction) && ! $user->can('cash.transactions.reverse.self_override')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function isSelfReversal(User $user, TellerTransaction $tellerTransaction): bool
+    {
+        $tellerTransaction->loadMissing('tellerSession');
+        $tellerSession = $tellerTransaction->tellerSession;
+
+        return $tellerSession !== null && $tellerSession->teller_user_id === $user->id;
     }
 
     private function canAccessAgency(User $user, int $agencyId): bool

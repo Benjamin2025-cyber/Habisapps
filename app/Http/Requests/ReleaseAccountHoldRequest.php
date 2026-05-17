@@ -29,6 +29,7 @@ final class ReleaseAccountHoldRequest extends FormRequest
     {
         return [
             'reference' => ['nullable', 'string', 'max:128'],
+            'release_reason' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

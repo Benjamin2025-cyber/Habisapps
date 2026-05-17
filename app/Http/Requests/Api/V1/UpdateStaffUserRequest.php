@@ -36,7 +36,7 @@ final class UpdateStaffUserRequest extends FormRequest
             'supervisor_public_id' => ['sometimes', 'nullable', 'string', 'exists:users,public_id'],
             'portfolio_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'agency_code' => ['sometimes', 'nullable', 'string', 'max:64', 'exists:agencies,code'],
-            'agency_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'agency_name' => ['prohibited'],
         ];
     }
 }

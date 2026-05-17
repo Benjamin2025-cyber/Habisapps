@@ -395,6 +395,8 @@ final class ClientController extends BaseController
             'maker_checker_override_used' => $transition === Client::KYC_STATUS_VERIFIED
                 && $allowSelfVerify
                 && (bool) config('security.crm.kyc.enforce_maker_checker', true),
+            'override_surface' => $transition === Client::KYC_STATUS_VERIFIED && $allowSelfVerify ? 'client_kyc' : null,
+            'override_reason' => $transition === Client::KYC_STATUS_VERIFIED && $allowSelfVerify && is_string($reason) ? $reason : null,
             'kyc_submitted_by_user_id' => $client->kyc_submitted_by_user_id,
         ], request: $request);
 

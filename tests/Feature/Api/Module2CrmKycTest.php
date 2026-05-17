@@ -357,6 +357,7 @@ final class Module2CrmKycTest extends TestCase
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/kyc-status', [
                 'action' => 'verify',
                 'allow_self_verify' => true,
+                'reason' => 'Branch manager approved emergency KYC recovery.',
             ]);
 
         $this->assertJsonSuccess($selfVerifyWithPermission);
@@ -370,6 +371,8 @@ final class Module2CrmKycTest extends TestCase
         $overrideProperties = json_decode((string) $overrideAudit->properties, true);
         self::assertIsArray($overrideProperties);
         self::assertSame(true, $overrideProperties['maker_checker_override_used'] ?? null);
+        self::assertSame('client_kyc', $overrideProperties['override_surface'] ?? null);
+        self::assertSame('Branch manager approved emergency KYC recovery.', $overrideProperties['override_reason'] ?? null);
 
         config(['security.crm.kyc.enforce_maker_checker' => false]);
 
@@ -590,6 +593,38 @@ final class Module2CrmKycTest extends TestCase
             ]);
         $proxyVerify->assertStatus(422);
         $proxyVerify->assertJsonValidationErrors(['allow_self_verify']);
+
+        $overrideActor = $this->createUserWithRole('platform-admin');
+        $overrideDocumentPublicId = $this->createDocumentViaApi($overrideActor);
+        $overrideIdentity = $this->withApiHeaders()
+            ->actingAsSanctum($overrideActor)
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'national_id',
+                'document_number' => 'SELFVERIFY-OVERRIDE-1',
+                'document_public_id' => $overrideDocumentPublicId,
+            ]);
+        $this->assertJsonSuccess($overrideIdentity, 201);
+        $overrideIdentityPublicId = $this->requireStringJsonPath($overrideIdentity, 'data.public_id');
+
+        $identityOverride = $this->withApiHeaders()
+            ->actingAsSanctum($overrideActor)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$overrideIdentityPublicId.'/status', [
+                'action' => 'verify',
+                'allow_self_verify' => true,
+                'reason' => 'Compliance-approved exception for unavailable checker.',
+            ]);
+        $this->assertJsonSuccess($identityOverride);
+
+        $overrideAudit = DB::table('activity_log')
+            ->where('event', 'crm.identity_document.status_changed')
+            ->latest('id')
+            ->first(['properties']);
+        self::assertIsObject($overrideAudit);
+        $overrideProperties = json_decode((string) $overrideAudit->properties, true);
+        self::assertIsArray($overrideProperties);
+        self::assertSame(true, $overrideProperties['self_verification_override_used'] ?? null);
+        self::assertSame('document_kyc', $overrideProperties['override_surface'] ?? null);
+        self::assertSame('Compliance-approved exception for unavailable checker.', $overrideProperties['override_reason'] ?? null);
     }
 
     public function test_expired_identity_override_requires_explicit_permission(): void

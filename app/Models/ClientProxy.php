@@ -113,6 +113,7 @@ final class ClientProxy extends Model
             'verified_at' => 'datetime',
             'rejected_at' => 'datetime',
             'archived_at' => 'datetime',
+            'proxy_id_document_number' => 'encrypted',
         ];
     }
 

@@ -49,6 +49,9 @@ final class AdvanceLoanApproval
 
             $this->ensurePreviousStepsApproved($lockedLoan, $step);
             $this->ensureStepNotFinal($lockedLoan, $step);
+            if ($decision === LoanApproval::DECISION_APPROVED) {
+                $this->ensureActorNotAlreadyApprovedAnotherStep($lockedLoan, $actor, $step);
+            }
 
             $approval = LoanApproval::query()->updateOrCreate(
                 ['loan_id' => $lockedLoan->id, 'step' => $step],
@@ -65,10 +68,18 @@ final class AdvanceLoanApproval
             $fromStatus = $lockedLoan->status;
             $toStatus = $this->targetStatus($lockedLoan, $step, $decision);
             if ($fromStatus !== $toStatus) {
-                $lockedLoan->forceFill([
+                $snapshotPayload = [
                     'status' => $toStatus,
                     'approved_on' => $toStatus === Loan::STATUS_APPROVED ? now()->toDateString() : $lockedLoan->approved_on,
-                ])->save();
+                ];
+                if ($toStatus === Loan::STATUS_APPROVED && $lockedLoan->applied_interest_rate === null) {
+                    $product = $lockedLoan->loadMissing('loanProduct')->loanProduct;
+                    if ($product !== null) {
+                        $snapshotPayload['applied_interest_rate'] = $product->interest_rate;
+                        $snapshotPayload['applied_tax_rate'] = $product->tax_rate ?? null;
+                    }
+                }
+                $lockedLoan->forceFill($snapshotPayload)->save();
 
                 LoanStatusTransition::query()->create([
                     'public_id' => (string) Str::ulid(),
@@ -126,6 +137,20 @@ final class AdvanceLoanApproval
 
         if ($existing instanceof LoanApproval && in_array($existing->decision, [LoanApproval::DECISION_APPROVED, LoanApproval::DECISION_REJECTED], true)) {
             throw new InvalidArgumentException('This approval step is already final.');
+        }
+    }
+
+    private function ensureActorNotAlreadyApprovedAnotherStep(Loan $loan, User $actor, string $step): void
+    {
+        $hasPriorApproval = DB::table('loan_approvals')
+            ->where('loan_id', $loan->id)
+            ->where('decision', LoanApproval::DECISION_APPROVED)
+            ->where('acted_by_user_id', $actor->id)
+            ->where('step', '!=', $step)
+            ->exists();
+
+        if ($hasPriorApproval) {
+            throw new InvalidArgumentException('Separation of duties requires a different approver for each approval stage.');
         }
     }
 

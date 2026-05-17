@@ -289,11 +289,16 @@ final class ClientIdentityDocumentController extends BaseController
             return $this->respondForbidden();
         }
 
+        $selfVerification = $identityDocument->created_by_user_id === $actor->id
+            || $identityDocument->document?->uploaded_by_user_id === $actor->id;
+
         if ($action === 'verify') {
-            if (($identityDocument->created_by_user_id === $actor->id
-                || $identityDocument->document?->uploaded_by_user_id === $actor->id)
-                && ! $actor->hasPermissionTo('crm.kyc.override.self_verify')) {
-                return $this->respondForbidden('Uploader cannot verify their own identity document.');
+            if ($selfVerification
+                && (! $request->boolean('allow_self_verify')
+                    || ! $actor->hasPermissionTo('crm.kyc.override.self_verify'))) {
+                return $this->respondUnprocessable(errors: [
+                    'allow_self_verify' => ['Self-verification requires an explicit override flag and dedicated permission.'],
+                ]);
             }
 
             if (! $this->hasLinkedDocumentEvidence($identityDocument)) {
@@ -334,12 +339,20 @@ final class ClientIdentityDocumentController extends BaseController
             return $this->respondUnprocessable('Unsupported status action.');
         }
 
+        $selfVerificationOverrideUsed = $action === 'verify'
+            && $selfVerification
+            && $request->boolean('allow_self_verify')
+            && $actor->hasPermissionTo('crm.kyc.override.self_verify');
+
         $identityDocument->update($update);
 
         $this->securityAudit->record('crm.identity_document.status_changed', actor: $actor, subject: $identityDocument, properties: [
             'action' => $action,
             'verification_status' => $identityDocument->verification_status,
             'status' => $identityDocument->status,
+            'self_verification_override_used' => $selfVerificationOverrideUsed,
+            'override_surface' => $selfVerificationOverrideUsed ? 'document_kyc' : null,
+            'override_reason' => $selfVerificationOverrideUsed && is_string($reason) ? $reason : null,
         ], request: $request);
 
         return $this->respondSuccess(

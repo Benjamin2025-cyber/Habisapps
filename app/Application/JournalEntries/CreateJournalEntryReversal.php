@@ -12,24 +12,26 @@ use Illuminate\Support\Str;
 
 final class CreateJournalEntryReversal
 {
-    public function execute(User $actor, JournalEntry $journalEntry): JournalEntry
+    public function execute(User $actor, JournalEntry $journalEntry, bool $postImmediately = false): JournalEntry
     {
-        return DB::transaction(function () use ($actor, $journalEntry): JournalEntry {
+        return DB::transaction(function () use ($actor, $journalEntry, $postImmediately): JournalEntry {
             $journalEntry->loadMissing('lines');
 
             $reversal = JournalEntry::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'reference' => $journalEntry->reference.'-REV-'.Str::upper(Str::random(6)),
                 'business_date' => $journalEntry->business_date,
-                'posted_at' => now(),
+                'posted_at' => null,
                 'agency_id' => $journalEntry->agency_id,
                 'source_module' => $journalEntry->source_module,
                 'source_type' => $journalEntry->source_type,
                 'source_public_id' => $journalEntry->source_public_id,
-                'status' => JournalEntry::STATUS_POSTED,
+                'status' => JournalEntry::STATUS_DRAFT,
                 'description' => 'Reversal of '.$journalEntry->reference,
                 'created_by_user_id' => $actor->id,
-                'posted_by_user_id' => $actor->id,
+                'submitted_by_user_id' => $actor->id,
+                'submitted_at' => now(),
+                'posted_by_user_id' => null,
                 'reversed_by_user_id' => null,
                 'reversal_of_journal_entry_id' => $journalEntry->id,
                 'idempotency_key' => null,
@@ -50,12 +52,35 @@ final class CreateJournalEntryReversal
                 ]);
             }
 
-            $journalEntry->update([
-                'status' => JournalEntry::STATUS_REVERSED,
-                'reversed_by_user_id' => $actor->id,
-            ]);
+            if ($postImmediately) {
+                $reversal->forceFill([
+                    'status' => JournalEntry::STATUS_SUBMITTED,
+                    'submitted_at' => now(),
+                    'submitted_by_user_id' => $actor->id,
+                ])->save();
+                $reversal->forceFill([
+                    'status' => JournalEntry::STATUS_APPROVED,
+                    'reviewed_at' => now(),
+                    'reviewed_by_user_id' => $actor->id,
+                ])->save();
+                $reversal->forceFill([
+                    'status' => JournalEntry::STATUS_POSTED,
+                    'posted_at' => now(),
+                    'posted_by_user_id' => $actor->id,
+                ])->save();
+                $journalEntry->update([
+                    'status' => JournalEntry::STATUS_REVERSED,
+                    'reversed_by_user_id' => $actor->id,
+                ]);
+            } else {
+                $reversal->forceFill([
+                    'status' => JournalEntry::STATUS_SUBMITTED,
+                    'submitted_at' => now(),
+                    'submitted_by_user_id' => $actor->id,
+                ])->save();
+            }
 
-            return $reversal;
+            return $reversal->refresh();
         });
     }
 }

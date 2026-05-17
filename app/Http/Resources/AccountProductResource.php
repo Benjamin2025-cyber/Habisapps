@@ -33,6 +33,8 @@ final class AccountProductResource extends JsonResource
             'allows_recovery_debit' => $product->allows_recovery_debit,
             'is_recovery_account' => $product->is_recovery_account,
             'is_ordinary_savings' => $product->is_ordinary_savings,
+            'allows_overdraft' => $product->allows_overdraft,
+            'overdraft_limit_minor' => $product->overdraft_limit_minor,
             'status' => $product->status,
             'rules' => $product->rules,
             'created_at' => $product->created_at?->toAtomString(),

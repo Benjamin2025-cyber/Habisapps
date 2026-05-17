@@ -57,8 +57,11 @@ final class AccountHoldController extends BaseController
             'amount_minor' => $request->integer('amount_minor'),
             'currency' => $request->string('currency')->toString(),
             'reason_type' => $request->string('reason_type')->toString(),
+            'source_type' => $request->input('source_type'),
+            'source_public_id' => $request->input('source_public_id'),
             'status' => AccountHold::STATUS_ACTIVE,
             'placed_at' => now(),
+            'expires_at' => $request->input('expires_at'),
             'placed_by_user_id' => $request->user()?->id,
             'reference' => $request->input('reference'),
         ]);
@@ -107,6 +110,7 @@ final class AccountHoldController extends BaseController
             $accountHold,
             $actor,
             is_string($request->input('reference')) ? $request->string('reference')->toString() : null,
+            is_string($request->input('release_reason')) ? $request->string('release_reason')->toString() : null,
         );
 
         $this->securityAudit->record('account_hold.released', actor: $actor, subject: $accountHold, request: $request);

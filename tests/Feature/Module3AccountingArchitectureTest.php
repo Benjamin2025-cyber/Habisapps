@@ -409,6 +409,7 @@ final class Module3AccountingArchitectureTest extends TestCase
     {
         $actor = $this->createUserWithRole('platform-admin');
         $reviewer = $this->createUserWithRole('platform-admin');
+        $reversalApprover = $this->createUserWithRole('platform-admin');
         $agency = $this->createAgency('ACCT-04');
 
         $ledger = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-ledger')->plainTextToken])
@@ -510,7 +511,34 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $this->assertJsonSuccess($reversal, 201);
         $reversal->assertJsonPath('data.reversal_of_public_id', $entryPublicId);
-        $reversal->assertJsonPath('data.status', JournalEntry::STATUS_POSTED);
+        $reversal->assertJsonPath('data.status', JournalEntry::STATUS_SUBMITTED);
+        $reversalPublicId = $this->requireStringJsonPath($reversal, 'data.public_id');
+
+        $this->assertDatabaseHas('journal_entries', [
+            'public_id' => $entryPublicId,
+            'status' => JournalEntry::STATUS_POSTED,
+        ]);
+
+        $selfApproval = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$reversalPublicId.'/approve', [
+                'comment' => 'Self approval should be blocked.',
+            ]);
+        $selfApproval->assertForbidden();
+
+        $approveReversal = $this->withApiHeaders()
+            ->actingAsSanctum($reversalApprover)
+            ->postJson('/api/v1/journal-entries/'.$reversalPublicId.'/approve', [
+                'comment' => 'Approve reversal.',
+            ]);
+        $this->assertJsonSuccess($approveReversal);
+        $approveReversal->assertJsonPath('data.status', JournalEntry::STATUS_APPROVED);
+
+        $postReversal = $this->withApiHeaders()
+            ->actingAsSanctum($reversalApprover)
+            ->postJson('/api/v1/journal-entries/'.$reversalPublicId.'/post');
+        $this->assertJsonSuccess($postReversal);
+        $postReversal->assertJsonPath('data.status', JournalEntry::STATUS_POSTED);
 
         $this->assertDatabaseHas('journal_entries', [
             'public_id' => $entryPublicId,
@@ -656,6 +684,210 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-mutability-delete')->plainTextToken])
             ->deleteJson('/api/v1/journal-lines/'.$debitLinePublicId)
             ->assertStatus(422);
+    }
+
+    public function test_database_rejects_unbalanced_non_draft_journal_entries_at_commit(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-BAL-DB');
+
+        $ledger = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '5500',
+                'name' => 'Balance DB Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+        $ledgerId = DB::table('ledger_accounts')->where('public_id', $ledgerPublicId)->value('id');
+        $this->assertIsInt($ledgerId);
+
+        $entryPublicId = $this->createBalancedJournalEntry($actor, $agency['public_id'], $ledgerPublicId, 'JE-BAL-DB-1');
+        $entryId = DB::table('journal_entries')->where('public_id', $entryPublicId)->value('id');
+        $this->assertIsInt($entryId);
+
+        // Draft entries may temporarily be unbalanced; raw insert into a draft entry must succeed.
+        DB::transaction(function () use ($agency, $entryId, $ledgerId): void {
+            DB::statement('SET CONSTRAINTS ALL IMMEDIATE');
+            DB::table('journal_lines')->insert([
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $agency['id'],
+                'journal_entry_id' => $entryId,
+                'ledger_account_id' => $ledgerId,
+                'debit_minor' => 250,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+        $this->assertSame('draft', DB::table('journal_entries')->where('id', $entryId)->value('status'));
+
+        // Status transition to submitted with unbalanced lines must be rejected.
+        $unbalancedSubmit = null;
+        try {
+            DB::transaction(function () use ($entryId): void {
+                DB::statement('SET CONSTRAINTS ALL IMMEDIATE');
+                DB::table('journal_entries')->where('id', $entryId)->update([
+                    'status' => JournalEntry::STATUS_SUBMITTED,
+                    'updated_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            $unbalancedSubmit = $exception;
+        }
+        $this->assertNotNull($unbalancedSubmit, 'Status update to submitted must be rejected when lines are unbalanced.');
+        $this->assertStringContainsString('unbalanced', strtolower($unbalancedSubmit->getMessage()));
+        $this->assertSame('draft', DB::table('journal_entries')->where('id', $entryId)->value('status'));
+
+        // Bring the entry back to balance and submit cleanly.
+        DB::transaction(function () use ($entryId): void {
+            DB::statement('SET CONSTRAINTS ALL IMMEDIATE');
+            DB::table('journal_lines')->where('journal_entry_id', $entryId)->where('debit_minor', 250)->delete();
+            DB::table('journal_entries')->where('id', $entryId)->update([
+                'status' => JournalEntry::STATUS_SUBMITTED,
+                'updated_at' => now(),
+            ]);
+        });
+        $this->assertSame(JournalEntry::STATUS_SUBMITTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
+
+        // Inserting an unbalancing line into a non-draft entry must be rejected.
+        $postSubmitInsert = null;
+        try {
+            DB::transaction(function () use ($agency, $entryId, $ledgerId): void {
+                DB::statement('SET CONSTRAINTS ALL IMMEDIATE');
+                DB::table('journal_lines')->insert([
+                    'public_id' => (string) Str::ulid(),
+                    'agency_id' => $agency['id'],
+                    'journal_entry_id' => $entryId,
+                    'ledger_account_id' => $ledgerId,
+                    'debit_minor' => 7,
+                    'credit_minor' => 0,
+                    'currency' => 'XAF',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            $postSubmitInsert = $exception;
+        }
+        $this->assertNotNull($postSubmitInsert, 'Inserting an unbalancing line into a non-draft entry must be rejected.');
+
+        // Deleting a balancing line from a submitted entry must also be rejected.
+        $oneCreditLineId = DB::table('journal_lines')->where('journal_entry_id', $entryId)->where('credit_minor', '>', 0)->value('id');
+        $this->assertIsInt($oneCreditLineId);
+        $deleteRejected = null;
+        try {
+            DB::transaction(function () use ($oneCreditLineId): void {
+                DB::statement('SET CONSTRAINTS ALL IMMEDIATE');
+                DB::table('journal_lines')->where('id', $oneCreditLineId)->delete();
+            });
+        } catch (\Throwable $exception) {
+            $deleteRejected = $exception;
+        }
+        $this->assertNotNull($deleteRejected, 'Deleting a balancing line from a non-draft entry must be rejected.');
+    }
+
+    public function test_database_blocks_journal_line_mutation_and_status_regression_on_terminal_entries(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-IMM');
+
+        $cashLedger = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '6100',
+                'name' => 'Immutability Cash',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $depositLedger = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '6200',
+                'name' => 'Immutability Liability',
+                'account_class' => 'liability',
+                'normal_balance_side' => 'credit',
+            ]);
+        $cashLedgerPublicId = $this->requireStringJsonPath($cashLedger, 'data.public_id');
+        $depositLedgerPublicId = $this->requireStringJsonPath($depositLedger, 'data.public_id');
+
+        $entryPublicId = $this->createPostedJournalEntryWithLines(
+            $maker,
+            $reviewer,
+            $agency['public_id'],
+            'JE-IMM-1',
+            now()->toDateString(),
+            [
+                ['ledger_account_public_id' => $cashLedgerPublicId, 'debit_minor' => 5000, 'credit_minor' => 0],
+                ['ledger_account_public_id' => $depositLedgerPublicId, 'debit_minor' => 0, 'credit_minor' => 5000],
+            ],
+        );
+        $entryId = DB::table('journal_entries')->where('public_id', $entryPublicId)->value('id');
+        $this->assertIsInt($entryId);
+
+        // Posted entries cannot regress to draft via raw SQL.
+        $regression = null;
+        try {
+            DB::transaction(function () use ($entryId): void {
+                DB::table('journal_entries')->where('id', $entryId)->update([
+                    'status' => JournalEntry::STATUS_DRAFT,
+                    'updated_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            $regression = $exception;
+        }
+        $this->assertNotNull($regression, 'Posted journal entries must not regress to draft.');
+        $this->assertStringContainsString('posted', strtolower($regression->getMessage()));
+        $this->assertSame(JournalEntry::STATUS_POSTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
+
+        // Lines under a posted entry are immutable to UPDATE / DELETE.
+        $lineId = DB::table('journal_lines')->where('journal_entry_id', $entryId)->value('id');
+        $this->assertIsInt($lineId);
+
+        $updateBlocked = null;
+        try {
+            DB::transaction(function () use ($lineId): void {
+                DB::table('journal_lines')->where('id', $lineId)->update([
+                    'line_memo' => 'tampering',
+                    'updated_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            $updateBlocked = $exception;
+        }
+        $this->assertNotNull($updateBlocked, 'UPDATE on a posted entry line must be rejected.');
+
+        $deleteBlocked = null;
+        try {
+            DB::transaction(function () use ($lineId): void {
+                DB::table('journal_lines')->where('id', $lineId)->delete();
+            });
+        } catch (\Throwable $exception) {
+            $deleteBlocked = $exception;
+        }
+        $this->assertNotNull($deleteBlocked, 'DELETE on a posted entry line must be rejected.');
+
+        // Posted entries also cannot leap to other non-reversed terminal states (e.g. submitted).
+        $invalidLeap = null;
+        try {
+            DB::transaction(function () use ($entryId): void {
+                DB::table('journal_entries')->where('id', $entryId)->update([
+                    'status' => JournalEntry::STATUS_SUBMITTED,
+                    'updated_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $exception) {
+            $invalidLeap = $exception;
+        }
+        $this->assertNotNull($invalidLeap, 'Posted journal entries must not transition to submitted.');
+        $this->assertSame(JournalEntry::STATUS_POSTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
     }
 
     public function test_accounting_balances_are_derived_from_posted_journal_lines(): void

@@ -21,16 +21,43 @@ final class EarlyRepayLoan
     /**
      * @return array<string, mixed>
      */
-    public function handle(Loan $loan, User $actor, string $customerAccountPublicId, int $amountMinor, ?string $paidOn = null, bool $directionInterestWaiver = false, ?int $directionNegotiatedTotalInterestMinor = null, ?string $notes = null): array
+    public function handle(Loan $loan, User $actor, string $customerAccountPublicId, int $amountMinor, ?string $paidOn = null, bool $directionInterestWaiver = false, ?int $directionNegotiatedTotalInterestMinor = null, ?string $notes = null, ?string $idempotencyKey = null): array
     {
         $paidDate = $paidOn ?? now()->toDateString();
         $waiverDate = $directionInterestWaiver ? $paidDate : null;
 
-        return DB::transaction(function () use ($actor, $amountMinor, $customerAccountPublicId, $directionInterestWaiver, $directionNegotiatedTotalInterestMinor, $loan, $notes, $paidDate, $waiverDate): array {
+        return DB::transaction(function () use ($actor, $amountMinor, $customerAccountPublicId, $directionInterestWaiver, $directionNegotiatedTotalInterestMinor, $idempotencyKey, $loan, $notes, $paidDate, $waiverDate): array {
+            DB::table('loans')->where('id', $loan->id)->lockForUpdate()->first();
+
             $lockedLoan = Loan::query()
                 ->with(['loanProduct'])
                 ->whereKey($loan->id)
                 ->firstOrFail();
+
+            if ($idempotencyKey !== null && $idempotencyKey !== '') {
+                $existing = LoanRepayment::query()
+                    ->with(['allocations.scheduleLine', 'customerAccount', 'postedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount'])
+                    ->where('loan_id', $lockedLoan->id)
+                    ->where('metadata->early_repayment_idempotency_key', $idempotencyKey)
+                    ->first();
+                if ($existing instanceof LoanRepayment && $existing->journalEntry !== null) {
+                    $existingMetadata = $existing->getAttribute('metadata');
+                    $existingMetadata = is_array($existingMetadata) ? $existingMetadata : [];
+
+                    return [
+                        'loan' => $lockedLoan->refresh(),
+                        'repayment' => $existing,
+                        'journal_entry' => $existing->journalEntry,
+                        'payoff_amount_minor' => $existing->allocated_amount_minor,
+                        'direction_interest_waiver' => ($existingMetadata['direction_interest_waiver'] ?? false) === true,
+                        'direction_negotiated_total_interest_minor' => $existingMetadata['direction_negotiated_total_interest_minor'] ?? null,
+                        'interest_concession_minor' => is_int($existingMetadata['interest_concession_minor'] ?? null) ? $existingMetadata['interest_concession_minor'] : 0,
+                        'insurance_refunded_minor' => 0,
+                        'early_repayment_fee_minor' => 0,
+                        'released_guarantee_obligations_count' => 0,
+                    ];
+                }
+            }
 
             if (! in_array($lockedLoan->status, [Loan::STATUS_DISBURSED, Loan::STATUS_ACTIVE, Loan::STATUS_RESCHEDULED], true)) {
                 throw new InvalidArgumentException('Only disbursed, active, or rescheduled loans can be closed early.');
@@ -64,6 +91,14 @@ final class EarlyRepayLoan
 
             /** @var LoanRepayment $repayment */
             $repayment = $result['repayment'];
+            $metadata = $repayment->getAttribute('metadata');
+            $metadata = is_array($metadata) ? $metadata : [];
+            $metadata['early_repayment'] = true;
+            $metadata['early_repayment_idempotency_key'] = $idempotencyKey;
+            $metadata['direction_interest_waiver'] = $directionInterestWaiver;
+            $metadata['direction_negotiated_total_interest_minor'] = $directionNegotiatedTotalInterestMinor;
+            $metadata['interest_concession_minor'] = $interestConcession;
+            $repayment->forceFill(['metadata' => $metadata])->save();
             $releasedGuarantees = $this->releaseGuarantees($lockedLoan, $actor);
 
             $lockedLoan->forceFill([

@@ -41,7 +41,7 @@ final class DisburseLoan
                 ->firstOrFail();
 
             $existing = LoanDisbursement::query()
-                ->with(['journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount'])
+                ->with(['journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount', 'transferAccount'])
                 ->where('loan_id', $lockedLoan->id)
                 ->first();
             if ($existing instanceof LoanDisbursement) {
@@ -49,6 +49,8 @@ final class DisburseLoan
                 if (! $journalEntry instanceof JournalEntry) {
                     throw new InvalidArgumentException('Existing disbursement is missing its journal entry.');
                 }
+
+                $this->ensureReplayMatches($existing, $lockedLoan, $channel, $transferAccountPublicId, $tellerSessionPublicId, $businessDate);
 
                 return [
                     'loan' => $lockedLoan->refresh(),
@@ -108,15 +110,15 @@ final class DisburseLoan
                 'public_id' => (string) Str::ulid(),
                 'reference' => $reference,
                 'business_date' => $effectiveBusinessDate,
-                'posted_at' => $postedAt,
+                'posted_at' => null,
                 'agency_id' => $lockedLoan->agency_id,
                 'source_module' => 'credit_loans',
                 'source_type' => 'loan_disbursement',
                 'source_public_id' => $lockedLoan->public_id,
-                'status' => JournalEntry::STATUS_POSTED,
+                'status' => JournalEntry::STATUS_DRAFT,
                 'description' => $notes ?? 'Loan disbursement '.$lockedLoan->loan_number,
                 'created_by_user_id' => $actor->id,
-                'posted_by_user_id' => $actor->id,
+                'posted_by_user_id' => null,
                 'idempotency_key' => $idempotencyKey,
             ]);
 
@@ -199,9 +201,12 @@ final class DisburseLoan
                 $disbursement->forceFill([
                     'metadata' => array_merge($metadata, [
                         'teller_transaction_public_id' => $tellerTransaction->public_id,
+                        'teller_session_public_id' => $cashContext['session']->public_id,
                     ]),
                 ])->save();
             }
+
+            $this->postSystemJournal($journalEntry, $actor);
 
             $fromStatus = $lockedLoan->status;
             $lockedLoan->forceFill([
@@ -229,6 +234,62 @@ final class DisburseLoan
                 'journal_entry' => $journalEntry->refresh()->loadMissing(['agency', 'lines.ledgerAccount', 'lines.customerAccount']),
             ];
         });
+    }
+
+    private function ensureReplayMatches(LoanDisbursement $existing, Loan $loan, string $channel, ?string $transferAccountPublicId, ?string $tellerSessionPublicId, ?string $businessDate): void
+    {
+        if ($existing->disbursement_channel !== $channel) {
+            throw new InvalidArgumentException('Disbursement already posted with a different channel.');
+        }
+
+        if ($channel === LoanDisbursement::CHANNEL_TRANSFER_ACCOUNT) {
+            $expectedTransferPublicId = is_string($transferAccountPublicId) && $transferAccountPublicId !== ''
+                ? $transferAccountPublicId
+                : $loan->transferAccount?->public_id;
+            $existingTransferPublicId = $existing->transferAccount?->public_id;
+            if ($existingTransferPublicId !== $expectedTransferPublicId) {
+                throw new InvalidArgumentException('Disbursement already posted to a different transfer account.');
+            }
+        }
+
+        if ($channel === LoanDisbursement::CHANNEL_CASH) {
+            $metadata = $existing->getAttribute('metadata');
+            $existingTellerPublicId = is_array($metadata) && isset($metadata['teller_session_public_id']) && is_string($metadata['teller_session_public_id'])
+                ? $metadata['teller_session_public_id']
+                : null;
+            if (! is_string($tellerSessionPublicId) || $tellerSessionPublicId === '' || $existingTellerPublicId !== $tellerSessionPublicId) {
+                throw new InvalidArgumentException('Disbursement already posted via a different teller session.');
+            }
+        }
+
+        if (is_string($businessDate) && $businessDate !== '') {
+            $existingBusinessDate = $existing->journalEntry?->getAttribute('business_date');
+            $existingBusinessDateString = $existingBusinessDate instanceof \DateTimeInterface
+                ? $existingBusinessDate->format('Y-m-d')
+                : (is_string($existingBusinessDate) ? substr($existingBusinessDate, 0, 10) : null);
+            if ($existingBusinessDateString !== null && $existingBusinessDateString !== $businessDate) {
+                throw new InvalidArgumentException('Disbursement already posted with a different business date.');
+            }
+        }
+    }
+
+    private function postSystemJournal(JournalEntry $journalEntry, User $actor): void
+    {
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_SUBMITTED,
+            'submitted_at' => now(),
+            'submitted_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_APPROVED,
+            'reviewed_at' => now(),
+            'reviewed_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actor->id,
+        ])->save();
     }
 
     private function resolveTransferAccount(Loan $loan, ?string $publicId): CustomerAccount

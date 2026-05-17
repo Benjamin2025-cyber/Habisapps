@@ -21,6 +21,7 @@ final class UpdateClientProxyStatusRequest extends FormRequest
             'action' => ['required', Rule::in(['submit', 'verify', 'reject', 'archive', 'deactivate', 'expire'])],
             'reason' => ['nullable', 'string', 'max:1000', 'required_if:action,reject'],
             'comment' => ['nullable', 'string', 'max:1000'],
+            'allow_self_verify' => ['sometimes', 'boolean'],
         ];
     }
 }

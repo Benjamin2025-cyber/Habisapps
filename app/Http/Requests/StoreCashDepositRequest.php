@@ -30,6 +30,8 @@ final class StoreCashDepositRequest extends FormRequest
             'operation_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'depositor_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'depositor_address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'initiator_type' => ['sometimes', 'nullable', 'string', 'in:holder,proxy,staff_on_behalf,system'],
+            'initiator_proxy_public_id' => ['sometimes', 'nullable', 'string', 'exists:client_proxies,public_id'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ];

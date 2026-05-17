@@ -13,6 +13,7 @@ use App\Models\Agency;
 use App\Models\Denomination;
 use App\Models\StaffAgencyAssignment;
 use App\Models\TellerSession;
+use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -289,6 +290,18 @@ final class TellerSessionController extends BaseController
             ->first(['id']) !== null;
     }
 
+    /**
+     * Exact transaction-type direction map for theoretical balance.
+     * Adding a new teller transaction type? Add it here too — unknown
+     * types fail closed (do not move the till).
+     *
+     * @var array<string, int>
+     */
+    private const TILL_BALANCE_DIRECTION = [
+        TellerTransaction::TYPE_CASH_DEPOSIT => 1,
+        TellerTransaction::TYPE_CASH_WITHDRAWAL => -1,
+    ];
+
     private function theoreticalBalanceMinor(TellerSession $session): int
     {
         $opening = $session->opening_declaration_minor ?? 0;
@@ -306,15 +319,8 @@ final class TellerSessionController extends BaseController
                 ? (int) $transaction->amount_minor
                 : 0;
 
-            if (str_contains($type, 'withdrawal') || str_contains($type, 'cash_out') || str_contains($type, 'retrait')) {
-                $movement -= $amount;
-
-                continue;
-            }
-
-            if (str_contains($type, 'deposit') || str_contains($type, 'cash_in') || str_contains($type, 'versement')) {
-                $movement += $amount;
-            }
+            $direction = self::TILL_BALANCE_DIRECTION[$type] ?? 0;
+            $movement += $direction * $amount;
         }
 
         return $opening + $movement;

@@ -37,6 +37,8 @@ final class TellerTransactionResource extends JsonResource
             'operation_code' => $transaction->operation_code,
             'depositor_name' => $transaction->depositor_name,
             'depositor_address' => $transaction->depositor_address,
+            'initiator_type' => $transaction->initiator_type,
+            'initiator_proxy_public_id' => $transaction->relationLoaded('initiatorProxy') ? $transaction->initiatorProxy?->public_id : null,
             'description' => $transaction->description,
             'created_at' => $transaction->created_at?->toAtomString(),
             'updated_at' => $transaction->updated_at?->toAtomString(),

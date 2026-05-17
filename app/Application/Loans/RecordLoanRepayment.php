@@ -128,7 +128,9 @@ final class RecordLoanRepayment
                 throw new InvalidArgumentException('There is no scheduled amount available for repayment allocation.');
             }
 
-            $availableBalance = $this->balanceCalculator->availableForCustomerAccount($customerAccount, $lockedLoan->currency)['available_balance_minor'];
+            DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
+            $lockedCustomerAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
+            $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedCustomerAccount, $lockedLoan->currency)['available_balance_minor'];
             if ($allocatedTotal > $availableBalance) {
                 throw new InvalidArgumentException('Repayment amount exceeds the customer account available balance.');
             }
@@ -140,15 +142,15 @@ final class RecordLoanRepayment
                 'public_id' => (string) Str::ulid(),
                 'reference' => $reference,
                 'business_date' => $paidDate,
-                'posted_at' => $postedAt,
+                'posted_at' => null,
                 'agency_id' => $lockedLoan->agency_id,
                 'source_module' => 'credit_loans',
                 'source_type' => 'loan_repayment',
                 'source_public_id' => $lockedLoan->public_id,
-                'status' => JournalEntry::STATUS_POSTED,
+                'status' => JournalEntry::STATUS_DRAFT,
                 'description' => $notes ?? 'Loan repayment '.$lockedLoan->loan_number,
                 'created_by_user_id' => $actor->id,
-                'posted_by_user_id' => $actor->id,
+                'posted_by_user_id' => null,
                 'idempotency_key' => $idempotencyKey,
             ]);
 
@@ -180,6 +182,8 @@ final class RecordLoanRepayment
                 ]);
             }
 
+            $this->postSystemJournal($journalEntry, $actor);
+
             $repayment = LoanRepayment::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'agency_id' => $lockedLoan->agency_id,
@@ -196,7 +200,7 @@ final class RecordLoanRepayment
                 'posted_by_user_id' => $actor->id,
                 'idempotency_key' => $idempotencyKey,
                 'metadata' => [
-                    'allocation_order' => 'scheduled_dues_before_penalties_oldest_due_first',
+                    'allocation_order' => $this->allocationPolicyKey($lockedLoan),
                     'penalty_collection_order' => 'oldest_penalty_first_after_scheduled_dues',
                     'future_interest_waiver_date' => $futureInterestWaiverDate,
                     'future_interest_concession_minor' => $futureInterestConcessionMinor,
@@ -345,7 +349,7 @@ final class RecordLoanRepayment
         $lines = $this->activeScheduleLines($loan);
         $interestConcessionRemaining = $futureInterestConcessionMinor;
 
-        foreach ($this->allocationComponentGroups() as $components) {
+        foreach ($this->allocationComponentGroups($loan) as $components) {
             foreach ($lines as $line) {
                 foreach ($components as $component => $column) {
                     if ($this->shouldWaiveFutureInterest($line, $component, $futureInterestWaiverDate)) {
@@ -528,20 +532,79 @@ final class RecordLoanRepayment
     /**
      * @return array<int, array<string, string>>
      */
-    private function allocationComponentGroups(): array
+    private function allocationComponentGroups(Loan $loan): array
     {
-        return [
-            [
-                LoanRepaymentAllocation::COMPONENT_PRINCIPAL => 'principal_minor',
-                LoanRepaymentAllocation::COMPONENT_INTEREST => 'interest_minor',
-                LoanRepaymentAllocation::COMPONENT_FEES => 'fees_minor',
-                LoanRepaymentAllocation::COMPONENT_INSURANCE => 'insurance_minor',
-                LoanRepaymentAllocation::COMPONENT_TAX => 'tax_minor',
-            ],
-            [
-                LoanRepaymentAllocation::COMPONENT_PENALTY => 'penalty_minor',
-            ],
-        ];
+        $components = $this->components();
+        $order = $this->allocationComponentOrder($loan);
+        $groups = [];
+
+        foreach ($order as $component) {
+            if (isset($components[$component])) {
+                $groups[] = [$component => $components[$component]];
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function allocationComponentOrder(Loan $loan): array
+    {
+        $snapshot = $loan->getAttribute('formula_policy_snapshot');
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+        $productTerms = $snapshot['product_terms'] ?? [];
+        $productTerms = is_array($productTerms) ? $productTerms : [];
+        $productRules = $productTerms['rules'] ?? [];
+        $productRules = is_array($productRules) ? $productRules : [];
+        $rules = $productRules['repayment_allocation'] ?? null;
+        $componentOrder = is_array($rules) ? ($rules['component_order'] ?? null) : null;
+
+        if (! is_array($componentOrder)) {
+            $componentOrder = config('formulas.policies.repayment_allocation_order.rule.component_order', []);
+        }
+        $componentOrder = is_array($componentOrder) ? $componentOrder : [];
+
+        $known = array_keys($this->components());
+        $order = [];
+        foreach ($componentOrder as $component) {
+            if (is_string($component) && in_array($component, $known, true) && ! in_array($component, $order, true)) {
+                $order[] = $component;
+            }
+        }
+
+        foreach ($known as $component) {
+            if (! in_array($component, $order, true)) {
+                $order[] = $component;
+            }
+        }
+
+        return $order;
+    }
+
+    private function allocationPolicyKey(Loan $loan): string
+    {
+        return implode(',', $this->allocationComponentOrder($loan));
+    }
+
+    private function postSystemJournal(JournalEntry $journalEntry, User $actor): void
+    {
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_SUBMITTED,
+            'submitted_at' => now(),
+            'submitted_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_APPROVED,
+            'reviewed_at' => now(),
+            'reviewed_by_user_id' => $actor->id,
+        ])->save();
+        $journalEntry->forceFill([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actor->id,
+        ])->save();
     }
 
     private function formatDateOnly(mixed $value): ?string

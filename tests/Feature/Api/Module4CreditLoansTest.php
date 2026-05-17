@@ -633,14 +633,23 @@ final class Module4CreditLoansTest extends TestCase
 
     public function test_four_step_loan_approval_workflow_blocks_skips_rework_and_direct_status_forgery(): void
     {
-        $actor = $this->createUserWithRole('platform-admin');
+        $montage = $this->createUserWithRole('platform-admin');
+        $comptabilite = $this->createUserWithRole('platform-admin');
+        $controle = $this->createUserWithRole('platform-admin');
+        $direction = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR07');
         $client = $this->createClientRecord($agencyId, 'verified');
         $product = $this->createLoanProduct($agencyId);
         $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 250000);
 
+        $approvers = [
+            'montage' => $montage,
+            'comptabilite' => $comptabilite,
+            'controle' => $controle,
+        ];
+
         $skipped = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
+            ->actingAsSanctum($direction)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/approvals/direction', [
                 'decision' => 'approved',
                 'comments' => 'Skipping should fail.',
@@ -656,9 +665,9 @@ final class Module4CreditLoansTest extends TestCase
             ]);
         $forbidden->assertForbidden();
 
-        foreach (['montage', 'comptabilite', 'controle'] as $step) {
+        foreach ($approvers as $step => $approver) {
             $approval = $this->withApiHeaders()
-                ->actingAsSanctum($actor)
+                ->actingAsSanctum($approver)
                 ->postJson('/api/v1/loans/'.$loan->public_id.'/approvals/'.$step, [
                     'decision' => 'approved',
                     'comments' => 'Approved '.$step,
@@ -669,21 +678,21 @@ final class Module4CreditLoansTest extends TestCase
             $approval->assertJsonPath('data.loan.status', Loan::STATUS_IN_REVIEW);
         }
 
-        $direction = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
+        $directionResponse = $this->withApiHeaders()
+            ->actingAsSanctum($direction)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/approvals/direction', [
                 'decision' => 'approved',
                 'comments' => 'Direction approved.',
             ]);
-        $this->assertJsonSuccess($direction);
-        $direction->assertJsonPath('data.loan.status', Loan::STATUS_APPROVED);
-        $direction->assertJsonPath('data.approval.acted_by_user_public_id', $actor->public_id);
+        $this->assertJsonSuccess($directionResponse);
+        $directionResponse->assertJsonPath('data.loan.status', Loan::STATUS_APPROVED);
+        $directionResponse->assertJsonPath('data.approval.acted_by_user_public_id', $direction->public_id);
 
         $this->assertDatabaseHas('loan_approvals', [
             'loan_id' => $loan->id,
             'step' => 'direction',
             'decision' => 'approved',
-            'acted_by_user_id' => $actor->id,
+            'acted_by_user_id' => $direction->id,
         ]);
         $this->assertDatabaseHas('loan_status_transitions', [
             'loan_id' => $loan->id,
@@ -693,7 +702,7 @@ final class Module4CreditLoansTest extends TestCase
         ]);
 
         $statusForgery = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
+            ->actingAsSanctum($direction)
             ->patchJson('/api/v1/loans/'.$loan->public_id, [
                 'status' => Loan::STATUS_APPROVED,
             ]);
@@ -701,7 +710,7 @@ final class Module4CreditLoansTest extends TestCase
 
         $reworkLoan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
         $returned = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
+            ->actingAsSanctum($montage)
             ->postJson('/api/v1/loans/'.$reworkLoan->public_id.'/approvals/montage', [
                 'decision' => 'returned',
                 'comments' => 'Missing setup document.',
@@ -712,7 +721,7 @@ final class Module4CreditLoansTest extends TestCase
 
         $rejectedLoan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 350000);
         $rejected = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
+            ->actingAsSanctum($montage)
             ->postJson('/api/v1/loans/'.$rejectedLoan->public_id.'/approvals/montage', [
                 'decision' => 'rejected',
                 'comments' => 'Credit policy rejection.',
@@ -720,6 +729,64 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($rejected);
         $rejected->assertJsonPath('data.loan.status', Loan::STATUS_REJECTED);
         $rejected->assertJsonPath('data.approval.decision', 'rejected');
+    }
+
+    public function test_loan_approval_enforces_separation_of_duties_across_stages(): void
+    {
+        $singleActor = $this->createUserWithRole('platform-admin');
+        $secondActor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR07B');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 250000);
+
+        $montage = $this->withApiHeaders()
+            ->actingAsSanctum($singleActor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/approvals/montage', [
+                'decision' => 'approved',
+                'comments' => 'Setup approved.',
+            ]);
+        $this->assertJsonSuccess($montage);
+
+        $sameActorSecondStage = $this->withApiHeaders()
+            ->actingAsSanctum($singleActor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/approvals/comptabilite', [
+                'decision' => 'approved',
+                'comments' => 'Same user trying to approve second stage.',
+            ]);
+        $sameActorSecondStage->assertStatus(422);
+        $sameActorSecondStage->assertJsonValidationErrors(['approval']);
+
+        $this->assertDatabaseMissing('loan_approvals', [
+            'loan_id' => $loan->id,
+            'step' => 'comptabilite',
+            'decision' => 'approved',
+        ]);
+
+        $rejectionBySameActor = $this->withApiHeaders()
+            ->actingAsSanctum($singleActor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/approvals/comptabilite', [
+                'decision' => 'rejected',
+                'comments' => 'Rejections are not approvals.',
+            ]);
+        $this->assertJsonSuccess($rejectionBySameActor);
+
+        $reapplyLoan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 260000);
+        $reapplyMontage = $this->withApiHeaders()
+            ->actingAsSanctum($singleActor)
+            ->postJson('/api/v1/loans/'.$reapplyLoan->public_id.'/approvals/montage', [
+                'decision' => 'approved',
+                'comments' => 'Initial setup approval.',
+            ]);
+        $this->assertJsonSuccess($reapplyMontage);
+
+        $differentActorSecondStage = $this->withApiHeaders()
+            ->actingAsSanctum($secondActor)
+            ->postJson('/api/v1/loans/'.$reapplyLoan->public_id.'/approvals/comptabilite', [
+                'decision' => 'approved',
+                'comments' => 'Different approver progresses workflow.',
+            ]);
+        $this->assertJsonSuccess($differentActorSecondStage);
     }
 
     public function test_loan_status_transition_policy_records_history_and_denies_invalid_transitions(): void
@@ -859,6 +926,58 @@ final class Module4CreditLoansTest extends TestCase
             'decision' => 'posted',
             'reason' => 'loan_disbursement_posted',
         ]);
+    }
+
+    public function test_loan_disbursement_replay_rejects_payload_mismatch(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR15X');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $transferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 300000,
+            'approved_on' => '2026-05-13',
+            'transfer_account_id' => $transferAccount['id'],
+        ])->save();
+
+        $first = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'business_date' => '2026-05-13',
+            ]);
+        $this->assertJsonSuccess($first);
+        $disbursementCountBefore = DB::table('loan_disbursements')->where('loan_id', $loan->id)->count();
+
+        $conflictingChannel = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'cash',
+                'business_date' => '2026-05-13',
+            ]);
+        $conflictingChannel->assertStatus(422);
+        $conflictingChannel->assertJsonValidationErrors(['disbursement']);
+
+        $conflictingDate = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'business_date' => '2026-05-14',
+            ]);
+        $conflictingDate->assertStatus(422);
+        $conflictingDate->assertJsonValidationErrors(['disbursement']);
+
+        // No new disbursement / journal rows should have been created by the rejected replays.
+        $disbursementCountAfter = DB::table('loan_disbursements')->where('loan_id', $loan->id)->count();
+        self::assertSame($disbursementCountBefore, $disbursementCountAfter);
+        self::assertSame(
+            1,
+            DB::table('journal_entries')->where('source_type', 'loan_disbursement')->where('source_public_id', $loan->public_id)->count(),
+        );
     }
 
     public function test_cash_loan_disbursement_requires_open_teller_session_and_posts_teller_cash_out(): void
@@ -1740,11 +1859,11 @@ final class Module4CreditLoansTest extends TestCase
         $closed->assertJsonPath('data.repayment.allocated_amount_minor', 105000);
         $closed->assertJsonPath('data.repayment.allocations.0.component', 'principal');
         $closed->assertJsonPath('data.repayment.allocations.0.amount_minor', 50000);
-        $closed->assertJsonPath('data.repayment.allocations.1.component', 'interest');
-        $closed->assertJsonPath('data.repayment.allocations.1.amount_minor', 5000);
-        $closed->assertJsonPath('data.repayment.allocations.2.installment_number', 2);
-        $closed->assertJsonPath('data.repayment.allocations.2.component', 'principal');
-        $closed->assertJsonPath('data.repayment.allocations.2.amount_minor', 50000);
+        $closed->assertJsonPath('data.repayment.allocations.1.installment_number', 2);
+        $closed->assertJsonPath('data.repayment.allocations.1.component', 'principal');
+        $closed->assertJsonPath('data.repayment.allocations.1.amount_minor', 50000);
+        $closed->assertJsonPath('data.repayment.allocations.2.component', 'interest');
+        $closed->assertJsonPath('data.repayment.allocations.2.amount_minor', 5000);
 
         $this->assertDatabaseHas('loan_guarantee_obligations', [
             'loan_id' => $loan->id,
@@ -1805,11 +1924,11 @@ final class Module4CreditLoansTest extends TestCase
         $closed->assertJsonPath('data.repayment.allocated_amount_minor', 17000000);
         $closed->assertJsonPath('data.repayment.allocations.0.component', 'principal');
         $closed->assertJsonPath('data.repayment.allocations.0.amount_minor', 7500000);
-        $closed->assertJsonPath('data.repayment.allocations.1.component', 'interest');
-        $closed->assertJsonPath('data.repayment.allocations.1.amount_minor', 1500000);
-        $closed->assertJsonPath('data.repayment.allocations.2.installment_number', 2);
-        $closed->assertJsonPath('data.repayment.allocations.2.component', 'principal');
-        $closed->assertJsonPath('data.repayment.allocations.2.amount_minor', 7500000);
+        $closed->assertJsonPath('data.repayment.allocations.1.installment_number', 2);
+        $closed->assertJsonPath('data.repayment.allocations.1.component', 'principal');
+        $closed->assertJsonPath('data.repayment.allocations.1.amount_minor', 7500000);
+        $closed->assertJsonPath('data.repayment.allocations.2.component', 'interest');
+        $closed->assertJsonPath('data.repayment.allocations.2.amount_minor', 1500000);
         $closed->assertJsonPath('data.repayment.allocations.3.installment_number', 2);
         $closed->assertJsonPath('data.repayment.allocations.3.component', 'interest');
         $closed->assertJsonPath('data.repayment.allocations.3.amount_minor', 500000);
@@ -2258,14 +2377,14 @@ final class Module4CreditLoansTest extends TestCase
             'public_id' => (string) Str::ulid(),
             'reference' => 'BAL-'.Str::ulid(),
             'business_date' => '2026-06-01',
-            'posted_at' => now(),
+            'posted_at' => null,
             'agency_id' => $agencyId,
             'source_module' => 'test',
             'source_type' => 'customer_account_seed',
-            'status' => 'posted',
+            'status' => JournalEntry::STATUS_DRAFT,
             'description' => 'Seed customer account balance',
             'created_by_user_id' => $postedByUserId,
-            'posted_by_user_id' => $postedByUserId,
+            'posted_by_user_id' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -2300,6 +2419,8 @@ final class Module4CreditLoansTest extends TestCase
                 'updated_at' => now(),
             ],
         ]);
+
+        $this->postSeedJournal($journalEntryId, $postedByUserId);
     }
 
     private function createReportDefinition(string $code, string $reportType): string
@@ -2558,13 +2679,13 @@ final class Module4CreditLoansTest extends TestCase
             'public_id' => (string) Str::ulid(),
             'reference' => 'CUSTOMER-FUND-'.Str::ulid(),
             'business_date' => '2026-05-13',
-            'posted_at' => now(),
+            'posted_at' => null,
             'agency_id' => $agencyId,
             'source_module' => 'test',
             'source_type' => 'customer_account_funding',
-            'status' => JournalEntry::STATUS_POSTED,
+            'status' => JournalEntry::STATUS_DRAFT,
             'created_by_user_id' => $postedByUserId,
-            'posted_by_user_id' => $postedByUserId,
+            'posted_by_user_id' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -2599,6 +2720,8 @@ final class Module4CreditLoansTest extends TestCase
                 'updated_at' => now(),
             ],
         ]);
+
+        $this->postSeedJournal($journalEntryId, $postedByUserId);
     }
 
     /**
@@ -2639,35 +2762,54 @@ final class Module4CreditLoansTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $offsetLedger = $this->createLedgerAccount($agencyId);
         $journalEntryId = DB::table('journal_entries')->insertGetId([
             'public_id' => (string) Str::ulid(),
             'reference' => 'CASH-SEED-'.Str::ulid(),
             'business_date' => '2026-05-13',
-            'posted_at' => now(),
+            'posted_at' => null,
             'agency_id' => $agencyId,
             'source_module' => 'cash',
             'source_type' => 'till_opening_seed',
-            'status' => 'posted',
+            'status' => JournalEntry::STATUS_DRAFT,
             'created_by_user_id' => $teller->id,
-            'posted_by_user_id' => $teller->id,
+            'posted_by_user_id' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         DB::table('journal_lines')->insert([
-            'public_id' => (string) Str::ulid(),
-            'agency_id' => $agencyId,
-            'journal_entry_id' => $journalEntryId,
-            'ledger_account_id' => $cashLedgerAccountId,
-            'customer_account_id' => null,
-            'loan_id' => null,
-            'debit_minor' => $cashBalanceMinor,
-            'credit_minor' => 0,
-            'currency' => 'XAF',
-            'line_memo' => 'Seed till cash for loan disbursement test',
-            'created_at' => now(),
-            'updated_at' => now(),
+            [
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $agencyId,
+                'journal_entry_id' => $journalEntryId,
+                'ledger_account_id' => $cashLedgerAccountId,
+                'customer_account_id' => null,
+                'loan_id' => null,
+                'debit_minor' => $cashBalanceMinor,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+                'line_memo' => 'Seed till cash for loan disbursement test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $agencyId,
+                'journal_entry_id' => $journalEntryId,
+                'ledger_account_id' => $offsetLedger['id'],
+                'customer_account_id' => null,
+                'loan_id' => null,
+                'debit_minor' => 0,
+                'credit_minor' => $cashBalanceMinor,
+                'currency' => 'XAF',
+                'line_memo' => 'Offset for loan cash till seed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
+
+        $this->postSeedJournal($journalEntryId, $teller->id);
 
         $session = DB::table('teller_sessions')->where('id', $sessionId)->first(['public_id']);
         self::assertIsObject($session);
@@ -2690,6 +2832,28 @@ final class Module4CreditLoansTest extends TestCase
             'starts_on' => now()->toDateString(),
             'is_primary' => true,
             'status' => StaffAgencyAssignment::STATUS_ACTIVE,
+        ]);
+    }
+
+    private function postSeedJournal(int $journalEntryId, int $actorUserId): void
+    {
+        DB::table('journal_entries')->where('id', $journalEntryId)->update([
+            'status' => JournalEntry::STATUS_SUBMITTED,
+            'submitted_at' => now(),
+            'submitted_by_user_id' => $actorUserId,
+            'updated_at' => now(),
+        ]);
+        DB::table('journal_entries')->where('id', $journalEntryId)->update([
+            'status' => JournalEntry::STATUS_APPROVED,
+            'reviewed_at' => now(),
+            'reviewed_by_user_id' => $actorUserId,
+            'updated_at' => now(),
+        ]);
+        DB::table('journal_entries')->where('id', $journalEntryId)->update([
+            'status' => JournalEntry::STATUS_POSTED,
+            'posted_at' => now(),
+            'posted_by_user_id' => $actorUserId,
+            'updated_at' => now(),
         ]);
     }
 

@@ -32,6 +32,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'operation_code',
     'depositor_name',
     'depositor_address',
+    'initiator_type',
+    'initiator_proxy_id',
     'description',
     'reversal_of_teller_transaction_id',
 ])]
@@ -74,9 +76,19 @@ final class TellerTransaction extends Model
 
     public const string STATUS_POSTED = 'posted';
 
+    public const string STATUS_PENDING_REVIEW = 'pending_review';
+
     public const string STATUS_CANCELLED = 'cancelled';
 
     public const string STATUS_REVERSED = 'reversed';
+
+    public const string INITIATOR_HOLDER = 'holder';
+
+    public const string INITIATOR_PROXY = 'proxy';
+
+    public const string INITIATOR_STAFF_ON_BEHALF = 'staff_on_behalf';
+
+    public const string INITIATOR_SYSTEM = 'system';
 
     /**
      * @return array<int, string>
@@ -113,5 +125,11 @@ final class TellerTransaction extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /** @return BelongsTo<ClientProxy, $this> */
+    public function initiatorProxy(): BelongsTo
+    {
+        return $this->belongsTo(ClientProxy::class, 'initiator_proxy_id');
     }
 }

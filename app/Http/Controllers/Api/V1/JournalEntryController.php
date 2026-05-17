@@ -240,6 +240,16 @@ final class JournalEntryController extends BaseController
                     'posted_at' => now(),
                     'posted_by_user_id' => $actor->id,
                 ]);
+                if ($entry->reversal_of_journal_entry_id !== null) {
+                    JournalEntry::query()
+                        ->whereKey($entry->reversal_of_journal_entry_id)
+                        ->where('status', JournalEntry::STATUS_POSTED)
+                        ->update([
+                            'status' => JournalEntry::STATUS_REVERSED,
+                            'reversed_by_user_id' => $actor->id,
+                            'updated_at' => now(),
+                        ]);
+                }
                 $this->syncCashManualJournalTransactionStatus($entry, TellerTransaction::STATUS_POSTED);
 
                 return $entry->refresh();

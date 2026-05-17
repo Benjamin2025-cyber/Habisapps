@@ -51,7 +51,14 @@ final class OtpService
     public function resendActivationChallenge(User $user, ?Request $request = null): OtpChallenge
     {
         $challenge = $this->issueActivationChallenge($user, $request);
-        $challenge->forceFill(['resend_count' => 1])->save();
+        $resendCount = DB::table('otp_challenges')
+            ->where('user_id', $user->id)
+            ->where('purpose', OtpChallenge::PURPOSE_ACTIVATION)
+            ->where('used_at', null)
+            ->where('expires_at', '>', now())
+            ->count();
+
+        $challenge->forceFill(['resend_count' => max(1, $resendCount - 1)])->save();
 
         return $challenge;
     }
@@ -83,7 +90,7 @@ final class OtpService
                 return false;
             }
 
-            if ($challenge->attempts >= $challenge->max_attempts) {
+            if ($this->activeAttemptCount($user, $purpose) >= $challenge->max_attempts) {
                 return false;
             }
 
@@ -98,6 +105,18 @@ final class OtpService
 
             return true;
         });
+    }
+
+    private function activeAttemptCount(User $user, string $purpose): int
+    {
+        $value = DB::table('otp_challenges')
+            ->where('user_id', $user->id)
+            ->where('purpose', $this->validPurpose($purpose))
+            ->where('used_at', null)
+            ->where('expires_at', '>', now())
+            ->sum('attempts');
+
+        return is_int($value) ? $value : (int) $value;
     }
 
     private function validPurpose(string $purpose): string

@@ -46,6 +46,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'dossier_fees_tax_minor',
     'guarantee_deposit_amount_minor',
     'insurance_amount_minor',
+    'applied_interest_rate',
+    'applied_tax_rate',
     'formula_policy_snapshot',
 ])]
 final class Loan extends Model
@@ -104,6 +106,8 @@ final class Loan extends Model
             'dossier_fees_tax_minor' => 'integer',
             'guarantee_deposit_amount_minor' => 'integer',
             'insurance_amount_minor' => 'integer',
+            'applied_interest_rate' => 'decimal:6',
+            'applied_tax_rate' => 'decimal:6',
             'formula_policy_snapshot' => 'array',
         ];
     }

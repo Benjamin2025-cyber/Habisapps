@@ -71,7 +71,8 @@ final class GenerateLoanSchedule
 
             $installments = $this->installmentCount($lockedLoan);
             $principal = $lockedLoan->approved_principal_minor ?? $lockedLoan->requested_amount_minor;
-            $interest = $this->percentOf($principal, $product->interest_rate ?? '0', 'interest total');
+            $appliedInterestRate = $lockedLoan->applied_interest_rate ?? $product->interest_rate ?? '0';
+            $interest = $this->percentOf($principal, $appliedInterestRate, 'interest total');
             $fees = $this->installmentChargeAmount($product, 'fees', $lockedLoan->dossier_fees_minor ?? 0);
             $insurance = $this->installmentChargeAmount($product, 'insurance', $lockedLoan->insurance_amount_minor ?? 0);
             $tax = $this->installmentChargeAmount($product, 'tax', $lockedLoan->dossier_fees_tax_minor ?? 0);
@@ -83,6 +84,13 @@ final class GenerateLoanSchedule
                 'insurance_minor' => $this->splitWithFinalResidual($insurance, $installments),
                 'tax_minor' => $this->splitWithFinalResidual($tax, $installments),
             ];
+            $this->assertComponentShares($componentShares, [
+                'principal_minor' => $principal,
+                'interest_minor' => $interest,
+                'fees_minor' => $fees,
+                'insurance_minor' => $insurance,
+                'tax_minor' => $tax,
+            ]);
 
             $snapshot = LoanScheduleSnapshot::query()->create([
                 'public_id' => (string) Str::ulid(),
@@ -122,7 +130,16 @@ final class GenerateLoanSchedule
                 ]);
             }
 
-            return $snapshot->refresh()->load('lines');
+            $snapshot = $snapshot->refresh()->load('lines');
+            $this->assertPersistedScheduleTotals($snapshot, [
+                'principal_minor' => $principal,
+                'interest_minor' => $interest,
+                'fees_minor' => $fees,
+                'insurance_minor' => $insurance,
+                'tax_minor' => $tax,
+            ]);
+
+            return $snapshot;
         });
     }
 
@@ -187,6 +204,8 @@ final class GenerateLoanSchedule
             'formula_policy_snapshot' => $loan->formula_policy_snapshot,
             'approved_principal_minor' => $loan->approved_principal_minor,
             'requested_amount_minor' => $loan->requested_amount_minor,
+            'applied_interest_rate' => $loan->applied_interest_rate,
+            'applied_tax_rate' => $loan->applied_tax_rate,
             'number_of_installments' => $loan->number_of_installments,
             'first_installment_date' => $this->dateForHash($loan->first_installment_date),
             'dossier_fees_minor' => $loan->dossier_fees_minor,
@@ -241,5 +260,31 @@ final class GenerateLoanSchedule
         $shares[$installments - 1] += $amountMinor - ($baseShare * $installments);
 
         return array_values($shares);
+    }
+
+    /**
+     * @param  array<string, list<int>>  $shares
+     * @param  array<string, int>  $expectedTotals
+     */
+    private function assertComponentShares(array $shares, array $expectedTotals): void
+    {
+        foreach ($expectedTotals as $component => $expectedTotal) {
+            if (! isset($shares[$component]) || array_sum($shares[$component]) !== $expectedTotal) {
+                throw new InvalidArgumentException('Generated schedule component shares do not reconcile for '.$component.'.');
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, int>  $expectedTotals
+     */
+    private function assertPersistedScheduleTotals(LoanScheduleSnapshot $snapshot, array $expectedTotals): void
+    {
+        foreach ($expectedTotals as $component => $expectedTotal) {
+            $actual = $snapshot->lines->sum($component);
+            if ($actual !== $expectedTotal) {
+                throw new InvalidArgumentException('Persisted schedule totals do not reconcile for '.$component.'.');
+            }
+        }
     }
 }

@@ -1020,6 +1020,337 @@ final class Module5CashInfrastructureTest extends TestCase
         ]);
     }
 
+    public function test_self_reversal_is_blocked_for_non_admin_session_teller(): void
+    {
+        $agency = $this->createAgency('CASH-REVS');
+        $manager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $teller->givePermissionTo('cash.transactions.reverse');
+        $teller->refresh();
+
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-REVS-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CASH-REVS-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-REVS-001');
+
+        $till = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->postJson('/api/v1/tills', [
+                'code' => 'TILL-REVS',
+                'name' => 'Reversal Till',
+                'requires_denominations' => false,
+                'assigned_user_public_id' => $teller->public_id,
+                'ledger_account_public_id' => $cashLedger['public_id'],
+            ]);
+        $this->assertJsonSuccess($till, 201);
+        $tillPublicId = $this->requireStringJsonPath($till, 'data.public_id');
+
+        $session = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->postJson('/api/v1/teller-sessions', [
+                'till_public_id' => $tillPublicId,
+                'teller_user_public_id' => $teller->public_id,
+                'business_date' => now()->toDateString(),
+                'opening_declaration_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($session, 201);
+        $sessionPublicId = $this->requireStringJsonPath($session, 'data.public_id');
+
+        $deposit = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 10000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-revs-001',
+            ]);
+        $this->assertJsonSuccess($deposit, 201);
+        $transactionPublicId = $this->requireStringJsonPath($deposit, 'data.teller_transaction.public_id');
+
+        // Self-reversal: same teller attempts to reverse their own session's transaction → blocked.
+        $selfReversal = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->postJson('/api/v1/teller-transactions/'.$transactionPublicId.'/reverse', [
+                'reason' => 'Teller error.',
+            ]);
+        $selfReversal->assertForbidden();
+
+        // Agency manager (different actor with the reverse permission) succeeds.
+        $managerReversal = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->postJson('/api/v1/teller-transactions/'.$transactionPublicId.'/reverse', [
+                'reason' => 'Supervisor reversal.',
+            ]);
+        $this->assertJsonSuccess($managerReversal, 201);
+    }
+
+    public function test_cash_deposit_rejected_when_pushing_till_balance_above_max_balance_limit(): void
+    {
+        $agency = $this->createAgency('CASH-MAXB');
+        $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-MAXB-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CASH-MAXB-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-MAXB-001');
+
+        $till = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/tills', [
+                'code' => 'TILL-MAXB',
+                'name' => 'Max Balance Till',
+                'requires_denominations' => false,
+                'assigned_user_public_id' => $teller->public_id,
+                'ledger_account_public_id' => $cashLedger['public_id'],
+                'max_balance_limit_minor' => 25000,
+            ]);
+        $this->assertJsonSuccess($till, 201);
+        $tillPublicId = $this->requireStringJsonPath($till, 'data.public_id');
+
+        $open = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions', [
+                'till_public_id' => $tillPublicId,
+                'teller_user_public_id' => $teller->public_id,
+                'business_date' => now()->toDateString(),
+                'opening_declaration_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($open, 201);
+        $sessionPublicId = $this->requireStringJsonPath($open, 'data.public_id');
+
+        $allowed = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 20000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-maxb-001',
+            ]);
+        $this->assertJsonSuccess($allowed, 201);
+
+        $overLimit = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 6000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-maxb-002',
+            ]);
+        $overLimit->assertStatus(422);
+        $overLimit->assertJsonValidationErrors(['amount_minor']);
+
+        self::assertSame(1, DB::table('teller_transactions')->where('teller_session_id', DB::table('teller_sessions')->where('public_id', $sessionPublicId)->value('id'))->count());
+    }
+
+    public function test_till_reassignment_blocked_while_session_is_open(): void
+    {
+        $agency = $this->createAgency('CASH-RA');
+        $manager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $secondTeller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-RA-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
+
+        $till = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->postJson('/api/v1/tills', [
+                'code' => 'TILL-RA',
+                'name' => 'Reassignment Till',
+                'requires_denominations' => false,
+                'assigned_user_public_id' => $teller->public_id,
+                'ledger_account_public_id' => $cashLedger['public_id'],
+            ]);
+        $this->assertJsonSuccess($till, 201);
+        $tillPublicId = $this->requireStringJsonPath($till, 'data.public_id');
+
+        $session = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->postJson('/api/v1/teller-sessions', [
+                'till_public_id' => $tillPublicId,
+                'teller_user_public_id' => $teller->public_id,
+                'business_date' => now()->toDateString(),
+                'opening_declaration_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($session, 201);
+        $sessionPublicId = $this->requireStringJsonPath($session, 'data.public_id');
+
+        $blocked = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->patchJson('/api/v1/tills/'.$tillPublicId, [
+                'assigned_user_public_id' => $secondTeller->public_id,
+            ]);
+        $blocked->assertStatus(422);
+        $blocked->assertJsonValidationErrors(['till']);
+
+        // Close the session to unlock the till.
+        $close = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
+                'closing_declaration_minor' => 0,
+            ]);
+        $this->assertJsonSuccess($close);
+
+        $allowed = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->patchJson('/api/v1/tills/'.$tillPublicId, [
+                'assigned_user_public_id' => $secondTeller->public_id,
+            ]);
+        $this->assertJsonSuccess($allowed);
+        $allowed->assertJsonPath('data.assigned_user_public_id', $secondTeller->public_id);
+    }
+
+    public function test_cash_withdrawal_enforces_proxy_mandate_for_non_holder_initiator(): void
+    {
+        $agency = $this->createAgency('CASH-PRX');
+        $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-PROXY-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CUSTOMER-DEPOSIT-PROXY', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-PRX-001');
+        $clientId = DB::table('customer_accounts')->where('id', $customerAccount['id'])->value('client_id');
+        self::assertIsInt($clientId);
+
+        $till = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/tills', [
+                'code' => 'TILL-PROXY',
+                'name' => 'Proxy Till',
+                'requires_denominations' => false,
+                'assigned_user_public_id' => $teller->public_id,
+                'ledger_account_public_id' => $cashLedger['public_id'],
+                'max_withdrawal_limit_minor' => 50000,
+            ]);
+        $this->assertJsonSuccess($till, 201);
+        $tillPublicId = $this->requireStringJsonPath($till, 'data.public_id');
+
+        $open = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions', [
+                'till_public_id' => $tillPublicId,
+                'teller_user_public_id' => $teller->public_id,
+                'business_date' => now()->toDateString(),
+                'opening_declaration_minor' => 100000,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($open, 201);
+        $sessionPublicId = $this->requireStringJsonPath($open, 'data.public_id');
+
+        // Seed the account with a deposit so withdrawals have funds.
+        $deposit = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 80000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-prx-seed',
+            ]);
+        $this->assertJsonSuccess($deposit, 201);
+
+        $verifiedProxyPublicId = (string) Str::ulid();
+        DB::table('client_proxies')->insert([
+            'public_id' => $verifiedProxyPublicId,
+            'agency_id' => $agency['id'],
+            'client_id' => $clientId,
+            'customer_account_id' => $customerAccount['id'],
+            'proxy_full_name' => 'Verified Proxy',
+            'mandate_type' => 'general',
+            'operation_types' => json_encode(['cash_withdrawal']),
+            'max_amount_minor' => 30000,
+            'limit_currency' => 'XAF',
+            'starts_on' => now()->subDay()->toDateString(),
+            'ends_on' => now()->addMonth()->toDateString(),
+            'status' => 'active',
+            'verification_status' => 'verified',
+            'verified_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Authorised proxy withdrawal under the mandate limit must succeed.
+        $proxyWithdrawal = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 20000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-prx-wd-001',
+                'initiator_type' => 'proxy',
+                'initiator_proxy_public_id' => $verifiedProxyPublicId,
+            ]);
+        $this->assertJsonSuccess($proxyWithdrawal, 201);
+        $proxyWithdrawal->assertJsonPath('data.teller_transaction.initiator_type', 'proxy');
+
+        // Same proxy over the per-mandate amount limit must be rejected before any write.
+        $overLimit = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 40000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-prx-wd-002',
+                'initiator_type' => 'proxy',
+                'initiator_proxy_public_id' => $verifiedProxyPublicId,
+            ]);
+        $overLimit->assertStatus(422);
+        $overLimit->assertJsonValidationErrors(['initiator_proxy_public_id']);
+
+        // An unverified proxy must be rejected.
+        $unverifiedProxyPublicId = (string) Str::ulid();
+        DB::table('client_proxies')->insert([
+            'public_id' => $unverifiedProxyPublicId,
+            'agency_id' => $agency['id'],
+            'client_id' => $clientId,
+            'customer_account_id' => $customerAccount['id'],
+            'proxy_full_name' => 'Unverified Proxy',
+            'mandate_type' => 'general',
+            'operation_types' => json_encode(['cash_withdrawal']),
+            'starts_on' => now()->subDay()->toDateString(),
+            'ends_on' => now()->addMonth()->toDateString(),
+            'status' => 'active',
+            'verification_status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $unverified = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 5000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-prx-wd-003',
+                'initiator_type' => 'proxy',
+                'initiator_proxy_public_id' => $unverifiedProxyPublicId,
+            ]);
+        $unverified->assertStatus(422);
+        $unverified->assertJsonValidationErrors(['initiator_proxy_public_id']);
+
+        // initiator_type=proxy without a proxy public id is rejected.
+        $missingId = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 5000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-prx-wd-004',
+                'initiator_type' => 'proxy',
+            ]);
+        $missingId->assertStatus(422);
+        $missingId->assertJsonValidationErrors(['initiator_proxy_public_id']);
+
+        // Holder-initiated withdrawal still works (no proxy needed).
+        $holderWithdrawal = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 3000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-prx-wd-005',
+                'initiator_type' => 'holder',
+            ]);
+        $this->assertJsonSuccess($holderWithdrawal, 201);
+        $holderWithdrawal->assertJsonPath('data.teller_transaction.initiator_type', 'holder');
+    }
+
     public function test_platform_admin_can_explicitly_manage_tills_across_agencies(): void
     {
         $agency = $this->createAgency('CASH-E');

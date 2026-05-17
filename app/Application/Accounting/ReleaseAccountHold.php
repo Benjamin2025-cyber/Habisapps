@@ -11,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 
 final class ReleaseAccountHold
 {
-    public function handle(AccountHold $accountHold, User $actor, ?string $reference = null): AccountHold
+    public function handle(AccountHold $accountHold, User $actor, ?string $reference = null, ?string $releaseReason = null): AccountHold
     {
         if ($accountHold->status !== AccountHold::STATUS_ACTIVE) {
             throw ValidationException::withMessages([
@@ -19,11 +19,12 @@ final class ReleaseAccountHold
             ]);
         }
 
-        return DB::transaction(function () use ($accountHold, $actor, $reference): AccountHold {
+        return DB::transaction(function () use ($accountHold, $actor, $reference, $releaseReason): AccountHold {
             $accountHold->update([
                 'status' => AccountHold::STATUS_RELEASED,
                 'released_at' => now(),
                 'released_by_user_id' => $actor->id,
+                'release_reason' => $releaseReason,
                 'reference' => $reference ?? $accountHold->reference,
             ]);
 
