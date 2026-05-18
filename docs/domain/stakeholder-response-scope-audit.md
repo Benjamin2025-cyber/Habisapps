@@ -72,3 +72,4 @@ The future-module analysis has been expanded into separate product documents:
 - `docs/domain/future-module-islamic-finance.md`
 - `docs/domain/future-module-emf-regulatory-reporting.md`
 - `docs/domain/future-module-digital-notifications-dashboards.md`
+- `docs/domain/new-feature-implementation-backlogs.md`

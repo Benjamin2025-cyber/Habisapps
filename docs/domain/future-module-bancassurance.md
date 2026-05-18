@@ -14,9 +14,15 @@ This module is no longer purely future scope. The codebase now contains a first 
 - insurance claims;
 - insurance claim documents table;
 - loan-linked borrower insurance premium assessment and collection;
-- basic insurance API routes for partner, product, subscription, claim creation, and claim decision.
+- standalone premium assessment and collection;
+- teller-cash premium collection;
+- claim evidence attachment;
+- maker-checker claim decision requests;
+- claim settlement accounting;
+- insurance report endpoints;
+- basic insurance API routes for partner, product, subscription, claim creation, claim evidence, claim decisions, premium collection, settlement posting, and reports.
 
-The remaining work is not basic schema creation. The remaining work is the deeper operational workflow: standalone premium scheduling and collection, claim evidence API, maker-checker claim decisions, claim settlement accounting, product reports, and final business-model accounting rules.
+The remaining work is no longer basic schema/API creation. The remaining work is product hardening: recurring premium scheduling, richer product premium rule versioning/effective dating, final insurer-contract accounting decisions by product, report export formats, and operational rollout controls.
 
 ## Stakeholder Intent
 
@@ -66,8 +72,8 @@ Implemented or expected entities:
 - `insurance_premium_assessments`: implemented for subscription, optional loan, due date, amount, rate, currency, journal entry, and status.
 - `insurance_premium_payments`: implemented for assessment, customer account/teller transaction, journal entry, amount, currency, and status.
 - `insurance_claims`: implemented for subscription, incident date, claim type, claimed amount, status, indemnified amount, settlement date, and journal entry.
-- `insurance_claim_documents`: table implemented for claim evidence linked to `documents`; API workflow remains to be completed.
-- `insurance_claim_decisions`: not a separate table today. Current claim decisions are recorded by updating `insurance_claims`; a separate immutable decision/audit table remains recommended if claim governance needs stronger traceability.
+- `insurance_claim_documents`: implemented for claim evidence linked to `documents`.
+- `insurance_claim_decisions`: implemented for maker-checker claim decision requests.
 
 ## Workflows
 
@@ -102,8 +108,8 @@ Acceptance criteria:
 Current status:
 
 - Loan-linked borrower insurance premium collection from a customer account is implemented through the loan API.
-- Standalone subscription premium assessment/collection APIs remain to be implemented.
-- Teller-cash collection for standalone insurance premiums remains to be implemented.
+- Standalone subscription premium assessment and customer-account collection are implemented.
+- Teller-cash collection for standalone insurance premiums is implemented for `XAF`.
 
 ### Claims
 
@@ -123,10 +129,10 @@ Acceptance criteria:
 
 Current status:
 
-- Claim creation and direct platform-admin claim decisions are implemented.
-- Claim document linkage table exists, but the API for attaching/verifying evidence documents remains to be implemented.
-- Maker-checker claim decision workflow remains to be implemented.
-- Claim settlement accounting remains to be implemented before indemnification can be treated as a posted financial event.
+- Claim creation is implemented.
+- Direct claim decisions are disabled; claim decisions now use maker-checker requests.
+- Claim document attachment is implemented without exposing raw document paths.
+- Claim settlement accounting is implemented as a separate posting workflow after settlement approval.
 
 ## Accounting Impact
 
@@ -161,11 +167,8 @@ Minimum reports:
 ## Backlog
 
 1. Confirm insurance business model and insurer contracts.
-2. Complete standalone premium assessment and collection workflow.
-3. Add teller-cash premium collection for standalone policies.
-4. Add claim evidence API on top of `insurance_claim_documents`.
-5. Add maker-checker claim decision workflow.
-6. Add claim settlement accounting and reversal workflow.
-7. Add insurance reports.
-8. Harden product premium rule versioning/effective dating.
-9. Keep borrower loan insurance linked to the module without duplicating premiums.
+2. Add recurring premium schedule generation where product contracts require it.
+3. Add reversal/correction workflows for premium collections and claim settlement postings.
+4. Harden product premium rule versioning/effective dating.
+5. Add final report export formats.
+6. Keep borrower loan insurance linked to the module without duplicating premiums.

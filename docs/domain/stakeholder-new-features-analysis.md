@@ -22,6 +22,8 @@ The appropriate product split is:
 | 30. Plan comptable EMF | CEMAC/COBAC chart alignment, regulatory statements, codification directories | `docs/domain/future-module-emf-regulatory-reporting.md` |
 | 30. Modules complementaires | SMS banking, automated alerts, automatic reporting, executive dashboards | `docs/domain/future-module-digital-notifications-dashboards.md` |
 
+Implementation backlogs with detailed guardrails are in `docs/domain/new-feature-implementation-backlogs.md`.
+
 ## Cross-Cutting Architecture Rules
 
 These modules share controls that must be designed once and reused:
@@ -39,19 +41,21 @@ These modules share controls that must be designed once and reused:
 
 Recommended order:
 
-1. EMF accounting and reporting foundation.
-2. Digital notification and report delivery foundation.
-3. Bancassurance, because loan insurance already touches the insurance module.
-4. HR/payroll, because it posts payroll journals and uses document/approval primitives.
-5. Currency exchange, because it introduces foreign-currency cash stock, rates, margins, and reporting.
-6. Islamic finance, because it is a parallel finance architecture, not a variant of conventional loans.
+1. Bancassurance completion, because the codebase already has insurance schema, APIs, and loan-insurance integration.
+2. Digital notification and alert foundation, because it supports loan, insurance, HR, and reporting events.
+3. Currency exchange, because it introduces regulated foreign-currency cash stock, rates, margins, and reporting.
+4. EMF accounting and reporting foundation, because reliable regulatory reports need mature operation mappings and posted journals.
+5. Dashboards, because they should read governed reporting views after the underlying workflows are stable.
+6. HR/payroll, because it is important but separate from the client-facing finance workflows.
+7. Islamic finance, because it is a parallel finance architecture, not a variant of conventional loans.
 
 Rationale:
 
-- EMF accounting is foundational for every later financial module.
-- Bancassurance has a narrow bridge from existing loan insurance work.
-- HR/payroll can be isolated, but payroll accounting and social declarations need strong controls.
+- Bancassurance has the shortest path to completion because the implemented foundation already exists.
+- Notifications should be implemented early as a reusable event/outbox capability.
 - Currency exchange is high-risk because it introduces regulated foreign-currency stock, rate publication, margins, till reconciliation, and reporting.
+- EMF accounting/reporting is foundational for regulatory reporting and dashboards, but should be implemented with versioned official report definitions instead of guessed layouts.
+- HR/payroll can be isolated, but payroll accounting and social declarations need strong controls.
 - Islamic finance must not be bolted onto conventional interest-based loan tables; it needs separate contracts, assets, accounting, and Sharia governance.
 
 ## External Reference Notes
