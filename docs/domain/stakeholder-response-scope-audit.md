@@ -19,7 +19,7 @@ Do not treat the added sections 26-30 or embedded operational notes as approved 
 |---|---|---|---|
 | Section 26, Gestion des Ressources Humaines | Full HR module: employee files, contracts, payroll, leave/absence, sanctions, salary advances, social declarations, HR document scanning, payroll accounting | The original guide does not ask for HR or payroll. This is a separate domain with legal, payroll-tax, document, approval, and accounting requirements. | Reject from formula scope. Track only as future HR discovery if explicitly commissioned. |
 | Section 27, Bancassurance | Insurance products, subscriptions, premium payments, claims, insurer partners, insurance reports | The original guide asks only for loan insurance formula decisions. A full bancassurance module is a new product vertical. | Reject from formula scope. Keep only loan-insurance formula data relevant to section 8. |
-| Section 28, Change de Devises | Manual FX transactions, exchange-rate setup, FX slips, FX register, multi-currency cash drawer, margin calculations | Current architecture keeps `XAF` as base currency and says multi-currency is out of scope unless a future ADR introduces it. | Reject from current scope. Requires a future multi-currency ADR and separate cash/accounting design. |
+| Section 28, Echange de devises | Counter currency exchange transactions, exchange-rate setup, exchange slips, exchange register, dedicated foreign-currency cash drawer, margin calculations | Current architecture keeps `XAF` as base currency. Currency exchange is a separate regulated service that requires its own till, rate, register, KYC/AML, cash-stock, and accounting design. | Reject from formula scope. Track as a future currency exchange module, not as generic platform-wide multi-currency. |
 | Section 29, Finance Islamique | Islamic accounts, Sharia governance, Islamic financing products, asset traceability, alternative accounting setup | This is a distinct financing model and compliance program, not a clarification of the existing conventional loan formulas. | Reject from formula scope. Requires separate product architecture and legal/compliance discovery. |
 | Section 30, Integration du Plan Comptable des EMF | Full CEMAC EMF chart integration, automatic COBAC states, financial/RH/performance reports, operation code directories | A chart of accounts exists in the accounting module scope, but automatic regulatory reporting and full EMF codification are broader than formula sign-off. | Split: chart-of-accounts alignment may belong to accounting; COBAC/RH/performance reporting and codification directories need separate scope approval. |
 | Section 30, modules complementaires | SMS banking, automatic alerts, automatic reporting, executive dashboards | These are new communication/reporting modules, not formula decisions. | Reject from formula scope. Track only if added to roadmap by product decision. |
@@ -58,5 +58,17 @@ Some answers in sections 1-25 provide useful direction but remain ambiguous or c
 1. Accept the response as raw stakeholder input, except for sections explicitly approved for implementation in this audit.
 2. Extract a clean formula decision table for sections 1-25 with statuses: approved, ambiguous, contradictory, or out-of-scope addition.
 3. Keep formula gates in `config/formulas.php` closed until each calculation rule is precise, internally consistent, and mapped to an approved owner/date.
-4. Create separate product-discovery items for HR/payroll, bancassurance, FX/multi-currency, Islamic finance, COBAC reporting, SMS banking, dashboards, and automatic alerts.
+4. Create separate product-discovery items for HR/payroll, bancassurance, currency exchange, Islamic finance, COBAC reporting, SMS banking, dashboards, and automatic alerts.
 5. Do not add these new modules to the implementation roadmap unless the project scope, budget, timeline, architecture, and sign-off are explicitly updated.
+
+## Follow-Up Documents
+
+The future-module analysis has been expanded into separate product documents:
+
+- `docs/domain/stakeholder-new-features-analysis.md`
+- `docs/domain/future-module-hr-payroll.md`
+- `docs/domain/future-module-bancassurance.md`
+- `docs/domain/future-module-currency-exchange.md`
+- `docs/domain/future-module-islamic-finance.md`
+- `docs/domain/future-module-emf-regulatory-reporting.md`
+- `docs/domain/future-module-digital-notifications-dashboards.md`

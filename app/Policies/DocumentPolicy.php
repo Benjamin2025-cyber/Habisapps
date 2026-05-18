@@ -12,22 +12,24 @@ final class DocumentPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->can('documents.view');
+        return $user->hasRole('platform-admin') || $user->can('documents.view');
     }
 
     public function view(User $user, Document $document): bool
     {
-        return $user->can('documents.view') && $this->isCurrentAgency($user, $document->agency_id);
+        return $user->hasRole('platform-admin')
+            || ($user->can('documents.view') && $this->isCurrentAgency($user, $document->agency_id));
     }
 
     public function create(User $user): bool
     {
-        return $user->can('documents.create');
+        return $user->hasRole('platform-admin') || $user->can('documents.create');
     }
 
     public function archive(User $user, Document $document): bool
     {
-        return $user->can('documents.archive') && $this->isCurrentAgency($user, $document->agency_id);
+        return $user->hasRole('platform-admin')
+            || ($user->can('documents.archive') && $this->isCurrentAgency($user, $document->agency_id));
     }
 
     private function isCurrentAgency(User $user, int $agencyId): bool

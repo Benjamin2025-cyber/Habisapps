@@ -714,6 +714,9 @@ final class Module2CrmKycTest extends TestCase
 
         $policy = new ClientPolicy;
 
+        $platformAdmin = $this->createUserWithRole('platform-admin');
+        self::assertTrue($policy->viewAny($platformAdmin));
+        self::assertTrue($policy->create($platformAdmin));
         self::assertTrue($policy->rejectKyc($compliance, $client));
         self::assertFalse($policy->rejectKyc($readOnlyReviewer, $client));
         self::assertFalse($policy->update($readOnlyReviewer, $client));

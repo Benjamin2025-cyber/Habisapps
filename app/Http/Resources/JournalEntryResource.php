@@ -21,6 +21,9 @@ final class JournalEntryResource extends JsonResource
     {
         /** @var JournalEntry $entry */
         $entry = $this->resource;
+        if ($entry->relationLoaded('lines')) {
+            $entry->loadMissing(['lines.journalEntry', 'lines.ledgerAccount', 'lines.customerAccount']);
+        }
 
         return [
             'public_id' => $entry->public_id,

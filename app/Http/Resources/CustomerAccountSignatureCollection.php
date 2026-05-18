@@ -8,16 +8,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
-/**
- * @mixin AccountProductResource
- */
-final class AccountProductCollection extends ResourceCollection
+final class CustomerAccountSignatureCollection extends ResourceCollection
 {
-    public $collects = AccountProductResource::class;
+    public $collects = CustomerAccountSignatureResource::class;
 
-    /**
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
         $paginator = $this->resource;
@@ -25,27 +20,19 @@ final class AccountProductCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Account products retrieved successfully',
+                'message' => 'Success',
                 'data' => [
-                    'account_products' => $this->collection,
+                    'signatures' => $this->collection,
                 ],
                 'errors' => null,
-                'meta' => [
-                    'pagination' => [
-                        'current_page' => 1,
-                        'per_page' => 25,
-                        'total' => 0,
-                        'last_page' => 1,
-                    ],
-                ],
             ];
         }
 
         return [
             'success' => true,
-            'message' => 'Account products retrieved successfully',
+            'message' => 'Success',
             'data' => [
-                'account_products' => $this->collection,
+                'signatures' => $this->collection,
             ],
             'errors' => null,
             'meta' => [
@@ -58,5 +45,4 @@ final class AccountProductCollection extends ResourceCollection
             ],
         ];
     }
-
 }

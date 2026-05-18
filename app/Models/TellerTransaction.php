@@ -34,6 +34,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'depositor_address',
     'initiator_type',
     'initiator_proxy_id',
+    'customer_account_signature_id',
+    'signature_checked_at',
+    'signature_checked_by_user_id',
+    'signature_verification_method',
     'description',
     'reversal_of_teller_transaction_id',
 ])]
@@ -59,6 +63,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $operation_code
  * @property string|null $depositor_name
  * @property string|null $depositor_address
+ * @property int|null $customer_account_signature_id
+ * @property string|null $signature_checked_at
+ * @property int|null $signature_checked_by_user_id
+ * @property string|null $signature_verification_method
  * @property string|null $description
  */
 final class TellerTransaction extends Model
@@ -89,6 +97,14 @@ final class TellerTransaction extends Model
     public const string INITIATOR_STAFF_ON_BEHALF = 'staff_on_behalf';
 
     public const string INITIATOR_SYSTEM = 'system';
+
+    public const string SIGNATURE_METHOD_VISUAL_MATCH = 'visual_match';
+
+    public const string SIGNATURE_METHOD_THUMBPRINT_MATCH = 'thumbprint_match';
+
+    public const string SIGNATURE_METHOD_VERIFIED_PROXY_MANDATE = 'verified_proxy_mandate';
+
+    public const string SIGNATURE_METHOD_EXCEPTION_OVERRIDE = 'exception_override';
 
     /**
      * @return array<int, string>
@@ -131,5 +147,17 @@ final class TellerTransaction extends Model
     public function initiatorProxy(): BelongsTo
     {
         return $this->belongsTo(ClientProxy::class, 'initiator_proxy_id');
+    }
+
+    /** @return BelongsTo<CustomerAccountSignature, $this> */
+    public function customerAccountSignature(): BelongsTo
+    {
+        return $this->belongsTo(CustomerAccountSignature::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function signatureCheckedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'signature_checked_by_user_id');
     }
 }

@@ -12,7 +12,7 @@ final class ClientPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->can('crm.clients.view');
+        return $user->hasRole('platform-admin') || $user->can('crm.clients.view');
     }
 
     public function view(User $user, Client $client): bool
@@ -22,7 +22,7 @@ final class ClientPolicy
 
     public function create(User $user): bool
     {
-        return $user->can('crm.clients.create');
+        return $user->hasRole('platform-admin') || $user->can('crm.clients.create');
     }
 
     public function update(User $user, Client $client): bool

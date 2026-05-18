@@ -6,6 +6,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\Document;
 use App\Models\User;
+use App\Policies\DocumentPolicy;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -68,6 +69,15 @@ final class FoundationOperationsTest extends TestCase
             'log_name' => 'security',
             'event' => 'document.archived',
         ]);
+    }
+
+    public function test_platform_admin_policy_can_browse_and_create_documents_without_agency_assignment(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $policy = new DocumentPolicy;
+
+        self::assertTrue($policy->viewAny($actor));
+        self::assertTrue($policy->create($actor));
     }
 
     public function test_staff_without_document_permission_cannot_upload_document(): void

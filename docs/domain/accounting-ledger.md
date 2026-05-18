@@ -93,7 +93,7 @@ Store business-operation codification and the ledger accounts that future postin
 
 Rules:
 
-- Supported operation modules include accounting, cash, loan, insurance, HR, FX, Islamic finance, SMS, reporting, and alerts.
+- Supported operation modules include accounting, cash, loan, insurance, HR, currency exchange, Islamic finance, SMS, reporting, and alerts.
 - Operation account mappings are configuration records only. Creating or updating them must not create journal entries or journal lines.
 - New mappings require at least one active debit or credit ledger account.
 - If both debit and credit accounts are configured, they must belong to the same agency.

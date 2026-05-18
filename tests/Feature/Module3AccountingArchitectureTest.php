@@ -7,6 +7,8 @@ namespace Tests\Feature;
 use App\Models\AccountHold;
 use App\Models\Client;
 use App\Models\CustomerAccount;
+use App\Models\CustomerAccountSignature;
+use App\Models\Document;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\User;
@@ -190,6 +192,148 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->assertJsonSuccess($hold, 201);
         $hold->assertJsonPath('data.customer_account_public_id', $customerAccountPublicId);
         $hold->assertJsonPath('data.amount_minor', 1500);
+    }
+
+    public function test_platform_admin_can_manage_document_backed_account_signatures(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-SIG-01');
+        $clientPublicId = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $accountPublicId = $this->createCustomerAccount($agency['id'], $clientPublicId, 'SIG-ACC-001');
+        $documentPublicId = $this->createDocument($agency['id'], 'account_signature');
+
+        $create = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures', [
+                'document_public_id' => $documentPublicId,
+                'signature_type' => CustomerAccountSignature::TYPE_PRIMARY_HOLDER,
+                'signer_name' => 'Client Account',
+                'signer_role' => 'account_holder',
+                'captured_on' => '2026-05-18',
+                'metadata' => ['capture_channel' => 'branch_scan'],
+            ]);
+
+        $this->assertJsonSuccess($create, 201);
+        $signaturePublicId = $this->requireStringJsonPath($create, 'data.public_id');
+        $create->assertJsonPath('data.customer_account_public_id', $accountPublicId);
+        $create->assertJsonPath('data.document_public_id', $documentPublicId);
+        $create->assertJsonPath('data.status', CustomerAccountSignature::STATUS_ACTIVE);
+        $create->assertJsonMissingPath('data.path');
+
+        $duplicateDocumentPublicId = $this->createDocument($agency['id'], 'signature_card');
+        $duplicate = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures', [
+                'document_public_id' => $duplicateDocumentPublicId,
+                'signature_type' => CustomerAccountSignature::TYPE_PRIMARY_HOLDER,
+            ]);
+        $duplicate->assertStatus(422);
+        $duplicate->assertJsonValidationErrors(['signature_type']);
+
+        $verify = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures/'.$signaturePublicId.'/verify');
+        $this->assertJsonSuccess($verify);
+        $verify->assertJsonPath('data.verified_by_user_public_id', $actor->public_id);
+        $verify->assertJsonPath('data.verified_at', fn (mixed $value): bool => is_string($value) && $value !== '');
+
+        $list = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures');
+        $list->assertOk();
+        $list->assertJsonPath('data.signatures.0.public_id', $signaturePublicId);
+        $list->assertJsonMissingPath('data.signatures.0.path');
+
+        $revoke = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures/'.$signaturePublicId.'/revoke', [
+                'reason' => 'Updated signature card provided.',
+            ]);
+        $this->assertJsonSuccess($revoke);
+        $revoke->assertJsonPath('data.status', CustomerAccountSignature::STATUS_REVOKED);
+        $revoke->assertJsonPath('data.revoked_by_user_public_id', $actor->public_id);
+
+        $this->assertDatabaseHas('customer_account_signatures', [
+            'public_id' => $signaturePublicId,
+            'status' => CustomerAccountSignature::STATUS_REVOKED,
+        ]);
+    }
+
+    public function test_account_signature_document_must_stay_in_account_agency_scope(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-SIG-02');
+        $otherAgency = $this->createAgency('ACCT-SIG-03');
+        $clientPublicId = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $accountPublicId = $this->createCustomerAccount($agency['id'], $clientPublicId, 'SIG-ACC-002');
+        $otherAgencyDocumentPublicId = $this->createDocument($otherAgency['id'], 'account_signature');
+        $kycDocumentPublicId = $this->createDocument($agency['id'], 'kyc');
+
+        $crossAgency = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures', [
+                'document_public_id' => $otherAgencyDocumentPublicId,
+                'signature_type' => CustomerAccountSignature::TYPE_PRIMARY_HOLDER,
+            ]);
+        $crossAgency->assertStatus(422);
+        $crossAgency->assertJsonValidationErrors(['document_public_id']);
+
+        $wrongCategory = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures', [
+                'document_public_id' => $kycDocumentPublicId,
+                'signature_type' => CustomerAccountSignature::TYPE_PRIMARY_HOLDER,
+            ]);
+        $wrongCategory->assertStatus(422);
+        $wrongCategory->assertJsonValidationErrors(['document_public_id']);
+    }
+
+    public function test_proxy_account_signature_requires_verified_proxy_mandate(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('ACCT-SIG-04');
+        $clientPublicId = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $clientId = DB::table('clients')->where('public_id', $clientPublicId)->value('id');
+        self::assertIsInt($clientId);
+        $accountPublicId = $this->createCustomerAccount($agency['id'], $clientPublicId, 'SIG-ACC-003');
+        $accountId = DB::table('customer_accounts')->where('public_id', $accountPublicId)->value('id');
+        self::assertIsInt($accountId);
+        $documentPublicId = $this->createDocument($agency['id'], 'signature');
+        $proxyPublicId = (string) Str::ulid();
+
+        DB::table('client_proxies')->insert([
+            'public_id' => $proxyPublicId,
+            'agency_id' => $agency['id'],
+            'client_id' => $clientId,
+            'customer_account_id' => $accountId,
+            'proxy_full_name' => 'Authorized Proxy',
+            'mandate_type' => 'withdrawal',
+            'status' => 'active',
+            'verification_status' => 'verified',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $create = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures', [
+                'document_public_id' => $documentPublicId,
+                'client_proxy_public_id' => $proxyPublicId,
+                'signature_type' => CustomerAccountSignature::TYPE_PROXY,
+                'signer_name' => 'Authorized Proxy',
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.client_proxy_public_id', $proxyPublicId);
+
+        $missingProxyDocumentPublicId = $this->createDocument($agency['id'], 'signature');
+        $missingProxy = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts/'.$accountPublicId.'/signatures', [
+                'document_public_id' => $missingProxyDocumentPublicId,
+                'signature_type' => CustomerAccountSignature::TYPE_MANDATE,
+            ]);
+        $missingProxy->assertStatus(422);
+        $missingProxy->assertJsonValidationErrors(['client_proxy_public_id']);
     }
 
     public function test_unverified_client_cannot_open_customer_account(): void
@@ -466,6 +610,10 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $this->assertJsonSuccess($submit);
         $submit->assertJsonPath('data.status', JournalEntry::STATUS_PENDING_REVIEW);
+        $submit->assertJsonPath('data.lines.0.journal_entry_public_id', $entryPublicId);
+        $submit->assertJsonPath('data.lines.0.ledger_account_public_id', $ledgerPublicId);
+        $submit->assertJsonPath('data.lines.1.journal_entry_public_id', $entryPublicId);
+        $submit->assertJsonPath('data.lines.1.ledger_account_public_id', $ledgerPublicId);
 
         $approve = $this->withApiHeaders()
             ->actingAsSanctum($reviewer)
@@ -702,11 +850,11 @@ final class Module3AccountingArchitectureTest extends TestCase
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
         $ledgerId = DB::table('ledger_accounts')->where('public_id', $ledgerPublicId)->value('id');
-        $this->assertIsInt($ledgerId);
+        self::assertIsInt($ledgerId);
 
         $entryPublicId = $this->createBalancedJournalEntry($actor, $agency['public_id'], $ledgerPublicId, 'JE-BAL-DB-1');
         $entryId = DB::table('journal_entries')->where('public_id', $entryPublicId)->value('id');
-        $this->assertIsInt($entryId);
+        self::assertIsInt($entryId);
 
         // Draft entries may temporarily be unbalanced; raw insert into a draft entry must succeed.
         DB::transaction(function () use ($agency, $entryId, $ledgerId): void {
@@ -723,7 +871,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'updated_at' => now(),
             ]);
         });
-        $this->assertSame('draft', DB::table('journal_entries')->where('id', $entryId)->value('status'));
+        self::assertSame('draft', DB::table('journal_entries')->where('id', $entryId)->value('status'));
 
         // Status transition to submitted with unbalanced lines must be rejected.
         $unbalancedSubmit = null;
@@ -738,9 +886,9 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $unbalancedSubmit = $exception;
         }
-        $this->assertNotNull($unbalancedSubmit, 'Status update to submitted must be rejected when lines are unbalanced.');
-        $this->assertStringContainsString('unbalanced', strtolower($unbalancedSubmit->getMessage()));
-        $this->assertSame('draft', DB::table('journal_entries')->where('id', $entryId)->value('status'));
+        self::assertNotNull($unbalancedSubmit, 'Status update to submitted must be rejected when lines are unbalanced.');
+        self::assertStringContainsString('unbalanced', strtolower($unbalancedSubmit->getMessage()));
+        self::assertSame('draft', DB::table('journal_entries')->where('id', $entryId)->value('status'));
 
         // Bring the entry back to balance and submit cleanly.
         DB::transaction(function () use ($entryId): void {
@@ -751,7 +899,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'updated_at' => now(),
             ]);
         });
-        $this->assertSame(JournalEntry::STATUS_SUBMITTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
+        self::assertSame(JournalEntry::STATUS_SUBMITTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
 
         // Inserting an unbalancing line into a non-draft entry must be rejected.
         $postSubmitInsert = null;
@@ -773,11 +921,11 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $postSubmitInsert = $exception;
         }
-        $this->assertNotNull($postSubmitInsert, 'Inserting an unbalancing line into a non-draft entry must be rejected.');
+        self::assertNotNull($postSubmitInsert, 'Inserting an unbalancing line into a non-draft entry must be rejected.');
 
         // Deleting a balancing line from a submitted entry must also be rejected.
         $oneCreditLineId = DB::table('journal_lines')->where('journal_entry_id', $entryId)->where('credit_minor', '>', 0)->value('id');
-        $this->assertIsInt($oneCreditLineId);
+        self::assertIsInt($oneCreditLineId);
         $deleteRejected = null;
         try {
             DB::transaction(function () use ($oneCreditLineId): void {
@@ -787,7 +935,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $deleteRejected = $exception;
         }
-        $this->assertNotNull($deleteRejected, 'Deleting a balancing line from a non-draft entry must be rejected.');
+        self::assertNotNull($deleteRejected, 'Deleting a balancing line from a non-draft entry must be rejected.');
     }
 
     public function test_database_blocks_journal_line_mutation_and_status_regression_on_terminal_entries(): void
@@ -829,7 +977,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ],
         );
         $entryId = DB::table('journal_entries')->where('public_id', $entryPublicId)->value('id');
-        $this->assertIsInt($entryId);
+        self::assertIsInt($entryId);
 
         // Posted entries cannot regress to draft via raw SQL.
         $regression = null;
@@ -843,13 +991,13 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $regression = $exception;
         }
-        $this->assertNotNull($regression, 'Posted journal entries must not regress to draft.');
-        $this->assertStringContainsString('posted', strtolower($regression->getMessage()));
-        $this->assertSame(JournalEntry::STATUS_POSTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
+        self::assertNotNull($regression, 'Posted journal entries must not regress to draft.');
+        self::assertStringContainsString('posted', strtolower($regression->getMessage()));
+        self::assertSame(JournalEntry::STATUS_POSTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
 
         // Lines under a posted entry are immutable to UPDATE / DELETE.
         $lineId = DB::table('journal_lines')->where('journal_entry_id', $entryId)->value('id');
-        $this->assertIsInt($lineId);
+        self::assertIsInt($lineId);
 
         $updateBlocked = null;
         try {
@@ -862,7 +1010,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $updateBlocked = $exception;
         }
-        $this->assertNotNull($updateBlocked, 'UPDATE on a posted entry line must be rejected.');
+        self::assertNotNull($updateBlocked, 'UPDATE on a posted entry line must be rejected.');
 
         $deleteBlocked = null;
         try {
@@ -872,7 +1020,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $deleteBlocked = $exception;
         }
-        $this->assertNotNull($deleteBlocked, 'DELETE on a posted entry line must be rejected.');
+        self::assertNotNull($deleteBlocked, 'DELETE on a posted entry line must be rejected.');
 
         // Posted entries also cannot leap to other non-reversed terminal states (e.g. submitted).
         $invalidLeap = null;
@@ -886,8 +1034,8 @@ final class Module3AccountingArchitectureTest extends TestCase
         } catch (\Throwable $exception) {
             $invalidLeap = $exception;
         }
-        $this->assertNotNull($invalidLeap, 'Posted journal entries must not transition to submitted.');
-        $this->assertSame(JournalEntry::STATUS_POSTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
+        self::assertNotNull($invalidLeap, 'Posted journal entries must not transition to submitted.');
+        self::assertSame(JournalEntry::STATUS_POSTED, DB::table('journal_entries')->where('id', $entryId)->value('status'));
     }
 
     public function test_accounting_balances_are_derived_from_posted_journal_lines(): void
@@ -1554,6 +1702,46 @@ final class Module3AccountingArchitectureTest extends TestCase
         $client = DB::table('clients')->where('id', $clientId)->first(['public_id']);
 
         return is_object($client) && is_string($client->public_id) ? $client->public_id : '';
+    }
+
+    private function createCustomerAccount(int $agencyId, string $clientPublicId, string $accountNumber): string
+    {
+        $clientId = DB::table('clients')->where('public_id', $clientPublicId)->value('id');
+        self::assertIsInt($clientId);
+
+        $accountId = DB::table('customer_accounts')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agencyId,
+            'account_number' => $accountNumber,
+            'account_type' => 'savings',
+            'currency' => 'XAF',
+            'opened_on' => '2026-05-18',
+            'status' => CustomerAccount::STATUS_ACTIVE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $account = DB::table('customer_accounts')->where('id', $accountId)->first(['public_id']);
+
+        return is_object($account) && is_string($account->public_id) ? $account->public_id : '';
+    }
+
+    private function createDocument(int $agencyId, string $category): string
+    {
+        $documentId = DB::table('documents')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'category' => $category,
+            'title' => 'Signature Evidence',
+            'status' => Document::STATUS_ACTIVE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $document = DB::table('documents')->where('id', $documentId)->first(['public_id']);
+
+        return is_object($document) && is_string($document->public_id) ? $document->public_id : '';
     }
 
     private function requireStringJsonPath(mixed $response, string $path): string

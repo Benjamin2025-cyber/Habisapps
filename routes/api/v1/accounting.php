@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\AccountHoldController;
 use App\Http\Controllers\Api\V1\AccountingBalanceController;
 use App\Http\Controllers\Api\V1\AccountProductController;
 use App\Http\Controllers\Api\V1\CustomerAccountController;
+use App\Http\Controllers\Api\V1\CustomerAccountSignatureController;
 use App\Http\Controllers\Api\V1\DenominationController;
 use App\Http\Controllers\Api\V1\EmfLedgerAccountMappingController;
 use App\Http\Controllers\Api\V1\EmfRegulatoryAccountController;
@@ -68,6 +69,11 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::get('customer-accounts', [CustomerAccountController::class, 'index']);
     Route::post('customer-accounts', [CustomerAccountController::class, 'store']);
+    Route::get('customer-accounts/{customerAccount}/signatures', [CustomerAccountSignatureController::class, 'index']);
+    Route::post('customer-accounts/{customerAccount}/signatures', [CustomerAccountSignatureController::class, 'store']);
+    Route::get('customer-accounts/{customerAccount}/signatures/{signature}', [CustomerAccountSignatureController::class, 'show']);
+    Route::post('customer-accounts/{customerAccount}/signatures/{signature}/verify', [CustomerAccountSignatureController::class, 'verify']);
+    Route::post('customer-accounts/{customerAccount}/signatures/{signature}/revoke', [CustomerAccountSignatureController::class, 'revoke']);
     Route::get('customer-accounts/{customerAccount}', [CustomerAccountController::class, 'show']);
     Route::get('customer-accounts/{customerAccount}/balance', [AccountingBalanceController::class, 'customerAccount']);
     Route::get('customer-accounts/{customerAccount}/available-balance', [AccountingBalanceController::class, 'customerAccountAvailable']);

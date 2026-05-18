@@ -803,11 +803,15 @@ final class Module5CashInfrastructureTest extends TestCase
         self::assertSame(1, DB::table('teller_transactions')->where('idempotency_key', 'cash-deposit-001')->count());
         self::assertSame(1, DB::table('journal_entries')->where('idempotency_key', 'cash-deposit-001')->count());
 
+        $signature = $this->createVerifiedAccountSignature($agency['id'], $customerAccount['id']);
+
         $overLimit = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('withdraw-over-limit')->plainTextToken])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
                 'customer_account_public_id' => $customerAccount['public_id'],
                 'amount_minor' => 6000,
                 'currency' => 'XAF',
+                'signature_public_id' => $signature['public_id'],
+                'signature_verification_method' => 'visual_match',
                 'idempotency_key' => 'cash-withdrawal-over-limit',
             ]);
         $overLimit->assertStatus(422);
@@ -819,11 +823,23 @@ final class Module5CashInfrastructureTest extends TestCase
             ])
             ->assertOk();
 
+        $missingSignature = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('withdraw-missing-signature')->plainTextToken])
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 3000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'cash-withdrawal-missing-signature',
+            ]);
+        $missingSignature->assertStatus(422);
+        $missingSignature->assertJsonValidationErrors(['signature_public_id']);
+
         $fractionalCashWithdrawal = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('withdraw-fractional')->plainTextToken])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
                 'customer_account_public_id' => $customerAccount['public_id'],
                 'amount_minor' => 3333,
                 'currency' => 'XAF',
+                'signature_public_id' => $signature['public_id'],
+                'signature_verification_method' => 'visual_match',
                 'idempotency_key' => 'cash-withdrawal-fractional',
             ]);
         $fractionalCashWithdrawal->assertStatus(422);
@@ -834,6 +850,8 @@ final class Module5CashInfrastructureTest extends TestCase
                 'customer_account_public_id' => $customerAccount['public_id'],
                 'amount_minor' => 3000,
                 'currency' => 'XAF',
+                'signature_public_id' => $signature['public_id'],
+                'signature_verification_method' => 'visual_match',
                 'operation_code' => 'cash_withdrawal',
                 'description' => 'Counter cash withdrawal',
                 'idempotency_key' => 'cash-withdrawal-001',
@@ -841,6 +859,9 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($withdrawal, 201);
         $withdrawal->assertJsonPath('data.teller_transaction.amount_minor', 3000);
         $withdrawal->assertJsonPath('data.teller_transaction.transaction_type', 'cash_withdrawal');
+        $withdrawal->assertJsonPath('data.teller_transaction.customer_account_signature_public_id', $signature['public_id']);
+        $withdrawal->assertJsonPath('data.teller_transaction.signature_checked_by_user_public_id', $actor->public_id);
+        $withdrawal->assertJsonPath('data.teller_transaction.signature_verification_method', 'visual_match');
         $withdrawal->assertJsonPath('data.journal_entry.status', 'posted');
         $withdrawalTransactionPublicId = $this->requireStringJsonPath($withdrawal, 'data.teller_transaction.public_id');
         $withdrawalJournalPublicId = $this->requireStringJsonPath($withdrawal, 'data.journal_entry.public_id');
@@ -865,6 +886,8 @@ final class Module5CashInfrastructureTest extends TestCase
                 'customer_account_public_id' => $customerAccount['public_id'],
                 'amount_minor' => 8000,
                 'currency' => 'XAF',
+                'signature_public_id' => $signature['public_id'],
+                'signature_verification_method' => 'visual_match',
                 'idempotency_key' => 'cash-withdrawal-insufficient',
             ]);
         $insufficientAvailable->assertStatus(422);
@@ -1265,6 +1288,8 @@ final class Module5CashInfrastructureTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $proxySignature = $this->createVerifiedAccountSignature($agency['id'], $customerAccount['id'], $verifiedProxyPublicId, 'proxy');
+        $holderSignature = $this->createVerifiedAccountSignature($agency['id'], $customerAccount['id'], null, 'primary_holder');
 
         // Authorised proxy withdrawal under the mandate limit must succeed.
         $proxyWithdrawal = $this->withApiHeaders()
@@ -1276,9 +1301,12 @@ final class Module5CashInfrastructureTest extends TestCase
                 'idempotency_key' => 'cash-prx-wd-001',
                 'initiator_type' => 'proxy',
                 'initiator_proxy_public_id' => $verifiedProxyPublicId,
+                'signature_public_id' => $proxySignature['public_id'],
+                'signature_verification_method' => 'verified_proxy_mandate',
             ]);
         $this->assertJsonSuccess($proxyWithdrawal, 201);
         $proxyWithdrawal->assertJsonPath('data.teller_transaction.initiator_type', 'proxy');
+        $proxyWithdrawal->assertJsonPath('data.teller_transaction.customer_account_signature_public_id', $proxySignature['public_id']);
 
         // Same proxy over the per-mandate amount limit must be rejected before any write.
         $overLimit = $this->withApiHeaders()
@@ -1290,6 +1318,8 @@ final class Module5CashInfrastructureTest extends TestCase
                 'idempotency_key' => 'cash-prx-wd-002',
                 'initiator_type' => 'proxy',
                 'initiator_proxy_public_id' => $verifiedProxyPublicId,
+                'signature_public_id' => $proxySignature['public_id'],
+                'signature_verification_method' => 'verified_proxy_mandate',
             ]);
         $overLimit->assertStatus(422);
         $overLimit->assertJsonValidationErrors(['initiator_proxy_public_id']);
@@ -1320,6 +1350,8 @@ final class Module5CashInfrastructureTest extends TestCase
                 'idempotency_key' => 'cash-prx-wd-003',
                 'initiator_type' => 'proxy',
                 'initiator_proxy_public_id' => $unverifiedProxyPublicId,
+                'signature_public_id' => $proxySignature['public_id'],
+                'signature_verification_method' => 'verified_proxy_mandate',
             ]);
         $unverified->assertStatus(422);
         $unverified->assertJsonValidationErrors(['initiator_proxy_public_id']);
@@ -1333,6 +1365,8 @@ final class Module5CashInfrastructureTest extends TestCase
                 'currency' => 'XAF',
                 'idempotency_key' => 'cash-prx-wd-004',
                 'initiator_type' => 'proxy',
+                'signature_public_id' => $proxySignature['public_id'],
+                'signature_verification_method' => 'verified_proxy_mandate',
             ]);
         $missingId->assertStatus(422);
         $missingId->assertJsonValidationErrors(['initiator_proxy_public_id']);
@@ -1346,6 +1380,8 @@ final class Module5CashInfrastructureTest extends TestCase
                 'currency' => 'XAF',
                 'idempotency_key' => 'cash-prx-wd-005',
                 'initiator_type' => 'holder',
+                'signature_public_id' => $holderSignature['public_id'],
+                'signature_verification_method' => 'visual_match',
             ]);
         $this->assertJsonSuccess($holderWithdrawal, 201);
         $holderWithdrawal->assertJsonPath('data.teller_transaction.initiator_type', 'holder');
@@ -1586,6 +1622,52 @@ final class Module5CashInfrastructureTest extends TestCase
         return [
             'id' => $accountId,
             'public_id' => is_object($account) && is_string($account->public_id) ? $account->public_id : '',
+        ];
+    }
+
+    /**
+     * @return array{id:int, public_id:string}
+     */
+    private function createVerifiedAccountSignature(int $agencyId, int $customerAccountId, ?string $proxyPublicId = null, string $signatureType = 'primary_holder'): array
+    {
+        $account = DB::table('customer_accounts')->where('id', $customerAccountId)->first(['client_id']);
+        self::assertIsObject($account);
+        self::assertIsInt($account->client_id);
+        $proxyId = null;
+        if ($proxyPublicId !== null) {
+            $proxyId = DB::table('client_proxies')->where('public_id', $proxyPublicId)->value('id');
+            self::assertIsInt($proxyId);
+        }
+
+        $documentId = DB::table('documents')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'category' => 'account_signature',
+            'title' => 'Verified account signature',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $signatureId = DB::table('customer_account_signatures')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'customer_account_id' => $customerAccountId,
+            'client_id' => $account->client_id,
+            'document_id' => $documentId,
+            'client_proxy_id' => $proxyId,
+            'signature_type' => $signatureType,
+            'status' => 'active',
+            'verified_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $signature = DB::table('customer_account_signatures')->where('id', $signatureId)->first(['public_id']);
+
+        return [
+            'id' => $signatureId,
+            'public_id' => is_object($signature) && is_string($signature->public_id) ? $signature->public_id : '',
         ];
     }
 

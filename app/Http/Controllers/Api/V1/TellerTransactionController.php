@@ -13,6 +13,7 @@ use App\Http\Resources\JournalEntryResource;
 use App\Http\Resources\TellerTransactionResource;
 use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
+use App\Models\CustomerAccountSignature;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
@@ -323,6 +324,11 @@ final class TellerTransactionController extends BaseController
             return $this->respondUnprocessable(errors: $initiator['errors']);
         }
 
+        $signatureCheck = $this->resolveWithdrawalSignatureCheck($request, $customerAccount, $initiator);
+        if ($signatureCheck['ok'] === false) {
+            return $this->respondUnprocessable(errors: $signatureCheck['errors']);
+        }
+
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
@@ -335,7 +341,7 @@ final class TellerTransactionController extends BaseController
         }
 
         try {
-            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator): TellerTransaction {
+            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck): TellerTransaction {
                 DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
                 $lockedAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
                 $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedAccount, $currency)['available_balance_minor'];
@@ -363,6 +369,10 @@ final class TellerTransactionController extends BaseController
                     'operation_code' => $request->input('operation_code', 'cash_withdrawal'),
                     'initiator_type' => $initiator['initiator_type'],
                     'initiator_proxy_id' => $initiator['proxy_id'],
+                    'customer_account_signature_id' => $signatureCheck['signature_id'],
+                    'signature_checked_at' => now(),
+                    'signature_checked_by_user_id' => $actor->id,
+                    'signature_verification_method' => $signatureCheck['verification_method'],
                     'description' => $request->input('description'),
                 ]);
 
@@ -422,6 +432,8 @@ final class TellerTransactionController extends BaseController
             'currency' => $currency,
             'initiator_type' => $result->initiator_type,
             'initiator_proxy_id' => $result->initiator_proxy_id,
+            'customer_account_signature_public_id' => $signatureCheck['signature_public_id'],
+            'signature_verification_method' => $signatureCheck['verification_method'],
         ], request: $request);
 
         return $this->transactionResponse($result, 'Cash withdrawal posted successfully');
@@ -564,11 +576,11 @@ final class TellerTransactionController extends BaseController
                 'source_module' => 'cash_operations',
                 'source_type' => TellerTransaction::TYPE_MANUAL_JOURNAL,
                 'source_public_id' => $tellerSession->public_id,
-                'status' => JournalEntry::STATUS_SUBMITTED,
+                'status' => JournalEntry::STATUS_DRAFT,
                 'description' => $request->input('description', 'Manual cash journal '.$reference),
                 'created_by_user_id' => $actor->id,
-                'submitted_by_user_id' => $actor->id,
-                'submitted_at' => now(),
+                'submitted_by_user_id' => null,
+                'submitted_at' => null,
                 'idempotency_key' => $idempotencyKey,
             ]);
 
@@ -605,7 +617,12 @@ final class TellerTransactionController extends BaseController
                 'description' => $request->input('description'),
             ]);
 
-            $journalEntry->update(['source_public_id' => $transaction->public_id]);
+            $journalEntry->forceFill([
+                'source_public_id' => $transaction->public_id,
+                'status' => JournalEntry::STATUS_SUBMITTED,
+                'submitted_by_user_id' => $actor->id,
+                'submitted_at' => now(),
+            ])->save();
 
             return $transaction->refresh();
         });
@@ -630,6 +647,71 @@ final class TellerTransactionController extends BaseController
         }
 
         return ! $actor->hasRole('teller') || $actor->id === $session->teller_user_id;
+    }
+
+    /**
+     * @param  array{ok: true, initiator_type: string, proxy_id: int|null}|array{ok: false, errors: array<string, array<int, string>>}  $initiator
+     * @return array{ok: true, signature_id: int, signature_public_id: string, verification_method: string}|array{ok: false, errors: array<string, array<int, string>>}
+     */
+    private function resolveWithdrawalSignatureCheck(Request $request, CustomerAccount $customerAccount, array $initiator): array
+    {
+        if ($initiator['ok'] === false) {
+            return ['ok' => false, 'errors' => ['initiator_type' => ['The initiator must be valid before checking a signature.']]];
+        }
+
+        $signaturePublicId = $request->input('signature_public_id');
+        if (! is_string($signaturePublicId) || $signaturePublicId === '') {
+            return ['ok' => false, 'errors' => ['signature_public_id' => ['A checked account signature is required for cash withdrawals.']]];
+        }
+
+        $method = $request->input('signature_verification_method');
+        if (! is_string($method) || ! in_array($method, [
+            TellerTransaction::SIGNATURE_METHOD_VISUAL_MATCH,
+            TellerTransaction::SIGNATURE_METHOD_THUMBPRINT_MATCH,
+            TellerTransaction::SIGNATURE_METHOD_VERIFIED_PROXY_MANDATE,
+            TellerTransaction::SIGNATURE_METHOD_EXCEPTION_OVERRIDE,
+        ], true)) {
+            return ['ok' => false, 'errors' => ['signature_verification_method' => ['A supported signature verification method is required.']]];
+        }
+
+        $signature = CustomerAccountSignature::query()
+            ->with(['document'])
+            ->where('public_id', $signaturePublicId)
+            ->first();
+
+        if (! $signature instanceof CustomerAccountSignature
+            || $signature->agency_id !== $customerAccount->agency_id
+            || $signature->customer_account_id !== $customerAccount->id
+            || $signature->client_id !== $customerAccount->client_id
+            || $signature->status !== CustomerAccountSignature::STATUS_ACTIVE
+            || $signature->verified_at === null
+            || ! $signature->document instanceof \App\Models\Document
+            || $signature->document->status !== \App\Models\Document::STATUS_ACTIVE) {
+            return ['ok' => false, 'errors' => ['signature_public_id' => ['The selected signature must be active, verified, document-backed, and tied to the withdrawal account.']]];
+        }
+
+        if ($initiator['initiator_type'] === TellerTransaction::INITIATOR_PROXY) {
+            if ($signature->client_proxy_id === null || $signature->client_proxy_id !== $initiator['proxy_id']) {
+                return ['ok' => false, 'errors' => ['signature_public_id' => ['Proxy withdrawals require a signature linked to the verified proxy mandate.']]];
+            }
+
+            if (! in_array($signature->signature_type, [CustomerAccountSignature::TYPE_PROXY, CustomerAccountSignature::TYPE_MANDATE], true)) {
+                return ['ok' => false, 'errors' => ['signature_public_id' => ['Proxy withdrawals require a proxy or mandate signature specimen.']]];
+            }
+        } elseif (! in_array($signature->signature_type, [
+            CustomerAccountSignature::TYPE_PRIMARY_HOLDER,
+            CustomerAccountSignature::TYPE_JOINT_HOLDER,
+            CustomerAccountSignature::TYPE_THUMBPRINT,
+        ], true)) {
+            return ['ok' => false, 'errors' => ['signature_public_id' => ['Holder withdrawals require a holder or thumbprint signature specimen.']]];
+        }
+
+        return [
+            'ok' => true,
+            'signature_id' => $signature->id,
+            'signature_public_id' => $signature->public_id,
+            'verification_method' => $method,
+        ];
     }
 
     private function canAccessTransaction(User $actor, TellerTransaction $transaction): bool
@@ -794,7 +876,7 @@ final class TellerTransactionController extends BaseController
 
     private function transactionResponse(TellerTransaction $transaction, string $message): JsonResponse
     {
-        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
+        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
         $journalEntry = $transaction->journalEntry;
 
         return $this->respondCreated([

@@ -8,6 +8,7 @@ use App\Models\TellerTransaction;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class StoreCashWithdrawalRequest extends FormRequest
 {
@@ -30,6 +31,13 @@ final class StoreCashWithdrawalRequest extends FormRequest
             'operation_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'initiator_type' => ['sometimes', 'nullable', 'string', 'in:holder,proxy,staff_on_behalf,system'],
             'initiator_proxy_public_id' => ['sometimes', 'nullable', 'string', 'exists:client_proxies,public_id'],
+            'signature_public_id' => ['required', 'string', 'exists:customer_account_signatures,public_id'],
+            'signature_verification_method' => ['required', 'string', Rule::in([
+                TellerTransaction::SIGNATURE_METHOD_VISUAL_MATCH,
+                TellerTransaction::SIGNATURE_METHOD_THUMBPRINT_MATCH,
+                TellerTransaction::SIGNATURE_METHOD_VERIFIED_PROXY_MANDATE,
+                TellerTransaction::SIGNATURE_METHOD_EXCEPTION_OVERRIDE,
+            ])],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:128'],
         ];

@@ -112,4 +112,10 @@ final class CustomerAccount extends Model
     {
         return $this->hasMany(AccountHold::class);
     }
+
+    /** @return HasMany<CustomerAccountSignature, $this> */
+    public function signatures(): HasMany
+    {
+        return $this->hasMany(CustomerAccountSignature::class);
+    }
 }

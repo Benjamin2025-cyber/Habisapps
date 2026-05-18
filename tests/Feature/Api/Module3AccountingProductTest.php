@@ -74,6 +74,9 @@ final class Module3AccountingProductTest extends TestCase
         $list = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-product-list')->plainTextToken])
             ->getJson('/api/v1/account-products?account_family=savings');
         $list->assertOk();
+        $list->assertJsonPath('success', true);
+        $list->assertJsonPath('message', 'Account products retrieved successfully');
+        $list->assertJsonPath('errors', null);
         $list->assertJsonPath('data.account_products.0.public_id', $productPublicId);
 
         $archive = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-product-archive')->plainTextToken])
