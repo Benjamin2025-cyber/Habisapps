@@ -146,3 +146,21 @@ The base accounting currency remains `XAF`. The additional accounting support ex
 8. End-of-day currency exchange reconciliation.
 9. Partner-bank replenishment/sale workflow.
 10. Currency exchange reports.
+
+## Implementation Review Decisions
+
+The first API implementation is intentionally limited to counter currency exchange against `XAF`.
+
+Hard requirements enforced after adversarial review:
+
+- Exchange rates are only valid for `XAF` as settlement/base currency and an active foreign quote currency.
+- Inactive currencies cannot be used for new rates, transactions, stock movements, or reconciliations.
+- Rate overlap is checked again at approval time, not only when the draft is created.
+- Walk-in transactions must capture identity name, number, document type, and issuing country.
+- Posted transactions must carry immutable transaction, slip, and register numbers.
+- The FX register endpoint returns the operational register fields for a period.
+- Partner-bank replenishment, partner-bank sale, and stock adjustment movements are approval workflows; creating the movement must not change stock until a different checker approves it.
+
+Known remaining product gap:
+
+- Adjustment corrections are now approval-gated, but detailed variance-resolution reasons and denomination-level cash counts still need a later reconciliation workflow backlog.
