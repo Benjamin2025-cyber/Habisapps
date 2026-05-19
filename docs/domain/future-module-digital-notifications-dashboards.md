@@ -24,6 +24,16 @@ These are cross-module services, not one module:
 
 ## SMS Banking
 
+Current implemented foundation:
+
+- client notification consent by channel, category, and language;
+- versioned notification templates with variable allow-lists;
+- provider-neutral notification outbox rows;
+- idempotency keys for duplicate suppression;
+- delivery retry state for failed notification deliveries;
+- client alert producers for loan due, loan overdue, insurance premium due, and insurance claim decision alerts;
+- internal alert producers for report deadlines and failed report runs.
+
 Potential capabilities:
 
 - transaction alerts;
@@ -48,9 +58,8 @@ Open decisions:
 
 - inbound SMS commands or outbound notifications only;
 - provider integration;
-- language support;
 - fees for SMS service;
-- opt-in/opt-out policy.
+- broader opt-in/opt-out policy beyond the implemented per-category consent records.
 
 ## Automatic Alerts
 
@@ -120,10 +129,10 @@ Acceptance criteria:
 
 ## Backlog
 
-1. Notification consent and template model.
-2. Outbound SMS provider integration.
-3. Domain event alert engine.
-4. Scheduled report engine.
+1. Outbound SMS provider integration.
+2. Delivery worker/dispatcher for provider-neutral outbox rows.
+3. Additional alert producers for account hold/release, teller close pending, HR contracts, leave, and payroll deadlines.
+4. Scheduled report delivery engine.
 5. Dashboard read models.
 6. Codification directory UI/API.
 7. Monitoring and delivery audit.

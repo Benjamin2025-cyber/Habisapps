@@ -199,6 +199,7 @@ final class ExecuteLoanServicingHooksBatch
         return DB::table('notification_templates')
             ->where('code', $code)
             ->where('status', 'active')
+            ->orderByDesc('version')
             ->first();
     }
 
