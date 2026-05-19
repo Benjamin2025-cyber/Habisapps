@@ -155,3 +155,28 @@ Required controls:
 8. Payroll reports and declarations.
 9. Alerts for contracts, leave, and payroll deadlines.
 
+## Implementation Review Decisions
+
+The first implementation is an HR/payroll control foundation, not a complete Cameroon payroll declaration engine.
+
+Hard requirements enforced after adversarial review:
+
+- HR employees are separate from login users; `user_id` is optional linkage, not the employee master record.
+- Employee API responses use public agency identifiers and do not expose document paths.
+- Employee agency assignment history is recorded when the employee file is created.
+- Employee and contract document attachments must use the existing `documents` table and must belong to the employee agency.
+- Contract renewals create a new version and supersede the previous active contract instead of rewriting it.
+- Dated contracts enqueue an internal contract-expiry alert.
+- Payroll formula sets require a registered regulatory/legal source and maker-checker activation.
+- Payroll runs cannot calculate without an active formula set covering the full payroll period.
+- Payroll runs snapshot the formula set and rates used for calculation.
+- Approved absence deductions require an approved leave/absence record for the employee; pending/rejected records cannot affect payroll.
+- Draft payroll runs do not post journals; approval posts accounting using configured operation mappings.
+- Payroll approval is maker-checker: the payroll creator cannot approve the same run.
+- Correction payroll runs are linked to the approved source run, reverse the prior payroll journal, and post the replacement run.
+- Final declaration exports are generated only from approved payroll runs and include a checksum plus source payroll run public ID.
+
+Known remaining product gaps:
+
+- Full CNPS/IRPP/CAC statutory formulas and declaration file layouts still require legal validation and source-backed configuration.
+- Salary advances, sanctions, overtime, bonuses, and employer-charge accounting need deeper component-specific workflows.

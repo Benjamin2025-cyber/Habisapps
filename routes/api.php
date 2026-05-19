@@ -24,4 +24,5 @@ Route::prefix('v1')->middleware(['api', 'api.version'])->group(function (): void
     require __DIR__.'/api/v1/currency_exchange.php';
     require __DIR__.'/api/v1/regulatory_reporting.php';
     require __DIR__.'/api/v1/dashboards.php';
+    require __DIR__.'/api/v1/hr_payroll.php';
 });
