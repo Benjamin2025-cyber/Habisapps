@@ -136,3 +136,21 @@ Acceptance criteria:
 5. Dashboard read models.
 6. Codification directory UI/API.
 7. Monitoring and delivery audit.
+
+## Dashboard Implementation Review Decisions
+
+The first dashboard implementation is an API/read-model foundation. It must stay aligned with approved reporting metrics rather than inventing parallel calculations.
+
+Hard requirements enforced after adversarial review:
+
+- Operational dashboards expose data freshness and metric source labels so consumers know which reporting definition each metric follows.
+- Portfolio outstanding follows the credit portfolio outstanding reporting definition.
+- PAR30/PAR60/PAR90 return outstanding at risk for loans with overdue installments in the bucket, not only the overdue installment amount.
+- Operational dashboard filters include agency, period, loan product, loan status, premium status, and claim status.
+- Non-platform users are constrained to their assigned agency and cannot query another agency's dashboard.
+- Executive dashboards are aggregate-only and must not expose client names, phone numbers, or other client PII.
+
+Known remaining product gaps:
+
+- Dashboard definition/widget configuration tables exist, but this first API does not yet provide a dashboard-builder CRUD workflow.
+- There is no dedicated dashboard schema-integrity test filter yet; dashboard verification currently lives in the API feature suite.
