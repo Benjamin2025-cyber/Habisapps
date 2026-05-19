@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'document_id',
     'parameters',
     'summary',
+    'source_version_snapshot',
 ])]
 final class ReportRun extends Model
 {
@@ -51,6 +52,7 @@ final class ReportRun extends Model
             'generated_at' => 'datetime',
             'parameters' => 'array',
             'summary' => 'array',
+            'source_version_snapshot' => 'array',
         ];
     }
 

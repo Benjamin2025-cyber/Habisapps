@@ -33,6 +33,11 @@ final class ReportRunResource extends JsonResource
             'generated_at' => $run->generated_at !== null ? Carbon::parse($run->generated_at)->toAtomString() : null,
             'parameters' => $run->parameters,
             'summary' => $run->summary,
+            'review_status' => $run->review_status,
+            'submitted_at' => $run->submitted_at,
+            'submission_channel' => $run->submission_channel,
+            'submission_reference' => $run->submission_reference,
+            'source_version_snapshot' => $run->source_version_snapshot,
             'created_at' => $run->created_at?->toAtomString(),
             'updated_at' => $run->updated_at?->toAtomString(),
         ];

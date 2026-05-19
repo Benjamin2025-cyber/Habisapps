@@ -131,3 +131,24 @@ Required:
 8. Export formats.
 9. Automated report scheduling.
 
+## Implementation Review Decisions
+
+The first reporting implementation is a regulatory reporting foundation, not a complete COBAC submission engine.
+
+Hard requirements enforced after adversarial review:
+
+- Regulatory sources must store authority, reference, title, effective date, checksum, importer, and import timestamp.
+- EMF regulatory account imports are tied to a registered source version.
+- Report definitions are versioned per code and must be tied to a registered regulatory source.
+- EMF/COBAC report definitions require a COBAC or BEAC source.
+- Report definition JSON is restricted to allowlisted reporting sources and fields; arbitrary table names, SQL, joins, and raw query keys are rejected.
+- EMF/COBAC report generation uses posted journal lines only and blocks generation when posted ledger accounts lack active EMF mappings.
+- Generated report runs snapshot the report definition version and regulatory source checksum used for the run.
+- Review is maker-checker; approved or rejected runs cannot be reviewed again.
+- Submission metadata is recorded manually after approval; the system must not auto-submit to COBAC.
+
+Known remaining product gaps:
+
+- Official COBAC report layouts, export formats, and submission channels still need legal/source validation before production submission.
+- Codification directories beyond EMF account mappings still need their own schema and import workflow.
+- Mapping completeness is available as a gate/service and is enforced for EMF report generation, but each future financial posting workflow must call the gate before journal creation.

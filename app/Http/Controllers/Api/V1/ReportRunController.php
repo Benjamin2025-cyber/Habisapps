@@ -78,6 +78,10 @@ final class ReportRunController extends BaseController
         if (! in_array($definition->report_type, $this->supportedReportTypes(), true)) {
             return $this->respondUnprocessable(errors: ['report_definition_public_id' => ['Selected report type is not supported.']]);
         }
+        $sourceSnapshot = $this->sourceVersionSnapshot($definition);
+        if ($definition->report_type === ReportDefinition::TYPE_EMF_TRIAL_BALANCE && $sourceSnapshot === null) {
+            return $this->respondUnprocessable(errors: ['report_definition_public_id' => ['EMF/COBAC reports require a regulatory source snapshot.']]);
+        }
 
         $agency = isset($validated['agency_public_id'])
             ? Agency::query()->where('public_id', $validated['agency_public_id'])->first()
@@ -127,6 +131,7 @@ final class ReportRunController extends BaseController
             'document_id' => $document?->id,
             'parameters' => array_merge($validated['parameters'] ?? [], ['currency' => $currency]),
             'summary' => $summary,
+            'source_version_snapshot' => $sourceSnapshot,
         ]);
 
         $this->securityAudit->record('report_run.generated', actor: $actor, subject: $run, request: $request);
@@ -146,6 +151,44 @@ final class ReportRunController extends BaseController
             ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING,
             ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY,
             ReportDefinition::TYPE_CREDIT_COLLECTION_PERFORMANCE,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function sourceVersionSnapshot(ReportDefinition $definition): ?array
+    {
+        $row = DB::table('report_definitions')
+            ->leftJoin('regulatory_sources', 'regulatory_sources.id', '=', 'report_definitions.regulatory_source_id')
+            ->where('report_definitions.id', $definition->id)
+            ->first([
+                'report_definitions.code as report_code',
+                'report_definitions.version as report_version',
+                'report_definitions.effective_from as report_effective_from',
+                'report_definitions.effective_to as report_effective_to',
+                'regulatory_sources.public_id as source_public_id',
+                'regulatory_sources.authority as source_authority',
+                'regulatory_sources.reference as source_reference',
+                'regulatory_sources.title as source_title',
+                'regulatory_sources.effective_date as source_effective_date',
+                'regulatory_sources.checksum as source_checksum',
+            ]);
+        if (! is_object($row) || $row->source_public_id === null) {
+            return null;
+        }
+
+        return [
+            'report_code' => (string) $row->report_code,
+            'report_version' => is_numeric($row->report_version) ? (int) $row->report_version : null,
+            'report_effective_from' => $row->report_effective_from !== null ? (string) $row->report_effective_from : null,
+            'report_effective_to' => $row->report_effective_to !== null ? (string) $row->report_effective_to : null,
+            'source_public_id' => (string) $row->source_public_id,
+            'source_authority' => (string) $row->source_authority,
+            'source_reference' => (string) $row->source_reference,
+            'source_title' => (string) $row->source_title,
+            'source_effective_date' => $row->source_effective_date !== null ? (string) $row->source_effective_date : null,
+            'source_checksum' => (string) $row->source_checksum,
         ];
     }
 
