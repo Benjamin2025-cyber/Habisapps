@@ -65,6 +65,55 @@ final class InsuranceModuleTest extends TestCase
             ]);
         $this->assertJsonSuccess($product, 201);
         $productPublicId = $this->requireStringJsonPath($product, 'data.public_id');
+        $productId = $this->requireIntId('insurance_products', $productPublicId);
+
+        $this->createInsurancePremiumCollectionMapping($ledger['id']);
+        $claimDebitLedger = $this->createLedgerAccount($agency['id']);
+        $claimCreditLedger = $this->createLedgerAccount($agency['id']);
+        $this->createInsuranceClaimSettlementMapping($claimDebitLedger['id'], $claimCreditLedger['id']);
+        DB::table('insurance_product_rule_versions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_product_id' => $productId,
+            'version_number' => 1,
+            'calculation_type' => 'flat_rate',
+            'base_description' => 'insured_amount',
+            'rate' => null,
+            'fixed_premium_minor' => 15000,
+            'cap_minor' => null,
+            'floor_minor' => null,
+            'frequency' => 'one_time',
+            'source_reference' => 'test-contract',
+            'effective_from' => '2026-01-01',
+            'effective_until' => null,
+            'status' => 'approved',
+            'created_by_user_id' => $actor->id,
+            'approved_by_user_id' => $actor->id,
+            'approved_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('insurance_claim_evidence_configs')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_product_id' => $productId,
+            'claim_type' => 'standard',
+            'document_type' => 'claim_form',
+            'is_required' => true,
+            'description' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('insurance_products')
+            ->where('id', $productId)
+            ->update([
+                'business_model' => 'broker',
+                'report_category' => 'operations',
+                'updated_at' => now(),
+            ]);
+
+        $activation = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/insurance-products/'.$productPublicId.'/activate');
+        $this->assertJsonSuccess($activation);
 
         $subscription = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -483,6 +532,53 @@ final class InsuranceModuleTest extends TestCase
             ]);
         $this->assertJsonSuccess($productB, 201);
         $productBPublicId = $this->requireStringJsonPath($productB, 'data.public_id');
+        $productBId = $this->requireIntId('insurance_products', $productBPublicId);
+        $this->createInsurancePremiumCollectionMapping($ledgerB['id']);
+        $claimDebitLedgerB = $this->createLedgerAccount($agencyB['id']);
+        $claimCreditLedgerB = $this->createLedgerAccount($agencyB['id']);
+        $this->createInsuranceClaimSettlementMapping($claimDebitLedgerB['id'], $claimCreditLedgerB['id']);
+        DB::table('insurance_product_rule_versions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_product_id' => $productBId,
+            'version_number' => 1,
+            'calculation_type' => 'flat_rate',
+            'base_description' => 'insured_amount',
+            'rate' => null,
+            'fixed_premium_minor' => 15000,
+            'cap_minor' => null,
+            'floor_minor' => null,
+            'frequency' => 'one_time',
+            'source_reference' => 'test-contract',
+            'effective_from' => '2026-01-01',
+            'effective_until' => null,
+            'status' => 'approved',
+            'created_by_user_id' => $platformAdmin->id,
+            'approved_by_user_id' => $platformAdmin->id,
+            'approved_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('insurance_claim_evidence_configs')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_product_id' => $productBId,
+            'claim_type' => 'standard',
+            'document_type' => 'claim_form',
+            'is_required' => true,
+            'description' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('insurance_products')
+            ->where('id', $productBId)
+            ->update([
+                'business_model' => 'broker',
+                'report_category' => 'operations',
+                'updated_at' => now(),
+            ]);
+        $activationB = $this->withApiHeaders()
+            ->actingAsSanctum($platformAdmin)
+            ->postJson('/api/v1/insurance-products/'.$productBPublicId.'/activate');
+        $this->assertJsonSuccess($activationB);
 
         $subB = $this->withApiHeaders()
             ->actingAsSanctum($platformAdmin)
@@ -735,13 +831,20 @@ final class InsuranceModuleTest extends TestCase
         $agencyId = (int) $subscription->agency_id;
         $productId = (int) $subscription->insurance_product_id;
 
-        if ($businessModel !== null) {
-            DB::table('insurance_products')
-                ->where('id', $productId)
-                ->update(['rules' => json_encode(['business_model' => $businessModel])]);
-        }
+        DB::table('insurance_products')
+            ->where('id', $productId)
+            ->update([
+                'business_model' => $businessModel,
+                'updated_at' => now(),
+            ]);
 
-        if ($createMapping) {
+        if (! $createMapping) {
+            DB::table('operation_account_mappings')
+                ->whereIn('operation_code_id', DB::table('operation_codes')
+                    ->where('code', 'insurance_claim_settlement')
+                    ->pluck('id'))
+                ->delete();
+        } else {
             $debit = $this->createLedgerAccount($agencyId);
             $credit = $this->createLedgerAccount($agencyId);
             $this->createInsuranceClaimSettlementMapping($debit['id'], $credit['id']);
@@ -1305,9 +1408,12 @@ final class InsuranceModuleTest extends TestCase
         self::assertIsObject($subscription);
         $agencyId = (int) $subscription->agency_id;
 
-        if ($createMapping) {
-            $creditLedger = $this->createLedgerAccount($agencyId);
-            $this->createInsurancePremiumCollectionMapping($creditLedger['id']);
+        if (! $createMapping) {
+            DB::table('operation_account_mappings')
+                ->whereIn('operation_code_id', DB::table('operation_codes')
+                    ->where('code', 'insurance_premium_collection')
+                    ->pluck('id'))
+                ->delete();
         }
 
         $tillLedger = $this->createLedgerAccount($agencyId);
@@ -1394,6 +1500,13 @@ final class InsuranceModuleTest extends TestCase
 
         $agencyId = (int) $subscription->agency_id;
         $clientId = (int) $subscription->client_id;
+        if (! $createMapping) {
+            DB::table('operation_account_mappings')
+                ->whereIn('operation_code_id', DB::table('operation_codes')
+                    ->where('code', 'insurance_premium_collection')
+                    ->pluck('id'))
+                ->delete();
+        }
 
         $customerLedger = $this->createLedgerAccount($agencyId);
         $customerAccount = $this->createCustomerAccountFor(
@@ -1408,11 +1521,6 @@ final class InsuranceModuleTest extends TestCase
             amountMinor: $accountFundingMinor,
             actorUserId: $actor->id,
         );
-
-        if ($createMapping) {
-            $creditLedger = $this->createLedgerAccount($agencyId);
-            $this->createInsurancePremiumCollectionMapping($creditLedger['id']);
-        }
 
         $assessmentResponse = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -1590,6 +1698,55 @@ final class InsuranceModuleTest extends TestCase
             ]);
         $this->assertJsonSuccess($product, 201);
         $productPublicId = $this->requireStringJsonPath($product, 'data.public_id');
+        $productId = $this->requireIntId('insurance_products', $productPublicId);
+
+        $this->createInsurancePremiumCollectionMapping($ledger['id']);
+        $claimDebitLedger = $this->createLedgerAccount($agency['id']);
+        $claimCreditLedger = $this->createLedgerAccount($agency['id']);
+        $this->createInsuranceClaimSettlementMapping($claimDebitLedger['id'], $claimCreditLedger['id']);
+        DB::table('insurance_product_rule_versions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_product_id' => $productId,
+            'version_number' => 1,
+            'calculation_type' => 'flat_rate',
+            'base_description' => 'insured_amount',
+            'rate' => null,
+            'fixed_premium_minor' => 15000,
+            'cap_minor' => null,
+            'floor_minor' => null,
+            'frequency' => 'one_time',
+            'source_reference' => 'test-contract',
+            'effective_from' => '2026-01-01',
+            'effective_until' => null,
+            'status' => 'approved',
+            'created_by_user_id' => $actor->id,
+            'approved_by_user_id' => $actor->id,
+            'approved_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('insurance_claim_evidence_configs')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_product_id' => $productId,
+            'claim_type' => 'standard',
+            'document_type' => 'claim_form',
+            'is_required' => true,
+            'description' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('insurance_products')
+            ->where('id', $productId)
+            ->update([
+                'business_model' => 'broker',
+                'report_category' => 'operations',
+                'updated_at' => now(),
+            ]);
+
+        $activation = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/insurance-products/'.$productPublicId.'/activate');
+        $this->assertJsonSuccess($activation);
 
         $subscription = $this->withApiHeaders()
             ->actingAsSanctum($actor)

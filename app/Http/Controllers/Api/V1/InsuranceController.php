@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Insurance\InsuranceAccountingService;
+use App\Application\Insurance\InsuranceExportService;
+use App\Application\Insurance\InsuranceProductReadinessService;
+use App\Application\Notifications\ClientAlertProducer;
 use App\Http\Controllers\BaseController;
 use App\Models\Client;
 use App\Models\CustomerAccount;
@@ -32,12 +36,33 @@ final class InsuranceController extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly AccountingBalanceCalculator $balanceCalculator,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly InsuranceAccountingService $insuranceAccounting,
+        private readonly InsuranceExportService $insuranceExports,
+        private readonly ClientAlertProducer $clientAlerts,
+        private readonly InsuranceProductReadinessService $productReadiness,
     ) {}
+
+    private function hasInsurancePermission(?User $actor, string $permission): bool
+    {
+        return $actor instanceof User && $actor->hasPermissionTo($permission);
+    }
+
+    private function insuranceActor(Request $request, string $permission): ?User
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return null;
+        }
+
+        return $this->hasInsurancePermission($actor, $permission)
+            ? $actor
+            : null;
+    }
 
     public function storePartner(Request $request): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.products.manage');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -93,22 +118,31 @@ final class InsuranceController extends BaseController
 
     public function storeProduct(Request $request): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.products.manage');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
+
+        $allowedProductTypes = [
+            'borrower', 'health', 'life', 'savings', 'agricultural', 'home',
+            'professional_commercial', 'automobile', 'motorcycle', 'school',
+            'travel', 'funeral', 'mobile_equipment', 'loan_insurance',
+        ];
 
         $validated = Validator::make($request->all(), [
             'insurance_partner_public_id' => ['sometimes', 'nullable', 'string', 'exists:insurance_partners,public_id'],
             'code' => ['required', 'string', 'max:64', 'unique:insurance_products,code'],
             'name' => ['required', 'string', 'max:255'],
-            'product_type' => ['required', 'string', 'max:64'],
+            'product_type' => ['required', 'string', 'max:64', Rule::in($allowedProductTypes)],
             'premium_calculation_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'premium_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'fixed_premium_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'payment_mode' => ['sometimes', 'nullable', 'string', 'max:64'],
             'is_refundable' => ['sometimes', 'boolean'],
+            'business_model' => ['sometimes', 'nullable', Rule::in(['broker', 'distributor', 'premium_collector', 'collector', 'risk_carrier'])],
+            'report_category' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'new_business_enabled' => ['sometimes', 'boolean'],
             'status' => ['sometimes', 'string', Rule::in(['active', 'inactive', 'archived'])],
             'rules' => ['sometimes', 'nullable', 'array'],
             'coverages' => ['sometimes', 'array'],
@@ -133,6 +167,10 @@ final class InsuranceController extends BaseController
                     'payment_mode' => $this->nullableString($validated['payment_mode'] ?? null),
                     'is_refundable' => (bool) ($validated['is_refundable'] ?? false),
                     'status' => $this->stringValue($validated['status'] ?? 'active', 'active'),
+                    'approval_status' => 'draft',
+                    'business_model' => $this->nullableString($validated['business_model'] ?? null),
+                    'report_category' => $this->nullableString($validated['report_category'] ?? null),
+                    'new_business_enabled' => (bool) ($validated['new_business_enabled'] ?? true),
                     'rules' => $this->jsonOrNull($validated['rules'] ?? null),
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -169,15 +207,15 @@ final class InsuranceController extends BaseController
 
     public function storeClaim(Request $request): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.claims.intake');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
         $validated = Validator::make($request->all(), [
             'insurance_subscription_public_id' => ['required', 'string', 'exists:insurance_subscriptions,public_id'],
             'claim_type' => ['required', 'string', 'max:64'],
-            'incident_date' => ['sometimes', 'nullable', 'date'],
+            'incident_date' => ['required', 'date'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'claimed_amount_minor' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'currency' => ['sometimes', 'string', 'size:3'],
@@ -190,6 +228,27 @@ final class InsuranceController extends BaseController
                     ->first();
                 if (! is_object($subscription)) {
                     throw new InvalidArgumentException('Insurance subscription is invalid.');
+                }
+                if ($this->rowString($subscription, 'status') !== 'active') {
+                    throw new InvalidArgumentException('Claims can only be opened on active insurance subscriptions.');
+                }
+
+                $incidentDate = (string) $validated['incident_date'];
+                $startsOn = $this->rowNullableString($subscription, 'starts_on');
+                $endsOn = $this->rowNullableString($subscription, 'ends_on');
+                if ($startsOn !== null && $incidentDate < $startsOn) {
+                    throw new InvalidArgumentException('Claim incident date is before coverage starts.');
+                }
+                if ($endsOn !== null && $incidentDate > $endsOn) {
+                    throw new InvalidArgumentException('Claim incident date is after coverage ends.');
+                }
+                $cancellationBlocksClaim = DB::table('insurance_cancellations')
+                    ->where('insurance_subscription_id', $this->rowInt($subscription, 'id'))
+                    ->where('status', 'approved')
+                    ->whereDate('effective_on', '<=', $incidentDate)
+                    ->exists();
+                if ($cancellationBlocksClaim) {
+                    throw new InvalidArgumentException('Claim incident date is on or after the approved cancellation effective date.');
                 }
 
                 $currency = $this->stringValue($validated['currency'] ?? $this->rowString($subscription, 'currency'), 'XAF');
@@ -204,7 +263,7 @@ final class InsuranceController extends BaseController
                     'insurance_subscription_id' => $this->rowInt($subscription, 'id'),
                     'claim_number' => 'CLM-'.Str::ulid(),
                     'claim_type' => (string) $validated['claim_type'],
-                    'incident_date' => $this->nullableString($validated['incident_date'] ?? null),
+                    'incident_date' => $incidentDate,
                     'description' => $this->nullableString($validated['description'] ?? null),
                     'status' => 'pending',
                     'claimed_amount_minor' => $this->nullableInt($validated['claimed_amount_minor'] ?? null),
@@ -236,8 +295,8 @@ final class InsuranceController extends BaseController
 
     public function storeSubscription(Request $request): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.create');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -258,9 +317,18 @@ final class InsuranceController extends BaseController
             $subscription = DB::transaction(function () use ($validated): object {
                 $agency = DB::table('agencies')->where('public_id', (string) $validated['agency_public_id'])->first(['id']);
                 $client = DB::table('clients')->where('public_id', (string) $validated['client_public_id'])->first(['id', 'agency_id']);
-                $product = DB::table('insurance_products')->where('public_id', (string) $validated['insurance_product_public_id'])->where('status', 'active')->first(['id', 'currency']);
+                $product = DB::table('insurance_products')
+                    ->where('public_id', (string) $validated['insurance_product_public_id'])
+                    ->where('status', 'active')
+                    ->first(['id', 'currency', 'approval_status', 'new_business_enabled']);
                 if (! is_object($agency) || ! is_object($client) || ! is_object($product)) {
                     throw new InvalidArgumentException('Client, agency, and active insurance product are required.');
+                }
+                if ($this->rowString($product, 'approval_status') !== 'approved') {
+                    throw new InvalidArgumentException('Insurance product must pass readiness activation before subscription.');
+                }
+                if (! (bool) (((array) $product)['new_business_enabled'] ?? true)) {
+                    throw new InvalidArgumentException('Insurance product is closed to new subscriptions.');
                 }
                 if ($this->rowInt($client, 'agency_id') !== $this->rowInt($agency, 'id')) {
                     throw new InvalidArgumentException('Insurance subscription client must belong to the selected agency.');
@@ -308,8 +376,8 @@ final class InsuranceController extends BaseController
 
     public function storePremiumAssessment(Request $request, string $subscriptionPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.premiums.manage');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -346,6 +414,8 @@ final class InsuranceController extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'insurance_subscription_id' => $this->rowInt($subscription, 'id'),
                     'loan_id' => null,
+                    'rule_version_id' => $this->rowNullableInt($subscription, 'rule_version_id'),
+                    'period_key' => null,
                     'base_amount_minor' => $this->nullableInt($validated['base_amount_minor'] ?? null),
                     'rate' => $this->nullableString($validated['rate'] ?? null),
                     'premium_amount_minor' => (int) $validated['premium_amount_minor'],
@@ -383,8 +453,8 @@ final class InsuranceController extends BaseController
 
     public function collectPremiumFromAccount(Request $request, string $assessmentPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.premiums.collect');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -420,6 +490,7 @@ final class InsuranceController extends BaseController
                 if (! is_object($subscription)) {
                     throw new InvalidArgumentException('Insurance subscription is invalid.');
                 }
+                $product = $this->insuranceAccounting->productForPremiumCollection($subscription);
 
                 $currency = $this->rowString($assessment, 'currency');
                 $customerAccountPublicId = $this->stringValue($validated['customer_account_public_id'] ?? null, '');
@@ -451,11 +522,6 @@ final class InsuranceController extends BaseController
                     || $customerLedger->agency_id !== $customerAccount->agency_id) {
                     throw new InvalidArgumentException('Collection account ledger must be active and agency-scoped.');
                 }
-
-                $creditLedgerId = $this->insurancePremiumCollectionCreditLedgerId(
-                    $this->rowInt($subscription, 'agency_id'),
-                    $currency,
-                );
 
                 $availableBalance = $this->balanceCalculator->availableForCustomerAccount($customerAccount, $currency)['available_balance_minor'];
                 if ($amountMinor > $availableBalance) {
@@ -501,20 +567,16 @@ final class InsuranceController extends BaseController
                     'line_memo' => 'Insurance premium debited from customer account',
                 ]);
 
-                JournalLine::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'agency_id' => $this->rowInt($subscription, 'agency_id'),
-                    'journal_entry_id' => $journalEntry->id,
-                    'ledger_account_id' => $creditLedgerId,
-                    'customer_account_id' => null,
-                    'loan_id' => null,
-                    'debit_minor' => 0,
-                    'credit_minor' => $amountMinor,
-                    'currency' => $currency,
-                    'line_memo' => 'Insurance premium collected',
-                ]);
+                $premiumSplits = $this->insuranceAccounting->createPremiumSplitCreditLines(
+                    $journalEntry,
+                    $assessment,
+                    $subscription,
+                    $product,
+                    $amountMinor,
+                    $currency,
+                );
 
-                $this->postSystemJournal($journalEntry, $actor);
+                $this->insuranceAccounting->postSystemJournal($journalEntry, $actor);
 
                 $paymentId = DB::table('insurance_premium_payments')->insertGetId([
                     'public_id' => (string) Str::ulid(),
@@ -530,6 +592,7 @@ final class InsuranceController extends BaseController
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                $this->insuranceAccounting->storePremiumPaymentSplits($paymentId, $premiumSplits);
 
                 DB::table('insurance_premium_assessments')
                     ->where('id', $this->rowInt($assessment, 'id'))
@@ -570,8 +633,8 @@ final class InsuranceController extends BaseController
 
     public function collectPremiumCash(Request $request, string $assessmentPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.premiums.collect');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -607,6 +670,7 @@ final class InsuranceController extends BaseController
                 if (! is_object($subscription)) {
                     throw new InvalidArgumentException('Insurance subscription is invalid.');
                 }
+                $product = $this->insuranceAccounting->productForPremiumCollection($subscription);
 
                 $currency = $this->rowString($assessment, 'currency');
                 if ($currency !== 'XAF') {
@@ -652,8 +716,6 @@ final class InsuranceController extends BaseController
                     throw new InvalidArgumentException('Till cash ledger account must be active and belong to the subscription agency.');
                 }
 
-                $creditLedgerId = $this->insurancePremiumCollectionCreditLedgerId($agencyId, $currency);
-
                 $paidDate = is_string($validated['paid_on'] ?? null) && $validated['paid_on'] !== ''
                     ? $validated['paid_on']
                     : now()->toDateString();
@@ -693,18 +755,14 @@ final class InsuranceController extends BaseController
                     'line_memo' => 'Insurance premium received in teller till',
                 ]);
 
-                JournalLine::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'agency_id' => $agencyId,
-                    'journal_entry_id' => $journalEntry->id,
-                    'ledger_account_id' => $creditLedgerId,
-                    'customer_account_id' => null,
-                    'loan_id' => null,
-                    'debit_minor' => 0,
-                    'credit_minor' => $amountMinor,
-                    'currency' => $currency,
-                    'line_memo' => 'Insurance premium collected (cash)',
-                ]);
+                $premiumSplits = $this->insuranceAccounting->createPremiumSplitCreditLines(
+                    $journalEntry,
+                    $assessment,
+                    $subscription,
+                    $product,
+                    $amountMinor,
+                    $currency,
+                );
 
                 $tellerReference = 'IPC-CASH-'.Str::upper(Str::random(8));
                 $tellerTransaction = TellerTransaction::query()->create([
@@ -730,7 +788,7 @@ final class InsuranceController extends BaseController
                         : 'Insurance premium cash collection',
                 ]);
 
-                $this->postSystemJournal($journalEntry, $actor);
+                $this->insuranceAccounting->postSystemJournal($journalEntry, $actor);
 
                 $paymentId = DB::table('insurance_premium_payments')->insertGetId([
                     'public_id' => (string) Str::ulid(),
@@ -746,6 +804,7 @@ final class InsuranceController extends BaseController
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                $this->insuranceAccounting->storePremiumPaymentSplits($paymentId, $premiumSplits);
 
                 DB::table('insurance_premium_assessments')
                     ->where('id', $this->rowInt($assessment, 'id'))
@@ -789,8 +848,8 @@ final class InsuranceController extends BaseController
 
     public function attachClaimDocument(Request $request, string $claimPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.claims.intake');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -900,8 +959,8 @@ final class InsuranceController extends BaseController
 
     public function postClaimSettlement(Request $request, string $claimPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.claims.settle');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -949,8 +1008,9 @@ final class InsuranceController extends BaseController
                 }
 
                 $rules = $this->productRules($product);
-                $businessModel = $this->stringValue($rules['business_model'] ?? null, '');
-                if (! in_array($businessModel, ['broker', 'collector', 'risk_carrier'], true)) {
+                $businessModel = $this->rowNullableString($product, 'business_model')
+                    ?? $this->stringValue($rules['business_model'] ?? null, '');
+                if (! in_array($businessModel, ['broker', 'collector', 'premium_collector', 'distributor', 'risk_carrier'], true)) {
                     throw new InvalidArgumentException('Insurance product business model must be configured before settlement posting.');
                 }
 
@@ -1011,7 +1071,7 @@ final class InsuranceController extends BaseController
                     'line_memo' => 'Insurance claim settlement credit ('.$businessModel.')',
                 ]);
 
-                $this->postSystemJournal($journalEntry, $actor);
+                $this->insuranceAccounting->postSystemJournal($journalEntry, $actor);
 
                 DB::table('insurance_claims')
                     ->where('id', $this->rowInt($claim, 'id'))
@@ -1313,19 +1373,13 @@ final class InsuranceController extends BaseController
      */
     private function renderReport(Request $request, string $reportKey, callable $compute): JsonResponse
     {
-        $actor = $request->user();
+        $actor = $this->insuranceActor($request, 'insurance.reports.view');
         if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
-        $isPlatformAdmin = $actor->hasRole('platform-admin');
-        $isAgencyManager = $actor->hasRole('agency-manager');
-        if (! $isPlatformAdmin && ! $isAgencyManager) {
-            return $this->respondForbidden();
-        }
-
         $scopedAgencyId = null;
-        if (! $isPlatformAdmin) {
+        if (! $actor->hasRole('platform-admin')) {
             $scopedAgencyId = $this->staffAgencyScope->currentAgencyId($actor);
             if ($scopedAgencyId === null) {
                 return $this->respondForbidden('No active agency assignment for this user.');
@@ -1448,10 +1502,16 @@ final class InsuranceController extends BaseController
         $operationCode = 'insurance_claim_settlement';
         $mapping = DB::table('operation_account_mappings')
             ->join('operation_codes', 'operation_codes.id', '=', 'operation_account_mappings.operation_code_id')
+            ->join('ledger_accounts as debit_ledgers', 'debit_ledgers.id', '=', 'operation_account_mappings.debit_ledger_account_id')
+            ->join('ledger_accounts as credit_ledgers', 'credit_ledgers.id', '=', 'operation_account_mappings.credit_ledger_account_id')
             ->where('operation_codes.code', $operationCode)
             ->where('operation_codes.module', 'insurance')
             ->where('operation_codes.status', 'active')
             ->where('operation_account_mappings.status', 'active')
+            ->where('debit_ledgers.agency_id', $agencyId)
+            ->where('debit_ledgers.status', LedgerAccount::STATUS_ACTIVE)
+            ->where('credit_ledgers.agency_id', $agencyId)
+            ->where('credit_ledgers.status', LedgerAccount::STATUS_ACTIVE)
             ->where(function ($query) use ($currency): void {
                 $query->whereNull('operation_account_mappings.currency')
                     ->orWhere('operation_account_mappings.currency', $currency);
@@ -1463,20 +1523,6 @@ final class InsuranceController extends BaseController
         $creditId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
         if (! is_int($debitId) || ! is_int($creditId)) {
             throw new InvalidArgumentException('Active debit and credit ledger mappings are required for '.$operationCode.'.');
-        }
-
-        $debit = DB::table('ledger_accounts')
-            ->where('id', $debitId)
-            ->where('agency_id', $agencyId)
-            ->where('status', LedgerAccount::STATUS_ACTIVE)
-            ->first(['id']);
-        $credit = DB::table('ledger_accounts')
-            ->where('id', $creditId)
-            ->where('agency_id', $agencyId)
-            ->where('status', LedgerAccount::STATUS_ACTIVE)
-            ->first(['id']);
-        if (! is_object($debit) || ! is_object($credit)) {
-            throw new InvalidArgumentException('Settlement ledger accounts must be active and belong to the claim agency.');
         }
 
         return [$debitId, $creditId];
@@ -1513,8 +1559,8 @@ final class InsuranceController extends BaseController
 
     public function requestClaimDecision(Request $request, string $claimPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.claims.review');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -1599,8 +1645,8 @@ final class InsuranceController extends BaseController
 
     public function reviewClaimDecision(Request $request, string $decisionPublicId): JsonResponse
     {
-        $actor = $request->user();
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
+        $actor = $this->insuranceActor($request, 'insurance.claims.review');
+        if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
@@ -1652,6 +1698,13 @@ final class InsuranceController extends BaseController
 
                 if ($reviewDecision === 'approve') {
                     $decisionAction = $this->rowString($decision, 'decision');
+                    if (in_array($decisionAction, ['approve', 'settle'], true)) {
+                        $this->assertClaimEvidenceComplete($claim);
+                    }
+                    if ($decisionAction === 'settle') {
+                        $this->assertClaimSettlementAmountAllowed($claim, $decision);
+                    }
+
                     $claimStatus = match ($decisionAction) {
                         'approve' => 'approved',
                         'reject' => 'rejected',
@@ -1694,10 +1747,12 @@ final class InsuranceController extends BaseController
             'claim_public_id' => $this->rowString($result['claim'], 'public_id'),
             'claim_status' => $this->rowString($result['claim'], 'status'),
         ], request: $request);
+        $notificationRows = $this->clientAlerts->produceInsuranceClaimDecisionAlerts(now());
 
         return $this->respondSuccess([
             'decision' => $this->claimDecisionPayload($result['decision'], $this->rowString($result['claim'], 'public_id')),
             'claim' => $this->claimPayload($result['claim']),
+            'notification_outbox_rows' => $notificationRows,
         ], 'Insurance claim decision reviewed successfully');
     }
 
@@ -1800,6 +1855,10 @@ final class InsuranceController extends BaseController
             'currency' => $this->rowString($product, 'currency'),
             'payment_mode' => $this->rowNullableString($product, 'payment_mode'),
             'is_refundable' => (bool) (((array) $product)['is_refundable'] ?? false),
+            'approval_status' => $this->rowNullableString($product, 'approval_status'),
+            'business_model' => $this->rowNullableString($product, 'business_model'),
+            'report_category' => $this->rowNullableString($product, 'report_category'),
+            'new_business_enabled' => (bool) (((array) $product)['new_business_enabled'] ?? true),
             'status' => $this->rowString($product, 'status'),
         ];
     }
@@ -1820,50 +1879,15 @@ final class InsuranceController extends BaseController
         ];
     }
 
-    private function insurancePremiumCollectionCreditLedgerId(int $agencyId, string $currency): int
+    private function journalEntryPublicId(?int $journalEntryId): ?string
     {
-        $operationCode = 'insurance_premium_collection';
-        $mapping = DB::table('operation_account_mappings')
-            ->join('operation_codes', 'operation_codes.id', '=', 'operation_account_mappings.operation_code_id')
-            ->join('ledger_accounts', 'ledger_accounts.id', '=', 'operation_account_mappings.credit_ledger_account_id')
-            ->where('operation_codes.code', $operationCode)
-            ->where('operation_codes.module', 'insurance')
-            ->where('operation_codes.status', 'active')
-            ->where('operation_account_mappings.status', 'active')
-            ->where(function ($query) use ($currency): void {
-                $query->whereNull('operation_account_mappings.currency')
-                    ->orWhere('operation_account_mappings.currency', $currency);
-            })
-            ->where('ledger_accounts.agency_id', $agencyId)
-            ->where('ledger_accounts.status', LedgerAccount::STATUS_ACTIVE)
-            ->orderByRaw('operation_account_mappings.currency IS NULL')
-            ->first(['operation_account_mappings.credit_ledger_account_id']);
-
-        $ledgerAccountId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
-        if (! is_int($ledgerAccountId)) {
-            throw new InvalidArgumentException('Active credit ledger mapping is required for '.$operationCode.'.');
+        if ($journalEntryId === null) {
+            return null;
         }
 
-        return $ledgerAccountId;
-    }
+        $publicId = DB::table('journal_entries')->where('id', $journalEntryId)->value('public_id');
 
-    private function postSystemJournal(JournalEntry $journalEntry, User $actor): void
-    {
-        $journalEntry->forceFill([
-            'status' => JournalEntry::STATUS_SUBMITTED,
-            'submitted_at' => now(),
-            'submitted_by_user_id' => $actor->id,
-        ])->save();
-        $journalEntry->forceFill([
-            'status' => JournalEntry::STATUS_APPROVED,
-            'reviewed_at' => now(),
-            'reviewed_by_user_id' => $actor->id,
-        ])->save();
-        $journalEntry->forceFill([
-            'status' => JournalEntry::STATUS_POSTED,
-            'posted_at' => now(),
-            'posted_by_user_id' => $actor->id,
-        ])->save();
+        return is_string($publicId) ? $publicId : null;
     }
 
     /**
@@ -1896,6 +1920,98 @@ final class InsuranceController extends BaseController
             'due_on' => $this->rowNullableString($assessment, 'due_on'),
             'status' => $this->rowString($assessment, 'status'),
         ];
+    }
+
+    private function calculatePremiumMinor(object $ruleVersion, object $subscription): int
+    {
+        $premiumMinor = $this->rowNullableInt($ruleVersion, 'fixed_premium_minor');
+        if ($premiumMinor === null) {
+            $coverageMinor = $this->rowNullableInt($subscription, 'coverage_amount_minor');
+            $rate = $this->rowNullableString($ruleVersion, 'rate');
+            if ($coverageMinor === null || $rate === null) {
+                throw new InvalidArgumentException('Percentage premium calculation requires coverage amount and rate.');
+            }
+            $premiumMinor = (int) round($coverageMinor * ((float) $rate / 100));
+        }
+
+        $floorMinor = $this->rowNullableInt($ruleVersion, 'floor_minor');
+        if ($floorMinor !== null && $premiumMinor < $floorMinor) {
+            $premiumMinor = $floorMinor;
+        }
+
+        $capMinor = $this->rowNullableInt($ruleVersion, 'cap_minor');
+        if ($capMinor !== null && $premiumMinor > $capMinor) {
+            $premiumMinor = $capMinor;
+        }
+
+        if ($premiumMinor <= 0) {
+            throw new InvalidArgumentException('Premium amount must be positive.');
+        }
+
+        return $premiumMinor;
+    }
+
+    private function assertClaimEvidenceComplete(object $claim): void
+    {
+        $subscription = DB::table('insurance_subscriptions')
+            ->where('id', $this->rowInt($claim, 'insurance_subscription_id'))
+            ->first();
+        if (! is_object($subscription)) {
+            throw new InvalidArgumentException('Insurance subscription is invalid.');
+        }
+
+        $requiredTypes = DB::table('insurance_claim_evidence_configs')
+            ->where('insurance_product_id', $this->rowInt($subscription, 'insurance_product_id'))
+            ->where('claim_type', $this->rowString($claim, 'claim_type'))
+            ->where('is_required', true)
+            ->get(['document_type'])
+            ->map(fn (object $row): string => $this->rowString($row, 'document_type'))
+            ->all();
+
+        if ($requiredTypes === []) {
+            return;
+        }
+
+        $attachedTypes = DB::table('insurance_claim_documents')
+            ->where('insurance_claim_id', $this->rowInt($claim, 'id'))
+            ->whereIn('document_type', $requiredTypes)
+            ->get(['document_type'])
+            ->map(fn (object $row): string => $this->rowString($row, 'document_type'))
+            ->all();
+
+        $missingTypes = array_values(array_diff($requiredTypes, $attachedTypes));
+        if ($missingTypes !== []) {
+            throw new InvalidArgumentException('Required claim evidence is missing: '.implode(', ', $missingTypes).'.');
+        }
+
+        DB::table('insurance_claims')
+            ->where('id', $this->rowInt($claim, 'id'))
+            ->update(['evidence_complete_at' => now(), 'updated_at' => now()]);
+    }
+
+    private function assertClaimSettlementAmountAllowed(object $claim, object $decision): void
+    {
+        $indemnifiedMinor = $this->rowNullableInt($decision, 'indemnified_amount_minor');
+        if ($indemnifiedMinor === null || $indemnifiedMinor <= 0) {
+            throw new InvalidArgumentException('Settlement decision requires a positive indemnified amount.');
+        }
+
+        $claimedMinor = $this->rowNullableInt($claim, 'claimed_amount_minor');
+        if ($claimedMinor !== null && $indemnifiedMinor > $claimedMinor) {
+            throw new InvalidArgumentException('Settlement amount cannot exceed the claimed amount.');
+        }
+
+        $subscription = DB::table('insurance_subscriptions')
+            ->where('id', $this->rowInt($claim, 'insurance_subscription_id'))
+            ->first();
+        if (! is_object($subscription)) {
+            throw new InvalidArgumentException('Insurance subscription is invalid.');
+        }
+
+        $coverageMinor = $this->rowNullableInt($subscription, 'coverage_amount_minor');
+        if ($coverageMinor !== null && $indemnifiedMinor > $coverageMinor) {
+            throw new InvalidArgumentException('Settlement amount cannot exceed configured coverage.');
+        }
     }
 
     /**
@@ -1933,6 +2049,1656 @@ final class InsuranceController extends BaseController
             'indemnified_amount_minor' => $this->rowNullableInt($claim, 'indemnified_amount_minor'),
             'currency' => $this->rowString($claim, 'currency'),
             'settled_at' => $this->rowNullableString($claim, 'settled_at'),
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // A8: Insurance Product Rule Versioning
+    // -------------------------------------------------------------------------
+
+    public function storeProductRuleVersion(Request $request, string $productPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.products.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $allowedProductTypes = [
+            'borrower', 'health', 'life', 'savings', 'agricultural', 'home',
+            'professional_commercial', 'automobile', 'motorcycle', 'school',
+            'travel', 'funeral', 'mobile_equipment', 'loan_insurance',
+        ];
+
+        $validated = Validator::make($request->all(), [
+            'calculation_type' => ['required', 'string', Rule::in(['percentage', 'flat_rate', 'bracketed'])],
+            'base_description' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'rate' => ['required_without:fixed_premium_minor', 'nullable', 'numeric', 'min:0'],
+            'fixed_premium_minor' => ['required_without:rate', 'nullable', 'integer', 'min:1'],
+            'cap_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'floor_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'frequency' => ['sometimes', Rule::in(['one_time', 'monthly', 'quarterly', 'annual'])],
+            'source_reference' => ['sometimes', 'nullable', 'string', 'max:512'],
+            'effective_from' => ['required', 'date'],
+            'effective_until' => ['sometimes', 'nullable', 'date', 'after:effective_from'],
+            'splits' => ['sometimes', 'array'],
+            'splits.*.split_type' => ['required_with:splits', 'string', Rule::in(['insurer_payable', 'commission_income', 'tax_fee', 'institution_income'])],
+            'splits.*.calculation_type' => ['required_with:splits', Rule::in(['percentage', 'fixed'])],
+            'splits.*.rate' => ['nullable', 'numeric', 'min:0'],
+            'splits.*.fixed_minor' => ['nullable', 'integer', 'min:0'],
+            'splits.*.ledger_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
+        ])->validate();
+
+        try {
+            $version = DB::transaction(function () use ($actor, $productPublicId, $validated, $allowedProductTypes): object {
+                $product = DB::table('insurance_products')
+                    ->where('public_id', $productPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($product)) {
+                    throw new InvalidArgumentException('Insurance product not found.');
+                }
+                if (! in_array($this->rowString($product, 'product_type'), $allowedProductTypes, true)) {
+                    throw new InvalidArgumentException('Product type must be one of the approved product families.');
+                }
+
+                $effectiveFrom = (string) $validated['effective_from'];
+                $effectiveUntil = $this->nullableString($validated['effective_until'] ?? null);
+
+                $maxVersion = DB::table('insurance_product_rule_versions')
+                    ->where('insurance_product_id', $this->rowInt($product, 'id'))
+                    ->max('version_number');
+                $versionNumber = (is_numeric($maxVersion) ? (int) $maxVersion : 0) + 1;
+
+                $id = DB::table('insurance_product_rule_versions')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'insurance_product_id' => $this->rowInt($product, 'id'),
+                    'version_number' => $versionNumber,
+                    'calculation_type' => (string) $validated['calculation_type'],
+                    'base_description' => $this->nullableString($validated['base_description'] ?? null),
+                    'rate' => $this->nullableString($validated['rate'] ?? null),
+                    'fixed_premium_minor' => $this->nullableInt($validated['fixed_premium_minor'] ?? null),
+                    'cap_minor' => $this->nullableInt($validated['cap_minor'] ?? null),
+                    'floor_minor' => $this->nullableInt($validated['floor_minor'] ?? null),
+                    'frequency' => $this->stringValue($validated['frequency'] ?? 'one_time', 'one_time'),
+                    'source_reference' => $this->nullableString($validated['source_reference'] ?? null),
+                    'effective_from' => $effectiveFrom,
+                    'effective_until' => $effectiveUntil,
+                    'status' => 'draft',
+                    'created_by_user_id' => $actor->id,
+                    'approved_by_user_id' => null,
+                    'approved_at' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                foreach ($this->ruleVersionSplits($validated['splits'] ?? []) as $split) {
+                    $ledgerId = null;
+                    if ($split['ledger_account_public_id'] !== null) {
+                        $ledger = DB::table('ledger_accounts')
+                            ->where('public_id', $split['ledger_account_public_id'])
+                            ->where('status', LedgerAccount::STATUS_ACTIVE)
+                            ->first(['id']);
+                        if (! is_object($ledger)) {
+                            throw new InvalidArgumentException('Split ledger account must be active.');
+                        }
+                        $ledgerId = $this->rowInt($ledger, 'id');
+                    }
+
+                    DB::table('insurance_product_rule_version_splits')->insert([
+                        'insurance_product_rule_version_id' => $id,
+                        'split_type' => $split['split_type'],
+                        'calculation_type' => $split['calculation_type'],
+                        'rate' => $split['rate'],
+                        'fixed_minor' => $split['fixed_minor'],
+                        'ledger_account_id' => $ledgerId,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                $row = DB::table('insurance_product_rule_versions')->where('id', $id)->first();
+                if (! is_object($row)) {
+                    throw new InvalidArgumentException('Rule version could not be reloaded.');
+                }
+
+                return $row;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['rule_version' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.product.rule_version.created', actor: $actor, properties: [
+            'product_public_id' => $productPublicId,
+            'version_public_id' => $this->rowString($version, 'public_id'),
+        ], request: $request);
+
+        return $this->respondCreated($this->ruleVersionPayload($version), 'Insurance product rule version created successfully');
+    }
+
+    public function approveProductRuleVersion(Request $request, string $versionPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.products.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        try {
+            $version = DB::transaction(function () use ($actor, $versionPublicId): object {
+                $version = DB::table('insurance_product_rule_versions')
+                    ->where('public_id', $versionPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($version)) {
+                    throw new InvalidArgumentException('Rule version not found.');
+                }
+                if ($this->rowString($version, 'status') !== 'draft') {
+                    throw new InvalidArgumentException('Only draft rule versions can be approved.');
+                }
+                if ($this->rowInt($version, 'created_by_user_id') === $actor->id) {
+                    throw new InvalidArgumentException('The creator cannot approve their own rule version.');
+                }
+
+                $productId = $this->rowInt($version, 'insurance_product_id');
+                $effectiveFrom = $this->rowString($version, 'effective_from');
+                $effectiveUntil = $this->rowNullableString($version, 'effective_until');
+
+                $overlapQuery2 = DB::table('insurance_product_rule_versions')
+                    ->where('insurance_product_id', $productId)
+                    ->where('status', 'approved')
+                    ->where('id', '!=', $this->rowInt($version, 'id'))
+                    ->where(function ($q) use ($effectiveFrom): void {
+                        $q->whereNull('effective_until')
+                            ->orWhere('effective_until', '>=', $effectiveFrom);
+                    });
+                if ($effectiveUntil !== null) {
+                    $overlapQuery2->where('effective_from', '<=', $effectiveUntil);
+                }
+                if ($overlapQuery2->exists()) {
+                    throw new InvalidArgumentException('Approving this version would create overlapping active rule versions.');
+                }
+
+                DB::table('insurance_product_rule_versions')
+                    ->where('id', $this->rowInt($version, 'id'))
+                    ->update([
+                        'status' => 'approved',
+                        'approved_by_user_id' => $actor->id,
+                        'approved_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                $updated = DB::table('insurance_product_rule_versions')
+                    ->where('id', $this->rowInt($version, 'id'))
+                    ->first();
+                if (! is_object($updated)) {
+                    throw new InvalidArgumentException('Rule version could not be reloaded after approval.');
+                }
+
+                return $updated;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['rule_version' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.product.rule_version.approved', actor: $actor, properties: [
+            'version_public_id' => $versionPublicId,
+        ], request: $request);
+
+        return $this->respondSuccess($this->ruleVersionPayload($version), 'Rule version approved successfully');
+    }
+
+    public function activateProduct(Request $request, string $productPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.products.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        try {
+            $product = DB::transaction(function () use ($productPublicId): object {
+                $product = DB::table('insurance_products')
+                    ->where('public_id', $productPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($product)) {
+                    throw new InvalidArgumentException('Insurance product not found.');
+                }
+                if ($this->rowString($product, 'approval_status') === 'approved') {
+                    throw new InvalidArgumentException('Product is already approved/active.');
+                }
+
+                $productId = $this->rowInt($product, 'id');
+                $failures = $this->productReadiness->activationFailures($product);
+
+                if ($failures !== []) {
+                    throw new InvalidArgumentException('Product readiness check failed: '.implode('; ', $failures).'.');
+                }
+
+                DB::table('insurance_products')
+                    ->where('id', $productId)
+                    ->update(['approval_status' => 'approved', 'updated_at' => now()]);
+
+                $updated = DB::table('insurance_products')->where('id', $productId)->first();
+                if (! is_object($updated)) {
+                    throw new InvalidArgumentException('Product could not be reloaded.');
+                }
+
+                return $updated;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['insurance_product' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.product.activated', actor: $actor, properties: [
+            'product_public_id' => $productPublicId,
+        ], request: $request);
+
+        return $this->respondSuccess($this->productPayload($product), 'Insurance product activated successfully');
+    }
+
+    public function storeClaimEvidenceConfig(Request $request, string $productPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.products.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'claim_type' => ['required', 'string', 'max:64'],
+            'document_type' => ['required', 'string', 'max:64'],
+            'is_required' => ['sometimes', 'boolean'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ])->validate();
+
+        try {
+            $config = DB::transaction(function () use ($productPublicId, $validated): object {
+                $product = DB::table('insurance_products')->where('public_id', $productPublicId)->first(['id']);
+                if (! is_object($product)) {
+                    throw new InvalidArgumentException('Insurance product not found.');
+                }
+
+                $existing = DB::table('insurance_claim_evidence_configs')
+                    ->where('insurance_product_id', $this->rowInt($product, 'id'))
+                    ->where('claim_type', (string) $validated['claim_type'])
+                    ->where('document_type', (string) $validated['document_type'])
+                    ->first(['id', 'public_id']);
+
+                if (is_object($existing)) {
+                    DB::table('insurance_claim_evidence_configs')
+                        ->where('id', $this->rowInt($existing, 'id'))
+                        ->update([
+                            'is_required' => (bool) ($validated['is_required'] ?? true),
+                            'description' => $this->nullableString($validated['description'] ?? null),
+                            'updated_at' => now(),
+                        ]);
+
+                    $updated = DB::table('insurance_claim_evidence_configs')
+                        ->where('id', $this->rowInt($existing, 'id'))
+                        ->first();
+
+                    return is_object($updated) ? $updated : $existing;
+                }
+
+                $id = DB::table('insurance_claim_evidence_configs')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'insurance_product_id' => $this->rowInt($product, 'id'),
+                    'claim_type' => (string) $validated['claim_type'],
+                    'document_type' => (string) $validated['document_type'],
+                    'is_required' => (bool) ($validated['is_required'] ?? true),
+                    'description' => $this->nullableString($validated['description'] ?? null),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $row = DB::table('insurance_claim_evidence_configs')->where('id', $id)->first();
+                if (! is_object($row)) {
+                    throw new InvalidArgumentException('Evidence config could not be reloaded.');
+                }
+
+                return $row;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['evidence_config' => [$exception->getMessage()]]);
+        }
+
+        return $this->respondCreated([
+            'public_id' => $this->rowString($config, 'public_id'),
+            'claim_type' => $this->rowString($config, 'claim_type'),
+            'document_type' => $this->rowString($config, 'document_type'),
+            'is_required' => (bool) (((array) $config)['is_required'] ?? true),
+        ], 'Evidence requirement configured successfully');
+    }
+
+    // -------------------------------------------------------------------------
+    // A9: Recurring Premium Schedules & Renewal Lifecycle
+    // -------------------------------------------------------------------------
+
+    public function activateSubscription(Request $request, string $subscriptionPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'rule_version_public_id' => ['required', 'string', 'exists:insurance_product_rule_versions,public_id'],
+        ])->validate();
+
+        try {
+            $result = DB::transaction(function () use ($subscriptionPublicId, $validated): array {
+                $subscription = DB::table('insurance_subscriptions')
+                    ->where('public_id', $subscriptionPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($subscription)) {
+                    throw new InvalidArgumentException('Insurance subscription not found.');
+                }
+                if ($this->rowString($subscription, 'lifecycle_status') !== 'active') {
+                    throw new InvalidArgumentException('Subscription cannot be activated in its current lifecycle status.');
+                }
+                if ($this->rowNullableInt($subscription, 'rule_version_id') !== null) {
+                    throw new InvalidArgumentException('Subscription already has an active rule version assigned.');
+                }
+
+                $ruleVersion = DB::table('insurance_product_rule_versions')
+                    ->where('public_id', (string) $validated['rule_version_public_id'])
+                    ->first();
+                if (! is_object($ruleVersion) || $this->rowString($ruleVersion, 'status') !== 'approved') {
+                    throw new InvalidArgumentException('Rule version must be approved before use.');
+                }
+
+                $productId = DB::table('insurance_subscriptions')
+                    ->where('id', $this->rowInt($subscription, 'id'))
+                    ->value('insurance_product_id');
+                if (! is_numeric($productId) || (int) $productId !== $this->rowInt($ruleVersion, 'insurance_product_id')) {
+                    throw new InvalidArgumentException('Rule version does not belong to the subscription product.');
+                }
+
+                DB::table('insurance_subscriptions')
+                    ->where('id', $this->rowInt($subscription, 'id'))
+                    ->update([
+                        'rule_version_id' => $this->rowInt($ruleVersion, 'id'),
+                        'updated_at' => now(),
+                    ]);
+
+                $frequency = $this->rowString($ruleVersion, 'frequency');
+                $startsOn = $this->rowNullableString($subscription, 'starts_on');
+                $periodKey = 'sub_'.$this->rowInt($subscription, 'id').'_p1';
+
+                $alreadyScheduled = DB::table('insurance_premium_schedules')
+                    ->where('idempotency_key', $periodKey)
+                    ->exists();
+
+                $schedule = null;
+                if (! $alreadyScheduled && $startsOn !== null && $frequency !== 'one_time') {
+                    $dueOn = $this->computeNextDueDate($startsOn, $frequency, 0);
+                    $schId = DB::table('insurance_premium_schedules')->insertGetId([
+                        'public_id' => (string) Str::ulid(),
+                        'insurance_subscription_id' => $this->rowInt($subscription, 'id'),
+                        'rule_version_id' => $this->rowInt($ruleVersion, 'id'),
+                        'period_number' => 1,
+                        'due_on' => $dueOn,
+                        'idempotency_key' => $periodKey,
+                        'insurance_premium_assessment_id' => null,
+                        'status' => 'scheduled',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    $schedule = DB::table('insurance_premium_schedules')->where('id', $schId)->first();
+                }
+
+                $updatedSubscription = DB::table('insurance_subscriptions')
+                    ->where('id', $this->rowInt($subscription, 'id'))
+                    ->first();
+
+                return [
+                    'subscription' => $updatedSubscription,
+                    'first_schedule' => $schedule,
+                ];
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['insurance_subscription' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.subscription.activated', actor: $actor, properties: [
+            'subscription_public_id' => $subscriptionPublicId,
+        ], request: $request);
+
+        $subscriptionRow = $result['subscription'];
+        if (! is_object($subscriptionRow)) {
+            return $this->respondUnprocessable(errors: ['insurance_subscription' => ['Subscription could not be reloaded.']]);
+        }
+        $payload = ['subscription' => $this->subscriptionPayload($subscriptionRow)];
+        if ($result['first_schedule'] !== null) {
+            $schedule = $result['first_schedule'];
+            $payload['first_schedule'] = [
+                'public_id' => $this->rowString($schedule, 'public_id'),
+                'period_number' => $this->rowInt($schedule, 'period_number'),
+                'due_on' => $this->rowString($schedule, 'due_on'),
+                'status' => $this->rowString($schedule, 'status'),
+            ];
+        }
+
+        return $this->respondSuccess($payload, 'Subscription activated successfully');
+    }
+
+    public function generatePremiumBatch(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.premiums.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'due_before' => ['required', 'date'],
+        ])->validate();
+
+        $dueBefore = (string) $validated['due_before'];
+
+        $generated = 0;
+        $skipped = 0;
+
+        $schedules = DB::table('insurance_premium_schedules')
+            ->whereIn('status', ['scheduled', 'assessed'])
+            ->where('due_on', '<=', $dueBefore)
+            ->get();
+
+        foreach ($schedules as $schedule) {
+            $alreadyAssessed = $this->rowNullableInt($schedule, 'insurance_premium_assessment_id') !== null
+                || DB::table('insurance_premium_assessments')
+                ->where('period_key', $this->rowString($schedule, 'idempotency_key'))
+                ->exists();
+
+            if ($alreadyAssessed) {
+                $skipped++;
+
+                continue;
+            }
+
+            $subscription = DB::table('insurance_subscriptions')
+                ->where('id', $this->rowInt($schedule, 'insurance_subscription_id'))
+                ->first();
+            if (! is_object($subscription) || $this->rowString($subscription, 'status') !== 'active') {
+                $skipped++;
+
+                continue;
+            }
+
+            $ruleVersion = DB::table('insurance_product_rule_versions')
+                ->where('id', $this->rowInt($schedule, 'rule_version_id'))
+                ->first();
+            if (! is_object($ruleVersion)) {
+                $skipped++;
+
+                continue;
+            }
+
+            $premiumMinor = $this->calculatePremiumMinor($ruleVersion, $subscription);
+
+            DB::transaction(function () use ($schedule, $subscription, $ruleVersion, $premiumMinor): void {
+                $assessmentId = DB::table('insurance_premium_assessments')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'insurance_subscription_id' => $this->rowInt($subscription, 'id'),
+                    'loan_id' => null,
+                    'rule_version_id' => $this->rowInt($ruleVersion, 'id'),
+                    'period_key' => $this->rowString($schedule, 'idempotency_key'),
+                    'base_amount_minor' => $this->rowNullableInt($subscription, 'coverage_amount_minor'),
+                    'rate' => $this->rowNullableString($ruleVersion, 'rate'),
+                    'premium_amount_minor' => $premiumMinor,
+                    'currency' => $this->rowString($subscription, 'currency'),
+                    'due_on' => $this->rowString($schedule, 'due_on'),
+                    'assessed_at' => now(),
+                    'status' => 'assessed',
+                    'journal_entry_id' => null,
+                    'metadata' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                DB::table('insurance_premium_schedules')
+                    ->where('id', $this->rowInt($schedule, 'id'))
+                    ->update([
+                        'insurance_premium_assessment_id' => $assessmentId,
+                        'status' => 'assessed',
+                        'updated_at' => now(),
+                    ]);
+            });
+
+            $generated++;
+        }
+
+        return $this->respondSuccess([
+            'generated' => $generated,
+            'skipped' => $skipped,
+        ], 'Premium batch generation completed');
+    }
+
+    public function renewSubscription(Request $request, string $subscriptionPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'starts_on' => ['required', 'date'],
+            'ends_on' => ['sometimes', 'nullable', 'date', 'after:starts_on'],
+            'coverage_amount_minor' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'rule_version_public_id' => ['required', 'string', 'exists:insurance_product_rule_versions,public_id'],
+        ])->validate();
+
+        try {
+            $newSubscription = DB::transaction(function () use ($subscriptionPublicId, $validated): object {
+                $old = DB::table('insurance_subscriptions')
+                    ->where('public_id', $subscriptionPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($old)) {
+                    throw new InvalidArgumentException('Insurance subscription not found.');
+                }
+
+                $ruleVersion = DB::table('insurance_product_rule_versions')
+                    ->where('public_id', (string) $validated['rule_version_public_id'])
+                    ->first();
+                if (! is_object($ruleVersion) || $this->rowString($ruleVersion, 'status') !== 'approved') {
+                    throw new InvalidArgumentException('Renewal rule version must be approved.');
+                }
+
+                $id = DB::table('insurance_subscriptions')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'client_id' => $this->rowInt($old, 'client_id'),
+                    'agency_id' => $this->rowInt($old, 'agency_id'),
+                    'loan_id' => $this->rowNullableInt($old, 'loan_id'),
+                    'insurance_product_id' => $this->rowInt($old, 'insurance_product_id'),
+                    'subscription_number' => 'RNW-'.Str::ulid(),
+                    'starts_on' => (string) $validated['starts_on'],
+                    'ends_on' => $this->nullableString($validated['ends_on'] ?? null),
+                    'coverage_amount_minor' => $this->nullableInt($validated['coverage_amount_minor'] ?? null)
+                        ?? $this->rowNullableInt($old, 'coverage_amount_minor'),
+                    'currency' => $this->rowString($old, 'currency'),
+                    'status' => 'active',
+                    'lifecycle_status' => 'active',
+                    'rule_version_id' => $this->rowInt($ruleVersion, 'id'),
+                    'grace_period_ends_on' => null,
+                    'cancelled_at' => null,
+                    'metadata' => $this->rowNullableString($old, 'metadata'),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $row = DB::table('insurance_subscriptions')->where('id', $id)->first();
+                if (! is_object($row)) {
+                    throw new InvalidArgumentException('Renewed subscription could not be reloaded.');
+                }
+
+                return $row;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['insurance_subscription' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.subscription.renewed', actor: $actor, properties: [
+            'prior_subscription_public_id' => $subscriptionPublicId,
+            'new_subscription_public_id' => $this->rowString($newSubscription, 'public_id'),
+        ], request: $request);
+
+        return $this->respondCreated($this->subscriptionPayload($newSubscription), 'Subscription renewed successfully');
+    }
+
+    // -------------------------------------------------------------------------
+    // A10: Endorsements, Cancellations, Refunds, Reversals
+    // -------------------------------------------------------------------------
+
+    public function storeEndorsement(Request $request, string $subscriptionPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'endorsement_type' => ['required', 'string', Rule::in(['coverage_amount', 'beneficiary', 'dates', 'other'])],
+            'before_values' => ['required', 'array'],
+            'after_values' => ['required', 'array'],
+            'effective_on' => ['required', 'date'],
+            'reason' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ])->validate();
+
+        try {
+            $endorsement = DB::transaction(function () use ($actor, $subscriptionPublicId, $validated): object {
+                $subscription = DB::table('insurance_subscriptions')
+                    ->where('public_id', $subscriptionPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($subscription)) {
+                    throw new InvalidArgumentException('Insurance subscription not found.');
+                }
+                if ($this->rowString($subscription, 'status') !== 'active') {
+                    throw new InvalidArgumentException('Only active subscriptions can be endorsed.');
+                }
+
+                $id = DB::table('insurance_endorsements')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'insurance_subscription_id' => $this->rowInt($subscription, 'id'),
+                    'endorsement_type' => (string) $validated['endorsement_type'],
+                    'before_values' => json_encode($validated['before_values'], JSON_THROW_ON_ERROR),
+                    'after_values' => json_encode($validated['after_values'], JSON_THROW_ON_ERROR),
+                    'effective_on' => (string) $validated['effective_on'],
+                    'reason' => $this->nullableString($validated['reason'] ?? null),
+                    'status' => 'pending',
+                    'requested_by_user_id' => $actor->id,
+                    'reviewed_by_user_id' => null,
+                    'reviewed_at' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $row = DB::table('insurance_endorsements')->where('id', $id)->first();
+                if (! is_object($row)) {
+                    throw new InvalidArgumentException('Endorsement could not be reloaded.');
+                }
+
+                return $row;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['endorsement' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.endorsement.created', actor: $actor, properties: [
+            'subscription_public_id' => $subscriptionPublicId,
+            'endorsement_public_id' => $this->rowString($endorsement, 'public_id'),
+        ], request: $request);
+
+        return $this->respondCreated($this->endorsementPayload($endorsement), 'Endorsement request created successfully');
+    }
+
+    public function approveEndorsement(Request $request, string $endorsementPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'review_decision' => ['required', Rule::in(['approve', 'reject'])],
+        ])->validate();
+
+        try {
+            $result = DB::transaction(function () use ($actor, $endorsementPublicId, $validated): array {
+                $endorsement = DB::table('insurance_endorsements')
+                    ->where('public_id', $endorsementPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($endorsement)) {
+                    throw new InvalidArgumentException('Endorsement not found.');
+                }
+                if ($this->rowString($endorsement, 'status') !== 'pending') {
+                    throw new InvalidArgumentException('Only pending endorsements can be reviewed.');
+                }
+                if ($this->rowInt($endorsement, 'requested_by_user_id') === $actor->id) {
+                    throw new InvalidArgumentException('The requester cannot review their own endorsement.');
+                }
+
+                $newStatus = (string) $validated['review_decision'] === 'approve' ? 'approved' : 'rejected';
+                DB::table('insurance_endorsements')
+                    ->where('id', $this->rowInt($endorsement, 'id'))
+                    ->update([
+                        'status' => $newStatus,
+                        'reviewed_by_user_id' => $actor->id,
+                        'reviewed_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                // Apply the after_values to the subscription when approved
+                if ($newStatus === 'approved') {
+                    $afterValues = json_decode($this->rowString($endorsement, 'after_values'), true);
+                    if (is_array($afterValues)) {
+                        $allowedCols = ['coverage_amount_minor', 'ends_on'];
+                        $updates = array_intersect_key($afterValues, array_flip($allowedCols));
+                        if ($updates !== []) {
+                            $updates['updated_at'] = now()->toDateTimeString();
+                            DB::table('insurance_subscriptions')
+                                ->where('id', $this->rowInt($endorsement, 'insurance_subscription_id'))
+                                ->update($updates);
+                        }
+                    }
+                }
+
+                $updated = DB::table('insurance_endorsements')
+                    ->where('id', $this->rowInt($endorsement, 'id'))
+                    ->first();
+
+                return ['endorsement' => $updated ?? $endorsement];
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['endorsement' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.endorsement.reviewed', actor: $actor, properties: [
+            'endorsement_public_id' => $endorsementPublicId,
+            'decision' => (string) $validated['review_decision'],
+        ], request: $request);
+
+        return $this->respondSuccess($this->endorsementPayload($result['endorsement']), 'Endorsement reviewed successfully');
+    }
+
+    public function cancelSubscription(Request $request, string $subscriptionPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'effective_on' => ['required', 'date'],
+            'reason' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'refund_treatment' => ['sometimes', Rule::in(['none', 'pro_rata', 'full'])],
+            'refund_amount_minor' => ['required_unless:refund_treatment,none', 'nullable', 'integer', 'min:1'],
+            'refund_customer_account_public_id' => ['required_with:refund_amount_minor', 'nullable', 'string', 'exists:customer_accounts,public_id'],
+        ])->validate();
+
+        try {
+            $cancellation = DB::transaction(function () use ($actor, $subscriptionPublicId, $validated): object {
+                $subscription = DB::table('insurance_subscriptions')
+                    ->where('public_id', $subscriptionPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($subscription)) {
+                    throw new InvalidArgumentException('Insurance subscription not found.');
+                }
+                if ($this->rowString($subscription, 'status') !== 'active') {
+                    throw new InvalidArgumentException('Only active subscriptions can be cancelled.');
+                }
+                $refundTreatment = $this->stringValue($validated['refund_treatment'] ?? 'none', 'none');
+                $refundAmountMinor = $this->nullableInt($validated['refund_amount_minor'] ?? null);
+                $refundCustomerAccountId = null;
+                if ($refundTreatment !== 'none') {
+                    if ($refundAmountMinor === null || $refundAmountMinor <= 0) {
+                        throw new InvalidArgumentException('Cancellation refund requires a manually approved positive refund amount.');
+                    }
+                    $refundAccount = DB::table('customer_accounts')
+                        ->where('public_id', (string) $validated['refund_customer_account_public_id'])
+                        ->where('status', CustomerAccount::STATUS_ACTIVE)
+                        ->first(['id', 'client_id', 'agency_id', 'currency']);
+                    if (! is_object($refundAccount)) {
+                        throw new InvalidArgumentException('Refund customer account must be active.');
+                    }
+                    if ($this->rowInt($refundAccount, 'client_id') !== $this->rowInt($subscription, 'client_id')
+                        || $this->rowInt($refundAccount, 'agency_id') !== $this->rowInt($subscription, 'agency_id')
+                        || $this->rowString($refundAccount, 'currency') !== $this->rowString($subscription, 'currency')) {
+                        throw new InvalidArgumentException('Refund account must belong to the subscription client, agency, and currency.');
+                    }
+                    $refundCustomerAccountId = $this->rowInt($refundAccount, 'id');
+                }
+
+                $id = DB::table('insurance_cancellations')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'insurance_subscription_id' => $this->rowInt($subscription, 'id'),
+                    'effective_on' => (string) $validated['effective_on'],
+                    'reason' => $this->nullableString($validated['reason'] ?? null),
+                    'refund_treatment' => $refundTreatment,
+                    'refund_amount_minor' => $refundAmountMinor,
+                    'refund_customer_account_id' => $refundCustomerAccountId,
+                    'refund_journal_entry_id' => null,
+                    'status' => 'pending',
+                    'requested_by_user_id' => $actor->id,
+                    'approved_by_user_id' => null,
+                    'approved_at' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $row = DB::table('insurance_cancellations')->where('id', $id)->first();
+                if (! is_object($row)) {
+                    throw new InvalidArgumentException('Cancellation request could not be reloaded.');
+                }
+
+                return $row;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['cancellation' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.subscription.cancellation_requested', actor: $actor, properties: [
+            'subscription_public_id' => $subscriptionPublicId,
+            'cancellation_public_id' => $this->rowString($cancellation, 'public_id'),
+        ], request: $request);
+
+        return $this->respondCreated([
+            'public_id' => $this->rowString($cancellation, 'public_id'),
+            'subscription_public_id' => $subscriptionPublicId,
+            'effective_on' => $this->rowString($cancellation, 'effective_on'),
+            'refund_treatment' => $this->rowString($cancellation, 'refund_treatment'),
+            'status' => $this->rowString($cancellation, 'status'),
+        ], 'Cancellation request created; awaiting approval');
+    }
+
+    public function reviewCancellation(Request $request, string $cancellationPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.subscriptions.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'review_decision' => ['required', Rule::in(['approve', 'reject'])],
+        ])->validate();
+
+        try {
+            $result = DB::transaction(function () use ($actor, $cancellationPublicId, $validated): array {
+                $cancellation = DB::table('insurance_cancellations')
+                    ->where('public_id', $cancellationPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($cancellation)) {
+                    throw new InvalidArgumentException('Cancellation request not found.');
+                }
+                if ($this->rowString($cancellation, 'status') !== 'pending') {
+                    throw new InvalidArgumentException('Only pending cancellation requests can be reviewed.');
+                }
+                if ($this->rowInt($cancellation, 'requested_by_user_id') === $actor->id) {
+                    throw new InvalidArgumentException('The requester cannot review their own cancellation request.');
+                }
+
+                $subscription = DB::table('insurance_subscriptions')
+                    ->where('id', $this->rowInt($cancellation, 'insurance_subscription_id'))
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($subscription)) {
+                    throw new InvalidArgumentException('Insurance subscription not found.');
+                }
+
+                $newStatus = ((string) $validated['review_decision']) === 'approve' ? 'approved' : 'rejected';
+                DB::table('insurance_cancellations')
+                    ->where('id', $this->rowInt($cancellation, 'id'))
+                    ->update([
+                        'status' => $newStatus,
+                        'approved_by_user_id' => $actor->id,
+                        'approved_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                if ($newStatus === 'approved') {
+                    $effectiveOn = $this->rowString($cancellation, 'effective_on');
+                    $effectiveNow = $effectiveOn <= now()->toDateString();
+                    DB::table('insurance_subscriptions')
+                        ->where('id', $this->rowInt($subscription, 'id'))
+                        ->update([
+                            'status' => $effectiveNow ? 'cancelled' : 'active',
+                            'lifecycle_status' => $effectiveNow ? 'cancelled' : 'cancellation_approved',
+                            'cancelled_at' => $effectiveNow ? now() : null,
+                            'updated_at' => now(),
+                        ]);
+
+                    DB::table('insurance_premium_schedules')
+                        ->where('insurance_subscription_id', $this->rowInt($subscription, 'id'))
+                        ->where('status', 'scheduled')
+                        ->whereDate('due_on', '>=', $effectiveOn)
+                        ->update(['status' => 'cancelled', 'updated_at' => now()]);
+
+                    $refundJournalEntry = $this->insuranceAccounting->postCancellationRefundIfRequired($cancellation, $subscription, $actor);
+                    if ($refundJournalEntry instanceof JournalEntry) {
+                        DB::table('insurance_cancellations')
+                            ->where('id', $this->rowInt($cancellation, 'id'))
+                            ->update([
+                                'refund_journal_entry_id' => $refundJournalEntry->id,
+                                'updated_at' => now(),
+                            ]);
+                    }
+                }
+
+                $updatedCancellation = DB::table('insurance_cancellations')
+                    ->where('id', $this->rowInt($cancellation, 'id'))
+                    ->first();
+                $updatedSubscription = DB::table('insurance_subscriptions')
+                    ->where('id', $this->rowInt($subscription, 'id'))
+                    ->first();
+
+                if (! is_object($updatedCancellation) || ! is_object($updatedSubscription)) {
+                    throw new InvalidArgumentException('Cancellation review could not be reloaded.');
+                }
+
+                return [
+                    'cancellation' => $updatedCancellation,
+                    'subscription' => $updatedSubscription,
+                ];
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['cancellation' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.subscription.cancellation_reviewed', actor: $actor, properties: [
+            'cancellation_public_id' => $cancellationPublicId,
+            'status' => $this->rowString($result['cancellation'], 'status'),
+        ], request: $request);
+
+        return $this->respondSuccess([
+            'cancellation' => [
+                'public_id' => $this->rowString($result['cancellation'], 'public_id'),
+                'effective_on' => $this->rowString($result['cancellation'], 'effective_on'),
+                'refund_treatment' => $this->rowString($result['cancellation'], 'refund_treatment'),
+                'refund_amount_minor' => $this->rowNullableInt($result['cancellation'], 'refund_amount_minor'),
+                'refund_journal_entry_public_id' => $this->journalEntryPublicId($this->rowNullableInt($result['cancellation'], 'refund_journal_entry_id')),
+                'status' => $this->rowString($result['cancellation'], 'status'),
+            ],
+            'subscription' => $this->subscriptionPayload($result['subscription']),
+        ], 'Cancellation request reviewed successfully');
+    }
+
+    public function reversePremiumPayment(Request $request, string $paymentPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reversals.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        try {
+            $result = DB::transaction(function () use ($actor, $paymentPublicId): array {
+                $payment = DB::table('insurance_premium_payments')
+                    ->where('public_id', $paymentPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($payment)) {
+                    throw new InvalidArgumentException('Premium payment not found.');
+                }
+                if ($this->rowString($payment, 'status') !== 'posted') {
+                    throw new InvalidArgumentException('Only posted premium payments can be reversed.');
+                }
+                if ($this->rowNullableString($payment, 'reversed_at') !== null) {
+                    throw new InvalidArgumentException('This premium payment has already been reversed.');
+                }
+
+                $originalJe = JournalEntry::find($this->rowNullableInt($payment, 'journal_entry_id'));
+                if (! $originalJe instanceof JournalEntry) {
+                    throw new InvalidArgumentException('Original journal entry not found; cannot reverse.');
+                }
+
+                $assessment = DB::table('insurance_premium_assessments')
+                    ->where('id', $this->rowInt($payment, 'insurance_premium_assessment_id'))
+                    ->lockForUpdate()
+                    ->first();
+
+                // Create reversing journal entry
+                $reversalJe = JournalEntry::create([
+                    'public_id' => (string) Str::ulid(),
+                    'reference' => 'REV-'.Str::upper(Str::random(10)),
+                    'business_date' => now()->toDateString(),
+                    'agency_id' => $originalJe->agency_id,
+                    'source_module' => 'insurance',
+                    'source_type' => 'insurance_premium_payment_reversal',
+                    'source_public_id' => $paymentPublicId,
+                    'description' => 'Reversal of premium payment '.$paymentPublicId,
+                    'status' => JournalEntry::STATUS_DRAFT,
+                    'created_by_user_id' => $actor->id,
+                ]);
+
+                // Mirror the original lines with swapped debit/credit
+                foreach ($originalJe->lines as $line) {
+                    JournalLine::create([
+                        'public_id' => (string) Str::ulid(),
+                        'agency_id' => $originalJe->agency_id,
+                        'journal_entry_id' => $reversalJe->id,
+                        'ledger_account_id' => $line->ledger_account_id,
+                        'customer_account_id' => null,
+                        'loan_id' => null,
+                        'debit_minor' => $line->credit_minor,
+                        'credit_minor' => $line->debit_minor,
+                        'currency' => $line->currency,
+                        'line_memo' => 'Reversal: '.($line->line_memo ?? ''),
+                    ]);
+                }
+
+                $this->insuranceAccounting->postSystemJournal($reversalJe, $actor);
+
+                DB::table('insurance_premium_payments')
+                    ->where('id', $this->rowInt($payment, 'id'))
+                    ->update([
+                        'status' => 'reversed',
+                        'reversed_at' => now(),
+                        'reversal_journal_entry_id' => $reversalJe->id,
+                        'updated_at' => now(),
+                    ]);
+
+                // Reopen assessment
+                if (is_object($assessment)) {
+                    DB::table('insurance_premium_assessments')
+                        ->where('id', $this->rowInt($assessment, 'id'))
+                        ->update([
+                            'status' => 'assessed',
+                            'journal_entry_id' => null,
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                return [
+                    'payment' => DB::table('insurance_premium_payments')->where('id', $this->rowInt($payment, 'id'))->first() ?? $payment,
+                    'reversal_journal_entry_public_id' => $reversalJe->public_id,
+                ];
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['premium_payment' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.premium_payment.reversed', actor: $actor, properties: [
+            'payment_public_id' => $paymentPublicId,
+            'reversal_journal_entry_public_id' => $result['reversal_journal_entry_public_id'],
+        ], request: $request);
+
+        return $this->respondSuccess([
+            'payment_public_id' => $paymentPublicId,
+            'status' => 'reversed',
+            'reversal_journal_entry_public_id' => $result['reversal_journal_entry_public_id'],
+        ], 'Premium payment reversed successfully');
+    }
+
+    public function reverseClaimSettlement(Request $request, string $claimPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reversals.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        try {
+            $result = DB::transaction(function () use ($actor, $claimPublicId): array {
+                $claim = DB::table('insurance_claims')
+                    ->where('public_id', $claimPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($claim)) {
+                    throw new InvalidArgumentException('Insurance claim not found.');
+                }
+                if ($this->rowString($claim, 'status') !== 'settled') {
+                    throw new InvalidArgumentException('Only settled claims can have their settlement reversed.');
+                }
+                if ($this->rowNullableString($claim, 'reversal_at') !== null) {
+                    throw new InvalidArgumentException('Settlement has already been reversed.');
+                }
+
+                $originalJeId = $this->rowNullableInt($claim, 'journal_entry_id');
+                if ($originalJeId === null) {
+                    throw new InvalidArgumentException('No journal entry found for this settlement.');
+                }
+                $originalJe = JournalEntry::find($originalJeId);
+                if (! $originalJe instanceof JournalEntry) {
+                    throw new InvalidArgumentException('Settlement journal entry not found.');
+                }
+
+                $reversalJe = JournalEntry::create([
+                    'public_id' => (string) Str::ulid(),
+                    'reference' => 'REV-'.Str::upper(Str::random(10)),
+                    'business_date' => now()->toDateString(),
+                    'agency_id' => $originalJe->agency_id,
+                    'source_module' => 'insurance',
+                    'source_type' => 'insurance_claim_settlement_reversal',
+                    'source_public_id' => $claimPublicId,
+                    'description' => 'Reversal of claim settlement '.$claimPublicId,
+                    'status' => JournalEntry::STATUS_DRAFT,
+                    'created_by_user_id' => $actor->id,
+                ]);
+
+                foreach ($originalJe->lines as $line) {
+                    JournalLine::create([
+                        'public_id' => (string) Str::ulid(),
+                        'agency_id' => $originalJe->agency_id,
+                        'journal_entry_id' => $reversalJe->id,
+                        'ledger_account_id' => $line->ledger_account_id,
+                        'customer_account_id' => null,
+                        'loan_id' => null,
+                        'debit_minor' => $line->credit_minor,
+                        'credit_minor' => $line->debit_minor,
+                        'currency' => $line->currency,
+                        'line_memo' => 'Reversal: '.($line->line_memo ?? ''),
+                    ]);
+                }
+
+                $this->insuranceAccounting->postSystemJournal($reversalJe, $actor);
+
+                DB::table('insurance_claims')
+                    ->where('id', $this->rowInt($claim, 'id'))
+                    ->update([
+                        'status' => 'settlement_reversed',
+                        'reversal_at' => now(),
+                        'reversal_journal_entry_id' => $reversalJe->id,
+                        'updated_at' => now(),
+                    ]);
+
+                return [
+                    'claim' => DB::table('insurance_claims')->where('id', $this->rowInt($claim, 'id'))->first() ?? $claim,
+                    'reversal_journal_entry_public_id' => $reversalJe->public_id,
+                ];
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['insurance_claim' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.claim.settlement_reversed', actor: $actor, properties: [
+            'claim_public_id' => $claimPublicId,
+        ], request: $request);
+
+        return $this->respondSuccess([
+            'claim' => $this->claimPayload($result['claim']),
+            'reversal_journal_entry_public_id' => $result['reversal_journal_entry_public_id'],
+        ], 'Claim settlement reversed successfully');
+    }
+
+    // -------------------------------------------------------------------------
+    // A11: Insurer Remittance & Commission Accounting
+    // -------------------------------------------------------------------------
+
+    public function storeRemittanceBatch(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.remittances.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'insurance_partner_public_id' => ['required', 'string', 'exists:insurance_partners,public_id'],
+            'agency_public_id' => ['required', 'string', 'exists:agencies,public_id'],
+            'period_from' => ['required', 'date'],
+            'period_to' => ['required', 'date', 'after_or_equal:period_from'],
+            'currency' => ['sometimes', 'string', 'size:3'],
+        ])->validate();
+
+        try {
+            $batch = DB::transaction(function () use ($actor, $validated): object {
+                $partner = DB::table('insurance_partners')
+                    ->where('public_id', (string) $validated['insurance_partner_public_id'])
+                    ->first(['id']);
+                if (! is_object($partner)) {
+                    throw new InvalidArgumentException('Insurance partner not found.');
+                }
+                $agency = DB::table('agencies')
+                    ->where('public_id', (string) $validated['agency_public_id'])
+                    ->first(['id']);
+                if (! is_object($agency)) {
+                    throw new InvalidArgumentException('Agency not found.');
+                }
+
+                $currency = $this->stringValue($validated['currency'] ?? 'XAF', 'XAF');
+                $periodFrom = (string) $validated['period_from'];
+                $periodTo = (string) $validated['period_to'];
+                $partnerId = $this->rowInt($partner, 'id');
+                $agencyId = $this->rowInt($agency, 'id');
+
+                // Gather premium payments linked to this partner/agency/period with posted split snapshots.
+                $payments = DB::table('insurance_premium_payments')
+                    ->join('insurance_premium_assessments', 'insurance_premium_assessments.id', '=', 'insurance_premium_payments.insurance_premium_assessment_id')
+                    ->join('insurance_subscriptions', 'insurance_subscriptions.id', '=', 'insurance_premium_assessments.insurance_subscription_id')
+                    ->join('insurance_products', 'insurance_products.id', '=', 'insurance_subscriptions.insurance_product_id')
+                    ->join('insurance_premium_payment_splits', 'insurance_premium_payment_splits.insurance_premium_payment_id', '=', 'insurance_premium_payments.id')
+                    ->where('insurance_products.insurance_partner_id', $partnerId)
+                    ->where('insurance_subscriptions.agency_id', $agencyId)
+                    ->where('insurance_premium_payments.currency', $currency)
+                    ->where('insurance_premium_payments.status', 'posted')
+                    ->whereNull('insurance_premium_payments.remitted_at')
+                    ->whereBetween('insurance_premium_payments.paid_at', [$periodFrom.' 00:00:00', $periodTo.' 23:59:59'])
+                    ->select([
+                        'insurance_premium_payments.id',
+                        'insurance_premium_payments.public_id',
+                        'insurance_products.id as product_id',
+                        'insurance_premium_payment_splits.split_type',
+                        'insurance_premium_payment_splits.amount_minor',
+                        'insurance_premium_payment_splits.ledger_account_id',
+                    ])
+                    ->get();
+
+                if ($payments->isEmpty()) {
+                    throw new InvalidArgumentException('No eligible unremitted premium payments found for this partner/agency/period.');
+                }
+
+                $batchId = DB::table('insurance_remittance_batches')->insertGetId([
+                    'public_id' => (string) Str::ulid(),
+                    'insurance_partner_id' => $partnerId,
+                    'agency_id' => $agencyId,
+                    'period_from' => $periodFrom,
+                    'period_to' => $periodTo,
+                    'currency' => $currency,
+                    'total_minor' => 0,
+                    'status' => 'draft',
+                    'created_by_user_id' => $actor->id,
+                    'approved_by_user_id' => null,
+                    'approved_at' => null,
+                    'journal_entry_id' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $total = 0;
+                foreach ($payments as $payment) {
+                    $splitType = (string) $payment->split_type;
+                    $splitAmount = (int) $payment->amount_minor;
+                    if ($splitAmount <= 0) {
+                        continue;
+                    }
+
+                    DB::table('insurance_remittance_items')->insert([
+                        'public_id' => (string) Str::ulid(),
+                        'insurance_remittance_batch_id' => $batchId,
+                        'insurance_premium_payment_id' => (int) $payment->id,
+                        'insurance_product_id' => (int) $payment->product_id,
+                        'split_type' => $splitType,
+                        'amount_minor' => $splitAmount,
+                        'ledger_account_id' => (int) $payment->ledger_account_id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    if ($splitType === 'insurer_payable') {
+                        $total += $splitAmount;
+                    }
+                }
+
+                DB::table('insurance_remittance_batches')
+                    ->where('id', $batchId)
+                    ->update(['total_minor' => $total, 'updated_at' => now()]);
+
+                $row = DB::table('insurance_remittance_batches')->where('id', $batchId)->first();
+                if (! is_object($row)) {
+                    throw new InvalidArgumentException('Remittance batch could not be reloaded.');
+                }
+
+                return $row;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['remittance_batch' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.remittance_batch.created', actor: $actor, properties: [
+            'batch_public_id' => $this->rowString($batch, 'public_id'),
+        ], request: $request);
+
+        return $this->respondCreated($this->remittanceBatchPayload($batch), 'Remittance batch created successfully');
+    }
+
+    public function approveRemittanceBatch(Request $request, string $batchPublicId): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.remittances.manage');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        try {
+            $batch = DB::transaction(function () use ($actor, $batchPublicId): object {
+                $batch = DB::table('insurance_remittance_batches')
+                    ->where('public_id', $batchPublicId)
+                    ->lockForUpdate()
+                    ->first();
+                if (! is_object($batch)) {
+                    throw new InvalidArgumentException('Remittance batch not found.');
+                }
+                if ($this->rowString($batch, 'status') !== 'draft') {
+                    throw new InvalidArgumentException('Only draft remittance batches can be approved.');
+                }
+                if ($this->rowInt($batch, 'created_by_user_id') === $actor->id) {
+                    throw new InvalidArgumentException('The creator cannot approve their own remittance batch.');
+                }
+
+                $items = DB::table('insurance_remittance_items')
+                    ->where('insurance_remittance_batch_id', $this->rowInt($batch, 'id'))
+                    ->get();
+
+                foreach ($items as $item) {
+                    $alreadyRemitted = DB::table('insurance_premium_payments')
+                        ->where('id', $this->rowInt($item, 'insurance_premium_payment_id'))
+                        ->whereNotNull('remitted_at')
+                        ->exists();
+                    if ($alreadyRemitted) {
+                        throw new InvalidArgumentException('Batch contains already-remitted payments. Recreate the batch.');
+                    }
+                }
+
+                $journalEntry = $this->insuranceAccounting->postRemittanceBatchJournal($batch, $items, $actor);
+
+                // Mark payments remitted against the insurer payable item; commission/tax split rows remain reportable in the batch.
+                foreach ($items as $item) {
+                    if ($this->rowString($item, 'split_type') !== 'insurer_payable') {
+                        continue;
+                    }
+                    DB::table('insurance_premium_payments')
+                        ->where('id', $this->rowInt($item, 'insurance_premium_payment_id'))
+                        ->update([
+                            'remitted_at' => now(),
+                            'remittance_batch_item_id' => $this->rowInt($item, 'id'),
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                DB::table('insurance_remittance_batches')
+                    ->where('id', $this->rowInt($batch, 'id'))
+                    ->update([
+                        'status' => 'posted',
+                        'approved_by_user_id' => $actor->id,
+                        'approved_at' => now(),
+                        'journal_entry_id' => $journalEntry->id,
+                        'updated_at' => now(),
+                    ]);
+
+                return DB::table('insurance_remittance_batches')->where('id', $this->rowInt($batch, 'id'))->first() ?? $batch;
+            });
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['remittance_batch' => [$exception->getMessage()]]);
+        }
+
+        $this->securityAudit->record('insurance.remittance_batch.approved', actor: $actor, properties: [
+            'batch_public_id' => $batchPublicId,
+        ], request: $request);
+
+        return $this->respondSuccess($this->remittanceBatchPayload($batch), 'Remittance batch approved and posted');
+    }
+
+    public function commissionsReport(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.view');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+
+        $rows = DB::table('insurance_remittance_items')
+            ->join('insurance_remittance_batches', 'insurance_remittance_batches.id', '=', 'insurance_remittance_items.insurance_remittance_batch_id')
+            ->join('insurance_products', 'insurance_products.id', '=', 'insurance_remittance_items.insurance_product_id')
+            ->where('insurance_remittance_batches.agency_id', $agencyId)
+            ->where('insurance_remittance_items.split_type', 'commission_income')
+            ->select([
+                'insurance_products.name as product_name',
+                'insurance_remittance_batches.period_from',
+                'insurance_remittance_batches.period_to',
+                'insurance_remittance_batches.currency',
+                DB::raw('SUM(insurance_remittance_items.amount_minor) as total_commission_minor'),
+            ])
+            ->groupBy([
+                'insurance_products.name',
+                'insurance_remittance_batches.period_from',
+                'insurance_remittance_batches.period_to',
+                'insurance_remittance_batches.currency',
+            ])
+            ->get();
+
+        $items = $rows->map(function (object $row): array {
+            return [
+                'product_name' => $this->rowString($row, 'product_name'),
+                'period_from' => $this->rowString($row, 'period_from'),
+                'period_to' => $this->rowString($row, 'period_to'),
+                'currency' => $this->rowString($row, 'currency'),
+                'total_commission_minor' => $this->rowInt($row, 'total_commission_minor'),
+            ];
+        })->all();
+
+        return $this->respondSuccess(['items' => $items], 'Commission report');
+    }
+
+    public function remittancesReport(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.view');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+
+        $batches = DB::table('insurance_remittance_batches')
+            ->join('insurance_partners', 'insurance_partners.id', '=', 'insurance_remittance_batches.insurance_partner_id')
+            ->where('insurance_remittance_batches.agency_id', $agencyId)
+            ->select([
+                'insurance_remittance_batches.public_id',
+                'insurance_partners.name as partner_name',
+                'insurance_remittance_batches.period_from',
+                'insurance_remittance_batches.period_to',
+                'insurance_remittance_batches.currency',
+                'insurance_remittance_batches.total_minor',
+                'insurance_remittance_batches.status',
+                'insurance_remittance_batches.approved_at',
+            ])
+            ->orderByDesc('insurance_remittance_batches.created_at')
+            ->get();
+
+        return $this->respondSuccess(['items' => $batches->toArray()], 'Remittances report');
+    }
+
+    public function lossRatioReport(Request $request): JsonResponse
+    {
+        return $this->renderReport($request, 'loss_ratio', function (Request $request, ?int $scopedAgencyId): array {
+            $validated = $this->validateReportFilters($request, allowStatus: false);
+            $premiumQuery = DB::table('insurance_premium_payments')
+                ->join('insurance_premium_assessments', 'insurance_premium_assessments.id', '=', 'insurance_premium_payments.insurance_premium_assessment_id')
+                ->join('insurance_subscriptions', 'insurance_subscriptions.id', '=', 'insurance_premium_assessments.insurance_subscription_id')
+                ->where('insurance_premium_payments.status', 'posted')
+                ->whereNull('insurance_premium_payments.reversed_at');
+            $claimQuery = DB::table('insurance_claims')
+                ->join('insurance_subscriptions', 'insurance_subscriptions.id', '=', 'insurance_claims.insurance_subscription_id')
+                ->where('insurance_claims.status', 'settled')
+                ->whereNull('insurance_claims.reversal_at');
+
+            $this->applyAgencyFilter($premiumQuery, 'insurance_subscriptions.agency_id', $scopedAgencyId, $validated['agency_id'] ?? null);
+            $this->applyAgencyFilter($claimQuery, 'insurance_claims.agency_id', $scopedAgencyId, $validated['agency_id'] ?? null);
+            $this->applyProductFilter($premiumQuery, 'insurance_subscriptions.insurance_product_id', $validated['product_id'] ?? null);
+            $this->applyProductFilter($claimQuery, 'insurance_subscriptions.insurance_product_id', $validated['product_id'] ?? null);
+            $this->applyDateRangeFilter($premiumQuery, 'insurance_premium_payments.paid_at', $validated['period_start'] ?? null, $validated['period_end'] ?? null);
+            $this->applyDateRangeFilter($claimQuery, 'insurance_claims.settled_at', $validated['period_start'] ?? null, $validated['period_end'] ?? null);
+
+            $premiumMinor = (int) $premiumQuery->sum('insurance_premium_payments.amount_minor');
+            $claimMinor = (int) $claimQuery->sum('insurance_claims.indemnified_amount_minor');
+
+            return [
+                'earned_premium_minor' => $premiumMinor,
+                'settled_claims_minor' => $claimMinor,
+                'loss_ratio_basis_points' => $premiumMinor > 0 ? (int) round(($claimMinor / $premiumMinor) * 10000) : null,
+            ];
+        });
+    }
+
+    public function cancellationsRefundsReport(Request $request): JsonResponse
+    {
+        return $this->renderReport($request, 'cancellations_refunds', function (Request $request, ?int $scopedAgencyId): array {
+            $this->validateReportFilters($request, allowStatus: true);
+
+            return $this->insuranceExports->cancellationsRefundsReport($request->all(), $scopedAgencyId);
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // A13: Insurance Exports
+    // -------------------------------------------------------------------------
+
+    public function exportSubscriptions(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.export');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+
+        return $this->respondSuccess(
+            $this->insuranceExports->subscriptions($actor, $agencyId, $request->all()),
+            'Subscriptions export',
+        );
+    }
+
+    public function exportPremiums(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.export');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+
+        return $this->respondSuccess(
+            $this->insuranceExports->premiums($actor, $agencyId, $request->all()),
+            'Premiums export',
+        );
+    }
+
+    public function exportClaims(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.export');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+
+        return $this->respondSuccess(
+            $this->insuranceExports->claims($actor, $agencyId, $request->all()),
+            'Claims export',
+        );
+    }
+
+    public function exportCommissions(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.export');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+        return $this->respondSuccess(
+            $this->insuranceExports->commissions($actor, $agencyId, $request->all()),
+            'Commissions export',
+        );
+    }
+
+    public function exportRemittances(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.export');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+        return $this->respondSuccess(
+            $this->insuranceExports->remittances($actor, $agencyId, $request->all()),
+            'Remittances export',
+        );
+    }
+
+    public function exportCancellationsRefunds(Request $request): JsonResponse
+    {
+        $actor = $this->insuranceActor($request, 'insurance.reports.export');
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $agencyId = $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'));
+        $this->validateReportFilters($request, allowStatus: true);
+
+        return $this->respondSuccess(
+            $this->insuranceExports->cancellationsRefunds($actor, $agencyId, $request->all()),
+            'Cancellations/refunds export',
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private function computeNextDueDate(string $startsOn, string $frequency, int $offset): string
+    {
+        $date = new \DateTimeImmutable($startsOn);
+
+        return match ($frequency) {
+            'monthly' => $date->modify("+{$offset} months")->format('Y-m-d'),
+            'quarterly' => $date->modify('+'.($offset * 3).' months')->format('Y-m-d'),
+            'annual' => $date->modify("+{$offset} years")->format('Y-m-d'),
+            default => $startsOn,
+        };
+    }
+
+    private function scopedAgencyIdForReport(User $actor, mixed $agencyPublicId): int
+    {
+        if ($actor->hasRole('platform-admin') && is_string($agencyPublicId) && $agencyPublicId !== '') {
+            $agency = DB::table('agencies')->where('public_id', $agencyPublicId)->first(['id']);
+
+            return is_object($agency) ? $this->rowInt($agency, 'id') : 0;
+        }
+
+        if ($actor->hasRole('agency-manager')) {
+            $scopedId = $this->staffAgencyScope->currentAgencyId($actor);
+            if ($scopedId !== null) {
+                return $scopedId;
+            }
+        }
+
+        if (is_string($agencyPublicId) && $agencyPublicId !== '') {
+            $agency = DB::table('agencies')->where('public_id', $agencyPublicId)->first(['id']);
+
+            return is_object($agency) ? $this->rowInt($agency, 'id') : 0;
+        }
+
+        return 0;
+    }
+
+    /**
+     * @return list<array{split_type:string, calculation_type:string, rate:?string, fixed_minor:?int, ledger_account_public_id:?string}>
+     */
+    private function ruleVersionSplits(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $splits = [];
+        foreach ($value as $split) {
+            if (! is_array($split)) {
+                continue;
+            }
+            $splits[] = [
+                'split_type' => $this->stringValue($split['split_type'] ?? '', ''),
+                'calculation_type' => $this->stringValue($split['calculation_type'] ?? 'percentage', 'percentage'),
+                'rate' => $this->nullableString($split['rate'] ?? null),
+                'fixed_minor' => $this->nullableInt($split['fixed_minor'] ?? null),
+                'ledger_account_public_id' => $this->nullableString($split['ledger_account_public_id'] ?? null),
+            ];
+        }
+
+        return $splits;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ruleVersionPayload(object $version): array
+    {
+        return [
+            'public_id' => $this->rowString($version, 'public_id'),
+            'version_number' => $this->rowInt($version, 'version_number'),
+            'calculation_type' => $this->rowString($version, 'calculation_type'),
+            'base_description' => $this->rowNullableString($version, 'base_description'),
+            'rate' => $this->rowNullableString($version, 'rate'),
+            'fixed_premium_minor' => $this->rowNullableInt($version, 'fixed_premium_minor'),
+            'frequency' => $this->rowString($version, 'frequency'),
+            'effective_from' => $this->rowString($version, 'effective_from'),
+            'effective_until' => $this->rowNullableString($version, 'effective_until'),
+            'status' => $this->rowString($version, 'status'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function endorsementPayload(object $endorsement): array
+    {
+        return [
+            'public_id' => $this->rowString($endorsement, 'public_id'),
+            'endorsement_type' => $this->rowString($endorsement, 'endorsement_type'),
+            'effective_on' => $this->rowString($endorsement, 'effective_on'),
+            'status' => $this->rowString($endorsement, 'status'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function remittanceBatchPayload(object $batch): array
+    {
+        return [
+            'public_id' => $this->rowString($batch, 'public_id'),
+            'period_from' => $this->rowString($batch, 'period_from'),
+            'period_to' => $this->rowString($batch, 'period_to'),
+            'currency' => $this->rowString($batch, 'currency'),
+            'total_minor' => $this->rowInt($batch, 'total_minor'),
+            'status' => $this->rowString($batch, 'status'),
         ];
     }
 
