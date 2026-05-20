@@ -403,6 +403,190 @@ final class CurrencyExchangeTest extends TestCase
         $this->assertJsonError($response, 422);
     }
 
+    public function test_draft_rate_cannot_be_used_for_exchange_transaction(): void
+    {
+        $context = $this->seedFullExchangeContext();
+        // Remove the active rate seeded in context so only a draft exists.
+        DB::table('exchange_rates')->update(['status' => 'draft']);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-tills/'.$context['till_public_id'].'/exchange-transactions', [
+                'direction' => 'buy_foreign_currency',
+                'foreign_currency' => 'EUR',
+                'foreign_amount_minor' => 100,
+                'identity_full_name' => 'Walk-In Client',
+                'identity_number' => 'ID-12345',
+                'identity_document_type' => 'national_id',
+                'identity_issuing_country' => 'CM',
+            ]);
+        $this->assertJsonError($response, 422);
+    }
+
+    public function test_sell_transaction_with_sufficient_stock_decreases_balance_and_posts_journal(): void
+    {
+        $context = $this->seedFullExchangeContext();
+        // Pre-load EUR stock directly so we have sufficient balance to sell.
+        DB::table('till_currency_balances')->insert([
+            'till_id' => $context['till_id'],
+            'currency' => 'EUR',
+            'opening_balance_minor' => 0,
+            'current_balance_minor' => 300,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-tills/'.$context['till_public_id'].'/exchange-transactions', [
+                'direction' => 'sell_foreign_currency',
+                'foreign_currency' => 'EUR',
+                'foreign_amount_minor' => 100,
+                'identity_full_name' => 'Walk-In Client',
+                'identity_number' => 'ID-99999',
+                'identity_document_type' => 'passport',
+                'identity_issuing_country' => 'CM',
+            ]);
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonPath('data.transaction.direction', 'sell_foreign_currency');
+
+        $balance = DB::table('till_currency_balances')
+            ->where('till_id', $context['till_id'])
+            ->where('currency', 'EUR')
+            ->first();
+        self::assertIsObject($balance);
+        self::assertSame(200, (int) $balance->current_balance_minor);
+
+        $this->assertDatabaseHas('journal_entries', [
+            'source_module' => 'fx',
+            'source_type' => 'fx_sell_foreign_currency',
+            'status' => 'posted',
+        ]);
+    }
+
+    public function test_partner_sale_decreases_stock_after_approval(): void
+    {
+        $context = $this->seedFullExchangeContext();
+        $checker = $this->createUserWithRole('platform-admin');
+
+        // Pre-load EUR stock so the sale has something to draw from.
+        DB::table('till_currency_balances')->insert([
+            'till_id' => $context['till_id'],
+            'currency' => 'EUR',
+            'opening_balance_minor' => 0,
+            'current_balance_minor' => 1000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-tills/'.$context['till_public_id'].'/stock-movements', [
+                'movement_type' => 'partner_sale',
+                'currency' => 'EUR',
+                'amount_minor' => 400,
+                'counterparty_name' => 'Partner Bank',
+            ]);
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonPath('data.status', 'pending');
+        $movementPublicId = $this->requireStringJsonPath($response, 'data.public_id');
+
+        $balanceBefore = DB::table('till_currency_balances')
+            ->where('till_id', $context['till_id'])
+            ->where('currency', 'EUR')
+            ->value('current_balance_minor');
+        self::assertSame(1000, (int) $balanceBefore);
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/fx-stock-movements/'.$movementPublicId.'/approve');
+        $this->assertJsonSuccess($approve);
+        $approve->assertJsonPath('data.status', 'posted');
+
+        $balanceAfter = DB::table('till_currency_balances')
+            ->where('till_id', $context['till_id'])
+            ->where('currency', 'EUR')
+            ->value('current_balance_minor');
+        self::assertSame(600, (int) $balanceAfter);
+    }
+
+    public function test_stock_movement_requester_cannot_self_approve(): void
+    {
+        $context = $this->seedFullExchangeContext();
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-tills/'.$context['till_public_id'].'/stock-movements', [
+                'movement_type' => 'partner_replenishment',
+                'currency' => 'EUR',
+                'amount_minor' => 500,
+                'counterparty_name' => 'Partner Bank',
+            ]);
+        $this->assertJsonSuccess($response, 201);
+        $movementPublicId = $this->requireStringJsonPath($response, 'data.public_id');
+
+        // Same actor tries to approve.
+        $selfApprove = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-stock-movements/'.$movementPublicId.'/approve');
+        $this->assertJsonError($selfApprove, 422);
+    }
+
+    public function test_adjustment_correction_resolves_variance_blocked_reconciliation(): void
+    {
+        $context = $this->seedFullExchangeContext();
+        $checker = $this->createUserWithRole('platform-admin');
+
+        // Stock = 200 but count = 150 → variance_blocked.
+        DB::table('till_currency_balances')->insert([
+            'till_id' => $context['till_id'],
+            'currency' => 'EUR',
+            'opening_balance_minor' => 0,
+            'current_balance_minor' => 200,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $reconciliation = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-tills/'.$context['till_public_id'].'/reconciliations', [
+                'business_date' => '2026-05-20',
+                'currency' => 'EUR',
+                'counted_minor' => 150,
+                'notes' => 'End-of-day count',
+            ]);
+        $this->assertJsonSuccess($reconciliation, 201);
+        $reconciliation->assertJsonPath('data.status', 'variance_blocked');
+        $reconciliation->assertJsonPath('data.variance_minor', -50);
+
+        // Submit adjustment_correction to bring stock down to match count.
+        $movement = $this->withApiHeaders()
+            ->actingAsSanctum($context['actor'])
+            ->postJson('/api/v1/fx-tills/'.$context['till_public_id'].'/stock-movements', [
+                'movement_type' => 'adjustment_correction',
+                'currency' => 'EUR',
+                'amount_minor' => 50,
+                'notes' => 'Correction for variance on 2026-05-20',
+            ]);
+        $this->assertJsonSuccess($movement, 201);
+        $movement->assertJsonPath('data.status', 'pending');
+        $movementPublicId = $this->requireStringJsonPath($movement, 'data.public_id');
+
+        // Checker approves the adjustment.
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/fx-stock-movements/'.$movementPublicId.'/approve');
+        $this->assertJsonSuccess($approve);
+        $approve->assertJsonPath('data.status', 'posted');
+
+        // Stock is now 150 (matching the count).
+        $balance = DB::table('till_currency_balances')
+            ->where('till_id', $context['till_id'])
+            ->where('currency', 'EUR')
+            ->value('current_balance_minor');
+        self::assertSame(150, (int) $balance);
+    }
+
     public function test_inactive_currency_is_rejected_for_rates_and_transactions(): void
     {
         $context = $this->seedFullExchangeContext();

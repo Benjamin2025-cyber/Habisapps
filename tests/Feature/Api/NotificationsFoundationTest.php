@@ -642,6 +642,168 @@ final class NotificationsFoundationTest extends TestCase
         ]);
     }
 
+    public function test_loan_overdue_producer_creates_alert_for_consented_client(): void
+    {
+        $this->seedLoanOverdueTemplate();
+        $context = $this->seedLoanArrearOverdue(unpaidMinor: 8000, daysOverdue: 3);
+        app(NotificationConsentManager::class)->setConsent(
+            clientId: $context['client_id'],
+            agencyId: $context['agency_id'],
+            channel: 'sms',
+            category: 'loan_overdue',
+            language: 'fr',
+            status: NotificationConsentManager::STATUS_OPTED_IN,
+            changedBy: null,
+        );
+
+        $created = app(ClientAlertProducer::class)->produceLoanOverdueAlerts(Carbon::today());
+
+        self::assertSame(1, $created);
+        $this->assertDatabaseHas('notification_deliveries', [
+            'category' => 'loan_overdue',
+            'channel' => 'sms',
+            'destination' => $context['phone_number'],
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_loan_overdue_producer_does_not_duplicate_on_rerun(): void
+    {
+        $this->seedLoanOverdueTemplate();
+        $context = $this->seedLoanArrearOverdue(unpaidMinor: 8000, daysOverdue: 3);
+        app(NotificationConsentManager::class)->setConsent(
+            clientId: $context['client_id'],
+            agencyId: $context['agency_id'],
+            channel: 'sms',
+            category: 'loan_overdue',
+            language: 'fr',
+            status: NotificationConsentManager::STATUS_OPTED_IN,
+            changedBy: null,
+        );
+
+        $producer = app(ClientAlertProducer::class);
+        self::assertSame(1, $producer->produceLoanOverdueAlerts(Carbon::today()));
+        self::assertSame(0, $producer->produceLoanOverdueAlerts(Carbon::today()));
+        self::assertSame(1, DB::table('notification_deliveries')->where('category', 'loan_overdue')->count());
+    }
+
+    public function test_loan_overdue_producer_skips_clients_without_consent(): void
+    {
+        $this->seedLoanOverdueTemplate();
+        $this->seedLoanArrearOverdue(unpaidMinor: 8000, daysOverdue: 3);
+
+        self::assertSame(0, app(ClientAlertProducer::class)->produceLoanOverdueAlerts(Carbon::today()));
+        self::assertSame(0, DB::table('notification_deliveries')->where('category', 'loan_overdue')->count());
+    }
+
+    public function test_insurance_premium_due_producer_creates_alert_for_consented_client(): void
+    {
+        $this->seedInsurancePremiumDueTemplate();
+        $context = $this->seedInsurancePremiumDueToday(premiumMinor: 5000);
+        app(NotificationConsentManager::class)->setConsent(
+            clientId: $context['client_id'],
+            agencyId: $context['agency_id'],
+            channel: 'sms',
+            category: 'insurance_premium_due',
+            language: 'fr',
+            status: NotificationConsentManager::STATUS_OPTED_IN,
+            changedBy: null,
+        );
+
+        $created = app(ClientAlertProducer::class)->produceInsurancePremiumDueAlerts(Carbon::today());
+
+        self::assertSame(1, $created);
+        $this->assertDatabaseHas('notification_deliveries', [
+            'category' => 'insurance_premium_due',
+            'channel' => 'sms',
+            'destination' => $context['phone_number'],
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_insurance_premium_due_producer_does_not_duplicate_on_rerun(): void
+    {
+        $this->seedInsurancePremiumDueTemplate();
+        $context = $this->seedInsurancePremiumDueToday(premiumMinor: 5000);
+        app(NotificationConsentManager::class)->setConsent(
+            clientId: $context['client_id'],
+            agencyId: $context['agency_id'],
+            channel: 'sms',
+            category: 'insurance_premium_due',
+            language: 'fr',
+            status: NotificationConsentManager::STATUS_OPTED_IN,
+            changedBy: null,
+        );
+
+        $producer = app(ClientAlertProducer::class);
+        self::assertSame(1, $producer->produceInsurancePremiumDueAlerts(Carbon::today()));
+        self::assertSame(0, $producer->produceInsurancePremiumDueAlerts(Carbon::today()));
+        self::assertSame(1, DB::table('notification_deliveries')->where('category', 'insurance_premium_due')->count());
+    }
+
+    public function test_insurance_premium_due_producer_skips_clients_without_consent(): void
+    {
+        $this->seedInsurancePremiumDueTemplate();
+        $this->seedInsurancePremiumDueToday(premiumMinor: 5000);
+
+        self::assertSame(0, app(ClientAlertProducer::class)->produceInsurancePremiumDueAlerts(Carbon::today()));
+        self::assertSame(0, DB::table('notification_deliveries')->where('category', 'insurance_premium_due')->count());
+    }
+
+    public function test_claim_decision_producer_creates_alert_for_consented_client(): void
+    {
+        $this->seedClaimDecisionTemplate();
+        $context = $this->seedInsuranceClaimWithDecision(status: 'approved');
+        app(NotificationConsentManager::class)->setConsent(
+            clientId: $context['client_id'],
+            agencyId: $context['agency_id'],
+            channel: 'sms',
+            category: 'insurance_claim_decision',
+            language: 'fr',
+            status: NotificationConsentManager::STATUS_OPTED_IN,
+            changedBy: null,
+        );
+
+        $created = app(ClientAlertProducer::class)->produceInsuranceClaimDecisionAlerts(Carbon::today());
+
+        self::assertSame(1, $created);
+        $this->assertDatabaseHas('notification_deliveries', [
+            'category' => 'insurance_claim_decision',
+            'channel' => 'sms',
+            'destination' => $context['phone_number'],
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_claim_decision_producer_does_not_duplicate_on_rerun(): void
+    {
+        $this->seedClaimDecisionTemplate();
+        $context = $this->seedInsuranceClaimWithDecision(status: 'rejected');
+        app(NotificationConsentManager::class)->setConsent(
+            clientId: $context['client_id'],
+            agencyId: $context['agency_id'],
+            channel: 'sms',
+            category: 'insurance_claim_decision',
+            language: 'fr',
+            status: NotificationConsentManager::STATUS_OPTED_IN,
+            changedBy: null,
+        );
+
+        $producer = app(ClientAlertProducer::class);
+        self::assertSame(1, $producer->produceInsuranceClaimDecisionAlerts(Carbon::today()));
+        self::assertSame(0, $producer->produceInsuranceClaimDecisionAlerts(Carbon::today()));
+        self::assertSame(1, DB::table('notification_deliveries')->where('category', 'insurance_claim_decision')->count());
+    }
+
+    public function test_claim_decision_producer_skips_clients_without_consent(): void
+    {
+        $this->seedClaimDecisionTemplate();
+        $this->seedInsuranceClaimWithDecision(status: 'settled');
+
+        self::assertSame(0, app(ClientAlertProducer::class)->produceInsuranceClaimDecisionAlerts(Carbon::today()));
+        self::assertSame(0, DB::table('notification_deliveries')->where('category', 'insurance_claim_decision')->count());
+    }
+
     public function test_consent_service_rejects_unsupported_channel_and_category(): void
     {
         $consents = app(NotificationConsentManager::class);
@@ -658,6 +820,257 @@ final class NotificationsFoundationTest extends TestCase
             status: NotificationConsentManager::STATUS_OPTED_IN,
             changedBy: null,
         );
+    }
+
+    private function seedLoanOverdueTemplate(): void
+    {
+        app(NotificationTemplateManager::class)->createVersion(
+            code: ClientAlertProducer::TEMPLATE_LOAN_OVERDUE,
+            channel: 'sms',
+            category: 'loan_overdue',
+            language: 'fr',
+            bodyTemplate: 'Bonjour {{client_name}}, votre prêt {{loan_number}} a {{amount}} FCFA en retard depuis {{days_overdue}} jours.',
+            subject: null,
+            variablesAllowlist: ['client_name', 'amount', 'days_overdue', 'loan_number'],
+        );
+    }
+
+    /**
+     * @return array{agency_id:int, client_id:int, phone_number:string}
+     */
+    private function seedLoanArrearOverdue(int $unpaidMinor, int $daysOverdue): array
+    {
+        $agency = $this->createAgency('NTF-OD-'.Str::random(3));
+        $phoneNumber = '+23760'.random_int(1000000, 9999999);
+        $clientId = DB::table('clients')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-'.Str::ulid(),
+            'first_name' => 'Overdue',
+            'last_name' => 'Borrower',
+            'status' => 'active',
+            'kyc_status' => 'verified',
+            'phone_number' => $phoneNumber,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $ledgerId = DB::table('ledger_accounts')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'code' => 'LP-OD-'.Str::ulid(),
+            'name' => 'Overdue Loan Ledger',
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
+            'status' => LedgerAccount::STATUS_ACTIVE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $product = LoanProduct::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'ledger_account_id' => $ledgerId,
+            'code' => 'LP-OD-'.Str::ulid(),
+            'name' => 'Overdue Loan Product',
+            'status' => LoanProduct::STATUS_ACTIVE,
+            'min_amount_minor' => 100000,
+            'max_amount_minor' => 10000000,
+            'min_term_count' => 3,
+            'max_term_count' => 24,
+            'term_unit' => LoanProduct::TERM_UNIT_MONTH,
+        ]);
+
+        $loanId = DB::table('loans')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agency['id'],
+            'loan_product_id' => $product->id,
+            'loan_number' => 'LN-OD-'.Str::ulid(),
+            'requested_amount_minor' => 500000,
+            'approved_principal_minor' => 500000,
+            'currency' => 'XAF',
+            'applied_on' => now()->subDays(60)->toDateString(),
+            'approved_on' => now()->subDays(58)->toDateString(),
+            'disbursed_on' => now()->subDays(55)->toDateString(),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('loan_arrears')->insert([
+            'public_id' => (string) Str::ulid(),
+            'loan_id' => $loanId,
+            'due_on' => now()->subDays($daysOverdue)->toDateString(),
+            'original_due_minor' => $unpaidMinor,
+            'paid_minor' => 0,
+            'unpaid_minor' => $unpaidMinor,
+            'currency' => 'XAF',
+            'status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [
+            'agency_id' => $agency['id'],
+            'client_id' => $clientId,
+            'phone_number' => $phoneNumber,
+        ];
+    }
+
+    private function seedInsurancePremiumDueTemplate(): void
+    {
+        app(NotificationTemplateManager::class)->createVersion(
+            code: ClientAlertProducer::TEMPLATE_INSURANCE_PREMIUM_DUE,
+            channel: 'sms',
+            category: 'insurance_premium_due',
+            language: 'fr',
+            bodyTemplate: 'Bonjour {{client_name}}, votre prime d\'assurance {{subscription_number}} de {{amount}} FCFA est due le {{due_date}}.',
+            subject: null,
+            variablesAllowlist: ['client_name', 'amount', 'due_date', 'subscription_number'],
+        );
+    }
+
+    /**
+     * @return array{agency_id:int, client_id:int, phone_number:string}
+     */
+    private function seedInsurancePremiumDueToday(int $premiumMinor): array
+    {
+        $agency = $this->createAgency('NTF-INS-'.Str::random(3));
+        $phoneNumber = '+23760'.random_int(1000000, 9999999);
+        $clientId = DB::table('clients')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-'.Str::ulid(),
+            'first_name' => 'Insurance',
+            'last_name' => 'Subscriber',
+            'status' => 'active',
+            'kyc_status' => 'verified',
+            'phone_number' => $phoneNumber,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $productId = DB::table('insurance_products')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'INS-'.Str::ulid(),
+            'name' => 'Test Insurance Product',
+            'product_type' => 'borrower',
+            'currency' => 'XAF',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $subscriptionId = DB::table('insurance_subscriptions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agency['id'],
+            'insurance_product_id' => $productId,
+            'subscription_number' => 'SUB-'.Str::ulid(),
+            'starts_on' => now()->subMonth()->toDateString(),
+            'ends_on' => now()->addYear()->toDateString(),
+            'currency' => 'XAF',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('insurance_premium_assessments')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_subscription_id' => $subscriptionId,
+            'premium_amount_minor' => $premiumMinor,
+            'currency' => 'XAF',
+            'due_on' => now()->toDateString(),
+            'assessed_at' => now(),
+            'status' => 'assessed',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [
+            'agency_id' => $agency['id'],
+            'client_id' => $clientId,
+            'phone_number' => $phoneNumber,
+        ];
+    }
+
+    private function seedClaimDecisionTemplate(): void
+    {
+        app(NotificationTemplateManager::class)->createVersion(
+            code: ClientAlertProducer::TEMPLATE_CLAIM_DECISION,
+            channel: 'sms',
+            category: 'insurance_claim_decision',
+            language: 'fr',
+            bodyTemplate: 'Bonjour {{client_name}}, votre déclaration de sinistre {{claim_number}} a été {{decision}}.',
+            subject: null,
+            variablesAllowlist: ['client_name', 'claim_number', 'decision'],
+        );
+    }
+
+    /**
+     * @return array{agency_id:int, client_id:int, phone_number:string}
+     */
+    private function seedInsuranceClaimWithDecision(string $status): array
+    {
+        $agency = $this->createAgency('NTF-CLM-'.Str::random(3));
+        $phoneNumber = '+23760'.random_int(1000000, 9999999);
+        $clientId = DB::table('clients')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-'.Str::ulid(),
+            'first_name' => 'Claim',
+            'last_name' => 'Client',
+            'status' => 'active',
+            'kyc_status' => 'verified',
+            'phone_number' => $phoneNumber,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $productId = DB::table('insurance_products')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'INS-CLM-'.Str::ulid(),
+            'name' => 'Claim Test Product',
+            'product_type' => 'life',
+            'currency' => 'XAF',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $subscriptionId = DB::table('insurance_subscriptions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agency['id'],
+            'insurance_product_id' => $productId,
+            'subscription_number' => 'SUB-CLM-'.Str::ulid(),
+            'starts_on' => now()->subYear()->toDateString(),
+            'ends_on' => now()->addYear()->toDateString(),
+            'currency' => 'XAF',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('insurance_claims')->insert([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agency['id'],
+            'insurance_subscription_id' => $subscriptionId,
+            'claim_number' => 'CLM-'.Str::ulid(),
+            'claim_type' => 'death',
+            'incident_date' => now()->subDays(10)->toDateString(),
+            'status' => $status,
+            'currency' => 'XAF',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [
+            'agency_id' => $agency['id'],
+            'client_id' => $clientId,
+            'phone_number' => $phoneNumber,
+        ];
     }
 
     private function createUserWithRole(string $role): User

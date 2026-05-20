@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use App\Models\ReportDefinition;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -150,6 +152,100 @@ final class DashboardsTest extends TestCase
         $this->assertJsonError($response, 403);
     }
 
+    public function test_teller_role_cannot_access_operational_dashboard(): void
+    {
+        $teller = $this->createUserWithRole('teller');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->getJson('/api/v1/dashboards/operational');
+        $this->assertJsonError($response, 403);
+    }
+
+    public function test_operational_dashboard_par_reconciles_with_credit_par_report_run(): void
+    {
+        Config::set('formulas.policies.portfolio_reporting_metrics.approved', true);
+
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('DSH-REC');
+        $productId = $this->createLoanProduct('DSH-REC-PROD');
+
+        // Loan with two schedule lines: one overdue > 30 days relative to 2026-05-31 (so in PAR30),
+        // and one due before period end.
+        $this->seedLoanWithSchedule($agency['id'], $productId['id'], 'active', [
+            ['due_date' => '2026-04-25', 'principal_minor' => 3000, 'interest_minor' => 0, 'penalty_minor' => 0],
+            ['due_date' => '2026-05-15', 'principal_minor' => 2000, 'interest_minor' => 0, 'penalty_minor' => 0],
+        ]);
+
+        $defPublicId = (string) Str::ulid();
+        DB::table('report_definitions')->insert([
+            'public_id' => $defPublicId,
+            'code' => 'DSH-PAR-'.Str::random(4),
+            'version' => 1,
+            'name' => 'Dashboard PAR Reconciliation',
+            'report_type' => ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY,
+            'module' => 'reporting',
+            'status' => ReportDefinition::STATUS_ACTIVE,
+            'definition' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $reportRun = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $defPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'period_ends_on' => '2026-05-31',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($reportRun, 201);
+        $reportPar30 = $reportRun->json('data.summary.par30_outstanding_at_risk_minor');
+
+        $dashboard = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/dashboards/operational?agency_public_id='.$agency['public_id'].'&period_ends_on=2026-05-31');
+        $this->assertJsonSuccess($dashboard);
+        $dashboardPar30 = $dashboard->json('data.par.par30_outstanding_at_risk_minor');
+
+        self::assertIsInt($reportPar30);
+        self::assertGreaterThan(0, $reportPar30);
+        self::assertSame($reportPar30, $dashboardPar30);
+    }
+
+    public function test_operational_dashboard_claim_status_filter(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('DSH-CLM');
+
+        $this->seedInsuranceClaim($agency['id'], 'pending');
+        $this->seedInsuranceClaim($agency['id'], 'pending');
+        $this->seedInsuranceClaim($agency['id'], 'approved');
+
+        $filtered = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/dashboards/operational?agency_public_id='.$agency['public_id'].'&claim_status=pending');
+        $this->assertJsonSuccess($filtered);
+        $byStatus = $filtered->json('data.claims_by_status');
+        self::assertIsArray($byStatus);
+        self::assertSame(2, $byStatus['pending'] ?? 0);
+        self::assertArrayNotHasKey('approved', $byStatus);
+    }
+
+    public function test_operational_dashboard_insurance_premium_period_filter(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('DSH-PRM');
+
+        $subscriptionId = $this->seedInsuranceSubscription($agency['id']);
+        $this->seedPremiumAssessment($subscriptionId, '2026-01-15', 4000);
+        $this->seedPremiumAssessment($subscriptionId, '2026-06-15', 9000);
+
+        $janResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/dashboards/operational?agency_public_id='.$agency['public_id']
+                .'&period_starts_on=2026-01-01&period_ends_on=2026-01-31');
+        $this->assertJsonSuccess($janResponse);
+        self::assertSame(4000, $janResponse->json('data.insurance_premiums.assessed_minor'));
+        self::assertSame(1, $janResponse->json('data.insurance_premiums.due_count'));
+    }
+
     private function createUserWithRole(string $role): User
     {
         $user = User::factory()->createOne([
@@ -280,6 +376,59 @@ final class DashboardsTest extends TestCase
         }
 
         return $loanId;
+    }
+
+    private function seedInsuranceSubscription(int $agencyId): int
+    {
+        $clientId = $this->seedClient($agencyId, 'Premium', 'Holder');
+
+        $partnerId = DB::table('insurance_partners')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'code' => 'INS-'.Str::random(4),
+            'name' => 'Partner',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $productId = DB::table('insurance_products')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'insurance_partner_id' => $partnerId,
+            'code' => 'INSP-'.Str::random(4),
+            'name' => 'Product',
+            'product_type' => 'health',
+            'currency' => 'XAF',
+            'is_refundable' => false,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return DB::table('insurance_subscriptions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agencyId,
+            'insurance_product_id' => $productId,
+            'subscription_number' => 'SUB-'.Str::ulid(),
+            'currency' => 'XAF',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function seedPremiumAssessment(int $subscriptionId, string $dueOn, int $amountMinor): void
+    {
+        DB::table('insurance_premium_assessments')->insert([
+            'public_id' => (string) Str::ulid(),
+            'insurance_subscription_id' => $subscriptionId,
+            'premium_amount_minor' => $amountMinor,
+            'currency' => 'XAF',
+            'due_on' => $dueOn,
+            'status' => 'assessed',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function seedInsuranceClaim(int $agencyId, string $status): void

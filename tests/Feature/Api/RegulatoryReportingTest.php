@@ -352,6 +352,111 @@ final class RegulatoryReportingTest extends TestCase
         self::assertNotSame($first->json('data.public_id'), $second->json('data.public_id'));
     }
 
+    public function test_inactive_emf_account_cannot_be_used_for_new_mappings(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('REG-D2');
+        $sourcePublicId = $this->createSource($actor);
+        $ledger = $this->createLedgerAccount($agency['id']);
+
+        $source = DB::table('regulatory_sources')->where('public_id', $sourcePublicId)->first(['id']);
+        self::assertIsObject($source);
+        $inactiveEmfPublicId = (string) Str::ulid();
+        DB::table('emf_regulatory_accounts')->insert([
+            'public_id' => $inactiveEmfPublicId,
+            'regulatory_source_id' => (int) $source->id,
+            'code' => 'INACT-01',
+            'name' => 'Inactive EMF Account',
+            'account_class' => 'asset',
+            'status' => 'inactive',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/emf-ledger-account-mappings', [
+                'emf_regulatory_account_public_id' => $inactiveEmfPublicId,
+                'ledger_account_public_id' => $ledger['public_id'],
+            ]);
+        $this->assertJsonError($response, 422);
+        $response->assertJsonPath('errors.emf_regulatory_account_public_id.0', 'The selected EMF regulatory account must be active.');
+    }
+
+    public function test_report_definition_version_is_immutable_no_patch_route_exists(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $sourcePublicId = $this->createSource($actor);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-definitions', [
+                'code' => 'IMMUT-TEST',
+                'name' => 'Immutable Definition',
+                'report_type' => 'emf_trial_balance',
+                'module' => 'reporting',
+                'regulatory_source_public_id' => $sourcePublicId,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $definitionPublicId = $this->requireStringJsonPath($created, 'data.public_id');
+        $created->assertJsonPath('data.version', 1);
+
+        // No PATCH/PUT route exists for report definitions — attempting to patch returns 404.
+        $patch = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/report-definitions/'.$definitionPublicId, [
+                'name' => 'Mutated Name',
+            ]);
+        $patch->assertStatus(404);
+
+        // The original version 1 record in the database is untouched.
+        $this->assertDatabaseHas('report_definitions', [
+            'public_id' => $definitionPublicId,
+            'code' => 'IMMUT-TEST',
+            'version' => 1,
+            'name' => 'Immutable Definition',
+        ]);
+    }
+
+    public function test_same_period_and_source_produces_identical_totals_on_rerun(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('REG-D5');
+        $sourcePublicId = $this->createSource($actor);
+        $definitionPublicId = $this->createReportDefinition($actor, $sourcePublicId);
+        $ledger = $this->createLedgerAccount($agency['id']);
+        $this->mapLedgerToEmfAccount($ledger['id'], $sourcePublicId);
+
+        $this->seedJournal($agency['id'], $ledger['id'], $actor->id, 2000, 0, 'posted');
+
+        $run1 = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-31',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($run1, 201);
+
+        // No data change between runs.
+        $run2 = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-31',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($run2, 201);
+
+        self::assertSame(2000, $run1->json('data.summary.debit_total_minor'));
+        self::assertSame($run1->json('data.summary.debit_total_minor'), $run2->json('data.summary.debit_total_minor'));
+        self::assertSame($run1->json('data.summary.credit_total_minor'), $run2->json('data.summary.credit_total_minor'));
+        self::assertSame(
+            $run1->json('data.source_version_snapshot.source_checksum'),
+            $run2->json('data.source_version_snapshot.source_checksum'),
+        );
+        self::assertNotSame($run1->json('data.public_id'), $run2->json('data.public_id'));
+    }
+
     private function createSource(User $actor): string
     {
         $response = $this->withApiHeaders()

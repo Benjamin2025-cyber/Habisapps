@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Support\Readiness\ProductionReadinessChecker;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -20,3 +21,13 @@ Artisan::command('app:production-readiness-check', function (ProductionReadiness
 
     return $checker->hasFailures($results) ? 1 : 0;
 })->purpose('Validate deployment-critical production configuration.');
+
+Schedule::command('notifications:produce-client-alerts --type=all')
+    ->dailyAt('07:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('notifications:produce-internal-alerts --type=all')
+    ->dailyAt('07:15')
+    ->withoutOverlapping()
+    ->runInBackground();

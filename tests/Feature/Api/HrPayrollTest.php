@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 final class HrPayrollTest extends TestCase
@@ -453,6 +454,130 @@ final class HrPayrollTest extends TestCase
         $this->assertJsonSuccess($export);
         self::assertIsString($export->json('data.checksum'));
         $export->assertJsonPath('data.source_payroll_run_public_id', $runPublicId);
+    }
+
+    public function test_employee_salary_field_hidden_without_hr_salary_view_permission(): void
+    {
+        $agency = $this->createAgency('HR-SAL');
+
+        // Register hr.salary.view so hasPermissionTo() returns false rather than throwing.
+        Permission::findOrCreate('hr.salary.view', 'web');
+
+        // Grant HR access without the salary view permission.
+        $hrAccess = Permission::findOrCreate('hr.employee.manage', 'web');
+        $actor = User::factory()->createOne([
+            'status' => User::STATUS_ACTIVE,
+            'phone_verified_at' => now(),
+        ]);
+        $actor->givePermissionTo($hrAccess);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/hr-employees', [
+                'agency_public_id' => $agency['public_id'],
+                'first_name' => 'Salary',
+                'last_name' => 'Hidden',
+                'base_salary_minor' => 350000,
+            ]);
+        $this->assertJsonSuccess($response, 201);
+        $data = $response->json('data');
+        self::assertIsArray($data);
+        self::assertArrayNotHasKey('base_salary_minor', $data);
+    }
+
+    public function test_rejected_leave_blocks_absence_deduction_in_payroll(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $checker = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('HR-REJLV');
+        $employeePublicId = $this->createEmployee($maker, $agency);
+        $this->seedActiveFormulaSet($maker, $checker);
+        $this->seedPayrollMappings($agency['id']);
+
+        $leave = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/hr-employees/'.$employeePublicId.'/leave-requests', [
+                'leave_type' => 'absence',
+                'starts_on' => '2026-05-10',
+                'ends_on' => '2026-05-10',
+            ]);
+        $this->assertJsonSuccess($leave, 201);
+        $leavePublicId = $this->requireStringJsonPath($leave, 'data.public_id');
+
+        // Checker rejects the leave request.
+        $this->assertJsonSuccess($this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/hr-leave-requests/'.$leavePublicId.'/review', ['decision' => 'reject']));
+
+        // Attempting to use rejected leave for absence deduction must be blocked.
+        $blocked = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/hr-payroll-runs', [
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-31',
+                'employees' => [
+                    [
+                        'employee_public_id' => $employeePublicId,
+                        'gross_amount_minor' => 200000,
+                        'absence_deduction_minor' => 10000,
+                        'approved_leave_public_id' => $leavePublicId,
+                    ],
+                ],
+            ]);
+        $this->assertJsonError($blocked, 422);
+    }
+
+    public function test_activating_new_formula_set_supersedes_previous_active_for_same_code(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $checker = $this->createUserWithRole('platform-admin');
+        $sourcePublicId = $this->seedRegulatorySource();
+
+        // Create and activate v1.
+        $v1Create = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->postJson('/api/v1/hr-payroll-formula-sets', [
+                'code' => 'CM-SUPERSEDE-TEST',
+                'effective_from' => '2026-01-01',
+                'regulatory_source_public_id' => $sourcePublicId,
+                'rates' => [
+                    ['branch' => 'pvid', 'payer' => 'employee', 'rate' => 0.042, 'ceiling_minor' => 75000000],
+                ],
+            ]);
+        $this->assertJsonSuccess($v1Create, 201);
+        $v1PublicId = $this->requireStringJsonPath($v1Create, 'data.public_id');
+
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/hr-payroll-formula-sets/'.$v1PublicId.'/activate'));
+
+        // Create v2 for the same code.
+        $v2Create = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->postJson('/api/v1/hr-payroll-formula-sets', [
+                'code' => 'CM-SUPERSEDE-TEST',
+                'effective_from' => '2026-07-01',
+                'regulatory_source_public_id' => $sourcePublicId,
+                'rates' => [
+                    ['branch' => 'pvid', 'payer' => 'employee', 'rate' => 0.044, 'ceiling_minor' => 80000000],
+                ],
+            ]);
+        $this->assertJsonSuccess($v2Create, 201);
+        $v2PublicId = $this->requireStringJsonPath($v2Create, 'data.public_id');
+        $v2Create->assertJsonPath('data.version', 2);
+
+        // Activating v2 supersedes v1.
+        $activate = $this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/hr-payroll-formula-sets/'.$v2PublicId.'/activate');
+        $this->assertJsonSuccess($activate);
+        $activate->assertJsonPath('data.status', 'active');
+
+        $this->assertDatabaseHas('hr_payroll_formula_sets', [
+            'public_id' => $v1PublicId,
+            'status' => 'superseded',
+        ]);
+        $this->assertDatabaseHas('hr_payroll_formula_sets', [
+            'public_id' => $v2PublicId,
+            'status' => 'active',
+        ]);
     }
 
     /**
