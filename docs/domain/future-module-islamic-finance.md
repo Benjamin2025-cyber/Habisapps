@@ -204,3 +204,22 @@ Separate mappings are required for:
 8. Islamic accounts.
 9. Sharia audit reports.
 
+## Implemented MVP Boundary
+
+Current implementation is limited to Murabaha. Ijara, Salam, Istisna'a, Mudaraba, Musharaka, Islamic accounts, and Sharia audit reports remain discovery/backlog items and must not be exposed as production workflows until their own ADR, accounting mappings, and tests exist.
+
+Implemented controls:
+
+- Islamic products are separate from conventional loans; no `is_islamic` flag is added to conventional lending.
+- Murabaha products are created as drafts and require Sharia compliance approval before financing can be created.
+- Compliance review is maker-checker controlled and audited.
+- Murabaha financing records store purchase cost, allowed costs, markup, and sale price as contract snapshots.
+- Sale price must equal purchase cost plus allowed costs plus markup.
+- Financing requires a real financed asset and a receivable installment schedule before approval.
+- Installment totals must equal the fixed sale price; no interest schedule or conventional loan schedule is used.
+- Accounting posts through Islamic-finance operation mappings only: receivable debit, cost/allowed-cost payable credit, and deferred profit credit.
+- Missing operation mappings block approval.
+- Asset ownership transition to `owned_by_institution` is audited.
+- Cameroon MVP currency is XAF only. Multi-currency Islamic financing is out of scope.
+- Client agency and product agency boundaries are enforced; agency-scoped products can only be used by that agency, while global products can be shared.
+- Islamic financing client references use restricted deletion to avoid cascading deletion of financial records through client removal.

@@ -55,6 +55,7 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
             'islamic_financed_assets',
             'islamic_profit_sharing_terms',
             'islamic_compliance_reviews',
+            'islamic_financing_installments',
             'emf_regulatory_accounts',
             'emf_ledger_account_mappings',
             'operation_codes',

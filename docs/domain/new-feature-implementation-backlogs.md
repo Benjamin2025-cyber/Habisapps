@@ -22,6 +22,9 @@ Use these sources as guardrails. They do not replace legal/compliance review, bu
 These rules apply to every ticket.
 
 - Do not invent statuses, formulas, rates, tax/social contribution rules, accounting entries, or regulatory report layouts.
+- Do not treat a foundation/MVP slice as feature completion unless the ticket explicitly says the business feature can stop there.
+- When the stakeholder requested a full module, backlog work must keep adding tickets until the full business lifecycle is covered: configuration, creation, approval, posting, correction/reversal, reporting/export, audit, permissions, and operational exceptions.
+- If a ticket intentionally defers part of a requested module, it must name the deferred work as a required later ticket in the same backlog.
 - Do not use internal numeric IDs in API contracts. Use public IDs.
 - Do not silently create ledger accounts or operation mappings.
 - Do not post financial entries when required operation mappings are missing.
@@ -35,9 +38,9 @@ These rules apply to every ticket.
 ## Execution Order
 
 1. Bancassurance completion.
-2. Notifications and alerts foundation.
+2. Notifications and alerts completion.
 3. Currency exchange.
-4. EMF/COBAC reporting foundation.
+4. EMF/COBAC reporting completion.
 5. Dashboards.
 6. HR/payroll.
 7. Islamic finance.
@@ -55,6 +58,12 @@ Reasoning:
 ## Backlog A: Bancassurance Completion
 
 Current state: `insurance_partners`, `insurance_products`, `insurance_product_coverages`, `insurance_subscriptions`, `insurance_premium_assessments`, `insurance_premium_payments`, `insurance_claims`, and `insurance_claim_documents` exist. Basic insurance APIs exist. Loan-linked borrower insurance premium assessment and account collection exist.
+
+Completion standard:
+
+- This backlog is not complete when the basic API foundation is implemented.
+- It is complete only when the insurance product lifecycle, recurring premiums, renewals, endorsements, cancellations, reversals, remittances/commissions, claims, settlement, reports, exports, permissions, audit, and operational exception workflows are implemented and tested.
+- All stakeholder-requested product families must be configurable product types, not hardcoded one-off flows: borrower, health, life, savings, agricultural, home, professional/commercial multi-risk, automobile/motorcycle, school, travel, funeral, and mobile/equipment insurance.
 
 ### A1. Standalone Premium Assessment Endpoint
 
@@ -315,7 +324,234 @@ Acceptance criteria:
 
 - Report totals reconcile with table-level seeded fixtures.
 
-## Backlog B: Notifications And Alerts Foundation
+### A8. Insurance Product Catalog And Rule Versioning
+
+Decision:
+
+- Implement configurable insurance product definitions for every stakeholder-requested product family.
+- Premium rules must be versioned and effective-dated.
+
+Do not:
+
+- Do not hardcode product-specific premium formulas in controllers.
+- Do not allow overlapping active rule versions for the same product.
+- Do not allow inactive or unapproved products to accept subscriptions.
+
+Business rules:
+
+1. Product types include borrower, health, life, savings, agricultural, home, professional/commercial multi-risk, automobile/motorcycle, school, travel, funeral, and mobile/equipment.
+2. Each product has one or more effective-dated premium rule versions.
+3. A premium rule version records calculation type, base, rate/fixed amount, caps/floors, taxes/fees if configured, source/contract reference, and approver.
+4. New subscriptions and premium assessments snapshot the exact rule version used.
+5. Product changes do not mutate existing subscription/premium snapshots.
+
+Tests:
+
+- Every requested product family can be created as a configurable product type.
+- Overlapping active rule versions are rejected.
+- Premium assessment snapshots the rule version.
+- Inactive/unapproved product cannot be subscribed to.
+- Existing subscription remains unchanged after a later rule version is approved.
+
+Acceptance criteria:
+
+- Product configuration is data-driven.
+- Product/rule responses expose public IDs only.
+- Product rule approval is audited.
+
+### A9. Recurring Premium Schedules And Renewal Lifecycle
+
+Decision:
+
+- Implement recurring premium generation for products whose contract requires periodic premiums.
+- Implement coverage renewal instead of forcing manual subscription recreation.
+
+Do not:
+
+- Do not create duplicate assessments for the same subscription period.
+- Do not silently renew expired coverage without configured renewal terms.
+- Do not mark coverage active when required premiums are unpaid unless a waived-premium approval exists.
+
+Business rules:
+
+1. Product rule defines premium frequency: one-time, monthly, quarterly, annual, or contract-specific schedule.
+2. Subscription activation creates or schedules the first premium assessment.
+3. Batch generation creates due assessments for upcoming periods idempotently.
+4. Renewal snapshots new coverage dates, insured amount, and product rule version.
+5. Grace periods, lapses, and reinstatements are explicit statuses and audited.
+
+Tests:
+
+- Recurring schedule generation is idempotent.
+- Renewal creates new coverage period without mutating old period.
+- Expired/lapsed subscription cannot accept claims for dates outside valid coverage.
+- Waived-premium activation requires approval.
+
+Acceptance criteria:
+
+- Premium due reports include generated recurring assessments.
+- Coverage status is derived from dates, payment/waiver state, and lifecycle status.
+
+### A10. Endorsements, Cancellations, Refunds, And Reversals
+
+Decision:
+
+- Implement operational changes after subscription creation: endorsements, cancellations, refunds, and financial reversals.
+
+Do not:
+
+- Do not edit posted premium payments or claim settlement journals in place.
+- Do not delete subscriptions with posted financial activity.
+- Do not calculate refunds without a configured refund rule or manual approval.
+
+Business rules:
+
+1. Endorsement changes coverage amount, beneficiary/asset details, or coverage dates through an approved change record.
+2. Cancellation records effective date, reason, approval, and refund treatment.
+3. Premium payment reversal creates a reversing journal and reopens/voids the assessment according to status rules.
+4. Claim settlement reversal creates a reversing journal and moves the claim to an approved correction status.
+5. Refunds post through configured operation mappings and never bypass accounting.
+
+Tests:
+
+- Endorsement snapshots before/after values.
+- Cancellation blocks future claims after effective date.
+- Premium reversal posts equal-and-opposite journal lines.
+- Claim settlement reversal posts equal-and-opposite journal lines.
+- Posted records cannot be hard-deleted.
+
+Acceptance criteria:
+
+- All correction workflows are auditable and public-ID based.
+- Reports exclude or separately show reversed/voided financial activity.
+
+### A11. Insurer Remittance And Commission Accounting
+
+Decision:
+
+- Complete the insurer-side business model: broker/distributor/collector/risk carrier behavior by product.
+
+Do not:
+
+- Do not assume all premiums are institution income.
+- Do not assume the microfinance pays every claim from its own risk.
+- Do not post remittance or commission without product business-model configuration.
+
+Business rules:
+
+1. Product business model is required: broker, distributor, premium collector, risk carrier, or explicit configured equivalent.
+2. Premium collection splits gross premium into insurer payable, commission income, taxes/fees, and institution income only according to configured rules.
+3. Insurer remittance batches group payable amounts by partner, product, period, and currency.
+4. Remittance approval posts accounting and marks included premium payments as remitted.
+5. Commission reports reconcile to posted premium and remittance records.
+
+Tests:
+
+- Missing business model blocks premium collection/remittance.
+- Broker product posts insurer payable and commission income according to configured split.
+- Risk-carrier product posts premium income and claim expense according to configured mapping.
+- Remittance batch cannot include already remitted payments.
+- Commission report reconciles to journal lines.
+
+Acceptance criteria:
+
+- Accounting behavior is fully configuration-driven.
+- Insurer balances can be reconciled by partner/product/period.
+
+### A12. Complete Claim Lifecycle And Evidence Controls
+
+Decision:
+
+- Implement the full operational claim lifecycle, not just basic decision requests.
+
+Do not:
+
+- Do not allow claim settlement before required evidence and approval gates are satisfied.
+- Do not expose raw document storage paths.
+- Do not allow claims outside active coverage dates.
+
+Business rules:
+
+1. Claim statuses cover draft/intake, pending review, evidence requested, approved/validated, rejected, settlement approved, settled, corrected/reversed, and closed.
+2. Required evidence can be configured per product/claim type.
+3. Claim intake validates incident date against coverage period.
+4. Decision maker-checker records reason codes, indemnified amount, coverage limits, deductible/excess if configured, and reviewer.
+5. Settlement posting is separate from claim approval and uses product business model mappings.
+6. Notifications are queued for claim decisions without exposing sensitive details.
+
+Tests:
+
+- Claim outside coverage period is rejected.
+- Missing required evidence blocks approval/settlement.
+- Settlement amount cannot exceed configured coverage/approved indemnity.
+- Rejected claim cannot be settled.
+- Claim decision notification outbox row is created.
+
+Acceptance criteria:
+
+- Claim lifecycle is inspectable from API without internal IDs or raw file paths.
+- Claim reports reconcile approved, rejected, pending, and settled statuses.
+
+### A13. Insurance Exports And Regulatory/Partner Reporting
+
+Decision:
+
+- Implement exportable insurance reports for operations, insurer partners, and management.
+
+Do not:
+
+- Do not call a report complete if it only returns dashboard aggregates.
+- Do not expose cross-agency data to agency-scoped users.
+- Do not export raw document paths or unnecessary PII.
+
+Business rules:
+
+1. Export formats include CSV and PDF or the project's standard export mechanism.
+2. Reports cover active subscriptions, premiums due/paid, unpaid premiums, claims by status, loss ratio, commissions, remittances, cancellations/refunds, and expiring coverage.
+3. Exports record generated-by, generated-at, filters, checksum, and source query version.
+4. Agency-scoped users only export their agency data.
+
+Tests:
+
+- Each report exports with expected headers and totals.
+- Export checksum changes when source data changes.
+- Agency user cannot export another agency's insurance data.
+- PII is limited to fields explicitly required for the report.
+
+Acceptance criteria:
+
+- Exported totals reconcile to API report totals and posted journal lines where financial.
+
+### A14. Insurance Permissions, Audit, And Operational Rollout Controls
+
+Decision:
+
+- Add production-grade permission, audit, and rollout controls for the complete module.
+
+Do not:
+
+- Do not let generic platform-admin checks be the only long-term control for insurance operations.
+- Do not allow direct production use of partially configured products.
+
+Business rules:
+
+1. Permissions separate product setup, subscription creation, premium collection, claim intake, claim review, claim settlement, remittance, reversal, and report export.
+2. Every financial or claim-status transition records a security audit event.
+3. Product readiness checklist blocks activation until partner, rule version, business model, accounting mappings, evidence requirements, and report category are configured.
+4. Feature rollout can disable new subscriptions for a product without affecting servicing of existing subscriptions.
+
+Tests:
+
+- Users without each permission are denied.
+- Audit events are recorded for subscription activation, premium posting, claim decision, settlement, reversal, remittance, and export.
+- Product activation fails until readiness checklist passes.
+- Disabling new business blocks new subscriptions but keeps claims/premium servicing available.
+
+Acceptance criteria:
+
+- Bancassurance can be operated as a complete module with clear role separation and audit evidence.
+
+## Backlog B: Notifications And Alerts Completion
 
 ### B1. Notification Consent And Template Model
 
@@ -569,7 +805,7 @@ Tests:
 - Variance blocks close.
 - Approved adjustment posts correction.
 
-## Backlog D: EMF/COBAC Regulatory Reporting
+## Backlog D: EMF/COBAC Regulatory Reporting Completion
 
 ### D1. Regulatory Source Registry
 
@@ -833,6 +1069,12 @@ Tests:
 
 ## Backlog G: Islamic Finance
 
+Completion standard:
+
+- Murabaha alone is not complete Islamic finance.
+- This backlog is complete only when all stakeholder-requested Islamic product families are either implemented with product-specific accounting/contracts or explicitly rejected by the business/legal owner with a dated decision.
+- First-product implementation is allowed only as an execution order, not as the definition of done for the module.
+
 ### G1. Islamic Finance ADR And Governance
 
 Decision:
@@ -846,7 +1088,7 @@ Do not:
 
 Acceptance criteria:
 
-- ADR defines Sharia approval roles, product boundary, accounting boundary, and supported MVP product.
+- ADR defines Sharia approval roles, product boundary, accounting boundary, and the ordered product implementation plan.
 
 ### G2. Sharia Approval Workflow
 
@@ -879,7 +1121,7 @@ Tests:
 - Murabaha without asset rejected.
 - Asset status transitions audited.
 
-### G4. Murabaha MVP
+### G4. Murabaha Cost-Plus Sale Implementation
 
 Decision:
 
@@ -905,16 +1147,170 @@ Tests:
 - Missing asset rejected.
 - Missing mapping rejected.
 
-### G5. Ijara/Musharaka/Mudaraba Deferred Backlog
+### G5. Ijara / Ijara Wa Iqtina Implementation
 
 Decision:
 
-- Do not implement these until Murabaha MVP and accounting controls are proven.
+- Implement leasing workflows as product-specific Islamic finance, not as disguised loans.
+
+Do not:
+
+- Do not mix rental schedule with sale receivable schedule.
+- Do not transfer ownership unless the contract explicitly supports transfer.
+
+Business rules:
+
+1. Institution asset ownership is recorded before lease activation.
+2. Rental schedule, residual value, maintenance responsibility, loss/damage handling, and transfer option are contract snapshots.
+3. Accounting uses Ijara-specific mappings for leased asset, rental income/receivable, residual/transfer, and impairment if configured.
+4. Claims/asset events can suspend or adjust rentals only through approved workflow.
+
+Tests:
+
+- Lease cannot activate without owned asset.
+- Rental schedule is separate from residual/transfer amount.
+- Missing Ijara mappings block posting.
+- Ownership transfer requires approved transfer workflow.
+
+### G6. Salam Implementation
+
+Decision:
+
+- Implement Salam as upfront purchase of specified goods delivered later.
+
+Do not:
+
+- Do not treat Salam as a cash loan to a producer.
+- Do not approve contracts with vague goods, delivery date, quantity, or delivery place.
+
+Business rules:
+
+1. Goods specification, quantity, quality, delivery date, delivery place, counterparty, and settlement terms are required.
+2. Upfront payment posts through Salam-specific mappings.
+3. Delivery, partial delivery, non-delivery, and substitution require approved workflows.
+4. Inventory/receivable treatment is configured by product/accounting rules.
+
+Tests:
+
+- Missing goods specification blocks contract approval.
+- Upfront payment posts only after approval and mapping validation.
+- Late/non-delivery workflow is audited.
+
+### G7. Istisna'a Implementation
+
+Decision:
+
+- Implement Istisna'a for construction/manufacturing contracts with milestones.
+
+Do not:
+
+- Do not use simple loan disbursement milestones as a substitute.
+- Do not release staged payments without approved milestone evidence.
+
+Business rules:
+
+1. Contract records asset specifications, supplier/contractor, customer, milestones, inspections, delivery, and acceptance criteria.
+2. Supplier payments are staged and mapped through Istisna'a-specific accounts.
+3. Customer billing follows approved contract schedule.
+4. Variation orders require approval and snapshot before/after values.
+
+Tests:
+
+- Milestone payment requires approved evidence.
+- Variation order updates future obligations only.
+- Delivery/acceptance closes manufacturing obligation.
+
+### G8. Mudaraba Implementation
+
+Decision:
+
+- Implement Mudaraba as capital-provider/entrepreneur profit-sharing, not fixed-interest lending.
+
+Do not:
+
+- Do not guarantee institution profit.
+- Do not make client bear capital loss except misconduct/negligence/breach.
+
+Business rules:
+
+1. Capital contribution, entrepreneur obligations, profit-sharing ratio, reporting frequency, evidence requirements, and loss rule are contract snapshots.
+2. Profit declarations require evidence and approval before distribution.
+3. Loss handling distinguishes normal business loss from misconduct/negligence/breach.
+4. Accounting uses Mudaraba investment, profit distribution, impairment/loss, and recovery mappings.
+
+Tests:
+
+- Profit distribution follows configured ratio.
+- Loss cannot be charged to entrepreneur without approved misconduct/negligence/breach finding.
+- Missing profit evidence blocks distribution.
+
+### G9. Musharaka Implementation
+
+Decision:
+
+- Implement Musharaka as partnership finance with contribution, profit/loss, and exit rules.
+
+Do not:
+
+- Do not force loss-sharing to profit-sharing ratio when capital ratios differ.
+- Do not process buyout/exit without approved valuation.
+
+Business rules:
+
+1. Partner contributions, capital ratios, profit-sharing ratio, loss-sharing rule, governance, reporting, exit, buyout, and impairment terms are snapshots.
+2. Profit distribution follows contract ratio.
+3. Loss follows capital participation unless a legally approved exception exists.
+4. Buyout/exit uses approved valuation workflow.
+
+Tests:
+
+- Profit and loss distributions use the correct basis.
+- Buyout requires approved valuation.
+- Missing partnership reporting blocks distribution.
+
+### G10. Islamic Accounts And Investment Accounts
+
+Decision:
+
+- Implement Islamic current/savings/investment accounts separately from conventional interest-bearing products.
+
+Do not:
+
+- Do not reuse interest accrual fields or conventional savings-interest formulas.
+- Do not advertise guaranteed return where account type is profit-sharing.
+
+Business rules:
+
+1. Account product defines whether it is safekeeping/current, savings, or investment/profit-sharing.
+2. Fees, profit pools, distribution ratios, restrictions, withdrawals, and statements are configured per product.
+3. Profit distribution uses approved pool results and snapshots calculation version.
+4. Statements avoid interest terminology.
+
+Tests:
+
+- Islamic account product cannot use conventional interest configuration.
+- Profit distribution requires approved pool result.
+- Account statement labels use Islamic product terminology.
+
+### G11. Sharia Audit Reports And Product Controls
+
+Decision:
+
+- Add Sharia audit reports and product readiness controls across all Islamic products.
+
+Do not:
+
+- Do not activate a product without required Sharia approval, accounting mappings, contract terms, and operational evidence requirements.
+
+Business rules:
+
+1. Product readiness checklist blocks activation until Sharia approval, contract template, accounting mappings, evidence requirements, and reporting category are configured.
+2. Sharia audit report lists product approvals, contract exceptions, late changes, non-compliant attempts, and corrective actions.
+3. Reports are exportable with filters, checksum, generated-by, generated-at, and source version.
 
 Acceptance criteria:
 
-- Tickets remain discovery/ADR only.
-- No partial tables that imply unsupported production workflows.
+- Every Islamic product family has activation gates, audit evidence, and exportable Sharia compliance reporting.
 
 ## Soundness Review
 

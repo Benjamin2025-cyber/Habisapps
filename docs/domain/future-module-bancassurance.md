@@ -4,7 +4,7 @@ Stakeholder source: section 27, `Bancassurance`.
 
 ## Current Status
 
-This module is no longer purely future scope. The codebase now contains a first bancassurance foundation:
+This module is no longer purely future scope, but it is not complete. The codebase now contains a first bancassurance foundation:
 
 - insurance partners;
 - insurance products and coverages;
@@ -22,7 +22,7 @@ This module is no longer purely future scope. The codebase now contains a first 
 - insurance report endpoints;
 - basic insurance API routes for partner, product, subscription, claim creation, claim evidence, claim decisions, premium collection, settlement posting, and reports.
 
-The remaining work is no longer basic schema/API creation. The remaining work is product hardening: recurring premium scheduling, richer product premium rule versioning/effective dating, final insurer-contract accounting decisions by product, report export formats, and operational rollout controls.
+The remaining work is required for complete bancassurance delivery, not optional hardening. The module should not be treated as complete until the product catalog, recurring premiums, renewals, endorsements, cancellations, refunds, reversals, insurer remittances/commissions, complete claim lifecycle, report exports, permissions, audit, and rollout controls are implemented and tested.
 
 ## Stakeholder Intent
 
@@ -166,9 +166,14 @@ Minimum reports:
 
 ## Backlog
 
-1. Confirm insurance business model and insurer contracts.
-2. Add recurring premium schedule generation where product contracts require it.
-3. Add reversal/correction workflows for premium collections and claim settlement postings.
-4. Harden product premium rule versioning/effective dating.
-5. Add final report export formats.
-6. Keep borrower loan insurance linked to the module without duplicating premiums.
+1. Complete product catalog and rule versioning for all stakeholder-requested insurance families.
+2. Confirm and configure insurance business model and insurer contracts per product.
+3. Add recurring premium schedule generation where product contracts require it.
+4. Add renewal, lapse, reinstatement, and waiver workflows.
+5. Add endorsement, cancellation, refund, and correction workflows.
+6. Add reversal workflows for premium collections and claim settlement postings.
+7. Add insurer remittance and commission accounting.
+8. Complete claim lifecycle with required evidence controls and coverage-date validation.
+9. Add final report export formats with checksums and source versions.
+10. Add module-specific permissions, audit gates, and product readiness controls.
+11. Keep borrower loan insurance linked to the module without duplicating premiums.
