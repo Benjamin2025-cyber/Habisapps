@@ -2,51 +2,50 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers\Api\V1;
+namespace App\Application\IslamicFinance;
 
-use App\Application\IslamicFinance\IslamicFinanceWorkflowControllerAdapter;
-use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-final class IslamicFinanceController extends BaseController
+final class IslamicFinanceWorkflowControllerAdapter
 {
     public function __construct(
-        private readonly IslamicFinanceWorkflowControllerAdapter $islamic,
+        private readonly IslamicProductWorkflow $product,
+        private readonly IslamicFinancingWorkflow $financing,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
     {
-        return $this->islamic->storeProduct($request);
+        return $this->product->storeProduct($request);
     }
 
     public function storeComplianceReview(Request $request, string $productPublicId): JsonResponse
     {
-        return $this->islamic->storeComplianceReview($request, $productPublicId);
+        return $this->product->storeComplianceReview($request, $productPublicId);
     }
 
     public function reviewCompliance(Request $request, string $reviewPublicId): JsonResponse
     {
-        return $this->islamic->reviewCompliance($request, $reviewPublicId);
+        return $this->product->reviewCompliance($request, $reviewPublicId);
     }
 
     public function storeFinancing(Request $request): JsonResponse
     {
-        return $this->islamic->storeFinancing($request);
+        return $this->financing->storeFinancing($request);
     }
 
     public function storeFinancingAsset(Request $request, string $financingPublicId): JsonResponse
     {
-        return $this->islamic->storeFinancingAsset($request, $financingPublicId);
+        return $this->financing->storeFinancingAsset($request, $financingPublicId);
     }
 
     public function storeInstallments(Request $request, string $financingPublicId): JsonResponse
     {
-        return $this->islamic->storeInstallments($request, $financingPublicId);
+        return $this->financing->storeInstallments($request, $financingPublicId);
     }
 
     public function approveFinancing(Request $request, string $financingPublicId): JsonResponse
     {
-        return $this->islamic->approveFinancing($request, $financingPublicId);
+        return $this->financing->approveFinancing($request, $financingPublicId);
     }
 }

@@ -2,46 +2,45 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers\Api\V1;
+namespace App\Application\Reporting;
 
-use App\Application\Reporting\RegulatoryReportingControllerAdapter;
-use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-final class RegulatoryReportingController extends BaseController
+final class RegulatoryReportingControllerAdapter
 {
     public function __construct(
-        private readonly RegulatoryReportingControllerAdapter $regulatory,
+        private readonly RegulatorySourceWorkflow $source,
+        private readonly RegulatoryReportingWorkflow $reporting,
     ) {}
 
     public function storeSource(Request $request): JsonResponse
     {
-        return $this->regulatory->storeSource($request);
+        return $this->source->storeSource($request);
     }
 
     public function loadEmfAccounts(Request $request, string $sourcePublicId): JsonResponse
     {
-        return $this->regulatory->loadEmfAccounts($request, $sourcePublicId);
+        return $this->source->loadEmfAccounts($request, $sourcePublicId);
     }
 
     public function storeReportDefinitionVersion(Request $request): JsonResponse
     {
-        return $this->regulatory->storeReportDefinitionVersion($request);
+        return $this->reporting->storeReportDefinitionVersion($request);
     }
 
     public function reviewReportRun(Request $request, string $runPublicId): JsonResponse
     {
-        return $this->regulatory->reviewReportRun($request, $runPublicId);
+        return $this->reporting->reviewReportRun($request, $runPublicId);
     }
 
     public function submitReportRun(Request $request, string $runPublicId): JsonResponse
     {
-        return $this->regulatory->submitReportRun($request, $runPublicId);
+        return $this->reporting->submitReportRun($request, $runPublicId);
     }
 
     public function inspectMapping(Request $request, string $operationCode): JsonResponse
     {
-        return $this->regulatory->inspectMapping($request, $operationCode);
+        return $this->reporting->inspectMapping($request, $operationCode);
     }
 }

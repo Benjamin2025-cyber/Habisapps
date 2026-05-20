@@ -2,41 +2,40 @@
 
 declare(strict_types=1);
 
-namespace App\Http\Controllers\Api\V1;
+namespace App\Application\Hr;
 
-use App\Application\Hr\HrWorkflowControllerAdapter;
-use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-final class HrController extends BaseController
+final class HrWorkflowControllerAdapter
 {
     public function __construct(
-        private readonly HrWorkflowControllerAdapter $hr,
+        private readonly HrEmployeeWorkflow $employee,
+        private readonly HrLeaveWorkflow $leave,
     ) {}
 
     public function storeEmployee(Request $request): JsonResponse
     {
-        return $this->hr->storeEmployee($request);
+        return $this->employee->storeEmployee($request);
     }
 
     public function attachEmployeeDocument(Request $request, string $employeePublicId): JsonResponse
     {
-        return $this->hr->attachEmployeeDocument($request, $employeePublicId);
+        return $this->employee->attachEmployeeDocument($request, $employeePublicId);
     }
 
     public function storeContractVersion(Request $request, string $employeePublicId): JsonResponse
     {
-        return $this->hr->storeContractVersion($request, $employeePublicId);
+        return $this->employee->storeContractVersion($request, $employeePublicId);
     }
 
     public function storeLeaveRequest(Request $request, string $employeePublicId): JsonResponse
     {
-        return $this->hr->storeLeaveRequest($request, $employeePublicId);
+        return $this->leave->storeLeaveRequest($request, $employeePublicId);
     }
 
     public function reviewLeaveRequest(Request $request, string $leavePublicId): JsonResponse
     {
-        return $this->hr->reviewLeaveRequest($request, $leavePublicId);
+        return $this->leave->reviewLeaveRequest($request, $leavePublicId);
     }
 }

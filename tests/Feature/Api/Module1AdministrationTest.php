@@ -842,6 +842,16 @@ final class Module1AdministrationTest extends TestCase
         $blocked->assertJsonPath('data.summary_payload.blocking_status_counts.approved', 1);
 
         $draft->forceFill([
+            'status' => JournalEntry::STATUS_SUBMITTED,
+            'submitted_at' => now(),
+            'submitted_by_user_id' => $actor->id,
+        ])->save();
+        $draft->forceFill([
+            'status' => JournalEntry::STATUS_APPROVED,
+            'reviewed_at' => now(),
+            'reviewed_by_user_id' => $actor->id,
+        ])->save();
+        $draft->forceFill([
             'status' => JournalEntry::STATUS_POSTED,
             'posted_at' => now(),
             'posted_by_user_id' => $actor->id,
