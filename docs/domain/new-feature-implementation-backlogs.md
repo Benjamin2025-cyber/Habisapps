@@ -551,6 +551,43 @@ Acceptance criteria:
 
 - Bancassurance can be operated as a complete module with clear role separation and audit evidence.
 
+### A15. Insurance Controller SRP Refactor
+
+Decision:
+
+- Refactor the insurance API so `InsuranceController` is only a transport adapter.
+- Keep business decisions, transaction boundaries, accounting orchestration, report queries, and lifecycle transitions in dedicated application services/actions.
+
+Do not:
+
+- Do not add more insurance business rules directly to `InsuranceController`.
+- Do not move code into a generic helper that simply hides the same mixed responsibilities.
+- Do not change public API behavior, response payloads, permissions, audit events, accounting postings, or database state transitions during the refactor.
+- Do not mark this ticket complete because new services exist while the controller still owns multi-record workflows.
+
+Business rules:
+
+1. Split insurance behavior by workflow ownership: product setup/readiness/rule versions, subscription lifecycle, premium assessment/collection/reversal, claim intake/evidence/decision/settlement, endorsements/cancellations/refunds, remittances, reports/exports, and serialization/payload mapping.
+2. Each service/action owns its database transaction for the workflow it executes.
+3. Controllers validate/authorize input, call one service/action, record only transport-level response handling where needed, and return serialized output.
+4. Shared lookup, row conversion, and payload serialization move into named collaborators instead of remaining private controller helpers.
+5. Existing focused insurance feature tests remain behaviorally unchanged, and new service-level tests cover the extracted workflow rules that no longer require HTTP.
+
+Tests:
+
+- Existing A1-A14 insurance feature tests still pass after extraction.
+- Service-level tests cover at least premium collection, claim settlement/reversal, cancellation/refund, remittance approval, product activation readiness, and exports.
+- PHPStan passes for the controller and all extracted insurance services/actions.
+- A controller-size guard fails if `app/Http/Controllers/Api/V1/InsuranceController.php` grows beyond 500 lines after the refactor.
+
+Acceptance criteria:
+
+- `InsuranceController` contains no inline `DB::transaction(...)` calls.
+- `InsuranceController` contains no direct `JournalEntry`, `JournalLine`, `TellerTransaction`, or operation-mapping writes.
+- `InsuranceController` contains no report query builders and no export checksum logic.
+- `InsuranceController` has no private row parsing helpers such as `rowString`, `rowInt`, or `jsonOrNull`.
+- The controller is small enough to review as HTTP routing glue, not as the insurance domain implementation.
+
 ## Backlog B: Notifications And Alerts Completion
 
 ### B1. Notification Consent And Template Model
