@@ -496,7 +496,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->value('current_balance_minor');
-        if (!is_int($balanceBefore)) {
+        if (! is_int($balanceBefore)) {
             throw new \UnexpectedValueException('Expected int balance');
         }
         self::assertSame(1000, $balanceBefore);
@@ -511,7 +511,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->value('current_balance_minor');
-        if (!is_int($balanceAfter)) {
+        if (! is_int($balanceAfter)) {
             throw new \UnexpectedValueException('Expected int balance');
         }
         self::assertSame(600, $balanceAfter);
@@ -591,7 +591,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->value('current_balance_minor');
-        if (!is_int($balance)) {
+        if (! is_int($balance)) {
             throw new \UnexpectedValueException('Expected int balance');
         }
         self::assertSame(150, $balance);
