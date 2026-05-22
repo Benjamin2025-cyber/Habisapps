@@ -496,7 +496,10 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->value('current_balance_minor');
-        self::assertSame(1000, (int) $balanceBefore);
+        if (!is_int($balanceBefore)) {
+            throw new \UnexpectedValueException('Expected int balance');
+        }
+        self::assertSame(1000, $balanceBefore);
 
         $approve = $this->withApiHeaders()
             ->actingAsSanctum($checker)
@@ -508,7 +511,10 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->value('current_balance_minor');
-        self::assertSame(600, (int) $balanceAfter);
+        if (!is_int($balanceAfter)) {
+            throw new \UnexpectedValueException('Expected int balance');
+        }
+        self::assertSame(600, $balanceAfter);
     }
 
     public function test_stock_movement_requester_cannot_self_approve(): void
@@ -585,7 +591,10 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->value('current_balance_minor');
-        self::assertSame(150, (int) $balance);
+        if (!is_int($balance)) {
+            throw new \UnexpectedValueException('Expected int balance');
+        }
+        self::assertSame(150, $balance);
     }
 
     public function test_inactive_currency_is_rejected_for_rates_and_transactions(): void
