@@ -28,4 +28,7 @@ RUN composer dump-autoload --optimize \
 
 EXPOSE 8000
 
+HEALTHCHECK --interval=5s --timeout=5s --start-period=30s --retries=5 \
+    CMD php -r "exit(fsockopen('localhost', 8000) ? 0 : 1);" 2>/dev/null
+
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]

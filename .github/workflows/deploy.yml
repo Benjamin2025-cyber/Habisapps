@@ -23,5 +23,5 @@ jobs:
             cd /srv/habis-finance-api
             git fetch origin main
             git reset --hard origin/main
-            docker compose up -d --build --remove-orphans
+            docker compose up -d --build --remove-orphans --wait
             docker compose exec -T api sh -lc 'mkdir -p public/docs && php artisan scramble:export --path=public/docs/api.json'
