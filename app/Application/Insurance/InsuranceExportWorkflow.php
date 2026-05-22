@@ -53,7 +53,7 @@ final class InsuranceExportWorkflow extends BaseController
     }
 
     /**
-     * @param callable(User, int): array<string, mixed> $exporter
+     * @param  callable(User, int): array<string, mixed>  $exporter
      */
     private function export(Request $request, string $message, callable $exporter): JsonResponse
     {

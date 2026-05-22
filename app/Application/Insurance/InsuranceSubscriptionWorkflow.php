@@ -180,6 +180,7 @@ final class InsuranceSubscriptionWorkflow extends BaseController
         foreach ($schedules as $schedule) {
             if ($this->scheduleAlreadyAssessed($schedule)) {
                 $skipped++;
+
                 continue;
             }
 
@@ -187,6 +188,7 @@ final class InsuranceSubscriptionWorkflow extends BaseController
             $ruleVersion = DB::table('insurance_product_rule_versions')->where('id', $this->rowInt($schedule, 'rule_version_id'))->first();
             if (! is_object($subscription) || $this->rowString($subscription, 'status') !== 'active' || ! is_object($ruleVersion)) {
                 $skipped++;
+
                 continue;
             }
 

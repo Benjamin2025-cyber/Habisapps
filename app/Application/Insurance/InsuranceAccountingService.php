@@ -108,7 +108,7 @@ final class InsuranceAccountingService
     }
 
     /**
-     * @param list<array{split_type:string, amount_minor:int, ledger_account_id:int, rule_version_split_id:?int}> $splits
+     * @param  list<array{split_type:string, amount_minor:int, ledger_account_id:int, rule_version_split_id:?int}>  $splits
      */
     public function storePremiumPaymentSplits(int $paymentId, array $splits): void
     {
@@ -212,7 +212,7 @@ final class InsuranceAccountingService
     }
 
     /**
-     * @param Collection<int, \stdClass> $items
+     * @param  Collection<int, \stdClass>  $items
      */
     public function postRemittanceBatchJournal(object $batch, Collection $items, User $actor): JournalEntry
     {

@@ -243,4 +243,3 @@ final class InsuranceRemittanceWorkflow extends BaseController
         return (int) (((array) $row)[$key] ?? 0);
     }
 }
-

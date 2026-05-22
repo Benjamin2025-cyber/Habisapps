@@ -274,7 +274,7 @@ final class RegulatoryReportingWorkflow extends BaseController
     }
 
     /**
-     * @param array<string, mixed>|array<int, mixed>|null $definition
+     * @param  array<string, mixed>|array<int, mixed>|null  $definition
      */
     private function assertDefinitionAllowlisted(?array $definition): void
     {
@@ -286,7 +286,7 @@ final class RegulatoryReportingWorkflow extends BaseController
     }
 
     /**
-     * @param array<string, mixed>|array<int, mixed> $node
+     * @param  array<string, mixed>|array<int, mixed>  $node
      */
     private function walkDefinition(array $node): void
     {

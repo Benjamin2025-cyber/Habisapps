@@ -13,6 +13,7 @@ use App\Http\Resources\TellerTransactionResource;
 use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
 use App\Models\CustomerAccountSignature;
+use App\Models\Document;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
@@ -540,8 +541,8 @@ final class TellerCashTransactionWorkflow extends BaseController
             || $signature->client_id !== $customerAccount->client_id
             || $signature->status !== CustomerAccountSignature::STATUS_ACTIVE
             || $signature->verified_at === null
-            || ! $signature->document instanceof \App\Models\Document
-            || $signature->document->status !== \App\Models\Document::STATUS_ACTIVE) {
+            || ! $signature->document instanceof Document
+            || $signature->document->status !== Document::STATUS_ACTIVE) {
             return ['ok' => false, 'errors' => ['signature_public_id' => ['The selected signature must be active, verified, document-backed, and tied to the withdrawal account.']]];
         }
 

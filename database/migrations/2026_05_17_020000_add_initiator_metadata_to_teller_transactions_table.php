@@ -18,7 +18,7 @@ return new class extends Migration
             ->whereNull('initiator_type')
             ->update(['initiator_type' => 'staff_on_behalf']);
 
-        DB::statement("ALTER TABLE teller_transactions ALTER COLUMN initiator_type SET NOT NULL");
+        DB::statement('ALTER TABLE teller_transactions ALTER COLUMN initiator_type SET NOT NULL');
         DB::statement("ALTER TABLE teller_transactions ALTER COLUMN initiator_type SET DEFAULT 'staff_on_behalf'");
         DB::statement("ALTER TABLE teller_transactions ADD CONSTRAINT teller_transactions_initiator_type_check CHECK (initiator_type IN ('holder', 'proxy', 'staff_on_behalf', 'system'))");
         DB::statement("ALTER TABLE teller_transactions ADD CONSTRAINT teller_transactions_proxy_initiator_link_check CHECK ((initiator_type = 'proxy') = (initiator_proxy_id IS NOT NULL))");

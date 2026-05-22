@@ -10,6 +10,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 final class CurrencyExchangeTest extends TestCase
@@ -805,7 +806,7 @@ final class CurrencyExchangeTest extends TestCase
         return ['id' => $id, 'public_id' => $publicId];
     }
 
-    private function requireStringJsonPath(\Illuminate\Testing\TestResponse $response, string $path): string
+    private function requireStringJsonPath(TestResponse $response, string $path): string
     {
         $value = $response->json($path);
         self::assertIsString($value);

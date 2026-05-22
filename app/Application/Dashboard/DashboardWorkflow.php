@@ -507,7 +507,7 @@ final class DashboardWorkflow extends BaseController
     }
 
     /**
-     * @param list<int> $loanIds
+     * @param  list<int>  $loanIds
      */
     private function outstandingForLoanIds(array $loanIds, string $asOfDate): int
     {

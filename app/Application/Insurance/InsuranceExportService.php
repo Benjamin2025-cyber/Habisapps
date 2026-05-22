@@ -6,6 +6,7 @@ namespace App\Application\Insurance;
 
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -18,7 +19,7 @@ final class InsuranceExportService
     ) {}
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function subscriptions(User $actor, int $agencyId, array $filters): array
@@ -53,7 +54,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function premiums(User $actor, int $agencyId, array $filters): array
@@ -86,7 +87,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function claims(User $actor, int $agencyId, array $filters): array
@@ -119,7 +120,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function commissions(User $actor, int $agencyId, array $filters): array
@@ -150,7 +151,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function remittances(User $actor, int $agencyId, array $filters): array
@@ -181,7 +182,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function cancellationsRefunds(User $actor, int $agencyId, array $filters): array
@@ -195,7 +196,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     public function cancellationsRefundsReport(array $filters, ?int $scopedAgencyId): array
@@ -216,8 +217,8 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
-     * @param array<int, mixed> $rows
+     * @param  array<string, mixed>  $filters
+     * @param  array<int, mixed>  $rows
      * @return array<string, mixed>
      */
     private function exportPayload(User $actor, string $exportType, int $agencyId, array $filters, array $rows): array
@@ -244,7 +245,7 @@ final class InsuranceExportService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<int, object>
      */
     private function cancellationRefundRows(array $filters, ?int $scopedAgencyId): array
@@ -343,7 +344,7 @@ final class InsuranceExportService
         return is_object($partner) ? $this->rowInt($partner, 'id') : null;
     }
 
-    private function applyAgencyFilter(\Illuminate\Database\Query\Builder $query, string $column, ?int $scopedAgencyId, ?int $requestedAgencyId): void
+    private function applyAgencyFilter(Builder $query, string $column, ?int $scopedAgencyId, ?int $requestedAgencyId): void
     {
         if ($scopedAgencyId !== null) {
             $query->where($column, $scopedAgencyId);
@@ -356,21 +357,21 @@ final class InsuranceExportService
         }
     }
 
-    private function applyProductFilter(\Illuminate\Database\Query\Builder $query, string $column, ?int $productId): void
+    private function applyProductFilter(Builder $query, string $column, ?int $productId): void
     {
         if ($productId !== null) {
             $query->where($column, $productId);
         }
     }
 
-    private function applyPartnerFilter(\Illuminate\Database\Query\Builder $query, string $column, ?int $partnerId): void
+    private function applyPartnerFilter(Builder $query, string $column, ?int $partnerId): void
     {
         if ($partnerId !== null) {
             $query->where($column, $partnerId);
         }
     }
 
-    private function applyDateRangeFilter(\Illuminate\Database\Query\Builder $query, string $column, ?string $start, ?string $end): void
+    private function applyDateRangeFilter(Builder $query, string $column, ?string $start, ?string $end): void
     {
         if ($start !== null && $start !== '') {
             $query->whereDate($column, '>=', $start);

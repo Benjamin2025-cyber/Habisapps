@@ -12,14 +12,14 @@ use App\Application\Notifications\NotificationOutbox;
 use App\Application\Notifications\NotificationTemplateManager;
 use App\Models\LedgerAccount;
 use App\Models\LoanProduct;
-use Carbon\Carbon;
-use Spatie\Permission\Models\Role;
 use App\Models\User;
+use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 final class NotificationsFoundationTest extends TestCase

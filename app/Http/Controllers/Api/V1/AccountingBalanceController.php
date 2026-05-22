@@ -6,8 +6,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Application\Accounting\AccountingBalanceWorkflow;
 use App\Http\Controllers\BaseController;
-use App\Http\Resources\AccountingBalanceResource;
-use App\Http\Resources\AvailableBalanceResource;
 use App\Models\CustomerAccount;
 use App\Models\LedgerAccount;
 use Dedoc\Scramble\Attributes\Response;

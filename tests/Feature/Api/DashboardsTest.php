@@ -323,7 +323,7 @@ final class DashboardsTest extends TestCase
     }
 
     /**
-     * @param list<array{due_date:string, principal_minor:int, interest_minor:int, penalty_minor:int}> $lines
+     * @param  list<array{due_date:string, principal_minor:int, interest_minor:int, penalty_minor:int}>  $lines
      */
     private function seedLoanWithSchedule(int $agencyId, int $productId, string $status, array $lines): int
     {

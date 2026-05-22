@@ -303,7 +303,7 @@ final class InsuranceReportWorkflow extends BaseController
     }
 
     /**
-     * @param callable(Request, ?int): array<string, mixed> $compute
+     * @param  callable(Request, ?int): array<string, mixed>  $compute
      */
     private function render(Request $request, string $reportKey, callable $compute): JsonResponse
     {
@@ -376,7 +376,7 @@ final class InsuranceReportWorkflow extends BaseController
     }
 
     /**
-     * @param array{agency_id:?int, product_id:?int, partner_id:?int, period_start:?string, period_end:?string, status:?string} $validated
+     * @param  array{agency_id:?int, product_id:?int, partner_id:?int, period_start:?string, period_end:?string, status:?string}  $validated
      */
     private function applyCommonFilters(Builder $query, string $agencyColumn, string $productColumn, string $partnerColumn, ?int $scopedAgencyId, array $validated): void
     {
@@ -433,8 +433,8 @@ final class InsuranceReportWorkflow extends BaseController
     }
 
     /**
-     * @param literal-string $statusColumn
-     * @param literal-string $amountColumn
+     * @param  literal-string  $statusColumn
+     * @param  literal-string  $amountColumn
      * @return array{by_status: array<string, array{count:int, amount_minor:int}>, totals: array{count:int, amount_minor:int}}
      */
     private function statusAmountBuckets(Builder $query, string $statusColumn, string $amountColumn): array

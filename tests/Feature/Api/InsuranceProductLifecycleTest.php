@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Api;
 
 use App\Models\Client;
+use App\Models\JournalEntry;
+use App\Models\JournalLine;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -962,7 +964,7 @@ final class InsuranceProductLifecycleTest extends TestCase
             ->actingAsSanctum($checker)
             ->postJson('/api/v1/insurance-claim-decisions/'.$decisionPublicId.'/review', [
                 'review_decision' => 'approve',
-        ]);
+            ]);
         $this->assertJsonSuccess($review);
         $review->assertJsonPath('data.claim.status', 'approved');
         $review->assertJsonPath('data.notification_outbox_rows', 1);
@@ -1445,7 +1447,7 @@ final class InsuranceProductLifecycleTest extends TestCase
     }
 
     /**
-     * @param list<array<string, mixed>> $splits
+     * @param  list<array<string, mixed>>  $splits
      */
     private function createAndApproveRuleVersion(
         User $maker,
@@ -1890,7 +1892,7 @@ final class InsuranceProductLifecycleTest extends TestCase
 
     private function fundAccount(int $agencyId, int $customerAccountId, int $ledgerAccountId, int $amountMinor, int $actorUserId): void
     {
-        $je = \App\Models\JournalEntry::create([
+        $je = JournalEntry::create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'FUND-'.Str::random(8),
             'business_date' => now()->toDateString(),
@@ -1899,11 +1901,11 @@ final class InsuranceProductLifecycleTest extends TestCase
             'source_type' => 'test_funding',
             'source_public_id' => (string) Str::ulid(),
             'description' => 'Test funding',
-            'status' => \App\Models\JournalEntry::STATUS_DRAFT,
+            'status' => JournalEntry::STATUS_DRAFT,
             'created_by_user_id' => $actorUserId,
         ]);
 
-        \App\Models\JournalLine::create([
+        JournalLine::create([
             'public_id' => (string) Str::ulid(),
             'agency_id' => $agencyId,
             'journal_entry_id' => $je->id,
@@ -1914,7 +1916,7 @@ final class InsuranceProductLifecycleTest extends TestCase
             'currency' => 'XAF',
             'line_memo' => 'Fund account',
         ]);
-        \App\Models\JournalLine::create([
+        JournalLine::create([
             'public_id' => (string) Str::ulid(),
             'agency_id' => $agencyId,
             'journal_entry_id' => $je->id,
@@ -1927,16 +1929,16 @@ final class InsuranceProductLifecycleTest extends TestCase
         ]);
 
         $je->forceFill([
-            'status' => \App\Models\JournalEntry::STATUS_SUBMITTED,
+            'status' => JournalEntry::STATUS_SUBMITTED,
             'submitted_at' => now(),
         ])->save();
         $je->forceFill([
-            'status' => \App\Models\JournalEntry::STATUS_APPROVED,
+            'status' => JournalEntry::STATUS_APPROVED,
             'reviewed_at' => now(),
             'reviewed_by_user_id' => $actorUserId,
         ])->save();
         $je->forceFill([
-            'status' => \App\Models\JournalEntry::STATUS_POSTED,
+            'status' => JournalEntry::STATUS_POSTED,
             'posted_at' => now(),
             'posted_by_user_id' => $actorUserId,
         ])->save();
