@@ -17,7 +17,7 @@ Do not treat the added sections 26-30 or embedded operational notes as approved 
 
 | Response area | New request | Why it is out of scope for formula sign-off | Disposition |
 |---|---|---|---|
-| Section 26, Gestion des Ressources Humaines | Full HR module: employee files, contracts, payroll, leave/absence, sanctions, salary advances, social declarations, HR document scanning, payroll accounting | The original guide does not ask for HR or payroll. This is a separate domain with legal, payroll-tax, document, approval, and accounting requirements. | Reject from formula scope. Track only as future HR discovery if explicitly commissioned. |
+| Section 26, Gestion des Ressources Humaines | Full HR module: employee files, contracts, payroll, leave/absence, sanctions, salary advances, social declarations, HR document scanning, payroll accounting | The original guide does not ask for HR or payroll. This is a separate domain with legal, payroll-tax, document, approval, and accounting requirements. | Reject from formula scope. Track only as separate HR discovery if explicitly commissioned. |
 | Section 27, Bancassurance | Insurance products, subscriptions, premium payments, claims, insurer partners, insurance reports | The original guide asks only for loan insurance formula decisions. A full bancassurance module is a new product vertical. | Reject from formula scope. Keep only loan-insurance formula data relevant to section 8. |
 | Section 28, Echange de devises | Counter currency exchange transactions, exchange-rate setup, exchange slips, exchange register, dedicated foreign-currency cash drawer, margin calculations | Current architecture keeps `XAF` as base currency. Currency exchange is a separate regulated service that requires its own till, rate, register, KYC/AML, cash-stock, and accounting design. | Reject from formula scope. Track as a future currency exchange module, not as generic platform-wide multi-currency. |
 | Section 29, Finance Islamique | Islamic accounts, Sharia governance, Islamic financing products, asset traceability, alternative accounting setup | This is a distinct financing model and compliance program, not a clarification of the existing conventional loan formulas. | Reject from formula scope. Requires separate product architecture and legal/compliance discovery. |
@@ -69,7 +69,7 @@ The future-module analysis has been expanded into separate product documents:
 - `docs/domain/future-module-hr-payroll.md`
 - `docs/domain/future-module-bancassurance.md`
 - `docs/domain/future-module-currency-exchange.md`
-- `docs/domain/future-module-islamic-finance.md`
+- `docs/domain/islamic-finance.md`
 - `docs/domain/future-module-emf-regulatory-reporting.md`
 - `docs/domain/future-module-digital-notifications-dashboards.md`
 - `docs/domain/new-feature-implementation-backlogs.md`

@@ -120,6 +120,8 @@ Domain developer docs generated from stakeholder resources:
 - `docs/domain/stakeholder-formula-items-to-explain.md`
 - `docs/domain/stakeholder-response-scope-audit.md`
 - `docs/domain/module-2-crm-kyc-operations.md`
+- `docs/domain/islamic-finance.md`
+- `docs/adr/islamic-finance-full-architecture.md`
 
 Backlog analysis:
 
@@ -127,7 +129,7 @@ Backlog analysis:
 - `backlogs/stakeholder-warning-notes-migration-impact.md`
 - `backlogs/stakeholder-complete-migration-finalization-backlog.md`
 - `backlogs/stakeholder-complete-migration-completion-audit.md`
-- `backlogs/islamic-finance-discovery-backlog.md`
+- `backlogs/islamic-finance-complete-implementation-backlog.md`
 - `backlogs/defined-modules-implementation-audit.md`
 - `backlogs/defined-modules-adversarial-review.md`
 - `backlogs/module-1-administration-completion-backlog.md`

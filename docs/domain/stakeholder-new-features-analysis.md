@@ -9,7 +9,7 @@ The stakeholder formula response contains several approved-looking sections afte
 
 ## Decision
 
-Do not merge sections 26-30 into the loan formula backlog. They are future modules with independent legal, accounting, workflow, security, reporting, and UI scope.
+Do not merge sections 26-30 into the loan formula backlog. They are separate modules with independent legal, accounting, workflow, security, reporting, and UI scope.
 
 The appropriate product split is:
 
@@ -18,7 +18,7 @@ The appropriate product split is:
 | 26. Gestion des ressources humaines | HR, payroll, employee documents, social declarations, payroll accounting | `docs/domain/future-module-hr-payroll.md` |
 | 27. Bancassurance | Insurance catalogue, subscriptions, premiums, claims, insurer partners | `docs/domain/future-module-bancassurance.md` |
 | 28. Echange de devises | Counter currency exchange, dedicated foreign-currency till, exchange rates, exchange register, margins | `docs/domain/future-module-currency-exchange.md` |
-| 29. Finance islamique | Sharia governance, Islamic accounts, Islamic financing products, asset traceability | `docs/domain/future-module-islamic-finance.md` |
+| 29. Finance islamique | Sharia governance, Islamic accounts, Islamic financing products, asset traceability | `docs/domain/islamic-finance.md` |
 | 30. Plan comptable EMF | CEMAC/COBAC chart alignment, regulatory statements, codification directories | `docs/domain/future-module-emf-regulatory-reporting.md` |
 | 30. Modules complementaires | SMS banking, automated alerts, automatic reporting, executive dashboards | `docs/domain/future-module-digital-notifications-dashboards.md` |
 
