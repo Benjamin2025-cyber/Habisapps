@@ -15,6 +15,7 @@ final class IslamicFinanceWorkflowControllerAdapter
         private readonly IslamicStandardWorkflow $standard,
         private readonly IslamicRegulatorySignoffWorkflow $signoff,
         private readonly IslamicShariaAuthorityWorkflow $authority,
+        private readonly IslamicApprovalWorkflowApiWorkflow $approvalWorkflow,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -205,5 +206,45 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function revokeAuthorityMember(Request $request, string $authorityPublicId, string $memberPublicId): JsonResponse
     {
         return $this->authority->revokeMember($request, $authorityPublicId, $memberPublicId);
+    }
+
+    public function showApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->show($request, $subjectType, $subjectPublicId);
+    }
+
+    public function submitApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->submit($request, $subjectType, $subjectPublicId);
+    }
+
+    public function approveApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->approve($request, $subjectType, $subjectPublicId);
+    }
+
+    public function rejectApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->reject($request, $subjectType, $subjectPublicId);
+    }
+
+    public function suspendApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->suspend($request, $subjectType, $subjectPublicId);
+    }
+
+    public function revokeApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->revoke($request, $subjectType, $subjectPublicId);
+    }
+
+    public function expireApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->expire($request, $subjectType, $subjectPublicId);
+    }
+
+    public function archiveApprovalWorkflow(Request $request, string $subjectType, string $subjectPublicId): JsonResponse
+    {
+        return $this->approvalWorkflow->archive($request, $subjectType, $subjectPublicId);
     }
 }

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\IslamicApprovalWorkflowController;
 use App\Http\Controllers\Api\V1\IslamicFinanceController;
 use App\Http\Controllers\Api\V1\IslamicRegulatorySignoffController;
 use App\Http\Controllers\Api\V1\IslamicShariaAuthorityController;
@@ -56,4 +57,14 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::put('islamic-sharia-authorities/{authorityPublicId}/members/{memberPublicId}', [IslamicShariaAuthorityController::class, 'updateMember']);
     Route::post('islamic-sharia-authorities/{authorityPublicId}/members/{memberPublicId}/suspend', [IslamicShariaAuthorityController::class, 'suspendMember']);
     Route::post('islamic-sharia-authorities/{authorityPublicId}/members/{memberPublicId}/revoke', [IslamicShariaAuthorityController::class, 'revokeMember']);
+
+    // IF-011 Reusable approval workflow
+    Route::get('islamic-approval-workflows/{subjectType}/{subjectPublicId}', [IslamicApprovalWorkflowController::class, 'show']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/submit', [IslamicApprovalWorkflowController::class, 'submit']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/approve', [IslamicApprovalWorkflowController::class, 'approve']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/reject', [IslamicApprovalWorkflowController::class, 'reject']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/suspend', [IslamicApprovalWorkflowController::class, 'suspend']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/revoke', [IslamicApprovalWorkflowController::class, 'revoke']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/expire', [IslamicApprovalWorkflowController::class, 'expire']);
+    Route::post('islamic-approval-workflows/{subjectType}/{subjectPublicId}/archive', [IslamicApprovalWorkflowController::class, 'archive']);
 });

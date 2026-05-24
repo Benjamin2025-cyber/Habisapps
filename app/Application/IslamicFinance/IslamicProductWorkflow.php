@@ -21,6 +21,7 @@ final class IslamicProductWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly IslamicProductReadinessService $readiness,
         private readonly IslamicShariaAuthorityService $shariaAuthority,
+        private readonly IslamicApprovalWorkflowService $approvalWorkflow,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -43,11 +44,12 @@ final class IslamicProductWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $id = DB::transaction(function () use ($validated): int {
+        $id = DB::transaction(function () use ($validated, $actor, $request): int {
             $agencyId = $this->idByPublicId('agencies', $validated['agency_public_id'] ?? null);
 
-            return DB::table('islamic_products')->insertGetId([
-                'public_id' => (string) Str::ulid(),
+            $publicId = (string) Str::ulid();
+            $insertedId = DB::table('islamic_products')->insertGetId([
+                'public_id' => $publicId,
                 'agency_id' => $agencyId,
                 'code' => (string) $validated['code'],
                 'name' => (string) $validated['name'],
@@ -58,6 +60,15 @@ final class IslamicProductWorkflow extends BaseController
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            $this->approvalWorkflow->ensureWorkflow(
+                IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                $publicId,
+                $actor,
+                $request,
+            );
+
+            return $insertedId;
         });
 
         $row = DB::table('islamic_products')->where('id', $id)->first();
@@ -96,7 +107,11 @@ final class IslamicProductWorkflow extends BaseController
                 if (! is_object($product)) {
                     throw new InvalidArgumentException('Islamic product is invalid.');
                 }
-                if ($this->rowString($product, 'status') !== 'draft') {
+                $workflowState = $this->approvalWorkflow->workflowFor(
+                    IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                    $productPublicId,
+                );
+                if ($workflowState === null || ((array) $workflowState)['current_state'] !== IslamicApprovalStateMachine::STATE_DRAFT) {
                     throw new InvalidArgumentException('Only draft products can be submitted for Sharia compliance review.');
                 }
 
@@ -117,6 +132,14 @@ final class IslamicProductWorkflow extends BaseController
                 if (! is_object($row)) {
                     throw new InvalidArgumentException('Compliance review could not be reloaded.');
                 }
+
+                $this->approvalWorkflow->applyDecision(
+                    IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                    $productPublicId,
+                    $actor,
+                    IslamicApprovalStateMachine::DECISION_SUBMIT,
+                    ['comments' => $this->nullableString($validated['comments'] ?? null)],
+                );
 
                 return $row;
             });
@@ -199,13 +222,37 @@ final class IslamicProductWorkflow extends BaseController
                     'updated_at' => now(),
                 ]);
 
-                if ($newDecision === 'approved') {
-                    $productId = $this->rowNullableInt($review, 'islamic_product_id');
-                    if ($productId !== null) {
-                        DB::table('islamic_products')->where('id', $productId)->update([
+                $productIdForMirror = $this->rowNullableInt($review, 'islamic_product_id');
+                if ($productIdForMirror !== null) {
+                    $productRow = DB::table('islamic_products')->where('id', $productIdForMirror)->first(['public_id']);
+                    $productPublicId = is_object($productRow) && is_string($productRow->public_id) ? $productRow->public_id : null;
+
+                    if ($newDecision === 'approved') {
+                        DB::table('islamic_products')->where('id', $productIdForMirror)->update([
                             'status' => 'approved',
                             'updated_at' => now(),
                         ]);
+                        if ($productPublicId !== null) {
+                            $this->approvalWorkflow->applyDecision(
+                                IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                                $productPublicId,
+                                $actor,
+                                IslamicApprovalStateMachine::DECISION_APPROVE,
+                                [
+                                    'comments' => $this->nullableString($validated['comments'] ?? null),
+                                    'requester_user_id' => $requesterId,
+                                    'skip_authority_check' => true,
+                                ],
+                            );
+                        }
+                    } elseif ($productPublicId !== null) {
+                        $this->approvalWorkflow->applyDecision(
+                            IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                            $productPublicId,
+                            $actor,
+                            IslamicApprovalStateMachine::DECISION_REJECT,
+                            ['comments' => $this->nullableString($validated['comments'] ?? null)],
+                        );
                     }
                 }
 

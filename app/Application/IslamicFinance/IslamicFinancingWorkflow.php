@@ -21,6 +21,7 @@ final class IslamicFinancingWorkflow extends BaseController
 {
     public function __construct(
         private readonly SecurityAudit $securityAudit,
+        private readonly IslamicApprovalWorkflowService $approvalWorkflow,
     ) {}
 
     public function storeFinancing(Request $request): JsonResponse
@@ -48,14 +49,42 @@ final class IslamicFinancingWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
+        $productPublicId = (string) $validated['product_public_id'];
+        $usability = $this->approvalWorkflow->isUsableForNewActions(
+            IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+            $productPublicId,
+        );
+        if (! $usability['ok']) {
+            $this->securityAudit->record('islamic.approval.use_blocked', actor: $actor, properties: [
+                'subject_type' => IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                'subject_public_id' => $productPublicId,
+                'state' => $usability['state'],
+                'reasons' => $usability['reasons'],
+            ], request: $request);
+
+            return $this->respondUnprocessable(errors: [
+                'islamic_financing' => ['Islamic product is not usable for new financing: '.implode(' ', $usability['reasons'])],
+            ]);
+        }
+
+        $raceBlocked = null;
+
         try {
-            $financingPublicId = DB::transaction(function () use ($validated): string {
-                $product = DB::table('islamic_products')->where('public_id', (string) $validated['product_public_id'])->first();
+            $financingPublicId = DB::transaction(function () use ($validated, $productPublicId, &$raceBlocked): string {
+                $product = DB::table('islamic_products')->where('public_id', $productPublicId)->first();
                 if (! is_object($product)) {
                     throw new InvalidArgumentException('Islamic product is invalid.');
                 }
-                if ($this->rowString($product, 'status') !== 'approved') {
-                    throw new InvalidArgumentException('Islamic product must be Sharia-approved before use.');
+
+                // Re-check usability under a row lock to close the TOCTOU window
+                // between the pre-transaction gate and the financing insert.
+                $lockedUsability = $this->approvalWorkflow->isUsableForNewActionsLocked(
+                    IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                    $productPublicId,
+                );
+                if (! $lockedUsability['ok']) {
+                    $raceBlocked = $lockedUsability;
+                    throw new InvalidArgumentException('Islamic product is not usable for new financing: '.implode(' ', $lockedUsability['reasons']));
                 }
 
                 $client = DB::table('clients')->where('public_id', (string) $validated['client_public_id'])->first(['id', 'agency_id']);
@@ -113,6 +142,16 @@ final class IslamicFinancingWorkflow extends BaseController
                 return $publicId;
             });
         } catch (InvalidArgumentException $exception) {
+            if (is_array($raceBlocked)) {
+                $this->securityAudit->record('islamic.approval.use_blocked', actor: $actor, properties: [
+                    'subject_type' => IslamicApprovalStateMachine::SUBJECT_PRODUCT,
+                    'subject_public_id' => $productPublicId,
+                    'state' => $raceBlocked['state'],
+                    'reasons' => $raceBlocked['reasons'],
+                    'race' => true,
+                ], request: $request);
+            }
+
             return $this->respondUnprocessable(errors: ['islamic_financing' => [$exception->getMessage()]]);
         }
 

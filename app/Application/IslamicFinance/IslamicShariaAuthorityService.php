@@ -25,6 +25,8 @@ final class IslamicShariaAuthorityService
 
     public const DECISION_TYPE_PRODUCT_COMPLIANCE_APPROVAL = 'islamic_product_compliance_approval';
 
+    public const DECISION_TYPE_APPROVAL_WORKFLOW = 'islamic_approval_workflow_decision';
+
     /**
      * Return a list of failure messages explaining why the actor cannot approve.
      * Empty array means the actor is authorized.
