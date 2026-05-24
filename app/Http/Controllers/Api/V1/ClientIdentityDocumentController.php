@@ -293,9 +293,11 @@ final class ClientIdentityDocumentController extends BaseController
             || $identityDocument->document?->uploaded_by_user_id === $actor->id;
 
         if ($action === 'verify') {
-            if ($selfVerification
-                && (! $request->boolean('allow_self_verify')
-                    || ! $actor->hasPermissionTo('crm.kyc.override.self_verify'))) {
+            if ($selfVerification && ! $request->boolean('allow_self_verify')) {
+                return $this->respondForbidden();
+            }
+
+            if ($selfVerification && ! $actor->hasPermissionTo('crm.kyc.override.self_verify')) {
                 return $this->respondUnprocessable(errors: [
                     'allow_self_verify' => ['Self-verification requires an explicit override flag and dedicated permission.'],
                 ]);

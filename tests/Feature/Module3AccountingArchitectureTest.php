@@ -1291,13 +1291,31 @@ final class Module3AccountingArchitectureTest extends TestCase
         $generalLedgerRun->assertJsonPath('data.summary.debit_total_minor', 13000);
         $generalLedgerRun->assertJsonPath('data.summary.credit_total_minor', 13000);
 
+        $regulatorySourceId = DB::table('regulatory_sources')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'authority' => 'cobac',
+            'reference' => 'COBAC-RPT-TEST',
+            'title' => 'COBAC test reporting source',
+            'effective_date' => '2026-01-01',
+            'checksum' => hash('sha256', 'cobac-rpt-test'),
+            'imported_by_user_id' => $reviewer->id,
+            'imported_at' => now(),
+            'metadata' => json_encode(['fixture' => true], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $emfDefinitionId = DB::table('report_definitions')->insertGetId([
             'public_id' => (string) Str::ulid(),
+            'regulatory_source_id' => $regulatorySourceId,
             'code' => 'EMF-TB-TEST',
+            'version' => 1,
             'name' => 'EMF Trial Balance Test',
             'report_type' => 'emf_trial_balance',
             'module' => 'accounting',
             'status' => 'active',
+            'effective_from' => '2026-01-01',
+            'effective_to' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

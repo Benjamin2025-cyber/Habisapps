@@ -348,44 +348,129 @@ final class RecordLoanRepayment
         $allocations = [];
         $lines = $this->activeScheduleLines($loan);
         $interestConcessionRemaining = $futureInterestConcessionMinor;
+        $components = $this->components();
+        $orderedComponents = $this->allocationComponentOrder($loan);
+        $penaltyComponent = LoanRepaymentAllocation::COMPONENT_PENALTY;
+        $isEarlySettlement = $futureInterestWaiverDate !== null
+            || $futureInterestConcessionMinor > 0
+            || $futureInterestConcessionDate !== null;
 
-        foreach ($this->allocationComponentGroups($loan) as $components) {
-            foreach ($lines as $line) {
-                foreach ($components as $component => $column) {
+        if ($isEarlySettlement) {
+            foreach ($orderedComponents as $component) {
+                $column = $components[$component] ?? null;
+                if ($column === null) {
+                    continue;
+                }
+
+                foreach ($lines as $line) {
                     if ($this->shouldWaiveFutureInterest($line, $component, $futureInterestWaiverDate)) {
                         continue;
                     }
 
-                    $due = $this->componentDue($line, $column);
-                    if ($due <= 0) {
-                        continue;
-                    }
-
-                    $paid = $this->alreadyAllocated($line->id, $component);
-                    $open = max(0, $due - $paid);
-                    $open = $this->applyFutureInterestConcession($line, $component, $open, $futureInterestConcessionDate, $interestConcessionRemaining);
-                    if ($open === 0) {
-                        continue;
-                    }
-
-                    $amount = min($remaining, $open);
-                    if ($amount > 0) {
-                        $allocations[] = [
-                            'loan_schedule_line_id' => $line->id,
-                            'component' => $component,
-                            'amount_minor' => $amount,
-                        ];
-                        $remaining -= $amount;
-                    }
+                    $remaining = $this->allocateComponent(
+                        $allocations,
+                        $remaining,
+                        $line,
+                        $component,
+                        $column,
+                        $futureInterestConcessionDate,
+                        $interestConcessionRemaining
+                    );
 
                     if ($remaining === 0) {
                         return $allocations;
                     }
                 }
             }
+
+            return $allocations;
+        }
+
+        $scheduledComponents = array_values(array_filter(
+            $orderedComponents,
+            static fn (string $component): bool => $component !== $penaltyComponent
+        ));
+
+        foreach ($lines as $line) {
+            foreach ($scheduledComponents as $component) {
+                $column = $components[$component] ?? null;
+                if ($column === null || $this->shouldWaiveFutureInterest($line, $component, $futureInterestWaiverDate)) {
+                    continue;
+                }
+
+                $remaining = $this->allocateComponent(
+                    $allocations,
+                    $remaining,
+                    $line,
+                    $component,
+                    $column,
+                    $futureInterestConcessionDate,
+                    $interestConcessionRemaining
+                );
+
+                if ($remaining === 0) {
+                    return $allocations;
+                }
+            }
+        }
+
+        if (in_array($penaltyComponent, $orderedComponents, true)) {
+            foreach ($lines as $line) {
+                $remaining = $this->allocateComponent(
+                    $allocations,
+                    $remaining,
+                    $line,
+                    $penaltyComponent,
+                    $components[$penaltyComponent],
+                    $futureInterestConcessionDate,
+                    $interestConcessionRemaining
+                );
+
+                if ($remaining === 0) {
+                    return $allocations;
+                }
+            }
         }
 
         return $allocations;
+    }
+
+    /**
+     * @param  array<int, array{loan_schedule_line_id:int, component:string, amount_minor:int}>  $allocations
+     */
+    private function allocateComponent(
+        array &$allocations,
+        int $remaining,
+        LoanScheduleLine $line,
+        string $component,
+        string $column,
+        ?string $futureInterestConcessionDate,
+        int &$interestConcessionRemaining
+    ): int {
+        $due = $this->componentDue($line, $column);
+        if ($due <= 0) {
+            return $remaining;
+        }
+
+        $paid = $this->alreadyAllocated($line->id, $component);
+        $open = max(0, $due - $paid);
+        $open = $this->applyFutureInterestConcession($line, $component, $open, $futureInterestConcessionDate, $interestConcessionRemaining);
+        if ($open === 0) {
+            return $remaining;
+        }
+
+        $amount = min($remaining, $open);
+        if ($amount <= 0) {
+            return $remaining;
+        }
+
+        $allocations[] = [
+            'loan_schedule_line_id' => $line->id,
+            'component' => $component,
+            'amount_minor' => $amount,
+        ];
+
+        return $remaining - $amount;
     }
 
     /**

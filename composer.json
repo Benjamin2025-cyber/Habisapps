@@ -22,6 +22,7 @@
         "spatie/laravel-query-builder": "^7.0"
     },
     "require-dev": {
+        "brianium/paratest": "^7.0",
         "fakerphp/faker": "^1.23",
         "larastan/larastan": "^3.9",
         "laravel/pail": "^1.2.5",
@@ -58,13 +59,12 @@
         ],
         "test": [
             "@php artisan config:clear --ansi",
-            "@php artisan test"
+            "@php artisan test --parallel --recreate-databases"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
         ],
-
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
         ],
@@ -74,6 +74,20 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "test:serial": [
+            "@php artisan config:clear --ansi",
+            "@php artisan test"
+        ],
+        "test:profile": [
+            "@php artisan config:clear --ansi",
+            "@php artisan test --profile"
+        ],
+        "test:unit": [
+            "@php artisan test --testsuite=Unit"
+        ],
+        "test:feature": [
+            "@php artisan test --testsuite=Feature --parallel"
         ]
     },
     "extra": {

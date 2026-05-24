@@ -76,7 +76,7 @@ jobs:
           DB_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
 
       - name: Run test suite
-        run: php artisan test
+        run: composer test
         env:
           APP_ENV: testing
           DB_CONNECTION: pgsql

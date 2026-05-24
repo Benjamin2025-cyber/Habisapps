@@ -752,10 +752,11 @@ final class Module2CrmKycTest extends TestCase
     {
         $agency = $this->createAgency('AG-CRM-12');
         $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
-        $reviewer = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
         $clientPublicId = $this->createClientViaApi($actor, $agency['public_id']);
 
-        $identity = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('metadata-v1')->plainTextToken])
+        $identity = $this->withApiHeaders(['Authorization' => ''])
+            ->actingAsSanctum($actor)
             ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
                 'document_type' => 'national_id',
                 'document_number' => 'METADATA-ONLY-1',
@@ -763,34 +764,37 @@ final class Module2CrmKycTest extends TestCase
         $this->assertJsonSuccess($identity, 201);
         $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
 
-        $identitySelfVerify = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('metadata-v2')->plainTextToken])
+        $identitySelfVerify = $this->withApiHeaders(['Authorization' => ''])
+            ->actingAsSanctum($actor)
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
                 'action' => 'verify',
             ]);
         $identitySelfVerify->assertForbidden();
 
-        $identityReviewerVerify = $this->withApiHeaders()
+        $identityReviewerVerify = $this->withApiHeaders(['Authorization' => ''])
             ->actingAsSanctum($reviewer)
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
                 'action' => 'verify',
             ]);
         $this->assertJsonError($identityReviewerVerify, 422, 'Identity document verification requires linked KYC document evidence.');
 
-        $guarantor = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('metadata-v3')->plainTextToken])
+        $guarantor = $this->withApiHeaders(['Authorization' => ''])
+            ->actingAsSanctum($actor)
             ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
                 'guarantor_full_name' => 'Metadata Guarantor',
             ]);
         $this->assertJsonSuccess($guarantor, 201);
         $guarantorPublicId = $this->requireStringJsonPath($guarantor, 'data.public_id');
 
-        $guarantorVerify = $this->withApiHeaders()
+        $guarantorVerify = $this->withApiHeaders(['Authorization' => ''])
             ->actingAsSanctum($reviewer)
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId.'/status', [
                 'action' => 'verify',
             ]);
         $this->assertJsonError($guarantorVerify, 422, 'Guarantor verification requires linked KYC document evidence.');
 
-        $proxy = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('metadata-v4')->plainTextToken])
+        $proxy = $this->withApiHeaders(['Authorization' => ''])
+            ->actingAsSanctum($actor)
             ->postJson('/api/v1/clients/'.$clientPublicId.'/proxies', [
                 'proxy_full_name' => 'Metadata Proxy',
                 'mandate_type' => 'full',
@@ -798,7 +802,7 @@ final class Module2CrmKycTest extends TestCase
         $this->assertJsonSuccess($proxy, 201);
         $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.public_id');
 
-        $proxyVerify = $this->withApiHeaders()
+        $proxyVerify = $this->withApiHeaders(['Authorization' => ''])
             ->actingAsSanctum($reviewer)
             ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$proxyPublicId.'/status', [
                 'action' => 'verify',
