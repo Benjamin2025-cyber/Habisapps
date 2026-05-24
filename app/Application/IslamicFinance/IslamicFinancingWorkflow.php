@@ -22,6 +22,7 @@ final class IslamicFinancingWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly IslamicApprovalWorkflowService $approvalWorkflow,
+        private readonly IslamicComplianceCaseService $complianceCases,
     ) {}
 
     public function storeFinancing(Request $request): JsonResponse
@@ -55,15 +56,22 @@ final class IslamicFinancingWorkflow extends BaseController
             $productPublicId,
         );
         if (! $usability['ok']) {
+            $blockers = $this->complianceCases->activeBlockerFailures(
+                blockerType: IslamicComplianceCaseService::BLOCKER_PRODUCT_ACTIVATION,
+                targetSubjectType: IslamicComplianceCaseService::SUBJECT_PRODUCT,
+                targetSubjectPublicId: $productPublicId,
+            );
             $this->securityAudit->record('islamic.approval.use_blocked', actor: $actor, properties: [
                 'subject_type' => IslamicApprovalStateMachine::SUBJECT_PRODUCT,
                 'subject_public_id' => $productPublicId,
                 'state' => $usability['state'],
                 'reasons' => $usability['reasons'],
+                'blockers' => $blockers,
             ], request: $request);
 
             return $this->respondUnprocessable(errors: [
                 'islamic_financing' => ['Islamic product is not usable for new financing: '.implode(' ', $usability['reasons'])],
+                'compliance_blockers' => $blockers,
             ]);
         }
 

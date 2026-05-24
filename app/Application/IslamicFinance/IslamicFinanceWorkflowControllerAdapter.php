@@ -53,6 +53,26 @@ final class IslamicFinanceWorkflowControllerAdapter
         return $this->financing->approveFinancing($request, $financingPublicId);
     }
 
+    public function listComplianceCases(Request $request): JsonResponse
+    {
+        return $this->product->listComplianceCases($request);
+    }
+
+    public function showComplianceCase(Request $request, string $casePublicId): JsonResponse
+    {
+        return $this->product->showComplianceCase($request, $casePublicId);
+    }
+
+    public function showComplianceCaseTimeline(Request $request, string $casePublicId): JsonResponse
+    {
+        return $this->product->showComplianceCaseTimeline($request, $casePublicId);
+    }
+
+    public function complianceCaseSummary(Request $request): JsonResponse
+    {
+        return $this->product->complianceCaseSummary($request);
+    }
+
     public function indexStandards(Request $request): JsonResponse
     {
         return $this->standard->index($request);

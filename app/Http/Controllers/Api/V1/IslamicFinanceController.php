@@ -49,4 +49,24 @@ final class IslamicFinanceController extends BaseController
     {
         return $this->islamic->approveFinancing($request, $financingPublicId);
     }
+
+    public function listComplianceCases(Request $request): JsonResponse
+    {
+        return $this->islamic->listComplianceCases($request);
+    }
+
+    public function showComplianceCase(Request $request, string $casePublicId): JsonResponse
+    {
+        return $this->islamic->showComplianceCase($request, $casePublicId);
+    }
+
+    public function showComplianceCaseTimeline(Request $request, string $casePublicId): JsonResponse
+    {
+        return $this->islamic->showComplianceCaseTimeline($request, $casePublicId);
+    }
+
+    public function complianceCaseSummary(Request $request): JsonResponse
+    {
+        return $this->islamic->complianceCaseSummary($request);
+    }
 }

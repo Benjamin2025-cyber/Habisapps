@@ -201,6 +201,206 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($response, 422);
     }
 
+    public function test_unresolved_blocking_review_prevents_activation(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $productPublicId = $this->createApprovedProduct($actor, 'MUR-BLOCK', 'murabaha');
+        $agency = $this->createAgency('IF-BLOCK');
+        $clientPublicId = $this->createClient($agency['id']);
+
+        $this->insertComplianceCaseWithBlocker(
+            $actor->id,
+            $productPublicId,
+            'product_activation',
+            'open',
+            null,
+            null,
+        );
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings', [
+                'client_public_id' => $clientPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'product_public_id' => $productPublicId,
+                'contract_type' => 'murabaha',
+                'purchase_cost_minor' => 800000,
+                'markup_minor' => 200000,
+            ]);
+        $this->assertJsonError($response, 422);
+        self::assertNotEmpty($response->json('errors.compliance_blockers'));
+    }
+
+    public function test_conditional_approval_expires_and_blocks_future_action(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $productPublicId = $this->createApprovedProduct($actor, 'MUR-COND', 'murabaha');
+        $agency = $this->createAgency('IF-COND');
+        $clientPublicId = $this->createClient($agency['id']);
+
+        $this->insertComplianceCaseWithBlocker(
+            $actor->id,
+            $productPublicId,
+            'product_activation',
+            'resolved',
+            'conditionally_approved',
+            CarbonImmutable::now()->subDay()->toDateTimeString(),
+        );
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings', [
+                'client_public_id' => $clientPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'product_public_id' => $productPublicId,
+                'contract_type' => 'murabaha',
+                'purchase_cost_minor' => 800000,
+                'markup_minor' => 200000,
+            ]);
+        $this->assertJsonError($response, 422);
+    }
+
+    public function test_corrective_action_closure_is_audited(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $productPublicId = $this->createApprovedProduct($actor, 'MUR-CORR', 'murabaha');
+
+        $casePublicId = $this->insertComplianceCaseWithBlocker(
+            $actor->id,
+            $productPublicId,
+            'product_activation',
+            'blocked',
+            'corrective_action_required',
+            null,
+        );
+
+        app(\App\Application\IslamicFinance\IslamicComplianceCaseService::class)->recordDecision(
+            $casePublicId,
+            'corrective_action_closed',
+            $actor,
+            ['decision_comments' => 'Corrective action evidence validated.'],
+        );
+
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'islamic.compliance_case.corrective_action.closed',
+        ]);
+        $this->assertDatabaseHas('islamic_compliance_case_blockers', [
+            'case_id' => DB::table('islamic_compliance_cases')->where('public_id', $casePublicId)->value('id'),
+            'is_active' => false,
+        ]);
+    }
+
+    public function test_invalid_decision_transition_is_rejected(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $productPublicId = $this->createApprovedProduct($actor, 'MUR-INV-DEC', 'murabaha');
+        $casePublicId = $this->insertComplianceCaseWithBlocker(
+            $actor->id,
+            $productPublicId,
+            'product_activation',
+            'open',
+            null,
+            null,
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('corrective_action_closed requires prior corrective_action_required.');
+        app(\App\Application\IslamicFinance\IslamicComplianceCaseService::class)->recordDecision(
+            $casePublicId,
+            'corrective_action_closed',
+            $actor,
+            ['decision_comments' => 'invalid transition'],
+        );
+    }
+
+    public function test_review_decision_updates_linked_case_not_unrelated_newer_case(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $checker = $this->createUserWithRole('platform-admin');
+        $this->ensureMourabahaBaseline($maker);
+        $this->ensureShariaApprover($checker);
+        $productPublicId = $this->createProduct($maker, 'MUR-LINK', 'murabaha');
+
+        $review = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/islamic-products/'.$productPublicId.'/compliance-reviews', [
+                'comments' => 'linked case',
+            ]);
+        $this->assertJsonSuccess($review, 201);
+        $reviewPublicId = $this->requireStringJsonPath($review, 'data.public_id');
+
+        $linkedCaseId = DB::table('islamic_compliance_cases')
+            ->where('subject_type', 'islamic_product')
+            ->where('subject_public_id', $productPublicId)
+            ->whereRaw("metadata->>'legacy_review_public_id' = ?", [$reviewPublicId])
+            ->value('id');
+        self::assertNotNull($linkedCaseId);
+
+        DB::table('islamic_compliance_cases')->insert([
+            'public_id' => (string) Str::ulid(),
+            'subject_type' => 'islamic_product',
+            'subject_public_id' => $productPublicId,
+            'reason_code' => 'unrelated_newer_case',
+            'risk_level' => 'high',
+            'checklist_version' => 'v2',
+            'status' => 'open',
+            'blocking_mode' => 'hard',
+            'created_by_user_id' => $maker->id,
+            'metadata' => json_encode(['legacy_review_public_id' => 'other-review'], JSON_THROW_ON_ERROR),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/islamic-compliance-reviews/'.$reviewPublicId.'/review', [
+                'decision' => 'approve',
+            ]);
+        $this->assertJsonSuccess($approve);
+
+        $linkedLatest = DB::table('islamic_compliance_cases')->where('id', $linkedCaseId)->value('latest_decision');
+        self::assertSame('approved', $linkedLatest);
+        $unrelatedLatest = DB::table('islamic_compliance_cases')
+            ->where('reason_code', 'unrelated_newer_case')
+            ->value('latest_decision');
+        self::assertNull($unrelatedLatest);
+    }
+
+    public function test_report_endpoint_exposes_active_blocker_and_overdue_case(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $productPublicId = $this->createApprovedProduct($actor, 'MUR-RPT', 'murabaha');
+        $casePublicId = $this->insertComplianceCaseWithBlocker(
+            $actor->id,
+            $productPublicId,
+            'product_activation',
+            'open',
+            null,
+            null,
+            now()->subDay()->toDateTimeString(),
+        );
+
+        $list = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/islamic-compliance-cases?subject_public_id='.$productPublicId.'&overdue=true&blocker_active=true');
+        $this->assertJsonSuccess($list);
+        self::assertSame($casePublicId, $list->json('data.0.public_id'));
+        self::assertTrue((bool) $list->json('data.0.overdue'));
+        self::assertTrue((bool) $list->json('data.0.active_blocker'));
+
+        $summary = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/islamic-compliance-cases/report/summary');
+        $this->assertJsonSuccess($summary);
+        self::assertGreaterThanOrEqual(1, (int) $summary->json('data.active_blockers'));
+
+        $timeline = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/islamic-compliance-cases/'.$casePublicId.'/timeline');
+        $this->assertJsonSuccess($timeline);
+        self::assertIsArray($timeline->json('data'));
+    }
+
     public function test_financing_requires_xaf_client_agency_and_product_agency_alignment(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -869,5 +1069,67 @@ final class IslamicFinanceTest extends TestCase
         self::assertIsString($value);
 
         return $value;
+    }
+
+    private function insertComplianceCaseWithBlocker(
+        int $userId,
+        string $productPublicId,
+        string $blockerType,
+        string $status,
+        ?string $latestDecision,
+        ?string $effectiveTo,
+        ?string $dueAt = null,
+    ): string {
+        $casePublicId = (string) Str::ulid();
+        $caseId = DB::table('islamic_compliance_cases')->insertGetId([
+            'public_id' => $casePublicId,
+            'subject_type' => 'islamic_product',
+            'subject_public_id' => $productPublicId,
+            'reason_code' => 'manual_screening',
+            'risk_level' => 'high',
+            'checklist_version' => 'v1',
+            'status' => $status,
+            'blocking_mode' => 'hard',
+            'latest_decision' => $latestDecision,
+            'latest_decided_at' => now(),
+            'created_by_user_id' => $userId,
+            'due_at' => $dueAt,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('islamic_compliance_case_blockers')->insert([
+            'public_id' => (string) Str::ulid(),
+            'case_id' => $caseId,
+            'blocker_type' => $blockerType,
+            'target_subject_type' => 'islamic_product',
+            'target_subject_public_id' => $productPublicId,
+            'is_active' => true,
+            'activated_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        if ($latestDecision !== null) {
+            DB::table('islamic_compliance_case_decisions')->insert([
+                'public_id' => (string) Str::ulid(),
+                'case_id' => $caseId,
+                'decision' => $latestDecision,
+                'decision_comments' => null,
+                'conditions' => $latestDecision === 'conditionally_approved'
+                    ? json_encode(['expires_on' => CarbonImmutable::now()->subDay()->toDateString()], JSON_THROW_ON_ERROR)
+                    : null,
+                'evidence_document_id' => null,
+                'decided_by_user_id' => $userId,
+                'decided_at' => now(),
+                'effective_from' => CarbonImmutable::now()->subDays(5)->toDateTimeString(),
+                'effective_to' => $effectiveTo,
+                'metadata' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $casePublicId;
     }
 }

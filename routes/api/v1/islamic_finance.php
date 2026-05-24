@@ -14,6 +14,10 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('islamic-products', [IslamicFinanceController::class, 'storeProduct']);
     Route::post('islamic-products/{productPublicId}/compliance-reviews', [IslamicFinanceController::class, 'storeComplianceReview']);
     Route::post('islamic-compliance-reviews/{reviewPublicId}/review', [IslamicFinanceController::class, 'reviewCompliance']);
+    Route::get('islamic-compliance-cases', [IslamicFinanceController::class, 'listComplianceCases']);
+    Route::get('islamic-compliance-cases/{casePublicId}', [IslamicFinanceController::class, 'showComplianceCase']);
+    Route::get('islamic-compliance-cases/{casePublicId}/timeline', [IslamicFinanceController::class, 'showComplianceCaseTimeline']);
+    Route::get('islamic-compliance-cases/report/summary', [IslamicFinanceController::class, 'complianceCaseSummary']);
 
     // Murabaha financing
     Route::post('islamic-financings', [IslamicFinanceController::class, 'storeFinancing']);

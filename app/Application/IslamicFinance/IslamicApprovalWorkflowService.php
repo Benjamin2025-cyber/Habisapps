@@ -27,6 +27,7 @@ final class IslamicApprovalWorkflowService
         private readonly IslamicApprovalStateMachine $stateMachine,
         private readonly IslamicShariaAuthorityService $shariaAuthority,
         private readonly SecurityAudit $securityAudit,
+        private readonly IslamicComplianceCaseService $complianceCases,
     ) {}
 
     /**
@@ -272,6 +273,28 @@ final class IslamicApprovalWorkflowService
 
         if ($reasons !== []) {
             return ['ok' => false, 'state' => $state, 'reasons' => $reasons];
+        }
+
+        $blockerType = $subjectType === IslamicApprovalStateMachine::SUBJECT_PRODUCT
+            ? IslamicComplianceCaseService::BLOCKER_PRODUCT_ACTIVATION
+            : null;
+        if ($blockerType !== null) {
+            $blockers = $this->complianceCases->activeBlockerFailures(
+                blockerType: $blockerType,
+                targetSubjectType: $subjectType,
+                targetSubjectPublicId: $subjectPublicId,
+                asOf: $asOf,
+            );
+            if ($blockers !== []) {
+                return [
+                    'ok' => false,
+                    'state' => $state,
+                    'reasons' => array_map(
+                        static fn (array $blocker): string => 'Compliance blocker case '.$blocker['case_public_id'].' is unresolved for reason '.$blocker['reason_code'].'.',
+                        $blockers,
+                    ),
+                ];
+            }
         }
 
         return ['ok' => true, 'state' => $state, 'reasons' => []];
