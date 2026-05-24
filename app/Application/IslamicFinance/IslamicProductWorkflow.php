@@ -244,7 +244,7 @@ final class IslamicProductWorkflow extends BaseController
                         if (! is_object($product)) {
                             throw new InvalidArgumentException('Islamic product is invalid.');
                         }
-                        $failures = $this->readiness->activationFailures($product);
+                        $failures = $this->readiness->activationFailures($product, null, $actor);
 
                         $family = $this->productFamilyForContractType($this->rowString($product, 'contract_type'));
                         $scope = $family !== null ? ['product_family' => $family] : [];

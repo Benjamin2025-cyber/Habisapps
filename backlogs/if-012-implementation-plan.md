@@ -344,3 +344,26 @@ Plan is sound only if every answer is yes:
 - Is reportable case/blocker status available through API + timeline? Yes.
 - Is migration from existing review table controlled with drift detection? Yes.
 
+## Test Execution Instructions
+
+Use these commands during IF-012 implementation:
+
+```bash
+# Full suite (preferred, reliable on this repo)
+composer test
+
+# Equivalent explicit full-suite command
+php artisan test --parallel --recreate-databases
+
+# Narrow loop for compliance-case integration
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+
+# Focused case-management tests (if extracted)
+php artisan test --parallel --recreate-databases tests/Feature/Api/IslamicComplianceCaseTest.php
+```
+
+Command rules:
+
+- Use `composer test` as default full-suite entrypoint.
+- Put `--parallel` before any path argument.
+- Do not run multiple non-parallel `php artisan test ...` processes concurrently.

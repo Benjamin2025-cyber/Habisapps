@@ -354,3 +354,26 @@ Plan is sound only if every answer is yes:
 - Is enforcement wired into current material decision seam (`reviewCompliance` approve path)? Yes.
 - Is the authority gate reusable for later IF-011/IF-020/IF-051 decision points? Yes.
 
+## Test Execution Instructions
+
+Use these commands during IF-010 implementation:
+
+```bash
+# Full suite (preferred, reliable on this repo)
+composer test
+
+# Equivalent explicit full-suite command
+php artisan test --parallel --recreate-databases
+
+# Narrow loop for Islamic finance feature work
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+
+# Focused authority checks (if separated into dedicated file)
+php artisan test --parallel --recreate-databases tests/Feature/Api/IslamicShariaAuthorityTest.php
+```
+
+Command rules:
+
+- Use `composer test` as default full-suite entrypoint.
+- Put `--parallel` before any path argument.
+- Do not run multiple non-parallel `php artisan test ...` processes concurrently.

@@ -401,6 +401,252 @@ final class IslamicFinanceTest extends TestCase
         self::assertIsArray($timeline->json('data'));
     }
 
+    public function test_prohibited_sector_blocks_product_approval(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $checker = $this->createUserWithRole('platform-admin');
+        $this->ensureMourabahaBaseline($maker);
+        $this->ensureShariaApprover($checker);
+        $this->seedActiveScreeningPolicyRule('prohibited_sector', 'gambling', 'block');
+
+        $product = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/islamic-products', [
+                'code' => 'MUR-BLOCK-SECTOR',
+                'name' => 'Murabaha Blocked Sector',
+                'contract_type' => 'murabaha',
+                'rules' => [
+                    'sector_codes' => ['gambling'],
+                ],
+            ]);
+        $this->assertJsonSuccess($product, 201);
+        $productPublicId = $this->requireStringJsonPath($product, 'data.public_id');
+
+        $review = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/islamic-products/'.$productPublicId.'/compliance-reviews');
+        $this->assertJsonSuccess($review, 201);
+        $reviewPublicId = $this->requireStringJsonPath($review, 'data.public_id');
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/islamic-compliance-reviews/'.$reviewPublicId.'/review', [
+                'decision' => 'approve',
+            ]);
+        $this->assertJsonError($approve, 422);
+        self::assertNotEmpty($approve->json('errors.islamic_screening_policy'));
+    }
+
+    public function test_restricted_sector_creates_compliance_review(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $checker = $this->createUserWithRole('platform-admin');
+        $this->ensureMourabahaBaseline($maker);
+        $this->ensureShariaApprover($checker);
+        $this->seedActiveScreeningPolicyRule('restricted_sector', 'oil', 'manual_review');
+
+        $product = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/islamic-products', [
+                'code' => 'MUR-REST-SECTOR',
+                'name' => 'Murabaha Restricted Sector',
+                'contract_type' => 'murabaha',
+                'rules' => [
+                    'sector_codes' => ['oil'],
+                ],
+            ]);
+        $this->assertJsonSuccess($product, 201);
+        $productPublicId = $this->requireStringJsonPath($product, 'data.public_id');
+
+        $review = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/islamic-products/'.$productPublicId.'/compliance-reviews');
+        $this->assertJsonSuccess($review, 201);
+        $reviewPublicId = $this->requireStringJsonPath($review, 'data.public_id');
+
+        $evaluate = $this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => $productPublicId,
+                'context_type' => 'product_approval',
+                'facts' => [
+                    'scope_type' => 'product_family',
+                    'scope_value' => 'mourabaha',
+                    'sector_codes' => ['oil'],
+                ],
+                'strict_policy' => true,
+            ]);
+        $this->assertJsonSuccess($evaluate);
+        self::assertSame('manual_review', $evaluate->json('data.result'));
+        self::assertIsString($evaluate->json('data.review_case_public_id'));
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($checker)
+            ->postJson('/api/v1/islamic-compliance-reviews/'.$reviewPublicId.'/review', [
+                'decision' => 'approve',
+            ]);
+        $this->assertJsonError($approve, 422);
+        $this->assertDatabaseHas('islamic_compliance_cases', [
+            'subject_type' => 'islamic_product',
+            'subject_public_id' => $productPublicId,
+            'reason_code' => 'screening_restricted_match',
+        ]);
+    }
+
+    public function test_policy_version_is_snapshotted_on_result(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $policy = $this->seedActiveScreeningPolicyRule('prohibited_goods', 'alcohol', 'block', 7);
+
+        $eval = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'product_approval',
+                'facts' => [
+                    'scope_type' => 'product_family',
+                    'scope_value' => 'mourabaha',
+                    'goods_codes' => ['alcohol'],
+                ],
+                'strict_policy' => true,
+            ]);
+        $this->assertJsonSuccess($eval);
+        $resultPublicId = $this->requireStringJsonPath($eval, 'data.public_id');
+
+        $result = DB::table('islamic_screening_results')->where('public_id', $resultPublicId)->first();
+        self::assertIsObject($result);
+        self::assertSame(7, (int) $result->policy_version);
+        self::assertSame((string) $policy['public_id'], (string) $result->policy_public_id);
+        self::assertIsString($result->policy_snapshot);
+        self::assertStringContainsString('"version":7', (string) $result->policy_snapshot);
+    }
+
+    public function test_policy_activation_fails_unless_approval_workflow_is_approved(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $create = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening-policies', [
+                'code' => 'SP-UNAPP',
+                'name' => 'Unapproved Screening Policy',
+                'scope_type' => 'product_family',
+                'scope_value' => 'mourabaha',
+                'effective_from' => now()->subDay()->toDateString(),
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $policyPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $rule = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening-policies/'.$policyPublicId.'/rules', [
+                'rule_type' => 'prohibited_sector',
+                'match_key' => 'gambling',
+                'action' => 'block',
+                'match_operator' => 'equals',
+            ]);
+        $this->assertJsonSuccess($rule);
+
+        $activate = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening-policies/'.$policyPublicId.'/activate');
+        $this->assertJsonError($activate, 422);
+    }
+
+    public function test_manual_override_without_approved_exception_workflow_is_rejected(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $this->seedActiveScreeningPolicyRule('prohibited_goods', 'alcohol', 'block');
+        $exceptionSubjectPublicId = (string) Str::ulid();
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'product_approval',
+                'facts' => [
+                    'scope_type' => 'product_family',
+                    'scope_value' => 'mourabaha',
+                    'goods_codes' => ['alcohol'],
+                ],
+                'strict_policy' => true,
+                'override_exception_subject_public_id' => $exceptionSubjectPublicId,
+            ]);
+        $this->assertJsonError($response, 422);
+    }
+
+    public function test_approved_exception_workflow_allows_override_with_audit(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $this->seedActiveScreeningPolicyRule('prohibited_goods', 'alcohol', 'block');
+        $exceptionSubjectPublicId = (string) Str::ulid();
+        $workflow = app(\App\Application\IslamicFinance\IslamicApprovalWorkflowService::class);
+        $workflow->ensureWorkflow('islamic_exception', $exceptionSubjectPublicId, $actor);
+        $workflow->submit('islamic_exception', $exceptionSubjectPublicId, $actor);
+        $workflow->approve('islamic_exception', $exceptionSubjectPublicId, $actor, ['skip_authority_check' => true]);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'product_approval',
+                'facts' => [
+                    'scope_type' => 'product_family',
+                    'scope_value' => 'mourabaha',
+                    'goods_codes' => ['alcohol'],
+                ],
+                'strict_policy' => true,
+                'override_exception_subject_public_id' => $exceptionSubjectPublicId,
+            ]);
+        $this->assertJsonSuccess($response);
+        self::assertSame('pass', $response->json('data.result'));
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'islamic.screening.override_approved',
+        ]);
+    }
+
+    public function test_scoped_policy_resolution_prefers_product_family_over_institution(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $institutionPolicyPublicId = $this->seedActiveScreeningPolicyRule(
+            'prohibited_sector',
+            'mining',
+            'block',
+            1,
+            'institution',
+            null
+        )['public_id'];
+        $familyPolicyPublicId = $this->seedActiveScreeningPolicyRule(
+            'restricted_sector',
+            'mining',
+            'manual_review',
+            1,
+            'product_family',
+            'mourabaha'
+        )['public_id'];
+
+        $eval = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'product_approval',
+                'facts' => [
+                    'scope_type' => 'product_family',
+                    'scope_value' => 'mourabaha',
+                    'sector_codes' => ['mining'],
+                ],
+                'strict_policy' => true,
+            ]);
+        $this->assertJsonSuccess($eval);
+        self::assertSame('manual_review', $eval->json('data.result'));
+        self::assertSame($familyPolicyPublicId, $eval->json('data.policy_public_id'));
+        self::assertNotSame($institutionPolicyPublicId, $eval->json('data.policy_public_id'));
+    }
+
     public function test_financing_requires_xaf_client_agency_and_product_agency_alignment(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -1131,5 +1377,52 @@ final class IslamicFinanceTest extends TestCase
         }
 
         return $casePublicId;
+    }
+
+    /** @return array{public_id:string} */
+    private function seedActiveScreeningPolicyRule(
+        string $ruleType,
+        string $matchKey,
+        string $action,
+        int $version = 1,
+        string $scopeType = 'product_family',
+        ?string $scopeValue = 'mourabaha',
+    ): array
+    {
+        $user = $this->createUserWithRole('platform-admin');
+        $policyPublicId = (string) Str::ulid();
+        $policyId = DB::table('islamic_screening_policies')->insertGetId([
+            'public_id' => $policyPublicId,
+            'code' => 'SP-'.Str::upper(Str::random(6)),
+            'name' => 'Policy '.Str::upper(Str::random(4)),
+            'version' => $version,
+            'scope_type' => $scopeType,
+            'scope_value' => $scopeValue,
+            'status' => 'active',
+            'effective_from' => now()->subDay()->toDateString(),
+            'effective_to' => null,
+            'description' => 'seeded',
+            'document_id' => null,
+            'created_by_user_id' => $user->id,
+            'metadata' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('islamic_screening_policy_rules')->insert([
+            'public_id' => (string) Str::ulid(),
+            'policy_id' => $policyId,
+            'rule_type' => $ruleType,
+            'match_key' => $matchKey,
+            'match_operator' => 'equals',
+            'risk_level' => 'high',
+            'action' => $action,
+            'priority' => 10,
+            'is_active' => true,
+            'metadata' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return ['public_id' => $policyPublicId];
     }
 }

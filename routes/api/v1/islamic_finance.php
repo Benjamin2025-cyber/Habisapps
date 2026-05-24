@@ -18,6 +18,20 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('islamic-compliance-cases/{casePublicId}', [IslamicFinanceController::class, 'showComplianceCase']);
     Route::get('islamic-compliance-cases/{casePublicId}/timeline', [IslamicFinanceController::class, 'showComplianceCaseTimeline']);
     Route::get('islamic-compliance-cases/report/summary', [IslamicFinanceController::class, 'complianceCaseSummary']);
+    Route::get('islamic-screening-policies', [IslamicFinanceController::class, 'indexScreeningPolicies']);
+    Route::post('islamic-screening-policies', [IslamicFinanceController::class, 'storeScreeningPolicy']);
+    Route::get('islamic-screening-policies/{policyPublicId}', [IslamicFinanceController::class, 'showScreeningPolicy']);
+    Route::put('islamic-screening-policies/{policyPublicId}', [IslamicFinanceController::class, 'updateScreeningPolicy']);
+    Route::post('islamic-screening-policies/{policyPublicId}/rules', [IslamicFinanceController::class, 'storeScreeningPolicyRule']);
+    Route::put('islamic-screening-policies/{policyPublicId}/rules/{rulePublicId}', [IslamicFinanceController::class, 'updateScreeningPolicyRule']);
+    Route::delete('islamic-screening-policies/{policyPublicId}/rules/{rulePublicId}', [IslamicFinanceController::class, 'deleteScreeningPolicyRule']);
+    Route::post('islamic-screening-policies/{policyPublicId}/activate', [IslamicFinanceController::class, 'activateScreeningPolicy']);
+    Route::post('islamic-screening-policies/{policyPublicId}/suspend', [IslamicFinanceController::class, 'suspendScreeningPolicy']);
+    Route::post('islamic-screening-policies/{policyPublicId}/revoke', [IslamicFinanceController::class, 'revokeScreeningPolicy']);
+    Route::post('islamic-screening-policies/{policyPublicId}/archive', [IslamicFinanceController::class, 'archiveScreeningPolicy']);
+    Route::post('islamic-screening/evaluate', [IslamicFinanceController::class, 'evaluateScreening']);
+    Route::get('islamic-screening-results', [IslamicFinanceController::class, 'listScreeningResults']);
+    Route::get('islamic-screening-results/{resultPublicId}', [IslamicFinanceController::class, 'showScreeningResult']);
 
     // Murabaha financing
     Route::post('islamic-financings', [IslamicFinanceController::class, 'storeFinancing']);

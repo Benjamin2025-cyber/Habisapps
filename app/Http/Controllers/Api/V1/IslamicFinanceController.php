@@ -69,4 +69,74 @@ final class IslamicFinanceController extends BaseController
     {
         return $this->islamic->complianceCaseSummary($request);
     }
+
+    public function indexScreeningPolicies(Request $request): JsonResponse
+    {
+        return $this->islamic->indexScreeningPolicies($request);
+    }
+
+    public function storeScreeningPolicy(Request $request): JsonResponse
+    {
+        return $this->islamic->storeScreeningPolicy($request);
+    }
+
+    public function showScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->showScreeningPolicy($request, $policyPublicId);
+    }
+
+    public function updateScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->updateScreeningPolicy($request, $policyPublicId);
+    }
+
+    public function storeScreeningPolicyRule(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->storeScreeningPolicyRule($request, $policyPublicId);
+    }
+
+    public function updateScreeningPolicyRule(Request $request, string $policyPublicId, string $rulePublicId): JsonResponse
+    {
+        return $this->islamic->updateScreeningPolicyRule($request, $policyPublicId, $rulePublicId);
+    }
+
+    public function deleteScreeningPolicyRule(Request $request, string $policyPublicId, string $rulePublicId): JsonResponse
+    {
+        return $this->islamic->deleteScreeningPolicyRule($request, $policyPublicId, $rulePublicId);
+    }
+
+    public function activateScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->activateScreeningPolicy($request, $policyPublicId);
+    }
+
+    public function suspendScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->suspendScreeningPolicy($request, $policyPublicId);
+    }
+
+    public function revokeScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->revokeScreeningPolicy($request, $policyPublicId);
+    }
+
+    public function archiveScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->islamic->archiveScreeningPolicy($request, $policyPublicId);
+    }
+
+    public function evaluateScreening(Request $request): JsonResponse
+    {
+        return $this->islamic->evaluateScreening($request);
+    }
+
+    public function listScreeningResults(Request $request): JsonResponse
+    {
+        return $this->islamic->listScreeningResults($request);
+    }
+
+    public function showScreeningResult(Request $request, string $resultPublicId): JsonResponse
+    {
+        return $this->islamic->showScreeningResult($request, $resultPublicId);
+    }
 }

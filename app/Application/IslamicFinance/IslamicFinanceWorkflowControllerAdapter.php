@@ -12,6 +12,7 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function __construct(
         private readonly IslamicProductWorkflow $product,
         private readonly IslamicFinancingWorkflow $financing,
+        private readonly IslamicScreeningPolicyWorkflow $screeningPolicy,
         private readonly IslamicStandardWorkflow $standard,
         private readonly IslamicRegulatorySignoffWorkflow $signoff,
         private readonly IslamicShariaAuthorityWorkflow $authority,
@@ -71,6 +72,76 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function complianceCaseSummary(Request $request): JsonResponse
     {
         return $this->product->complianceCaseSummary($request);
+    }
+
+    public function indexScreeningPolicies(Request $request): JsonResponse
+    {
+        return $this->screeningPolicy->index($request);
+    }
+
+    public function storeScreeningPolicy(Request $request): JsonResponse
+    {
+        return $this->screeningPolicy->store($request);
+    }
+
+    public function showScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->show($request, $policyPublicId);
+    }
+
+    public function updateScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->updateDraft($request, $policyPublicId);
+    }
+
+    public function storeScreeningPolicyRule(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->storeRule($request, $policyPublicId);
+    }
+
+    public function updateScreeningPolicyRule(Request $request, string $policyPublicId, string $rulePublicId): JsonResponse
+    {
+        return $this->screeningPolicy->updateRule($request, $policyPublicId, $rulePublicId);
+    }
+
+    public function deleteScreeningPolicyRule(Request $request, string $policyPublicId, string $rulePublicId): JsonResponse
+    {
+        return $this->screeningPolicy->deleteRule($request, $policyPublicId, $rulePublicId);
+    }
+
+    public function activateScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->activate($request, $policyPublicId);
+    }
+
+    public function suspendScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->suspend($request, $policyPublicId);
+    }
+
+    public function revokeScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->revoke($request, $policyPublicId);
+    }
+
+    public function archiveScreeningPolicy(Request $request, string $policyPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->archive($request, $policyPublicId);
+    }
+
+    public function evaluateScreening(Request $request): JsonResponse
+    {
+        return $this->screeningPolicy->evaluate($request);
+    }
+
+    public function listScreeningResults(Request $request): JsonResponse
+    {
+        return $this->screeningPolicy->listResults($request);
+    }
+
+    public function showScreeningResult(Request $request, string $resultPublicId): JsonResponse
+    {
+        return $this->screeningPolicy->showResult($request, $resultPublicId);
     }
 
     public function indexStandards(Request $request): JsonResponse

@@ -382,3 +382,27 @@ Plan is sound only if every answer is yes:
 - Are suspension/revocation non-destructive to historical records? Yes.
 - Is the model reusable across products/templates/policies/contracts/exceptions/mappings/corrective actions? Yes.
 - Are transition and block decisions fully auditable? Yes.
+
+## Test Execution Instructions
+
+Use these commands during IF-011 implementation:
+
+```bash
+# Full suite (preferred, reliable on this repo)
+composer test
+
+# Equivalent explicit full-suite command
+php artisan test --parallel --recreate-databases
+
+# Narrow loop for approval-workflow changes
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+
+# Focused workflow tests (if extracted)
+php artisan test --parallel --recreate-databases tests/Feature/Api/IslamicApprovalWorkflowTest.php
+```
+
+Command rules:
+
+- Use `composer test` as default full-suite entrypoint.
+- Put `--parallel` before any path argument.
+- Do not run multiple non-parallel `php artisan test ...` processes concurrently.
