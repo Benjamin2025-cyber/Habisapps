@@ -49,4 +49,49 @@ final class IslamicFinanceController extends BaseController
     {
         return $this->islamic->approveFinancing($request, $financingPublicId);
     }
+
+    public function indexStandards(Request $request): JsonResponse
+    {
+        return $this->islamic->indexStandards($request);
+    }
+
+    public function storeStandard(Request $request): JsonResponse
+    {
+        return $this->islamic->storeStandard($request);
+    }
+
+    public function showStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->showStandard($request, $standardPublicId);
+    }
+
+    public function updateStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->updateStandard($request, $standardPublicId);
+    }
+
+    public function amendStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->amendStandard($request, $standardPublicId);
+    }
+
+    public function activateStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->activateStandard($request, $standardPublicId);
+    }
+
+    public function retireStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->retireStandard($request, $standardPublicId);
+    }
+
+    public function linkStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->linkStandard($request, $standardPublicId);
+    }
+
+    public function unlinkStandard(Request $request, string $standardPublicId): JsonResponse
+    {
+        return $this->islamic->unlinkStandard($request, $standardPublicId);
+    }
 }

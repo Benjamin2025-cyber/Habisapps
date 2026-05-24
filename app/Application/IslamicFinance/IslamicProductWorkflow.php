@@ -19,6 +19,7 @@ final class IslamicProductWorkflow extends BaseController
 {
     public function __construct(
         private readonly SecurityAudit $securityAudit,
+        private readonly IslamicProductReadinessService $readiness,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -159,6 +160,21 @@ final class IslamicProductWorkflow extends BaseController
                 }
 
                 $newDecision = $validated['decision'] === 'approve' ? 'approved' : 'rejected';
+
+                if ($newDecision === 'approved') {
+                    $productId = $this->rowNullableInt($review, 'islamic_product_id');
+                    if ($productId !== null) {
+                        $product = DB::table('islamic_products')->where('id', $productId)->lockForUpdate()->first();
+                        if (! is_object($product)) {
+                            throw new InvalidArgumentException('Islamic product is invalid.');
+                        }
+                        $failures = $this->readiness->activationFailures($product);
+                        if ($failures !== []) {
+                            throw new StandardsBaselineFailure($failures);
+                        }
+                    }
+                }
+
                 DB::table('islamic_compliance_reviews')->where('id', $this->rowInt($review, 'id'))->update([
                     'status' => $newDecision,
                     'decision' => $newDecision,
@@ -185,6 +201,8 @@ final class IslamicProductWorkflow extends BaseController
 
                 return $updated;
             });
+        } catch (StandardsBaselineFailure $failure) {
+            return $this->respondUnprocessable(errors: ['islamic_standards_baseline' => $failure->failures]);
         } catch (InvalidArgumentException $exception) {
             return $this->respondUnprocessable(errors: ['islamic_compliance_review' => [$exception->getMessage()]]);
         }

@@ -7,6 +7,7 @@ namespace Tests\Feature\Api;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +66,7 @@ final class IslamicFinanceTest extends TestCase
     {
         $maker = $this->createUserWithRole('platform-admin');
         $checker = $this->createUserWithRole('platform-admin');
+        $this->ensureMourabahaBaseline($maker);
         $productPublicId = $this->createProduct($maker, 'MUR-SHARIA', 'murabaha');
 
         // Maker requests compliance review
@@ -496,6 +498,7 @@ final class IslamicFinanceTest extends TestCase
     private function createApprovedProduct(User $maker, string $code, string $contractType, ?string $agencyPublicId = null): string
     {
         $checker = $this->createUserWithRole('platform-admin');
+        $this->ensureMourabahaBaseline($maker);
         $productPublicId = $this->createProduct($maker, $code, $contractType, $agencyPublicId);
 
         $review = $this->withApiHeaders()
@@ -510,6 +513,64 @@ final class IslamicFinanceTest extends TestCase
             ]));
 
         return $productPublicId;
+    }
+
+    private function ensureMourabahaBaseline(User $actor): void
+    {
+        $existing = DB::table('islamic_standard_links as l')
+            ->join('islamic_standards as s', 's.id', '=', 'l.islamic_standard_id')
+            ->where('l.linkable_type', 'product_family')
+            ->where('l.linkable_code', 'mourabaha')
+            ->where('s.status', 'active')
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $baselineAgency = $this->createAgency('IF-BL-'.Str::upper(Str::random(4)));
+        $documentPublicId = (string) Str::ulid();
+        DB::table('documents')->insert([
+            'public_id' => $documentPublicId,
+            'agency_id' => $baselineAgency['id'],
+            'uploaded_by_user_id' => $actor->id,
+            'category' => 'islamic_standard',
+            'title' => 'Mourabaha baseline evidence',
+            'disk' => 'local',
+            'path' => 'documents/'.$documentPublicId,
+            'original_name' => 'standard.pdf',
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 1024,
+            'checksum_sha256' => str_repeat('a', 64),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $created = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards', [
+                'source' => 'AAOIFI',
+                'reference' => 'AAOIFI-SS-'.Str::random(4),
+                'title' => 'Murabaha baseline',
+                'scope_summary' => 'Applies to Mourabaha product family.',
+                'owner_type' => 'committee',
+                'owner_committee' => 'Sharia Board',
+                'effective_date' => CarbonImmutable::now()->subDay()->toDateString(),
+                'document_public_id' => $documentPublicId,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $publicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$publicId.'/links', [
+                'linkable_type' => 'product_family',
+                'linkable_code' => 'mourabaha',
+            ]);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$publicId.'/activate');
     }
 
     private function createDraftFinancing(User $actor, int $allowedCosts = 0, int $markup = 200000): string

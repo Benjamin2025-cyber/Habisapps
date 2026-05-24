@@ -220,6 +220,12 @@ return [
                 'insurance.reports.view',
                 'insurance.reports.export',
                 'accounting.audit.view',
+                'islamic.standards.view',
+                'islamic.standards.create',
+                'islamic.standards.update',
+                'islamic.standards.activate',
+                'islamic.standards.retire',
+                'islamic.standards.link',
             ],
             // Deprecated compatibility alias for agency-scoped staff administration.
             // New grants should use agency-manager.
