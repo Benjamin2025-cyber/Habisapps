@@ -376,12 +376,14 @@ final class IslamicComplianceCaseService
     {
         $valid = [
             'islamic_product',
+            'islamic_financing',
             'islamic_customer',
             'islamic_asset',
             'islamic_goods',
             'islamic_project',
             'islamic_supplier',
             'islamic_account',
+            'investment_account',
             'islamic_contract',
             'islamic_transaction',
         ];

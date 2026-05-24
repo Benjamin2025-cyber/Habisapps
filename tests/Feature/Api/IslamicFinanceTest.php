@@ -554,6 +554,161 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($activate, 422);
     }
 
+    public function test_evaluate_endpoint_rejects_unknown_context_type(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'unknown_context',
+                'facts' => ['scope_type' => 'institution'],
+            ]);
+        $this->assertJsonError($response, 422);
+    }
+
+    public function test_strict_policy_missing_active_policy_persists_fail_result(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_financing',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'contract_approval',
+                'facts' => ['scope_type' => 'product_family', 'scope_value' => 'mourabaha'],
+                'strict_policy' => true,
+            ]);
+        $this->assertJsonSuccess($response);
+        self::assertSame('fail', $response->json('data.result'));
+        self::assertStringContainsString('No active screening policy', (string) $response->json('data.block_reason'));
+    }
+
+    public function test_missing_screening_blocks_contract_activation(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $financingPublicId = $this->createDraftFinancing($actor);
+        $agencyId = $this->getFinancingAgencyId($financingPublicId);
+        $this->seedMurabahaMappings($agencyId);
+        $this->seedActiveScreeningPolicyRule('restricted_sector', 'retail', 'allow_with_note', 1, 'product_family', 'mourabaha');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/assets', [
+                'asset_type' => 'vehicle',
+                'description' => 'Asset',
+            ]);
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/installments', [
+                'installments' => [
+                    ['due_on' => '2026-06-01', 'amount_minor' => 500000],
+                    ['due_on' => '2026-07-01', 'amount_minor' => 500000],
+                ],
+            ]);
+
+        DB::table('islamic_screening_policies')->update(['status' => 'suspended']);
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
+        $this->assertJsonError($approve, 422);
+    }
+
+    public function test_islamic_product_rejects_interest_formula_binding(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-products', [
+                'code' => 'MUR-INT-BIND',
+                'name' => 'Murabaha Interest Formula',
+                'contract_type' => 'murabaha',
+                'rules' => [
+                    'formula_engine_key' => 'flat_interest_v1',
+                ],
+            ]);
+        $this->assertJsonError($response, 422);
+        self::assertNotEmpty($response->json('errors.islamic_interest_guardrails'));
+    }
+
+    public function test_islamic_late_payment_treatment_rejects_interest_penalty_mode(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $productPublicId = $this->createApprovedProduct($actor, 'MUR-LATE-GUARD', 'murabaha');
+        $agency = $this->createAgency('IF-LATE-GUARD');
+        $clientPublicId = $this->createClient($agency['id']);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings', [
+                'client_public_id' => $clientPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'product_public_id' => $productPublicId,
+                'contract_type' => 'murabaha',
+                'purchase_cost_minor' => 800000,
+                'markup_minor' => 200000,
+                'late_payment_treatment' => 'interest_penalty',
+            ]);
+        $this->assertJsonError($response, 422);
+        self::assertNotEmpty($response->json('errors.islamic_interest_guardrails'));
+    }
+
+    public function test_manual_review_on_contract_approval_creates_contract_blocker_case(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $financingPublicId = $this->createDraftFinancing($actor);
+        $agencyId = $this->getFinancingAgencyId($financingPublicId);
+        $this->seedMurabahaMappings($agencyId);
+        $this->seedActiveScreeningPolicyRule('restricted_sector', 'retail', 'manual_review', 1, 'product_family', 'mourabaha');
+
+        $financing = DB::table('islamic_financings')->where('public_id', $financingPublicId)->first();
+        self::assertIsObject($financing);
+        DB::table('islamic_products')->where('id', (int) $financing->islamic_product_id)->update([
+            'rules' => json_encode(['sector_codes' => ['retail']], JSON_THROW_ON_ERROR),
+            'updated_at' => now(),
+        ]);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/assets', [
+                'asset_type' => 'vehicle',
+                'description' => 'Asset',
+            ]);
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/installments', [
+                'installments' => [
+                    ['due_on' => '2026-06-01', 'amount_minor' => 500000],
+                    ['due_on' => '2026-07-01', 'amount_minor' => 500000],
+                ],
+            ]);
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
+        $this->assertJsonError($approve, 422);
+        self::assertStringContainsString('Screening result must be pass', (string) $approve->json('errors.islamic_financing.0'));
+
+        $caseId = DB::table('islamic_compliance_cases')
+            ->where('subject_type', 'islamic_financing')
+            ->where('subject_public_id', $financingPublicId)
+            ->where('reason_code', 'screening_restricted_match')
+            ->value('id');
+        self::assertNotNull($caseId);
+        $this->assertDatabaseHas('islamic_compliance_case_blockers', [
+            'case_id' => $caseId,
+            'blocker_type' => 'contract_activation',
+            'target_subject_type' => 'islamic_financing',
+            'target_subject_public_id' => $financingPublicId,
+            'is_active' => true,
+        ]);
+    }
+
     public function test_manual_override_without_approved_exception_workflow_is_rejected(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

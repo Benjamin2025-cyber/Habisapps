@@ -23,6 +23,8 @@ final class IslamicFinancingWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly IslamicApprovalWorkflowService $approvalWorkflow,
         private readonly IslamicComplianceCaseService $complianceCases,
+        private readonly IslamicScreeningPolicyService $screening,
+        private readonly IslamicInterestGuardPolicy $interestGuard,
     ) {}
 
     public function storeFinancing(Request $request): JsonResponse
@@ -43,11 +45,21 @@ final class IslamicFinancingWorkflow extends BaseController
             'currency' => ['sometimes', 'string', 'size:3', Rule::in(['XAF'])],
             'starts_on' => ['sometimes', 'nullable', 'date'],
             'ends_on' => ['sometimes', 'nullable', 'date', 'after_or_equal:starts_on'],
+            'late_payment_treatment' => ['sometimes', 'nullable', 'string', 'max:64'],
         ])->validate();
 
         $actor = $request->user();
         if (! $actor instanceof User) {
             return $this->respondForbidden();
+        }
+        try {
+            $this->interestGuard->assertLatePaymentTreatmentAllowed(is_string($validated['late_payment_treatment'] ?? null) ? $validated['late_payment_treatment'] : null);
+        } catch (InvalidArgumentException $exception) {
+            $this->securityAudit->record('islamic.interest_guard.late_payment_treatment_rejected', actor: $actor, properties: [
+                'reason' => $exception->getMessage(),
+            ], request: $request);
+
+            return $this->respondUnprocessable(errors: ['islamic_interest_guardrails' => [$exception->getMessage()]]);
         }
 
         $productPublicId = (string) $validated['product_public_id'];
@@ -143,6 +155,9 @@ final class IslamicFinancingWorkflow extends BaseController
                     'starts_on' => $this->nullableString($validated['starts_on'] ?? null),
                     'ends_on' => $this->nullableString($validated['ends_on'] ?? null),
                     'status' => 'draft',
+                    'terms' => json_encode([
+                        'late_payment_treatment' => is_string($validated['late_payment_treatment'] ?? null) ? $validated['late_payment_treatment'] : null,
+                    ], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -329,6 +344,12 @@ final class IslamicFinancingWorkflow extends BaseController
         }
 
         try {
+            $this->runContractApprovalScreeningGate($financingPublicId, $actor);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['islamic_financing' => [$exception->getMessage()]]);
+        }
+
+        try {
             $row = DB::transaction(function () use ($financingPublicId, $actor): object {
                 $financing = DB::table('islamic_financings')
                     ->where('public_id', $financingPublicId)
@@ -362,9 +383,13 @@ final class IslamicFinancingWorkflow extends BaseController
                 $costBasis = $this->rowInt($financing, 'purchase_cost_minor') + $this->rowInt($financing, 'allowed_costs_minor');
                 $markup = $this->rowInt($financing, 'markup_minor');
                 $currency = $this->rowString($financing, 'currency');
+                $this->assertLatestContractApprovalScreeningPass($financingPublicId);
 
+                $this->interestGuard->assertIslamicMappingAllowed('murabaha_receivable');
                 $receivableLedger = $this->mappingDebitLedger('murabaha_receivable', $agencyId);
+                $this->interestGuard->assertIslamicMappingAllowed('murabaha_payable');
                 $payableLedger = $this->mappingCreditLedger('murabaha_payable', $agencyId);
+                $this->interestGuard->assertIslamicMappingAllowed('murabaha_profit');
                 $profitLedger = $this->mappingCreditLedger('murabaha_profit', $agencyId);
 
                 $journalEntry = JournalEntry::query()->create([
@@ -447,6 +472,57 @@ final class IslamicFinancingWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess($this->financingPayload($row), 'Islamic financing approved and posted');
+    }
+
+    private function runContractApprovalScreeningGate(string $financingPublicId, User $actor): void
+    {
+        if (! DB::table('islamic_screening_policies')->exists()) {
+            return;
+        }
+        $financing = DB::table('islamic_financings')->where('public_id', $financingPublicId)->first();
+        if (! is_object($financing)) {
+            throw new InvalidArgumentException('Islamic financing is invalid.');
+        }
+        $product = DB::table('islamic_products')->where('id', $this->rowInt($financing, 'islamic_product_id'))->first();
+        if (! is_object($product)) {
+            throw new InvalidArgumentException('Islamic product is invalid.');
+        }
+        $rulesRaw = is_string($product->rules ?? null) ? $product->rules : null;
+        $rules = is_string($rulesRaw) && $rulesRaw !== '' ? json_decode($rulesRaw, true) : [];
+        $rules = is_array($rules) ? $rules : [];
+        $screeningFacts = [
+            'scope_type' => 'product_family',
+            'scope_value' => 'mourabaha',
+            'agency_scope_value' => (string) $this->rowInt($financing, 'agency_id'),
+            'supplier_flags' => is_array($rules['supplier_flags'] ?? null) ? $rules['supplier_flags'] : [],
+            'goods_codes' => is_array($rules['goods_codes'] ?? null) ? $rules['goods_codes'] : [],
+            'sector_codes' => is_array($rules['sector_codes'] ?? null) ? $rules['sector_codes'] : [],
+        ];
+
+        $this->screening->evaluateForAction(
+            subjectType: 'islamic_financing',
+            subjectPublicId: $financingPublicId,
+            contextType: 'contract_approval',
+            facts: $screeningFacts,
+            actor: $actor,
+            strictPolicy: true,
+        );
+    }
+
+    private function assertLatestContractApprovalScreeningPass(string $financingPublicId): void
+    {
+        if (! DB::table('islamic_screening_policies')->exists()) {
+            return;
+        }
+        $latest = DB::table('islamic_screening_results')
+            ->where('subject_type', 'islamic_financing')
+            ->where('subject_public_id', $financingPublicId)
+            ->where('context_type', 'contract_approval')
+            ->orderByDesc('id')
+            ->first(['result']);
+        if (! is_object($latest) || ! is_string($latest->result) || $latest->result !== 'pass') {
+            throw new InvalidArgumentException('Contract approval requires a pass screening result.');
+        }
     }
 
     private function postSystemJournal(JournalEntry $journalEntry, User $actor): void

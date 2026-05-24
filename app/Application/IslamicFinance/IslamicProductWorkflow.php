@@ -24,6 +24,7 @@ final class IslamicProductWorkflow extends BaseController
         private readonly IslamicShariaAuthorityService $shariaAuthority,
         private readonly IslamicApprovalWorkflowService $approvalWorkflow,
         private readonly IslamicComplianceCaseService $complianceCases,
+        private readonly IslamicInterestGuardPolicy $interestGuard,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -44,6 +45,22 @@ final class IslamicProductWorkflow extends BaseController
         $actor = $request->user();
         if (! $actor instanceof User) {
             return $this->respondForbidden();
+        }
+
+        $rules = is_array($validated['rules'] ?? null) ? $validated['rules'] : [];
+        try {
+            $this->interestGuard->assertNoConventionalInterestBinding($rules);
+            $statementLabels = is_array($rules['statement_labels'] ?? null) ? array_values(array_filter($rules['statement_labels'], 'is_string')) : [];
+            if ($statementLabels !== []) {
+                $this->interestGuard->assertStatementTerminologyAllowed($statementLabels);
+            }
+        } catch (InvalidArgumentException $exception) {
+            $this->securityAudit->record('islamic.interest_guard.product_binding_rejected', actor: $actor, properties: [
+                'code' => (string) $validated['code'],
+                'reason' => $exception->getMessage(),
+            ], request: $request);
+
+            return $this->respondUnprocessable(errors: ['islamic_interest_guardrails' => [$exception->getMessage()]]);
         }
 
         $id = DB::transaction(function () use ($validated, $actor, $request): int {

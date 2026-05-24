@@ -211,9 +211,17 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
             return $this->respondForbidden();
         }
         $validated = Validator::make($request->all(), [
-            'subject_type' => ['required', 'string', 'max:64'],
+            'subject_type' => ['required', 'string', Rule::in([
+                'islamic_product',
+                'islamic_financing',
+                'islamic_supplier',
+                'islamic_asset',
+                'islamic_goods',
+                'islamic_project',
+                'investment_account',
+            ])],
             'subject_public_id' => ['required', 'string', 'max:64'],
-            'context_type' => ['required', 'string', 'max:64'],
+            'context_type' => ['required', 'string', Rule::in(IslamicScreeningPolicyService::allowedContextTypes())],
             'facts' => ['required', 'array'],
             'strict_policy' => ['sometimes', 'boolean'],
             'override_exception_subject_public_id' => ['sometimes', 'nullable', 'string', 'max:64'],
@@ -247,6 +255,12 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
         }
         if (is_string($request->query('subject_public_id')) && $request->query('subject_public_id') !== '') {
             $query->where('subject_public_id', (string) $request->query('subject_public_id'));
+        }
+        if (is_string($request->query('context_type')) && $request->query('context_type') !== '') {
+            $query->where('context_type', (string) $request->query('context_type'));
+        }
+        if (is_string($request->query('result')) && $request->query('result') !== '') {
+            $query->where('result', (string) $request->query('result'));
         }
 
         $rows = $query->get();

@@ -15,6 +15,17 @@ use InvalidArgumentException;
 
 final class IslamicScreeningPolicyService
 {
+    /** @var array<string,string> */
+    private const array CONTEXT_BLOCKER_MAP = [
+        'product_approval' => 'product_activation',
+        'contract_approval' => 'contract_activation',
+        'supplier_use' => 'supplier_use',
+        'asset_acceptance' => 'asset_acceptance',
+        'goods_acceptance' => 'goods_acceptance',
+        'project_approval' => 'project_approval',
+        'account_pool_assignment' => 'account_pool_assignment',
+    ];
+
     public function __construct(
         private readonly IslamicComplianceCaseService $complianceCases,
         private readonly IslamicApprovalWorkflowService $approvalWorkflows,
@@ -63,6 +74,7 @@ final class IslamicScreeningPolicyService
     /** @param array<string,mixed> $facts */
     public function evaluate(string $subjectType, string $subjectPublicId, string $contextType, array $facts, ?User $actor = null, bool $strictPolicy = false, ?string $overrideExceptionSubjectPublicId = null): array
     {
+        $this->assertKnownContextType($contextType);
         $asOf = CarbonImmutable::now();
         $scopeType = is_string($facts['scope_type'] ?? null) ? $facts['scope_type'] : 'institution';
         $scopeValue = is_string($facts['scope_value'] ?? null) ? $facts['scope_value'] : null;
@@ -181,7 +193,7 @@ final class IslamicScreeningPolicyService
             }
             $this->complianceCases->addBlocker(
                 casePublicId: $reviewCasePublicId,
-                blockerType: $contextType === 'product_approval' ? 'product_activation' : 'contract_activation',
+                blockerType: $this->blockerTypeForContext($contextType),
                 targetSubjectType: $subjectType,
                 targetSubjectPublicId: $subjectPublicId,
                 actor: $actor,
@@ -214,6 +226,24 @@ final class IslamicScreeningPolicyService
             reviewCasePublicId: $reviewCasePublicId,
             actor: $actor,
         );
+    }
+
+    /** @param array<string,mixed> $facts */
+    public function evaluateForAction(string $subjectType, string $subjectPublicId, string $contextType, array $facts, ?User $actor = null, bool $strictPolicy = true): array
+    {
+        $result = $this->evaluate(
+            subjectType: $subjectType,
+            subjectPublicId: $subjectPublicId,
+            contextType: $contextType,
+            facts: $facts,
+            actor: $actor,
+            strictPolicy: $strictPolicy,
+        );
+        if (($result['result'] ?? null) !== 'pass') {
+            throw new InvalidArgumentException('Screening result must be pass before action. Received '.$result['result'].'.');
+        }
+
+        return $result;
     }
 
     /** @param list<array<string,mixed>> $matchedRules */
@@ -382,5 +412,27 @@ final class IslamicScreeningPolicyService
             'regex' => @preg_match($matchKey, $value) === 1,
             default => false,
         };
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function allowedContextTypes(): array
+    {
+        return array_keys(self::CONTEXT_BLOCKER_MAP);
+    }
+
+    private function blockerTypeForContext(string $contextType): string
+    {
+        $this->assertKnownContextType($contextType);
+
+        return self::CONTEXT_BLOCKER_MAP[$contextType];
+    }
+
+    private function assertKnownContextType(string $contextType): void
+    {
+        if (! array_key_exists($contextType, self::CONTEXT_BLOCKER_MAP)) {
+            throw new InvalidArgumentException('Unknown screening context type: '.$contextType.'.');
+        }
     }
 }
