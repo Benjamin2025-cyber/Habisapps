@@ -10,24 +10,39 @@ final class IslamicProductReadinessService
 {
     public function __construct(
         private readonly IslamicStandardsBaselineService $baseline,
+        private readonly IslamicRegulatorySignoffService $signoff,
     ) {}
 
     /**
-     * @return array<int, string>
+     * Failures keyed by gate identifier so callers can preserve structure in API responses.
+     *
+     * @return array<string, array<int, string>>
      */
     public function activationFailures(object $product, ?CarbonInterface $asOf = null): array
     {
         $contractType = isset(((array) $product)['contract_type']) ? ((array) $product)['contract_type'] : null;
         if (! is_string($contractType) || $contractType === '') {
-            return ['Product contract type is missing.'];
+            return ['islamic_product' => ['Product contract type is missing.']];
         }
 
         $family = $this->productFamilyForContractType($contractType);
         if ($family === null) {
-            return ['Product contract type does not map to a supported Islamic product family.'];
+            return ['islamic_product' => ['Product contract type does not map to a supported Islamic product family.']];
         }
 
-        return $this->baseline->activationFailuresForProductFamily($family, $asOf);
+        $failures = [];
+
+        $standardsFailures = $this->baseline->activationFailuresForProductFamily($family, $asOf);
+        if ($standardsFailures !== []) {
+            $failures['islamic_standards_baseline'] = $standardsFailures;
+        }
+
+        $signoffFailures = $this->signoff->activationFailuresForProductFamily($family, $asOf);
+        if ($signoffFailures !== []) {
+            $failures['islamic_regulatory_signoff'] = $signoffFailures;
+        }
+
+        return $failures;
     }
 
     private function productFamilyForContractType(string $contractType): ?string

@@ -13,6 +13,7 @@ final class IslamicFinanceWorkflowControllerAdapter
         private readonly IslamicProductWorkflow $product,
         private readonly IslamicFinancingWorkflow $financing,
         private readonly IslamicStandardWorkflow $standard,
+        private readonly IslamicRegulatorySignoffWorkflow $signoff,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -93,5 +94,55 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function unlinkStandard(Request $request, string $standardPublicId): JsonResponse
     {
         return $this->standard->unlink($request, $standardPublicId);
+    }
+
+    public function indexSignoffs(Request $request): JsonResponse
+    {
+        return $this->signoff->index($request);
+    }
+
+    public function storeSignoff(Request $request): JsonResponse
+    {
+        return $this->signoff->store($request);
+    }
+
+    public function showSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->show($request, $signoffPublicId);
+    }
+
+    public function updateSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->updateDraft($request, $signoffPublicId);
+    }
+
+    public function activateSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->activate($request, $signoffPublicId);
+    }
+
+    public function suspendSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->suspend($request, $signoffPublicId);
+    }
+
+    public function revokeSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->revoke($request, $signoffPublicId);
+    }
+
+    public function retireSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->retire($request, $signoffPublicId);
+    }
+
+    public function linkSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->link($request, $signoffPublicId);
+    }
+
+    public function unlinkSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->signoff->unlink($request, $signoffPublicId);
     }
 }

@@ -94,4 +94,54 @@ final class IslamicFinanceController extends BaseController
     {
         return $this->islamic->unlinkStandard($request, $standardPublicId);
     }
+
+    public function indexSignoffs(Request $request): JsonResponse
+    {
+        return $this->islamic->indexSignoffs($request);
+    }
+
+    public function storeSignoff(Request $request): JsonResponse
+    {
+        return $this->islamic->storeSignoff($request);
+    }
+
+    public function showSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->showSignoff($request, $signoffPublicId);
+    }
+
+    public function updateSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->updateSignoff($request, $signoffPublicId);
+    }
+
+    public function activateSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->activateSignoff($request, $signoffPublicId);
+    }
+
+    public function suspendSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->suspendSignoff($request, $signoffPublicId);
+    }
+
+    public function revokeSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->revokeSignoff($request, $signoffPublicId);
+    }
+
+    public function retireSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->retireSignoff($request, $signoffPublicId);
+    }
+
+    public function linkSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->linkSignoff($request, $signoffPublicId);
+    }
+
+    public function unlinkSignoff(Request $request, string $signoffPublicId): JsonResponse
+    {
+        return $this->islamic->unlinkSignoff($request, $signoffPublicId);
+    }
 }

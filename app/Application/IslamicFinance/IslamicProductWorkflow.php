@@ -170,7 +170,7 @@ final class IslamicProductWorkflow extends BaseController
                         }
                         $failures = $this->readiness->activationFailures($product);
                         if ($failures !== []) {
-                            throw new StandardsBaselineFailure($failures);
+                            throw new ReadinessGateFailure($failures);
                         }
                     }
                 }
@@ -201,8 +201,14 @@ final class IslamicProductWorkflow extends BaseController
 
                 return $updated;
             });
-        } catch (StandardsBaselineFailure $failure) {
-            return $this->respondUnprocessable(errors: ['islamic_standards_baseline' => $failure->failures]);
+        } catch (ReadinessGateFailure $failure) {
+            $this->securityAudit->record('islamic.product.readiness_blocked', actor: $actor, properties: [
+                'review_public_id' => $reviewPublicId,
+                'failed_gates' => array_keys($failure->failures),
+                'failures' => $failure->failures,
+            ], request: $request);
+
+            return $this->respondUnprocessable(errors: $failure->failures);
         } catch (InvalidArgumentException $exception) {
             return $this->respondUnprocessable(errors: ['islamic_compliance_review' => [$exception->getMessage()]]);
         }

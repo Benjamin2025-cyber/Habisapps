@@ -226,6 +226,14 @@ return [
                 'islamic.standards.activate',
                 'islamic.standards.retire',
                 'islamic.standards.link',
+                'islamic.regulatory_signoffs.view',
+                'islamic.regulatory_signoffs.create',
+                'islamic.regulatory_signoffs.update',
+                'islamic.regulatory_signoffs.activate',
+                'islamic.regulatory_signoffs.suspend',
+                'islamic.regulatory_signoffs.revoke',
+                'islamic.regulatory_signoffs.retire',
+                'islamic.regulatory_signoffs.link',
             ],
             // Deprecated compatibility alias for agency-scoped staff administration.
             // New grants should use agency-manager.

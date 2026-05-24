@@ -571,6 +571,70 @@ final class IslamicFinanceTest extends TestCase
         $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-standards/'.$publicId.'/activate');
+
+        $this->ensureMourabahaSignoff($actor);
+    }
+
+    private function ensureMourabahaSignoff(User $actor): void
+    {
+        $existing = DB::table('islamic_regulatory_signoff_links as l')
+            ->join('islamic_regulatory_signoffs as s', 's.id', '=', 'l.islamic_regulatory_signoff_id')
+            ->where('l.linkable_type', 'product_family')
+            ->where('l.linkable_code', 'mourabaha')
+            ->where('l.restriction_mode', 'allow')
+            ->where('s.status', 'active')
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $signoffAgency = $this->createAgency('IF-SO-'.Str::upper(Str::random(4)));
+        $documentPublicId = (string) Str::ulid();
+        DB::table('documents')->insert([
+            'public_id' => $documentPublicId,
+            'agency_id' => $signoffAgency['id'],
+            'uploaded_by_user_id' => $actor->id,
+            'category' => 'regulatory_signoff',
+            'title' => 'Mourabaha sign-off evidence',
+            'disk' => 'local',
+            'path' => 'documents/'.$documentPublicId,
+            'original_name' => 'signoff.pdf',
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 1024,
+            'checksum_sha256' => str_repeat('b', 64),
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $created = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-regulatory-signoffs', [
+                'jurisdiction' => 'cameroon',
+                'regulator' => 'cobac',
+                'opinion_reference' => 'COBAC-MEMO-'.Str::random(4),
+                'opinion_summary' => 'Authorisation for Mourabaha operations.',
+                'approval_type' => 'allow',
+                'owner_type' => 'committee',
+                'owner_committee' => 'Compliance Board',
+                'approved_on' => CarbonImmutable::now()->subDays(2)->toDateString(),
+                'effective_date' => CarbonImmutable::now()->subDay()->toDateString(),
+                'document_public_id' => $documentPublicId,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $publicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-regulatory-signoffs/'.$publicId.'/links', [
+                'linkable_type' => 'product_family',
+                'linkable_code' => 'mourabaha',
+                'restriction_mode' => 'allow',
+            ]);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-regulatory-signoffs/'.$publicId.'/activate');
     }
 
     private function createDraftFinancing(User $actor, int $allowedCosts = 0, int $markup = 200000): string

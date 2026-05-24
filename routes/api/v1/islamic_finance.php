@@ -27,4 +27,16 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('islamic-standards/{standardPublicId}/retire', [IslamicFinanceController::class, 'retireStandard']);
     Route::post('islamic-standards/{standardPublicId}/links', [IslamicFinanceController::class, 'linkStandard']);
     Route::delete('islamic-standards/{standardPublicId}/links', [IslamicFinanceController::class, 'unlinkStandard']);
+
+    // IF-002 Regulatory sign-off registry
+    Route::get('islamic-regulatory-signoffs', [IslamicFinanceController::class, 'indexSignoffs']);
+    Route::post('islamic-regulatory-signoffs', [IslamicFinanceController::class, 'storeSignoff']);
+    Route::get('islamic-regulatory-signoffs/{signoffPublicId}', [IslamicFinanceController::class, 'showSignoff']);
+    Route::put('islamic-regulatory-signoffs/{signoffPublicId}', [IslamicFinanceController::class, 'updateSignoff']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/activate', [IslamicFinanceController::class, 'activateSignoff']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/suspend', [IslamicFinanceController::class, 'suspendSignoff']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/revoke', [IslamicFinanceController::class, 'revokeSignoff']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/retire', [IslamicFinanceController::class, 'retireSignoff']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/links', [IslamicFinanceController::class, 'linkSignoff']);
+    Route::delete('islamic-regulatory-signoffs/{signoffPublicId}/links', [IslamicFinanceController::class, 'unlinkSignoff']);
 });

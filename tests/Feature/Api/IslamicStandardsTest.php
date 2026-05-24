@@ -178,6 +178,7 @@ final class IslamicStandardsTest extends TestCase
             linkType: 'product_family',
             linkCode: 'mourabaha',
         );
+        $this->ensureMourabahaSignoff($maker);
 
         $productPublicId = $this->createDraftProduct($maker, 'MUR-IF001-OK');
         $reviewPublicId = $this->requestComplianceReview($maker, $productPublicId);
@@ -482,6 +483,7 @@ final class IslamicStandardsTest extends TestCase
             linkType: 'product_family',
             linkCode: 'mourabaha',
         );
+        $this->ensureMourabahaSignoff($maker);
 
         // Amend with a future-effective replacement
         $newDoc = $this->createDocument($maker);
@@ -524,6 +526,7 @@ final class IslamicStandardsTest extends TestCase
             linkType: 'product_family',
             linkCode: 'mourabaha',
         );
+        $this->ensureMourabahaSignoff($maker);
 
         $newDoc = $this->createDocument($maker);
         $futureDate = CarbonImmutable::now()->addDays(5);
@@ -628,6 +631,51 @@ final class IslamicStandardsTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function ensureMourabahaSignoff(User $actor): void
+    {
+        $existing = DB::table('islamic_regulatory_signoff_links as l')
+            ->join('islamic_regulatory_signoffs as s', 's.id', '=', 'l.islamic_regulatory_signoff_id')
+            ->where('l.linkable_type', 'product_family')
+            ->where('l.linkable_code', 'mourabaha')
+            ->where('l.restriction_mode', 'allow')
+            ->where('s.status', 'active')
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $documentPublicId = $this->createDocument($actor);
+
+        $created = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-regulatory-signoffs', [
+                'jurisdiction' => 'cameroon',
+                'regulator' => 'cobac',
+                'opinion_reference' => 'COBAC-MEMO-'.Str::random(4),
+                'opinion_summary' => 'Authorisation for Mourabaha operations.',
+                'approval_type' => 'allow',
+                'owner_type' => 'committee',
+                'owner_committee' => 'Compliance Board',
+                'approved_on' => CarbonImmutable::now()->subDays(2)->toDateString(),
+                'effective_date' => CarbonImmutable::now()->subDay()->toDateString(),
+                'document_public_id' => $documentPublicId,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $publicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-regulatory-signoffs/'.$publicId.'/links', [
+                'linkable_type' => 'product_family',
+                'linkable_code' => 'mourabaha',
+                'restriction_mode' => 'allow',
+            ]);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-regulatory-signoffs/'.$publicId.'/activate');
     }
 
     /**
