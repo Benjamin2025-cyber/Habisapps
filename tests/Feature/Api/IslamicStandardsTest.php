@@ -179,6 +179,7 @@ final class IslamicStandardsTest extends TestCase
             linkCode: 'mourabaha',
         );
         $this->ensureMourabahaSignoff($maker);
+        $this->ensureShariaApprover($checker);
 
         $productPublicId = $this->createDraftProduct($maker, 'MUR-IF001-OK');
         $reviewPublicId = $this->requestComplianceReview($maker, $productPublicId);
@@ -484,6 +485,7 @@ final class IslamicStandardsTest extends TestCase
             linkCode: 'mourabaha',
         );
         $this->ensureMourabahaSignoff($maker);
+        $this->ensureShariaApprover($checker);
 
         // Amend with a future-effective replacement
         $newDoc = $this->createDocument($maker);
@@ -676,6 +678,56 @@ final class IslamicStandardsTest extends TestCase
         $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-regulatory-signoffs/'.$publicId.'/activate');
+    }
+
+    private function ensureShariaApprover(User $approver): void
+    {
+        $exists = DB::table('islamic_sharia_authority_members as m')
+            ->join('islamic_sharia_authorities as a', 'a.id', '=', 'm.islamic_sharia_authority_id')
+            ->where('m.user_id', $approver->id)
+            ->where('m.member_role', 'approver')
+            ->where('m.status', 'active')
+            ->where('a.status', 'active')
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        $admin = $this->createUserWithRole('platform-admin');
+        $chair = $this->createUserWithRole('platform-admin');
+        $documentPublicId = $this->createDocument($admin);
+
+        $created = $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-sharia-authorities', [
+                'name' => 'Test Sharia Board',
+                'authority_type' => 'board',
+                'jurisdiction' => 'institution',
+                'mandate_scope' => ['type' => 'institution'],
+                'mandate_summary' => 'Governs Sharia compliance for tests.',
+                'effective_date' => CarbonImmutable::now()->subDays(2)->toDateString(),
+                'document_public_id' => $documentPublicId,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $authorityPublicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-sharia-authorities/'.$authorityPublicId.'/members', [
+                'user_public_id' => $chair->public_id,
+                'member_role' => 'chair',
+                'starts_on' => CarbonImmutable::now()->subDays(2)->toDateString(),
+            ]);
+        $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-sharia-authorities/'.$authorityPublicId.'/members', [
+                'user_public_id' => $approver->public_id,
+                'member_role' => 'approver',
+                'starts_on' => CarbonImmutable::now()->subDays(2)->toDateString(),
+            ]);
+        $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-sharia-authorities/'.$authorityPublicId.'/activate');
     }
 
     /**

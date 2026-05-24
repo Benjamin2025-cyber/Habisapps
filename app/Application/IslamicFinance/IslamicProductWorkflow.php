@@ -20,6 +20,7 @@ final class IslamicProductWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly IslamicProductReadinessService $readiness,
+        private readonly IslamicShariaAuthorityService $shariaAuthority,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -169,6 +170,20 @@ final class IslamicProductWorkflow extends BaseController
                             throw new InvalidArgumentException('Islamic product is invalid.');
                         }
                         $failures = $this->readiness->activationFailures($product);
+
+                        $family = $this->productFamilyForContractType($this->rowString($product, 'contract_type'));
+                        $scope = $family !== null ? ['product_family' => $family] : [];
+                        $authorityFailures = $this->shariaAuthority->activeMandateFailures(
+                            $actor,
+                            IslamicShariaAuthorityService::DECISION_TYPE_PRODUCT_COMPLIANCE_APPROVAL,
+                            $scope,
+                            null,
+                            $requesterId,
+                        );
+                        if ($authorityFailures !== []) {
+                            $failures['islamic_sharia_authority'] = $authorityFailures;
+                        }
+
                         if ($failures !== []) {
                             throw new ReadinessGateFailure($failures);
                         }
@@ -207,6 +222,14 @@ final class IslamicProductWorkflow extends BaseController
                 'failed_gates' => array_keys($failure->failures),
                 'failures' => $failure->failures,
             ], request: $request);
+
+            if (isset($failure->failures['islamic_sharia_authority'])) {
+                $this->securityAudit->record('islamic.sharia_authority.decision_blocked', actor: $actor, properties: [
+                    'review_public_id' => $reviewPublicId,
+                    'decision_type' => IslamicShariaAuthorityService::DECISION_TYPE_PRODUCT_COMPLIANCE_APPROVAL,
+                    'reasons' => $failure->failures['islamic_sharia_authority'],
+                ], request: $request);
+            }
 
             return $this->respondUnprocessable(errors: $failure->failures);
         } catch (InvalidArgumentException $exception) {
@@ -262,6 +285,22 @@ final class IslamicProductWorkflow extends BaseController
         $row = DB::table($table)->where('public_id', $publicId)->first(['id']);
 
         return is_object($row) && is_numeric($row->id) ? (int) $row->id : null;
+    }
+
+    private function productFamilyForContractType(string $contractType): ?string
+    {
+        $map = [
+            'murabaha' => 'mourabaha',
+            'mourabaha' => 'mourabaha',
+            'ijara' => 'ijara',
+            'ijara_wa_iqtina' => 'ijara_wa_iqtina',
+            'salam' => 'salam',
+            'istisnaa' => 'istisnaa',
+            'moudaraba' => 'moudaraba',
+            'moucharaka' => 'moucharaka',
+        ];
+
+        return $map[$contractType] ?? null;
     }
 
     private function rowString(object $row, string $key): string

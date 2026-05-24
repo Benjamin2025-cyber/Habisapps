@@ -14,6 +14,7 @@ final class IslamicFinanceWorkflowControllerAdapter
         private readonly IslamicFinancingWorkflow $financing,
         private readonly IslamicStandardWorkflow $standard,
         private readonly IslamicRegulatorySignoffWorkflow $signoff,
+        private readonly IslamicShariaAuthorityWorkflow $authority,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -144,5 +145,65 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function unlinkSignoff(Request $request, string $signoffPublicId): JsonResponse
     {
         return $this->signoff->unlink($request, $signoffPublicId);
+    }
+
+    public function indexAuthorities(Request $request): JsonResponse
+    {
+        return $this->authority->index($request);
+    }
+
+    public function storeAuthority(Request $request): JsonResponse
+    {
+        return $this->authority->store($request);
+    }
+
+    public function showAuthority(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->show($request, $authorityPublicId);
+    }
+
+    public function updateAuthority(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->updateDraft($request, $authorityPublicId);
+    }
+
+    public function activateAuthority(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->activate($request, $authorityPublicId);
+    }
+
+    public function suspendAuthority(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->suspend($request, $authorityPublicId);
+    }
+
+    public function revokeAuthority(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->revoke($request, $authorityPublicId);
+    }
+
+    public function retireAuthority(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->retire($request, $authorityPublicId);
+    }
+
+    public function storeAuthorityMember(Request $request, string $authorityPublicId): JsonResponse
+    {
+        return $this->authority->storeMember($request, $authorityPublicId);
+    }
+
+    public function updateAuthorityMember(Request $request, string $authorityPublicId, string $memberPublicId): JsonResponse
+    {
+        return $this->authority->updateMember($request, $authorityPublicId, $memberPublicId);
+    }
+
+    public function suspendAuthorityMember(Request $request, string $authorityPublicId, string $memberPublicId): JsonResponse
+    {
+        return $this->authority->suspendMember($request, $authorityPublicId, $memberPublicId);
+    }
+
+    public function revokeAuthorityMember(Request $request, string $authorityPublicId, string $memberPublicId): JsonResponse
+    {
+        return $this->authority->revokeMember($request, $authorityPublicId, $memberPublicId);
     }
 }

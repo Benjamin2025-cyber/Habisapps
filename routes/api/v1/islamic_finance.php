@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\IslamicFinanceController;
+use App\Http\Controllers\Api\V1\IslamicRegulatorySignoffController;
+use App\Http\Controllers\Api\V1\IslamicShariaAuthorityController;
+use App\Http\Controllers\Api\V1\IslamicStandardController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function (): void {
@@ -18,25 +21,39 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('islamic-financings/{financingPublicId}/approve', [IslamicFinanceController::class, 'approveFinancing']);
 
     // IF-001 Standards registry
-    Route::get('islamic-standards', [IslamicFinanceController::class, 'indexStandards']);
-    Route::post('islamic-standards', [IslamicFinanceController::class, 'storeStandard']);
-    Route::get('islamic-standards/{standardPublicId}', [IslamicFinanceController::class, 'showStandard']);
-    Route::put('islamic-standards/{standardPublicId}', [IslamicFinanceController::class, 'updateStandard']);
-    Route::post('islamic-standards/{standardPublicId}/amend', [IslamicFinanceController::class, 'amendStandard']);
-    Route::post('islamic-standards/{standardPublicId}/activate', [IslamicFinanceController::class, 'activateStandard']);
-    Route::post('islamic-standards/{standardPublicId}/retire', [IslamicFinanceController::class, 'retireStandard']);
-    Route::post('islamic-standards/{standardPublicId}/links', [IslamicFinanceController::class, 'linkStandard']);
-    Route::delete('islamic-standards/{standardPublicId}/links', [IslamicFinanceController::class, 'unlinkStandard']);
+    Route::get('islamic-standards', [IslamicStandardController::class, 'index']);
+    Route::post('islamic-standards', [IslamicStandardController::class, 'store']);
+    Route::get('islamic-standards/{standardPublicId}', [IslamicStandardController::class, 'show']);
+    Route::put('islamic-standards/{standardPublicId}', [IslamicStandardController::class, 'update']);
+    Route::post('islamic-standards/{standardPublicId}/amend', [IslamicStandardController::class, 'amend']);
+    Route::post('islamic-standards/{standardPublicId}/activate', [IslamicStandardController::class, 'activate']);
+    Route::post('islamic-standards/{standardPublicId}/retire', [IslamicStandardController::class, 'retire']);
+    Route::post('islamic-standards/{standardPublicId}/links', [IslamicStandardController::class, 'link']);
+    Route::delete('islamic-standards/{standardPublicId}/links', [IslamicStandardController::class, 'unlink']);
 
     // IF-002 Regulatory sign-off registry
-    Route::get('islamic-regulatory-signoffs', [IslamicFinanceController::class, 'indexSignoffs']);
-    Route::post('islamic-regulatory-signoffs', [IslamicFinanceController::class, 'storeSignoff']);
-    Route::get('islamic-regulatory-signoffs/{signoffPublicId}', [IslamicFinanceController::class, 'showSignoff']);
-    Route::put('islamic-regulatory-signoffs/{signoffPublicId}', [IslamicFinanceController::class, 'updateSignoff']);
-    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/activate', [IslamicFinanceController::class, 'activateSignoff']);
-    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/suspend', [IslamicFinanceController::class, 'suspendSignoff']);
-    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/revoke', [IslamicFinanceController::class, 'revokeSignoff']);
-    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/retire', [IslamicFinanceController::class, 'retireSignoff']);
-    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/links', [IslamicFinanceController::class, 'linkSignoff']);
-    Route::delete('islamic-regulatory-signoffs/{signoffPublicId}/links', [IslamicFinanceController::class, 'unlinkSignoff']);
+    Route::get('islamic-regulatory-signoffs', [IslamicRegulatorySignoffController::class, 'index']);
+    Route::post('islamic-regulatory-signoffs', [IslamicRegulatorySignoffController::class, 'store']);
+    Route::get('islamic-regulatory-signoffs/{signoffPublicId}', [IslamicRegulatorySignoffController::class, 'show']);
+    Route::put('islamic-regulatory-signoffs/{signoffPublicId}', [IslamicRegulatorySignoffController::class, 'update']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/activate', [IslamicRegulatorySignoffController::class, 'activate']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/suspend', [IslamicRegulatorySignoffController::class, 'suspend']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/revoke', [IslamicRegulatorySignoffController::class, 'revoke']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/retire', [IslamicRegulatorySignoffController::class, 'retire']);
+    Route::post('islamic-regulatory-signoffs/{signoffPublicId}/links', [IslamicRegulatorySignoffController::class, 'link']);
+    Route::delete('islamic-regulatory-signoffs/{signoffPublicId}/links', [IslamicRegulatorySignoffController::class, 'unlink']);
+
+    // IF-010 Sharia authority registry
+    Route::get('islamic-sharia-authorities', [IslamicShariaAuthorityController::class, 'index']);
+    Route::post('islamic-sharia-authorities', [IslamicShariaAuthorityController::class, 'store']);
+    Route::get('islamic-sharia-authorities/{authorityPublicId}', [IslamicShariaAuthorityController::class, 'show']);
+    Route::put('islamic-sharia-authorities/{authorityPublicId}', [IslamicShariaAuthorityController::class, 'update']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/activate', [IslamicShariaAuthorityController::class, 'activate']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/suspend', [IslamicShariaAuthorityController::class, 'suspend']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/revoke', [IslamicShariaAuthorityController::class, 'revoke']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/retire', [IslamicShariaAuthorityController::class, 'retire']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/members', [IslamicShariaAuthorityController::class, 'storeMember']);
+    Route::put('islamic-sharia-authorities/{authorityPublicId}/members/{memberPublicId}', [IslamicShariaAuthorityController::class, 'updateMember']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/members/{memberPublicId}/suspend', [IslamicShariaAuthorityController::class, 'suspendMember']);
+    Route::post('islamic-sharia-authorities/{authorityPublicId}/members/{memberPublicId}/revoke', [IslamicShariaAuthorityController::class, 'revokeMember']);
 });
