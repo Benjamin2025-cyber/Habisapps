@@ -39,6 +39,9 @@ final class StaffUserResource extends JsonResource
                 'activated_at' => null,
                 'last_login_at' => null,
                 'professional_profile' => null,
+                'roles' => [],
+                'permissions' => [],
+                'direct_permissions' => [],
                 'created_at' => null,
                 'updated_at' => null,
             ];
@@ -60,6 +63,8 @@ final class StaffUserResource extends JsonResource
             'last_login_at' => $this->formatDate($user->last_login_at),
             'professional_profile' => $this->professionalProfile($user),
             'roles' => $user->getRoleNames()->values()->all(),
+            'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
+            'direct_permissions' => $user->getDirectPermissions()->pluck('name')->values()->all(),
         ];
     }
 

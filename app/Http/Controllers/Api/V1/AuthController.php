@@ -52,7 +52,9 @@ final class AuthController extends BaseController
 
         return $this->respondSuccess(
             [
-                'user' => StaffUserResource::make($user),
+                'user' => StaffUserResource::make(
+                    $user->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])
+                ),
                 'token' => $token->plainTextToken,
             ],
             'Login successful'
@@ -87,7 +89,9 @@ final class AuthController extends BaseController
         $this->securityAudit->record('auth.account_activated', actor: $user, subject: $user, request: $request);
 
         return $this->respondSuccess(
-            ['user' => StaffUserResource::make($user)],
+            ['user' => StaffUserResource::make(
+                $user->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])
+            )],
             'Account activated successfully'
         );
     }
@@ -179,6 +183,30 @@ final class AuthController extends BaseController
         }
 
         return $this->respondSuccess(message: 'Logout successful');
+    }
+
+    /**
+     * Return the currently authenticated staff user with roles, permissions,
+     * and agency context. Use this to refresh a session after role changes
+     * without forcing a re-login.
+     *
+     * @authenticated
+     *
+     * @response StaffUserResource
+     */
+    public function me(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return $this->respondUnauthorized();
+        }
+
+        return $this->respondSuccess(
+            ['user' => StaffUserResource::make(
+                $user->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])
+            )]
+        );
     }
 
     private function createAccessToken(User $user): NewAccessToken
