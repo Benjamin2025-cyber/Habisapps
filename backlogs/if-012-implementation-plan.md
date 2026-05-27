@@ -1,7 +1,7 @@
 # IF-012 Implementation Plan: Compliance Review Case Management
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified (2026-05-25)
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-012
 Proof-method: proof by contradiction
 
@@ -367,3 +367,43 @@ Command rules:
 - Use `composer test` as default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
+
+## Implementation Status (2026-05-25)
+
+Proof-by-contradiction adversarial review findings and fixes:
+
+1. Contradiction: IF-012 requires case assignment auditability (`islamic.compliance_case.assigned`) but case creation only emitted `opened`.
+   - Fix: `IslamicComplianceCaseService::openCase` now emits `islamic.compliance_case.assigned` whenever `assigned_reviewer_user_id` is provided, including due date context.
+
+2. Contradiction: IF-012 requires blocked-use audit trail at case layer (`islamic.compliance_case.use_blocked`) but financing gate only emitted generic approval-blocked events.
+   - Fix: `IslamicFinancingWorkflow::storeFinancing` now emits `islamic.compliance_case.use_blocked` whenever hard active compliance blockers deny use (both pre-transaction check and race-window recheck path).
+
+3. Contradiction: IF-012 requires decision evidence support but review API could not submit evidence document references into case decisions.
+   - Fix: `IslamicProductWorkflow::reviewCompliance` now accepts `evidence_document_public_id` and resolves it into `evidence_document_id` persisted through `IslamicComplianceCaseService::recordDecision`.
+
+Proof-by-contradiction tests added/updated:
+
+- `test_unresolved_blocking_review_prevents_activation`
+  - now asserts `islamic.compliance_case.use_blocked` is audited.
+- `test_compliance_case_assignment_and_decision_evidence_are_persisted_and_audited`
+  - proves reviewer assignment emits audit event and decision evidence is persisted.
+
+Verification commands and results:
+
+```bash
+php artisan test --parallel --recreate-databases --filter "(unresolved_blocking_review_prevents_activation|compliance_case_assignment_and_decision_evidence_are_persisted_and_audited|conditional_approval_expires_and_blocks_future_action|corrective_action_closure_is_audited)"
+```
+
+- Result: `OK (4 tests, 104 assertions)`
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+```
+
+- Result: `OK (80 tests, 2104 assertions)`
+
+```bash
+composer test
+```
+
+- Result: `OK (567 tests, 8605 assertions)`

@@ -50,6 +50,11 @@ final class IslamicStandardController extends BaseController
         return $this->islamic->retireStandard($request, $standardPublicId);
     }
 
+    public function lifecycleUpkeep(Request $request): JsonResponse
+    {
+        return $this->islamic->lifecycleUpkeepStandards($request);
+    }
+
     public function link(Request $request, string $standardPublicId): JsonResponse
     {
         return $this->islamic->linkStandard($request, $standardPublicId);

@@ -68,7 +68,32 @@ final class IslamicScreeningPolicyService
             return ((int) (($b['row']->version ?? 0))) <=> ((int) (($a['row']->version ?? 0)));
         });
 
-        return $candidates[0]['row'];
+        foreach ($candidates as $candidate) {
+            $row = $candidate['row'];
+            if (! is_object($row) || ! is_string($row->public_id ?? null)) {
+                continue;
+            }
+            $workflow = $this->approvalWorkflows->workflowFor(
+                IslamicApprovalStateMachine::SUBJECT_SCREENING_POLICY,
+                $row->public_id,
+            );
+            // Backward compatibility for legacy policies that predate IF-011
+            // workflow rows: treat workflow as not-yet-adopted and allow the
+            // existing status/effective-window gate to decide.
+            if (! is_object($workflow)) {
+                return $row;
+            }
+            $workflowUsability = $this->approvalWorkflows->isUsableForNewActions(
+                IslamicApprovalStateMachine::SUBJECT_SCREENING_POLICY,
+                $row->public_id,
+                $asOf,
+            );
+            if (($workflowUsability['ok'] ?? false) === true) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     /** @param array<string,mixed> $facts */

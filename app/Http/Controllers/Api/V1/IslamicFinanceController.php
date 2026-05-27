@@ -11,13 +11,31 @@ use Illuminate\Http\Request;
 
 final class IslamicFinanceController extends BaseController
 {
-    public function __construct(
-        private readonly IslamicFinanceWorkflowControllerAdapter $islamic,
-    ) {}
+    public function __construct(private readonly IslamicFinanceWorkflowControllerAdapter $islamic) {}
 
     public function storeProduct(Request $request): JsonResponse
     {
         return $this->islamic->storeProduct($request);
+    }
+
+    public function indexProductFamilies(Request $request): JsonResponse
+    {
+        return $this->islamic->indexProductFamilies($request);
+    }
+
+    public function showProductFamily(Request $request, string $familyCode): JsonResponse
+    {
+        return $this->islamic->showProductFamily($request, $familyCode);
+    }
+
+    public function showProductReadiness(Request $request, string $productPublicId): JsonResponse
+    {
+        return $this->islamic->showProductReadiness($request, $productPublicId);
+    }
+
+    public function listProductReadinessSnapshots(Request $request, string $productPublicId): JsonResponse
+    {
+        return $this->islamic->listProductReadinessSnapshots($request, $productPublicId);
     }
 
     public function storeComplianceReview(Request $request, string $productPublicId): JsonResponse
@@ -33,11 +51,6 @@ final class IslamicFinanceController extends BaseController
     public function storeFinancing(Request $request): JsonResponse
     {
         return $this->islamic->storeFinancing($request);
-    }
-
-    public function storeFinancingAsset(Request $request, string $financingPublicId): JsonResponse
-    {
-        return $this->islamic->storeFinancingAsset($request, $financingPublicId);
     }
 
     public function storeInstallments(Request $request, string $financingPublicId): JsonResponse

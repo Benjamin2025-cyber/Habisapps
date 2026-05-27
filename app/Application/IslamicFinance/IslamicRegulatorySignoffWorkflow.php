@@ -22,6 +22,7 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
 
     public function __construct(
         private readonly SecurityAudit $securityAudit,
+        private readonly IslamicProductFamilyRegistry $productFamilies,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -300,10 +301,10 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
         $code = (string) $validated['linkable_code'];
         $mode = isset($validated['restriction_mode']) && is_string($validated['restriction_mode']) ? $validated['restriction_mode'] : 'allow';
 
-        if ($type === 'product_family' && ! in_array($code, IslamicStandardsBaselineService::PRODUCT_FAMILIES, true)) {
+        if ($type === 'product_family' && $this->productFamilies->familyKindFor($code) !== 'financing') {
             return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff_link' => ['Unknown product family code.']]);
         }
-        if ($type === 'account_type' && ! in_array($code, IslamicStandardsBaselineService::ACCOUNT_TYPES, true)) {
+        if ($type === 'account_type' && $this->productFamilies->familyKindFor($code) !== 'account') {
             return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff_link' => ['Unknown account type code.']]);
         }
 

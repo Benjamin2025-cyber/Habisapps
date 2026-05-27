@@ -1,7 +1,7 @@
 # IF-011 Implementation Plan: Sharia Approval Workflow
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified (2026-05-25)
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-011
 Proof-method: proof by contradiction
 
@@ -406,3 +406,41 @@ Command rules:
 - Use `composer test` as default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
+
+## Implementation Evidence (2026-05-25)
+
+Contradiction findings discovered:
+
+1. A screening policy revoked via IF-011 workflow endpoint could still be selected as an active screening policy if legacy `status=active` remained, creating workflow-vs-selection drift.
+2. Enforcing workflow usability unconditionally for screening policy selection initially broke compatibility for legacy policies created before workflow rows existed.
+
+Fixes applied:
+
+1. Screening policy resolution now enforces workflow usability for `islamic_screening_policy` subjects when a workflow row exists.
+2. Backward-compatibility fallback added: policies with no workflow row continue to use legacy status/effective-window selection until migrated.
+3. Added contradiction test:
+   - `test_revoked_screening_policy_workflow_blocks_strict_screening_use`
+   - proves workflow-revoked policy cannot continue to yield strict `pass` screening results.
+
+Verification runs:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicApprovalWorkflowTest
+```
+
+Result:
+- `OK (17 tests, 247 assertions)` in ~7.2s.
+
+```bash
+php artisan test --parallel --recreate-databases --filter "test_restricted_sector_creates_compliance_review|test_policy_version_is_snapshotted_on_result|test_manual_review_on_contract_approval_creates_contract_blocker_case|test_manual_override_without_approved_exception_workflow_is_rejected|test_approved_exception_workflow_allows_override_with_audit|test_scoped_policy_resolution_prefers_product_family_over_institution|test_revoked_screening_policy_workflow_blocks_strict_screening_use"
+```
+
+Result:
+- `OK (7 tests, 106 assertions)` in ~6.6s.
+
+```bash
+composer test
+```
+
+Result:
+- `OK (566 tests, 8574 assertions)` in ~41.5s.

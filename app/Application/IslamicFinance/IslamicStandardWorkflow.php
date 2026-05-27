@@ -38,6 +38,7 @@ final class IslamicStandardWorkflow extends BaseController
 
     public function __construct(
         private readonly SecurityAudit $securityAudit,
+        private readonly IslamicProductFamilyRegistry $productFamilies,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -203,6 +204,8 @@ final class IslamicStandardWorkflow extends BaseController
         $this->securityAudit->record('islamic.standard.updated', actor: $actor, properties: [
             'standard_public_id' => $this->rowString($updated, 'public_id'),
             'changed_fields' => $row['changed'],
+            'before' => $this->standardAuditSnapshotFromArray($row['before']),
+            'after' => $this->standardAuditSnapshot($updated),
         ], request: $request);
 
         return $this->respondSuccess($this->standardPayload($updated), 'Islamic standard updated');
@@ -250,7 +253,14 @@ final class IslamicStandardWorkflow extends BaseController
                     }
                 }
 
-                return ['source' => $source, 'new' => $newRow];
+                $sourceSnapshot = $this->standardAuditSnapshot($source);
+                $newSnapshot = $this->standardAuditSnapshot($newRow);
+
+                return [
+                    'source' => $source,
+                    'new' => $newRow,
+                    'changed_fields' => $this->diffAuditSnapshots($sourceSnapshot, $newSnapshot),
+                ];
             });
         } catch (InvalidArgumentException $exception) {
             return $this->respondUnprocessable(errors: ['islamic_standard' => [$exception->getMessage()]]);
@@ -259,6 +269,7 @@ final class IslamicStandardWorkflow extends BaseController
         $this->securityAudit->record('islamic.standard.amended', actor: $actor, properties: [
             'old_standard_public_id' => $this->rowString($result['source'], 'public_id'),
             'new_standard_public_id' => $this->rowString($result['new'], 'public_id'),
+            'changed_fields' => $result['changed_fields'],
         ], request: $request);
 
         return $this->respondCreated($this->standardPayload($result['new']), 'Islamic standard amendment drafted');
@@ -418,6 +429,93 @@ final class IslamicStandardWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess($this->standardPayload($updated), 'Islamic standard retired');
+    }
+
+    public function lifecycleUpkeep(Request $request): JsonResponse
+    {
+        if (! $this->requirePlatformAdmin($request)) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'as_of' => ['sometimes', 'nullable', 'date'],
+        ])->validate();
+        $asOfDate = isset($validated['as_of']) && is_string($validated['as_of']) && $validated['as_of'] !== ''
+            ? $validated['as_of']
+            : CarbonImmutable::now()->toDateString();
+
+        $result = DB::transaction(function () use ($asOfDate): array {
+            $expiredEvents = [];
+            $supersededEvents = [];
+
+            $toExpire = DB::table('islamic_standards')
+                ->where('status', 'active')
+                ->whereNotNull('expiry_date')
+                ->where('expiry_date', '<=', $asOfDate)
+                ->lockForUpdate()
+                ->get(['id', 'public_id', 'status', 'expiry_date']);
+            foreach ($toExpire as $row) {
+                DB::table('islamic_standards')->where('id', $this->rowInt($row, 'id'))->update([
+                    'status' => 'expired',
+                    'updated_at' => now(),
+                ]);
+                $expiredEvents[] = [
+                    'standard_public_id' => $this->rowString($row, 'public_id'),
+                    'previous_status' => $this->rowString($row, 'status'),
+                    'new_status' => 'expired',
+                    'expiry_date' => $this->nullableRowString($row, 'expiry_date'),
+                ];
+            }
+
+            $replacements = DB::table('islamic_standards')
+                ->where('status', 'active')
+                ->whereNotNull('supersedes_standard_id')
+                ->where('effective_date', '<=', $asOfDate)
+                ->lockForUpdate()
+                ->get(['id', 'public_id', 'supersedes_standard_id']);
+            foreach ($replacements as $replacement) {
+                $predecessor = DB::table('islamic_standards')
+                    ->where('id', $this->rowInt($replacement, 'supersedes_standard_id'))
+                    ->lockForUpdate()
+                    ->first(['id', 'public_id', 'status']);
+                if (! is_object($predecessor) || $this->rowString($predecessor, 'status') !== 'active') {
+                    continue;
+                }
+                DB::table('islamic_standards')->where('id', $this->rowInt($predecessor, 'id'))->update([
+                    'status' => 'superseded',
+                    'updated_at' => now(),
+                ]);
+                $supersededEvents[] = [
+                    'old_standard_public_id' => $this->rowString($predecessor, 'public_id'),
+                    'new_standard_public_id' => $this->rowString($replacement, 'public_id'),
+                ];
+            }
+
+            return [
+                'as_of' => $asOfDate,
+                'expired' => $expiredEvents,
+                'superseded' => $supersededEvents,
+            ];
+        });
+
+        foreach ($result['expired'] as $event) {
+            $this->securityAudit->record('islamic.standard.expired', actor: null, properties: array_merge($event, [
+                'actor_fallback' => 'system',
+            ]), request: $request);
+        }
+        foreach ($result['superseded'] as $event) {
+            $this->securityAudit->record('islamic.standard.superseded', actor: null, properties: array_merge($event, [
+                'actor_fallback' => 'system',
+            ]), request: $request);
+        }
+
+        return $this->respondSuccess([
+            'as_of' => $result['as_of'],
+            'expired_count' => count($result['expired']),
+            'superseded_count' => count($result['superseded']),
+            'expired' => $result['expired'],
+            'superseded' => $result['superseded'],
+        ], 'Islamic standards lifecycle upkeep completed');
     }
 
     public function link(Request $request, string $publicId): JsonResponse
@@ -805,14 +903,14 @@ final class IslamicStandardWorkflow extends BaseController
     {
         switch ($type) {
             case 'product_family':
-                if (! in_array($code, IslamicStandardsBaselineService::PRODUCT_FAMILIES, true)) {
+                if ($this->productFamilies->familyKindFor($code) !== 'financing') {
                     throw new InvalidArgumentException('Unknown product family code.');
                 }
 
                 return ['stored_code' => $code, 'metadata' => ['identifier_type' => 'code']];
 
             case 'account_type':
-                if (! in_array($code, IslamicStandardsBaselineService::ACCOUNT_TYPES, true)) {
+                if ($this->productFamilies->familyKindFor($code) !== 'account') {
                     throw new InvalidArgumentException('Unknown account type code.');
                 }
 
@@ -832,7 +930,43 @@ final class IslamicStandardWorkflow extends BaseController
                 return ['stored_code' => $code, 'metadata' => ['identifier_type' => 'public_id']];
 
             case 'contract_template':
+                if ($identifier === 'public_id') {
+                    $template = DB::table('islamic_contract_templates')
+                        ->where('public_id', $code)
+                        ->first(['public_id', 'template_code', 'version', 'language_code']);
+                    if (! is_object($template)) {
+                        throw new InvalidArgumentException('Contract template public_id is not found in registry.');
+                    }
+
+                    return [
+                        'stored_code' => $this->rowString($template, 'public_id'),
+                        'metadata' => [
+                            'identifier_type' => 'public_id',
+                            'template_code' => $this->rowString($template, 'template_code'),
+                            'template_version' => $this->rowInt($template, 'version'),
+                            'language_code' => $this->rowString($template, 'language_code'),
+                        ],
+                    ];
+                }
+
                 if ($identifier === 'reserved_code' || $identifier === null) {
+                    $template = DB::table('islamic_contract_templates')
+                        ->where('template_code', $code)
+                        ->orderByDesc('version')
+                        ->orderByDesc('id')
+                        ->first(['public_id', 'template_code', 'version', 'language_code']);
+                    if (is_object($template)) {
+                        return [
+                            'stored_code' => $this->rowString($template, 'public_id'),
+                            'metadata' => [
+                                'identifier_type' => 'template_code',
+                                'template_code' => $this->rowString($template, 'template_code'),
+                                'template_version' => $this->rowInt($template, 'version'),
+                                'language_code' => $this->rowString($template, 'language_code'),
+                            ],
+                        ];
+                    }
+
                     if (! in_array($code, self::RESERVED_CONTRACT_TEMPLATE_CODES, true)) {
                         throw new InvalidArgumentException('Unknown reserved contract template code.');
                     }
@@ -841,11 +975,12 @@ final class IslamicStandardWorkflow extends BaseController
                         'stored_code' => $code,
                         'metadata' => [
                             'identifier_type' => 'reserved_code',
-                            'reserved_until_backlog' => 'IF-032',
+                            'deprecated' => true,
+                            'fallback_reason' => 'No registry-backed template exists yet for this code.',
                         ],
                     ];
                 }
-                throw new InvalidArgumentException('Contract template registry is not yet available; only reserved_code identifiers are accepted.');
+                throw new InvalidArgumentException('Contract template identifier is invalid. Use public_id or reserved_code.');
             case 'screening_policy':
                 if ($identifier === 'reserved_code' || $identifier === null) {
                     if (! in_array($code, self::RESERVED_SCREENING_POLICY_CODES, true)) {
@@ -1100,6 +1235,51 @@ final class IslamicStandardWorkflow extends BaseController
         $value = DB::table('documents')->where('id', $documentId)->value('public_id');
 
         return is_string($value) ? $value : null;
+    }
+
+    /** @return array<string, mixed> */
+    private function standardAuditSnapshot(object $row): array
+    {
+        return [
+            'source' => $this->rowString($row, 'source'),
+            'reference' => $this->rowString($row, 'reference'),
+            'title' => $this->rowString($row, 'title'),
+            'version' => $this->nullableRowString($row, 'version'),
+            'publication_date' => $this->nullableRowString($row, 'publication_date'),
+            'scope_summary' => $this->rowString($row, 'scope_summary'),
+            'owner_type' => $this->rowString($row, 'owner_type'),
+            'owner_user_id' => $this->rowNullableInt($row, 'owner_user_id'),
+            'owner_role' => $this->nullableRowString($row, 'owner_role'),
+            'owner_department' => $this->nullableRowString($row, 'owner_department'),
+            'owner_committee' => $this->nullableRowString($row, 'owner_committee'),
+            'effective_date' => $this->rowString($row, 'effective_date'),
+            'expiry_date' => $this->nullableRowString($row, 'expiry_date'),
+            'status' => $this->rowString($row, 'status'),
+            'document_public_id' => $this->documentPublicId($this->rowInt($row, 'document_id')),
+        ];
+    }
+
+    /** @param array<string,mixed> $row */
+    private function standardAuditSnapshotFromArray(array $row): array
+    {
+        return $this->standardAuditSnapshot((object) $row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
+     * @return list<string>
+     */
+    private function diffAuditSnapshots(array $before, array $after): array
+    {
+        $changed = [];
+        foreach ($after as $key => $value) {
+            if (($before[$key] ?? null) !== $value) {
+                $changed[] = (string) $key;
+            }
+        }
+
+        return $changed;
     }
 
     private function requirePlatformAdmin(Request $request): bool

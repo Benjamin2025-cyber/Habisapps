@@ -24,6 +24,26 @@ final class IslamicFinanceWorkflowControllerAdapter
         return $this->product->storeProduct($request);
     }
 
+    public function indexProductFamilies(Request $request): JsonResponse
+    {
+        return $this->product->indexProductFamilies($request);
+    }
+
+    public function showProductFamily(Request $request, string $familyCode): JsonResponse
+    {
+        return $this->product->showProductFamily($request, $familyCode);
+    }
+
+    public function showProductReadiness(Request $request, string $productPublicId): JsonResponse
+    {
+        return $this->product->showProductReadiness($request, $productPublicId);
+    }
+
+    public function listProductReadinessSnapshots(Request $request, string $productPublicId): JsonResponse
+    {
+        return $this->product->listProductReadinessSnapshots($request, $productPublicId);
+    }
+
     public function storeComplianceReview(Request $request, string $productPublicId): JsonResponse
     {
         return $this->product->storeComplianceReview($request, $productPublicId);
@@ -39,9 +59,39 @@ final class IslamicFinanceWorkflowControllerAdapter
         return $this->financing->storeFinancing($request);
     }
 
+    public function storeMourabahaRequest(Request $request): JsonResponse
+    {
+        return $this->financing->storeMourabahaRequest($request);
+    }
+
+    public function storeMourabahaQuote(Request $request, string $requestPublicId): JsonResponse
+    {
+        return $this->financing->storeMourabahaQuote($request, $requestPublicId);
+    }
+
+    public function approveMourabahaPurchase(Request $request, string $requestPublicId): JsonResponse
+    {
+        return $this->financing->approveMourabahaPurchase($request, $requestPublicId);
+    }
+
     public function storeFinancingAsset(Request $request, string $financingPublicId): JsonResponse
     {
         return $this->financing->storeFinancingAsset($request, $financingPublicId);
+    }
+
+    public function transitionFinancingAsset(Request $request, string $assetPublicId): JsonResponse
+    {
+        return $this->financing->transitionFinancingAsset($request, $assetPublicId);
+    }
+
+    public function showFinancedAsset(Request $request, string $assetPublicId): JsonResponse
+    {
+        return $this->financing->showFinancedAsset($request, $assetPublicId);
+    }
+
+    public function showFinancedAssetTimeline(Request $request, string $assetPublicId): JsonResponse
+    {
+        return $this->financing->showFinancedAssetTimeline($request, $assetPublicId);
     }
 
     public function storeInstallments(Request $request, string $financingPublicId): JsonResponse
@@ -52,6 +102,106 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function approveFinancing(Request $request, string $financingPublicId): JsonResponse
     {
         return $this->financing->approveFinancing($request, $financingPublicId);
+    }
+
+    public function storeIjaraConditionReport(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeIjaraConditionReport($request, $financingPublicId);
+    }
+
+    public function storeIjaraRentalSchedules(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeIjaraRentalSchedules($request, $financingPublicId);
+    }
+
+    public function activateIjaraLease(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->activateIjaraLease($request, $financingPublicId);
+    }
+
+    public function storeIjaraDamageEvent(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeIjaraDamageEvent($request, $financingPublicId);
+    }
+
+    public function storeIjaraSuspension(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeIjaraSuspension($request, $financingPublicId);
+    }
+
+    public function storeIjaraEarlyTermination(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeIjaraEarlyTermination($request, $financingPublicId);
+    }
+
+    public function requestIjaraTransfer(Request $request, string $financingPublicId, string $assetPublicId): JsonResponse
+    {
+        return $this->financing->requestIjaraTransfer($request, $financingPublicId, $assetPublicId);
+    }
+
+    public function approveIjaraTransfer(Request $request, string $transferEventPublicId): JsonResponse
+    {
+        return $this->financing->approveIjaraTransfer($request, $transferEventPublicId);
+    }
+
+    public function postIjaraTransfer(Request $request, string $transferEventPublicId): JsonResponse
+    {
+        return $this->financing->postIjaraTransfer($request, $transferEventPublicId);
+    }
+
+    public function showIjaraTransferEvent(Request $request, string $transferEventPublicId): JsonResponse
+    {
+        return $this->financing->showIjaraTransferEvent($request, $transferEventPublicId);
+    }
+
+    public function storePurchaseEvidence(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storePurchaseEvidence($request, $financingPublicId);
+    }
+
+    public function storeCostEvidence(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeCostEvidence($request, $financingPublicId);
+    }
+
+    public function showOriginationSnapshot(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->showOriginationSnapshot($request, $financingPublicId);
+    }
+
+    public function storeCollection(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeCollection($request, $financingPublicId);
+    }
+
+    public function storeRebate(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeRebate($request, $financingPublicId);
+    }
+
+    public function storeCancellation(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeCancellation($request, $financingPublicId);
+    }
+
+    public function storeDefaultTreatment(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeDefaultTreatment($request, $financingPublicId);
+    }
+
+    public function storeReversal(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeReversal($request, $financingPublicId);
+    }
+
+    public function storeCorrection(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->storeCorrection($request, $financingPublicId);
+    }
+
+    public function showReceivableLedger(Request $request, string $financingPublicId): JsonResponse
+    {
+        return $this->financing->showReceivableLedger($request, $financingPublicId);
     }
 
     public function listComplianceCases(Request $request): JsonResponse
@@ -177,6 +327,11 @@ final class IslamicFinanceWorkflowControllerAdapter
     public function retireStandard(Request $request, string $standardPublicId): JsonResponse
     {
         return $this->standard->retire($request, $standardPublicId);
+    }
+
+    public function lifecycleUpkeepStandards(Request $request): JsonResponse
+    {
+        return $this->standard->lifecycleUpkeep($request);
     }
 
     public function linkStandard(Request $request, string $standardPublicId): JsonResponse

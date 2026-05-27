@@ -38,7 +38,7 @@ final class IslamicInterestGuardPolicy
     ];
 
     /**
-     * @param array<string,mixed> $rules
+     * @param  array<string,mixed>  $rules
      */
     public function assertNoConventionalInterestBinding(array $rules): void
     {
@@ -55,7 +55,7 @@ final class IslamicInterestGuardPolicy
     }
 
     /**
-     * @param list<string> $labels
+     * @param  list<string>  $labels
      */
     public function assertStatementTerminologyAllowed(array $labels): void
     {
@@ -84,7 +84,7 @@ final class IslamicInterestGuardPolicy
     }
 
     /**
-     * @param array<string,mixed> $rules
+     * @param  array<string,mixed>  $rules
      */
     private function containsForbiddenSemantics(array $rules): bool
     {
@@ -124,4 +124,3 @@ final class IslamicInterestGuardPolicy
         return strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '_', $value)));
     }
 }
-

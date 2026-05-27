@@ -17,12 +17,19 @@ final class IslamicComplianceCaseService
     public const SUBJECT_PRODUCT = 'islamic_product';
 
     public const BLOCKER_PRODUCT_ACTIVATION = 'product_activation';
+
     public const DECISION_APPROVED = 'approved';
+
     public const DECISION_REJECTED = 'rejected';
+
     public const DECISION_NEEDS_INFORMATION = 'needs_information';
+
     public const DECISION_CONDITIONALLY_APPROVED = 'conditionally_approved';
+
     public const DECISION_SUSPENDED = 'suspended';
+
     public const DECISION_CORRECTIVE_ACTION_REQUIRED = 'corrective_action_required';
+
     public const DECISION_CORRECTIVE_ACTION_CLOSED = 'corrective_action_closed';
 
     public function __construct(
@@ -75,6 +82,13 @@ final class IslamicComplianceCaseService
             'reason_code' => $reasonCode,
             'risk_level' => $riskLevel,
         ]);
+        if ($assignedReviewerUserId !== null) {
+            $this->securityAudit->record('islamic.compliance_case.assigned', actor: $actor, properties: [
+                'case_public_id' => $this->rowString($row, 'public_id'),
+                'assigned_reviewer_user_id' => $assignedReviewerUserId,
+                'due_at' => $dueAt?->toDateTimeString(),
+            ]);
+        }
 
         return $row;
     }

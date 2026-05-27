@@ -1,7 +1,7 @@
 # IF-010 Implementation Plan: Sharia Authority Model
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified (2026-05-25)
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-010
 Proof-method: proof by contradiction
 
@@ -377,3 +377,28 @@ Command rules:
 - Use `composer test` as default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
+
+## Implementation Evidence (2026-05-25)
+
+Contradiction audit outcome:
+
+1. Non-mandated platform-admin approval attempts are blocked by Sharia authority gate.
+2. Expired/suspended/revoked mandates, reviewer-only roles, scope mismatches, and self-approval attempts are all rejected.
+3. Authority/member lifecycle and decision-block events are auditable in `activity_log`.
+4. No additional implementation gap was found during this IF-010 adversarial review pass.
+
+Verification runs:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicShariaAuthorityTest
+```
+
+Result:
+- `OK (16 tests, 191 assertions)` in ~8.5s.
+
+```bash
+composer test
+```
+
+Result:
+- `OK (565 tests, 8548 assertions)` in ~41.7s.

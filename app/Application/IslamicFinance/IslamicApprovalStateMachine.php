@@ -72,6 +72,8 @@ final class IslamicApprovalStateMachine
 
     public const SUBJECT_MAPPING = 'islamic_mapping';
 
+    public const SUBJECT_TREATMENT_POLICY = 'islamic_treatment_policy';
+
     public const SUBJECT_CORRECTIVE_ACTION = 'islamic_corrective_action';
 
     public const SUBJECT_TYPES = [
@@ -80,6 +82,7 @@ final class IslamicApprovalStateMachine
         self::SUBJECT_SCREENING_POLICY,
         self::SUBJECT_EXCEPTION,
         self::SUBJECT_MAPPING,
+        self::SUBJECT_TREATMENT_POLICY,
         self::SUBJECT_CORRECTIVE_ACTION,
     ];
 

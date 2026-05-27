@@ -1,7 +1,7 @@
 # IF-001 Implementation Plan: Islamic Finance Standards Registry
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified (2026-05-25)
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-001
 Proof-method: proof by contradiction
 
@@ -554,14 +554,14 @@ Use the narrowest relevant test loop while implementing IF-001. This is not an M
 Recommended implementation loop:
 
 ```bash
-php artisan test tests/Feature/Api/IslamicFinanceTest.php --filter standards --compact
-php artisan test --filter IslamicFinanceTest --compact
+php artisan test --parallel --recreate-databases --filter standards
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
 ```
 
 If IF-001 receives a dedicated standards-registry test file, run it directly:
 
 ```bash
-php artisan test tests/Feature/Api/IslamicStandardsTest.php --compact
+php artisan test --parallel --recreate-databases tests/Feature/Api/IslamicStandardsTest.php
 ```
 
 Run unit/service-level checks first when changing `IslamicStandardsBaselineService`, `IslamicProductReadinessService`, DTOs, validators, or policy helpers:
@@ -579,13 +579,13 @@ composer test
 Equivalent explicit command:
 
 ```bash
-php artisan test --parallel
+php artisan test --parallel --recreate-databases
 ```
 
 If parallel test databases are stale or schema-drifted, recreate them:
 
 ```bash
-php artisan test --parallel --recreate-databases
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
 ```
 
 Profile slow tests before guessing:
@@ -598,16 +598,56 @@ php artisan test tests/Feature/Api/IslamicFinanceTest.php --profile
 Command rules:
 
 - Put `--parallel` before path arguments: `php artisan test --parallel tests/Feature/Api/IslamicFinanceTest.php`.
+- Do not use bare `php artisan test` as the canonical full-suite command in this repository; use `composer test` or `php artisan test --parallel --recreate-databases`.
 - Do not pass multiple file paths to `php artisan test`; use a directory, `--filter`, a testsuite, or run files one at a time.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently against `habis_finance_api_test`; they race migrations and create false failures.
 - Treat `composer test` as the full-suite command; it currently uses Laravel parallel testing instead of the old hour-scale serial run.
-- Known current full-suite failures outside IF-001 are tracked in `docs/operations/laravel-test-performance.md`; do not let unrelated failures hide IF-001 regressions.
 
 Proof by contradiction for these rules:
 
 - Assume concurrent non-parallel test commands are acceptable. They share the same test database, so migrations and table creation race each other, producing failures unrelated to IF-001. Therefore concurrent non-parallel commands are invalid for investigation or verification.
 - Assume the serial full suite is the correct default loop. A full run can consume implementation-scale time before showing a local IF-001 failure. Therefore narrow tests plus a parallel full-suite gate are the correct sequence.
 - Assume multiple file paths can be passed to `php artisan test`. Laravel's command accepts a single path argument, so the command fails before executing the intended tests. Therefore multi-file targeting must use filters, directories, suites, or separate commands.
+
+## Implementation Evidence (2026-05-25)
+
+Contradiction findings discovered:
+
+1. IF-001 required expiry lifecycle hygiene events (`islamic.standard.expired`), but no lifecycle-upkeep path existed.
+2. IF-001 audit event contract expected richer mutation traces (`before/after` for updates and `changed_fields` for amendments), but emitted payloads were weaker.
+
+Fixes applied:
+
+1. Added standards lifecycle-upkeep endpoint and workflow path:
+   - `POST /api/v1/islamic-standards/lifecycle-upkeep`
+   - Expires active standards when `expiry_date <= as_of`
+   - Supersedes predecessor only when active replacement is effective
+   - Records system-fallback audit events:
+     - `islamic.standard.expired`
+     - `islamic.standard.superseded`
+2. Strengthened audit payloads:
+   - `islamic.standard.updated` now includes `before` and `after` snapshots plus `changed_fields`.
+   - `islamic.standard.amended` now includes `changed_fields`.
+3. Added contradiction tests proving the above:
+   - `test_lifecycle_upkeep_marks_expired_standards_and_audits_system_event`
+   - `test_lifecycle_upkeep_supersedes_only_when_replacement_effective`
+   - Extended audit assertions in amendment/update tests.
+
+Verification runs:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicStandardsTest
+```
+
+Result:
+- `OK (20 tests, 300 assertions)` in ~8.2s.
+
+```bash
+composer test
+```
+
+Result:
+- `OK (565 tests, 8546 assertions)` in ~42.0s.
 
 ## Phase 10: Explicit Non-Goals For IF-001
 

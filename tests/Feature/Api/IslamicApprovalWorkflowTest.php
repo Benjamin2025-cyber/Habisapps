@@ -278,6 +278,57 @@ final class IslamicApprovalWorkflowTest extends TestCase
         $this->assertJsonError($response, 422);
     }
 
+    public function test_revoked_screening_policy_workflow_blocks_strict_screening_use(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $approver = $this->createUserWithRole('platform-admin');
+        $this->createActiveAuthority($admin, [
+            ['user' => $approver, 'role' => 'approver'],
+            ['user' => $this->createUserWithRole('platform-admin'), 'role' => 'chair'],
+        ]);
+
+        $policyPublicId = $this->createActiveScreeningPolicy($admin, $approver);
+
+        $before = $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'product_approval',
+                'strict_policy' => true,
+                'facts' => [
+                    'scope_type' => 'institution',
+                    'supplier_flags' => ['trusted_supplier'],
+                ],
+            ]);
+        $this->assertJsonSuccess($before);
+        $before->assertJsonPath('data.result', 'pass');
+
+        $revoke = $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-approval-workflows/islamic_screening_policy/'.$policyPublicId.'/revoke', [
+                'comments' => 'workflow revoked for contradiction test',
+            ]);
+        $this->assertJsonSuccess($revoke);
+        $revoke->assertJsonPath('data.current_state', IslamicApprovalStateMachine::STATE_REVOKED);
+
+        $after = $this->withApiHeaders()
+            ->actingAsSanctum($admin)
+            ->postJson('/api/v1/islamic-screening/evaluate', [
+                'subject_type' => 'islamic_product',
+                'subject_public_id' => (string) Str::ulid(),
+                'context_type' => 'product_approval',
+                'strict_policy' => true,
+                'facts' => [
+                    'scope_type' => 'institution',
+                    'supplier_flags' => ['trusted_supplier'],
+                ],
+            ]);
+        $this->assertJsonSuccess($after);
+        $after->assertJsonPath('data.result', 'fail');
+        self::assertStringContainsString('No active screening policy', (string) $after->json('data.block_reason'));
+    }
+
     public function test_expired_state_blocks_new_use_while_preserving_history(): void
     {
         $maker = $this->createUserWithRole('platform-admin');
@@ -501,6 +552,33 @@ final class IslamicApprovalWorkflowTest extends TestCase
                 'code' => $code,
                 'name' => 'Product '.$code,
                 'contract_type' => 'murabaha',
+                'rules' => [
+                    'document_requirements' => ['evidence_pack' => 'baseline'],
+                    'authorization_rules' => ['maker_checker' => true, 'approver_scope' => 'platform_admin'],
+                    'operational_procedure' => ['reference' => 'if-op-v1', 'version' => '2026.01'],
+                    'reporting_category' => 'mourabaha_receivables',
+                    'mourabaha_configuration' => [
+                        'allowed_asset_categories' => ['vehicles', 'equipment'],
+                        'allowed_costs_policy' => ['allow_documented_costs' => true, 'categories' => ['logistics', 'registration']],
+                        'margin_rule' => ['type' => 'fixed_markup', 'compounding' => false, 'calculus_class' => 'cost_plus_flat'],
+                        'repayment_schedule_rules' => ['calculation_mode' => 'fixed_installments', 'max_tenor_months' => 24],
+                        'delivery_requirements' => ['supplier_invoice', 'asset_transfer_note'],
+                        'early_settlement_policy' => ['mode' => 'rebate_allowed', 'requires_approval' => true],
+                        'late_payment_policy' => ['mode' => 'charity', 'compounding' => false],
+                        'cancellation_policy' => ['mode' => 'pre_delivery_only', 'requires_supplier_confirmation' => true],
+                        'accounting_mapping_requirements' => [
+                            'operation_codes' => ['murabaha_receivable', 'murabaha_payable', 'murabaha_profit'],
+                        ],
+                        'sharia_approval_reference' => [
+                            'workflow_public_id' => 'wf-sharia-reference',
+                            'decision_reference' => 'sharia-decision-reference',
+                        ],
+                        'contract_template_reference' => [
+                            'template_public_id' => 'tpl-reference',
+                            'version' => 1,
+                        ],
+                    ],
+                ],
             ]);
         $this->assertJsonSuccess($response, 201);
 
@@ -647,6 +725,20 @@ final class IslamicApprovalWorkflowTest extends TestCase
             ]);
         $this->withApiHeaders()
             ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$standardPublicId.'/links', [
+                'linkable_type' => 'contract_template',
+                'linkable_code' => 'mourabaha_contract_template',
+                'linkable_identifier' => 'reserved_code',
+            ]);
+        $mappingPublicId = $this->seedIslamicAccountingMapping();
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$standardPublicId.'/links', [
+                'linkable_type' => 'accounting_mapping',
+                'linkable_code' => $mappingPublicId,
+            ]);
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-standards/'.$standardPublicId.'/activate');
 
         $signoffDoc = $this->createDocument($actor);
@@ -675,6 +767,8 @@ final class IslamicApprovalWorkflowTest extends TestCase
         $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-regulatory-signoffs/'.$signoffPublicId.'/activate');
+
+        $this->ensureApprovedContractTemplate($actor, 'mourabaha');
     }
 
     private function requireStringJsonPath(TestResponse $response, string $path): string
@@ -683,5 +777,147 @@ final class IslamicApprovalWorkflowTest extends TestCase
         self::assertIsString($value);
 
         return $value;
+    }
+
+    private function seedIslamicAccountingMapping(): string
+    {
+        $opCodeId = DB::table('operation_codes')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'if_awf_'.Str::ulid(),
+            'label' => 'Islamic workflow mapping',
+            'module' => 'islamic_finance',
+            'operation_type' => null,
+            'direction' => null,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $publicId = (string) Str::ulid();
+        DB::table('operation_account_mappings')->insert([
+            'public_id' => $publicId,
+            'operation_code_id' => $opCodeId,
+            'agency_id' => null,
+            'debit_ledger_account_id' => null,
+            'credit_ledger_account_id' => null,
+            'currency' => null,
+            'effective_from' => now()->subDay()->toDateString(),
+            'effective_to' => null,
+            'status' => 'active',
+            'approval_status' => 'approved',
+            'accounting_owner_user_id' => null,
+            'sharia_approval_required' => false,
+            'sharia_approval_status' => 'not_required',
+            'approved_by_user_id' => null,
+            'approved_at' => now(),
+            'rules' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $actorId = DB::table('users')->orderBy('id')->value('id');
+        if (is_numeric($actorId)) {
+            DB::table('islamic_approval_workflows')->insert([
+                'public_id' => (string) Str::ulid(),
+                'subject_type' => 'islamic_mapping',
+                'subject_public_id' => $publicId,
+                'current_state' => 'approved',
+                'effective_from' => now()->subDay()->toDateString(),
+                'effective_to' => null,
+                'is_blocking' => true,
+                'version' => 1,
+                'created_by_user_id' => (int) $actorId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $publicId;
+    }
+
+    private function ensureApprovedContractTemplate(User $actor, string $familyCode): void
+    {
+        $existing = DB::table('islamic_contract_templates')
+            ->where('family_code', $familyCode)
+            ->where('status', 'approved')
+            ->where('effective_from', '<=', now()->toDateString())
+            ->where(function ($q): void {
+                $q->whereNull('effective_to')->orWhere('effective_to', '>', now()->toDateString());
+            })
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $documentPublicId = $this->createDocument($actor);
+        $create = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-contract-templates', [
+                'family_code' => $familyCode,
+                'language_code' => 'fr',
+                'template_code' => $familyCode.'_contract_template',
+                'version' => 1,
+                'effective_from' => now()->subDay()->toDateString(),
+                'document_public_id' => $documentPublicId,
+                'legal_signoff_ref' => 'LEGAL-REF-'.$familyCode,
+                'sharia_signoff_ref' => 'SHARIA-REF-'.$familyCode,
+                'fields_schema' => ['party_identifiers' => ['required' => true]],
+                'commercial_terms_schema' => ['term_keys' => ['purchase_cost_minor', 'markup_minor']],
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $templatePublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $submit = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-contract-templates/'.$templatePublicId.'/submit');
+        $this->assertJsonSuccess($submit);
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-contract-templates/'.$templatePublicId.'/approve');
+        $this->assertJsonSuccess($approve);
+    }
+
+    private function createActiveScreeningPolicy(User $creator, User $approver): string
+    {
+        $create = $this->withApiHeaders()
+            ->actingAsSanctum($creator)
+            ->postJson('/api/v1/islamic-screening-policies', [
+                'code' => 'IF011-SP-'.Str::upper(Str::random(6)),
+                'name' => 'IF-011 Screening Policy',
+                'scope_type' => 'institution',
+                'effective_from' => CarbonImmutable::now()->subDay()->toDateString(),
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $policyPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $rule = $this->withApiHeaders()
+            ->actingAsSanctum($creator)
+            ->postJson('/api/v1/islamic-screening-policies/'.$policyPublicId.'/rules', [
+                'rule_type' => 'supplier_flag',
+                'match_key' => 'trusted_supplier',
+                'match_operator' => 'equals',
+                'action' => 'allow_with_note',
+                'priority' => 1,
+            ]);
+        $this->assertJsonSuccess($rule);
+
+        $submit = $this->withApiHeaders()
+            ->actingAsSanctum($creator)
+            ->postJson('/api/v1/islamic-approval-workflows/islamic_screening_policy/'.$policyPublicId.'/submit');
+        $this->assertJsonSuccess($submit);
+
+        $approve = $this->withApiHeaders()
+            ->actingAsSanctum($approver)
+            ->postJson('/api/v1/islamic-approval-workflows/islamic_screening_policy/'.$policyPublicId.'/approve', [
+                'requester_user_public_id' => $creator->public_id,
+            ]);
+        $this->assertJsonSuccess($approve);
+
+        $activate = $this->withApiHeaders()
+            ->actingAsSanctum($creator)
+            ->postJson('/api/v1/islamic-screening-policies/'.$policyPublicId.'/activate');
+        $this->assertJsonSuccess($activate);
+
+        return $policyPublicId;
     }
 }

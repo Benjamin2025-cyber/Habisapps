@@ -1,7 +1,7 @@
 # IF-021 Implementation Plan: Screening Execution Engine
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-021
 Proof-method: proof by contradiction
 
@@ -247,3 +247,26 @@ Command rules:
 - Use `composer test` as default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
+
+## Implemented And Verified (2026-05-25)
+
+Proof by contradiction checks closed:
+
+1. Assume contract activation can proceed with missing strict screening policy.
+   - Contradiction: strict contract-approval screening path persists fail and blocks activation.
+2. Assume manual-review routing uses incorrect blocker domains for non-contract contexts.
+   - Contradiction: context-specific blocker mapping is enforced for product, contract, supplier, asset, goods, project, and account-pool contexts.
+3. Assume non-pass outcomes can be treated as informational in guarded paths.
+   - Contradiction: guarded action paths reject non-pass outcomes and leave auditable screening/compliance traces.
+
+Verification commands executed:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+composer test
+```
+
+Observed result:
+
+- `composer test` passed: `OK (610 tests, 9506 assertions)` before IF-020/021/022 test additions.
+- `IslamicFinanceTest` then passed after additions: `OK (126 tests, 3052 assertions)`.

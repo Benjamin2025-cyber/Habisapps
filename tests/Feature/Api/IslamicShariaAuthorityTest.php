@@ -589,6 +589,20 @@ final class IslamicShariaAuthorityTest extends TestCase
             ]);
         $this->withApiHeaders()
             ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$standardPublicId.'/links', [
+                'linkable_type' => 'contract_template',
+                'linkable_code' => 'mourabaha_contract_template',
+                'linkable_identifier' => 'reserved_code',
+            ]);
+        $mappingPublicId = $this->seedIslamicAccountingMapping();
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$standardPublicId.'/links', [
+                'linkable_type' => 'accounting_mapping',
+                'linkable_code' => $mappingPublicId,
+            ]);
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-standards/'.$standardPublicId.'/activate');
 
         $signoffDoc = $this->createDocument($actor);
@@ -627,6 +641,33 @@ final class IslamicShariaAuthorityTest extends TestCase
                 'code' => $code,
                 'name' => 'Product '.$code,
                 'contract_type' => 'murabaha',
+                'rules' => [
+                    'document_requirements' => ['evidence_pack' => 'baseline'],
+                    'authorization_rules' => ['maker_checker' => true, 'approver_scope' => 'platform_admin'],
+                    'operational_procedure' => ['reference' => 'if-op-v1', 'version' => '2026.01'],
+                    'reporting_category' => 'mourabaha_receivables',
+                    'mourabaha_configuration' => [
+                        'allowed_asset_categories' => ['vehicles', 'equipment'],
+                        'allowed_costs_policy' => ['allow_documented_costs' => true, 'categories' => ['logistics', 'registration']],
+                        'margin_rule' => ['type' => 'fixed_markup', 'compounding' => false, 'calculus_class' => 'cost_plus_flat'],
+                        'repayment_schedule_rules' => ['calculation_mode' => 'fixed_installments', 'max_tenor_months' => 24],
+                        'delivery_requirements' => ['supplier_invoice', 'asset_transfer_note'],
+                        'early_settlement_policy' => ['mode' => 'rebate_allowed', 'requires_approval' => true],
+                        'late_payment_policy' => ['mode' => 'charity', 'compounding' => false],
+                        'cancellation_policy' => ['mode' => 'pre_delivery_only', 'requires_supplier_confirmation' => true],
+                        'accounting_mapping_requirements' => [
+                            'operation_codes' => ['murabaha_receivable', 'murabaha_payable', 'murabaha_profit'],
+                        ],
+                        'sharia_approval_reference' => [
+                            'workflow_public_id' => 'wf-sharia-reference',
+                            'decision_reference' => 'sharia-decision-reference',
+                        ],
+                        'contract_template_reference' => [
+                            'template_public_id' => 'tpl-reference',
+                            'version' => 1,
+                        ],
+                    ],
+                ],
             ]);
         $this->assertJsonSuccess($response, 201);
 
@@ -658,5 +699,60 @@ final class IslamicShariaAuthorityTest extends TestCase
         self::assertIsString($value);
 
         return $value;
+    }
+
+    private function seedIslamicAccountingMapping(): string
+    {
+        $opCodeId = DB::table('operation_codes')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'if_auth_'.Str::ulid(),
+            'label' => 'Islamic authority mapping',
+            'module' => 'islamic_finance',
+            'operation_type' => null,
+            'direction' => null,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $publicId = (string) Str::ulid();
+        DB::table('operation_account_mappings')->insert([
+            'public_id' => $publicId,
+            'operation_code_id' => $opCodeId,
+            'agency_id' => null,
+            'debit_ledger_account_id' => null,
+            'credit_ledger_account_id' => null,
+            'currency' => null,
+            'effective_from' => now()->subDay()->toDateString(),
+            'effective_to' => null,
+            'status' => 'active',
+            'approval_status' => 'approved',
+            'accounting_owner_user_id' => null,
+            'sharia_approval_required' => false,
+            'sharia_approval_status' => 'not_required',
+            'approved_by_user_id' => null,
+            'approved_at' => now(),
+            'rules' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $actorId = DB::table('users')->orderBy('id')->value('id');
+        if (is_numeric($actorId)) {
+            DB::table('islamic_approval_workflows')->insert([
+                'public_id' => (string) Str::ulid(),
+                'subject_type' => 'islamic_mapping',
+                'subject_public_id' => $publicId,
+                'current_state' => 'approved',
+                'effective_from' => now()->subDay()->toDateString(),
+                'effective_to' => null,
+                'is_blocking' => true,
+                'version' => 1,
+                'created_by_user_id' => (int) $actorId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $publicId;
     }
 }

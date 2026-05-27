@@ -226,6 +226,14 @@ final class IslamicStandardsTest extends TestCase
             'log_name' => 'security',
             'event' => 'islamic.standard.amended',
         ]);
+        $audit = DB::table('activity_log')
+            ->where('event', 'islamic.standard.amended')
+            ->orderByDesc('id')
+            ->first(['properties']);
+        self::assertIsObject($audit);
+        $properties = is_string($audit->properties ?? null) ? json_decode((string) $audit->properties, true) : [];
+        self::assertIsArray($properties);
+        self::assertContains('title', $properties['changed_fields'] ?? []);
     }
 
     public function test_draft_update_creates_audit_event(): void
@@ -244,6 +252,16 @@ final class IslamicStandardsTest extends TestCase
             'log_name' => 'security',
             'event' => 'islamic.standard.updated',
         ]);
+        $audit = DB::table('activity_log')
+            ->where('event', 'islamic.standard.updated')
+            ->orderByDesc('id')
+            ->first(['properties']);
+        self::assertIsObject($audit);
+        $properties = is_string($audit->properties ?? null) ? json_decode((string) $audit->properties, true) : [];
+        self::assertIsArray($properties);
+        self::assertArrayHasKey('before', $properties);
+        self::assertArrayHasKey('after', $properties);
+        self::assertContains('scope_summary', $properties['changed_fields'] ?? []);
     }
 
     public function test_activation_requires_attachment_and_link(): void
@@ -560,9 +578,121 @@ final class IslamicStandardsTest extends TestCase
         // Service-level activation failures must be empty at both points
         /** @var IslamicProductReadinessService $readiness */
         $readiness = app(IslamicProductReadinessService::class);
-        $product = (object) ['contract_type' => 'murabaha'];
+        $product = (object) [
+            'contract_type' => 'murabaha',
+            'rules' => json_encode([
+                'document_requirements' => ['evidence_pack' => 'baseline'],
+                'authorization_rules' => ['maker_checker' => true, 'approver_scope' => 'platform_admin'],
+                'operational_procedure' => ['reference' => 'if-op-v1', 'version' => '2026.01'],
+                'reporting_category' => 'mourabaha_receivables',
+                'mourabaha_configuration' => [
+                    'allowed_asset_categories' => ['vehicles', 'equipment'],
+                    'allowed_costs_policy' => ['allow_documented_costs' => true, 'categories' => ['logistics', 'registration']],
+                    'margin_rule' => ['type' => 'fixed_markup', 'compounding' => false, 'calculus_class' => 'cost_plus_flat'],
+                    'repayment_schedule_rules' => ['calculation_mode' => 'fixed_installments', 'max_tenor_months' => 24],
+                    'delivery_requirements' => ['supplier_invoice', 'asset_transfer_note'],
+                    'early_settlement_policy' => ['mode' => 'rebate_allowed', 'requires_approval' => true],
+                    'late_payment_policy' => ['mode' => 'charity', 'compounding' => false],
+                    'cancellation_policy' => ['mode' => 'pre_delivery_only', 'requires_supplier_confirmation' => true],
+                    'accounting_mapping_requirements' => [
+                        'operation_codes' => ['murabaha_receivable', 'murabaha_payable', 'murabaha_profit'],
+                    ],
+                    'sharia_approval_reference' => [
+                        'workflow_public_id' => 'wf-sharia-reference',
+                        'decision_reference' => 'sharia-decision-reference',
+                    ],
+                    'contract_template_reference' => [
+                        'template_public_id' => 'tpl-reference',
+                        'version' => 1,
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR),
+        ];
         self::assertSame([], $readiness->activationFailures($product, $beforeAsOf));
         self::assertSame([], $readiness->activationFailures($product, $atAsOf));
+    }
+
+    public function test_lifecycle_upkeep_marks_expired_standards_and_audits_system_event(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $expired = $this->createActiveStandard(
+            $actor,
+            effectiveDate: CarbonImmutable::now()->subDays(10)->toDateString(),
+            linkType: 'product_family',
+            linkCode: 'mourabaha',
+            expiryDate: CarbonImmutable::now()->subDay()->toDateString(),
+        );
+
+        $upkeep = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/lifecycle-upkeep');
+        $this->assertJsonSuccess($upkeep);
+        $upkeep->assertJsonPath('data.expired_count', 1);
+
+        $this->assertDatabaseHas('islamic_standards', [
+            'public_id' => $expired['public_id'],
+            'status' => 'expired',
+        ]);
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'islamic.standard.expired',
+            'log_name' => 'security',
+        ]);
+    }
+
+    public function test_lifecycle_upkeep_supersedes_only_when_replacement_effective(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $current = $this->createActiveStandard(
+            $actor,
+            effectiveDate: CarbonImmutable::now()->subDay()->toDateString(),
+            linkType: 'product_family',
+            linkCode: 'mourabaha',
+        );
+
+        $newDoc = $this->createDocument($actor);
+        $futureDate = CarbonImmutable::now()->addDays(3);
+        $amend = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$current['public_id'].'/amend', [
+                'title' => 'Murabaha standard replacement',
+                'effective_date' => $futureDate->toDateString(),
+                'document_public_id' => $newDoc,
+            ]);
+        $this->assertJsonSuccess($amend, 201);
+        $replacementPublicId = $this->requireStringJsonPath($amend, 'data.public_id');
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$replacementPublicId.'/activate')
+            ->assertOk();
+
+        $before = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/lifecycle-upkeep', [
+                'as_of' => CarbonImmutable::now()->toDateString(),
+            ]);
+        $this->assertJsonSuccess($before);
+        $before->assertJsonPath('data.superseded_count', 0);
+        $this->assertDatabaseHas('islamic_standards', [
+            'public_id' => $current['public_id'],
+            'status' => 'active',
+        ]);
+
+        $at = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/lifecycle-upkeep', [
+                'as_of' => $futureDate->toDateString(),
+            ]);
+        $this->assertJsonSuccess($at);
+        $at->assertJsonPath('data.superseded_count', 1);
+        $this->assertDatabaseHas('islamic_standards', [
+            'public_id' => $current['public_id'],
+            'status' => 'superseded',
+        ]);
+        $this->assertDatabaseHas('activity_log', [
+            'event' => 'islamic.standard.superseded',
+            'log_name' => 'security',
+        ]);
     }
 
     public function test_api_responses_expose_public_ids_only(): void
@@ -794,6 +924,24 @@ final class IslamicStandardsTest extends TestCase
         $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-standards/'.$publicId.'/links', $linkPayload);
+        if ($linkType === 'product_family'
+            && in_array($linkCode, ['mourabaha', 'ijara', 'ijara_wa_iqtina', 'salam', 'istisnaa', 'moudaraba', 'moucharaka'], true)
+        ) {
+            $this->withApiHeaders()
+                ->actingAsSanctum($actor)
+                ->postJson('/api/v1/islamic-standards/'.$publicId.'/links', [
+                    'linkable_type' => 'contract_template',
+                    'linkable_code' => $linkCode.'_contract_template',
+                    'linkable_identifier' => 'reserved_code',
+                ]);
+        }
+        $mappingPublicId = $this->seedAccountingMapping(module: 'islamic_finance');
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/islamic-standards/'.$publicId.'/links', [
+                'linkable_type' => 'accounting_mapping',
+                'linkable_code' => $mappingPublicId,
+            ]);
 
         $activate = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -814,6 +962,33 @@ final class IslamicStandardsTest extends TestCase
                 'code' => $code,
                 'name' => 'Product '.$code,
                 'contract_type' => 'murabaha',
+                'rules' => [
+                    'document_requirements' => ['evidence_pack' => 'baseline'],
+                    'authorization_rules' => ['maker_checker' => true, 'approver_scope' => 'platform_admin'],
+                    'operational_procedure' => ['reference' => 'if-op-v1', 'version' => '2026.01'],
+                    'reporting_category' => 'mourabaha_receivables',
+                    'mourabaha_configuration' => [
+                        'allowed_asset_categories' => ['vehicles', 'equipment'],
+                        'allowed_costs_policy' => ['allow_documented_costs' => true, 'categories' => ['logistics', 'registration']],
+                        'margin_rule' => ['type' => 'fixed_markup', 'compounding' => false, 'calculus_class' => 'cost_plus_flat'],
+                        'repayment_schedule_rules' => ['calculation_mode' => 'fixed_installments', 'max_tenor_months' => 24],
+                        'delivery_requirements' => ['supplier_invoice', 'asset_transfer_note'],
+                        'early_settlement_policy' => ['mode' => 'rebate_allowed', 'requires_approval' => true],
+                        'late_payment_policy' => ['mode' => 'charity', 'compounding' => false],
+                        'cancellation_policy' => ['mode' => 'pre_delivery_only', 'requires_supplier_confirmation' => true],
+                        'accounting_mapping_requirements' => [
+                            'operation_codes' => ['murabaha_receivable', 'murabaha_payable', 'murabaha_profit'],
+                        ],
+                        'sharia_approval_reference' => [
+                            'workflow_public_id' => 'wf-sharia-reference',
+                            'decision_reference' => 'sharia-decision-reference',
+                        ],
+                        'contract_template_reference' => [
+                            'template_public_id' => 'tpl-reference',
+                            'version' => 1,
+                        ],
+                    ],
+                ],
             ]);
         $this->assertJsonSuccess($response, 201);
 
@@ -857,14 +1032,41 @@ final class IslamicStandardsTest extends TestCase
         DB::table('operation_account_mappings')->insert([
             'public_id' => $publicId,
             'operation_code_id' => $opCodeId,
+            'agency_id' => null,
             'debit_ledger_account_id' => null,
             'credit_ledger_account_id' => null,
             'currency' => null,
+            'effective_from' => now()->subDay()->toDateString(),
+            'effective_to' => null,
             'status' => 'active',
+            'approval_status' => 'approved',
+            'accounting_owner_user_id' => null,
+            'sharia_approval_required' => false,
+            'sharia_approval_status' => 'not_required',
+            'approved_by_user_id' => null,
+            'approved_at' => now(),
             'rules' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        if ($module === 'islamic_finance') {
+            $actorId = DB::table('users')->orderBy('id')->value('id');
+            if (is_numeric($actorId)) {
+                DB::table('islamic_approval_workflows')->insert([
+                    'public_id' => (string) Str::ulid(),
+                    'subject_type' => 'islamic_mapping',
+                    'subject_public_id' => $publicId,
+                    'current_state' => 'approved',
+                    'effective_from' => now()->subDay()->toDateString(),
+                    'effective_to' => null,
+                    'is_blocking' => true,
+                    'version' => 1,
+                    'created_by_user_id' => (int) $actorId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
 
         return $publicId;
     }

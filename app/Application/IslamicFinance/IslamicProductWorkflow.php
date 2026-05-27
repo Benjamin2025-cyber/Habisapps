@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
+use Throwable;
 
 final class IslamicProductWorkflow extends BaseController
 {
@@ -25,6 +26,7 @@ final class IslamicProductWorkflow extends BaseController
         private readonly IslamicApprovalWorkflowService $approvalWorkflow,
         private readonly IslamicComplianceCaseService $complianceCases,
         private readonly IslamicInterestGuardPolicy $interestGuard,
+        private readonly IslamicProductFamilyRegistry $productFamilies,
     ) {}
 
     public function storeProduct(Request $request): JsonResponse
@@ -37,7 +39,7 @@ final class IslamicProductWorkflow extends BaseController
             'agency_public_id' => ['sometimes', 'nullable', 'string', 'exists:agencies,public_id'],
             'code' => ['required', 'string', 'max:64', 'unique:islamic_products,code'],
             'name' => ['required', 'string', 'max:255'],
-            'contract_type' => ['required', Rule::in(['murabaha'])],
+            'contract_type' => ['required', Rule::in(IslamicProductFamilyRegistry::supportedContractTypes())],
             'default_margin_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:1'],
             'rules' => ['sometimes', 'nullable', 'array'],
         ])->validate();
@@ -54,6 +56,7 @@ final class IslamicProductWorkflow extends BaseController
             if ($statementLabels !== []) {
                 $this->interestGuard->assertStatementTerminologyAllowed($statementLabels);
             }
+            $this->productFamilies->assertDraftRulesAllowed((string) $validated['contract_type'], $rules);
         } catch (InvalidArgumentException $exception) {
             $this->securityAudit->record('islamic.interest_guard.product_binding_rejected', actor: $actor, properties: [
                 'code' => (string) $validated['code'],
@@ -102,6 +105,29 @@ final class IslamicProductWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondCreated($this->productPayload($row), 'Islamic product created');
+    }
+
+    public function indexProductFamilies(Request $request): JsonResponse
+    {
+        if (! $this->requirePlatformAdmin($request)) {
+            return $this->respondForbidden();
+        }
+
+        return $this->respondSuccess($this->productFamilies->allMetadata(), 'Islamic product families retrieved');
+    }
+
+    public function showProductFamily(Request $request, string $familyCode): JsonResponse
+    {
+        if (! $this->requirePlatformAdmin($request)) {
+            return $this->respondForbidden();
+        }
+
+        $metadata = $this->productFamilies->metadataFor($familyCode);
+        if ($metadata === null) {
+            return $this->respondNotFound('Islamic product family not found.');
+        }
+
+        return $this->respondSuccess($metadata, 'Islamic product family retrieved');
     }
 
     public function storeComplianceReview(Request $request, string $productPublicId): JsonResponse
@@ -219,6 +245,7 @@ final class IslamicProductWorkflow extends BaseController
             'conditions' => ['sometimes', 'nullable', 'array'],
             'effective_from' => ['sometimes', 'nullable', 'date'],
             'effective_to' => ['sometimes', 'nullable', 'date', 'after:effective_from'],
+            'evidence_document_public_id' => ['sometimes', 'nullable', 'string', 'exists:documents,public_id'],
         ])->validate();
 
         $actor = $request->user();
@@ -226,8 +253,10 @@ final class IslamicProductWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
+        $readinessSnapshot = null;
+
         try {
-            $row = DB::transaction(function () use ($reviewPublicId, $validated, $actor): object {
+            $row = DB::transaction(function () use ($reviewPublicId, $validated, $actor, &$readinessSnapshot): object {
                 $review = DB::table('islamic_compliance_reviews')
                     ->where('public_id', $reviewPublicId)
                     ->lockForUpdate()
@@ -261,7 +290,14 @@ final class IslamicProductWorkflow extends BaseController
                         if (! is_object($product)) {
                             throw new InvalidArgumentException('Islamic product is invalid.');
                         }
-                        $failures = $this->readiness->activationFailures($product, null, $actor);
+                        $readiness = $this->readiness->evaluate($product, null, $actor);
+                        $this->securityAudit->record('islamic.product.readiness.evaluated', actor: $actor, properties: [
+                            'product_public_id' => $this->rowString($product, 'public_id'),
+                            'family_code' => $readiness['family_code'],
+                            'overall_status' => $readiness['overall_status'],
+                            'failed_gates' => array_keys($readiness['failures_by_gate']),
+                        ]);
+                        $failures = $readiness['failures_by_gate'];
 
                         $family = $this->productFamilyForContractType($this->rowString($product, 'contract_type'));
                         $scope = $family !== null ? ['product_family' => $family] : [];
@@ -279,6 +315,13 @@ final class IslamicProductWorkflow extends BaseController
                         if ($failures !== []) {
                             throw new ReadinessGateFailure($failures);
                         }
+
+                        $readinessSnapshot = $this->storeReadinessSnapshot(
+                            product: $product,
+                            actor: $actor,
+                            reviewPublicId: $reviewPublicId,
+                            readiness: $readiness,
+                        );
                     }
                 }
 
@@ -311,6 +354,7 @@ final class IslamicProductWorkflow extends BaseController
                                 'conditions' => is_array($validated['conditions'] ?? null) ? $validated['conditions'] : null,
                                 'effective_from' => is_string($validated['effective_from'] ?? null) ? $validated['effective_from'] : null,
                                 'effective_to' => is_string($validated['effective_to'] ?? null) ? $validated['effective_to'] : null,
+                                'evidence_document_id' => $this->idByPublicId('documents', $validated['evidence_document_public_id'] ?? null),
                             ]);
                         }
                     }
@@ -357,6 +401,11 @@ final class IslamicProductWorkflow extends BaseController
                 'failed_gates' => array_keys($failure->failures),
                 'failures' => $failure->failures,
             ], request: $request);
+            $this->securityAudit->record('islamic.product.readiness.blocked', actor: $actor, properties: [
+                'review_public_id' => $reviewPublicId,
+                'failed_gates' => array_keys($failure->failures),
+                'failures' => $failure->failures,
+            ], request: $request);
 
             if (isset($failure->failures['islamic_sharia_authority'])) {
                 $this->securityAudit->record('islamic.sharia_authority.decision_blocked', actor: $actor, properties: [
@@ -365,10 +414,26 @@ final class IslamicProductWorkflow extends BaseController
                     'reasons' => $failure->failures['islamic_sharia_authority'],
                 ], request: $request);
             }
+            if (isset($failure->failures['islamic_regulatory_signoff'])) {
+                $this->securityAudit->record('islamic.regulatory_signoff.readiness_blocked', actor: $actor, properties: [
+                    'review_public_id' => $reviewPublicId,
+                    'decision_type' => IslamicShariaAuthorityService::DECISION_TYPE_PRODUCT_COMPLIANCE_APPROVAL,
+                    'reasons' => $failure->failures['islamic_regulatory_signoff'],
+                ], request: $request);
+            }
 
             return $this->respondUnprocessable(errors: $failure->failures);
         } catch (InvalidArgumentException $exception) {
             return $this->respondUnprocessable(errors: ['islamic_compliance_review' => [$exception->getMessage()]]);
+        }
+
+        if (is_array($readinessSnapshot)) {
+            $this->securityAudit->record('islamic.product.readiness.approved', actor: $actor, properties: [
+                'review_public_id' => $reviewPublicId,
+                'snapshot_public_id' => $readinessSnapshot['snapshot_public_id'] ?? null,
+                'snapshot_hash' => $readinessSnapshot['snapshot_hash'] ?? null,
+                'family_code' => $readinessSnapshot['family_code'] ?? null,
+            ], request: $request);
         }
 
         $this->securityAudit->record('islamic.compliance.reviewed', actor: $actor, properties: [
@@ -457,6 +522,62 @@ final class IslamicProductWorkflow extends BaseController
         );
     }
 
+    public function showProductReadiness(Request $request, string $productPublicId): JsonResponse
+    {
+        if (! $this->requirePlatformAdmin($request)) {
+            return $this->respondForbidden();
+        }
+
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
+        $product = DB::table('islamic_products')->where('public_id', $productPublicId)->first();
+        if (! is_object($product)) {
+            return $this->respondNotFound('Islamic product not found.');
+        }
+
+        $readiness = $this->readiness->evaluate($product, null, $actor);
+        $latestSnapshot = DB::table('islamic_product_readiness_snapshots')
+            ->where('islamic_product_id', $this->rowInt($product, 'id'))
+            ->orderByDesc('id')
+            ->first();
+
+        return $this->respondSuccess([
+            'product_public_id' => $productPublicId,
+            'status' => $readiness['overall_status'],
+            'family_code' => $readiness['family_code'],
+            'evaluated_at' => $readiness['evaluated_at'],
+            'gates' => $readiness['gates'],
+            'failures_by_gate' => $readiness['failures_by_gate'],
+            'missing_items' => $readiness['missing_items'],
+            'latest_snapshot' => is_object($latestSnapshot) ? $this->readinessSnapshotPayload($latestSnapshot) : null,
+        ], 'Islamic product readiness retrieved');
+    }
+
+    public function listProductReadinessSnapshots(Request $request, string $productPublicId): JsonResponse
+    {
+        if (! $this->requirePlatformAdmin($request)) {
+            return $this->respondForbidden();
+        }
+
+        $product = DB::table('islamic_products')->where('public_id', $productPublicId)->first(['id']);
+        if (! is_object($product)) {
+            return $this->respondNotFound('Islamic product not found.');
+        }
+
+        $snapshots = DB::table('islamic_product_readiness_snapshots')
+            ->where('islamic_product_id', $this->rowInt($product, 'id'))
+            ->orderByDesc('id')
+            ->get();
+
+        return $this->respondSuccess(
+            $snapshots->map(fn (object $row): array => $this->readinessSnapshotPayload($row))->all(),
+            'Islamic product readiness snapshots retrieved'
+        );
+    }
+
     public function showComplianceCase(Request $request, string $casePublicId): JsonResponse
     {
         if (! $this->requirePlatformAdmin($request)) {
@@ -531,11 +652,22 @@ final class IslamicProductWorkflow extends BaseController
      */
     private function productPayload(object $row): array
     {
+        $contractType = $this->rowString($row, 'contract_type');
+        $familyCode = IslamicProductFamilyRegistry::familyForContractType($contractType) ?? $contractType;
+        $rules = $this->decodeJsonObject(((array) $row)['rules'] ?? null) ?? [];
+        $transferOption = (bool) ($rules['transfer_option'] ?? false);
+
         return [
             'public_id' => $this->rowString($row, 'public_id'),
             'code' => $this->rowString($row, 'code'),
             'name' => $this->rowString($row, 'name'),
-            'contract_type' => $this->rowString($row, 'contract_type'),
+            'contract_type' => $contractType,
+            'variant_classification' => $familyCode,
+            'transfer_capability' => [
+                'enabled' => $transferOption,
+                'requires_transfer_workflow' => in_array($familyCode, ['ijara', 'ijara_wa_iqtina'], true),
+            ],
+            'rules' => $rules,
             'status' => $this->rowString($row, 'status'),
         ];
     }
@@ -597,18 +729,81 @@ final class IslamicProductWorkflow extends BaseController
 
     private function productFamilyForContractType(string $contractType): ?string
     {
-        $map = [
-            'murabaha' => 'mourabaha',
-            'mourabaha' => 'mourabaha',
-            'ijara' => 'ijara',
-            'ijara_wa_iqtina' => 'ijara_wa_iqtina',
-            'salam' => 'salam',
-            'istisnaa' => 'istisnaa',
-            'moudaraba' => 'moudaraba',
-            'moucharaka' => 'moucharaka',
+        return IslamicProductFamilyRegistry::familyForContractType($contractType);
+    }
+
+    /**
+     * @param array{
+     *   family_code: string,
+     *   evaluated_at: string,
+     *   gates: array<int, array<string, mixed>>,
+     *   failures_by_gate: array<string, array<int, string>>,
+     *   missing_items: array<int, string>
+     * } $readiness
+     * @return array{snapshot_public_id: string, snapshot_hash: string, family_code: string}
+     */
+    private function storeReadinessSnapshot(object $product, User $actor, string $reviewPublicId, array $readiness): array
+    {
+        $payload = [
+            'family_code' => $readiness['family_code'],
+            'evaluated_at' => $readiness['evaluated_at'],
+            'gates' => $readiness['gates'],
+            'failures_by_gate' => $readiness['failures_by_gate'],
+            'missing_items' => $readiness['missing_items'],
         ];
 
-        return $map[$contractType] ?? null;
+        try {
+            $payloadJson = json_encode($payload, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            throw new InvalidArgumentException('Readiness snapshot could not be serialized.');
+        }
+
+        $snapshotPublicId = (string) Str::ulid();
+        $snapshotHash = hash('sha256', $payloadJson);
+        DB::table('islamic_product_readiness_snapshots')->insert([
+            'public_id' => $snapshotPublicId,
+            'islamic_product_id' => $this->rowInt($product, 'id'),
+            'review_public_id' => $reviewPublicId,
+            'family_code' => $readiness['family_code'],
+            'checklist_template_version' => 'if031-v1',
+            'gate_results' => $payloadJson,
+            'snapshot_hash' => $snapshotHash,
+            'created_by_user_id' => $actor->id,
+            'evaluated_at' => $readiness['evaluated_at'],
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->securityAudit->record('islamic.product.readiness.snapshot_stored', actor: $actor, properties: [
+            'review_public_id' => $reviewPublicId,
+            'snapshot_public_id' => $snapshotPublicId,
+            'snapshot_hash' => $snapshotHash,
+            'family_code' => $readiness['family_code'],
+        ]);
+
+        return [
+            'snapshot_public_id' => $snapshotPublicId,
+            'snapshot_hash' => $snapshotHash,
+            'family_code' => $readiness['family_code'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function readinessSnapshotPayload(object $row): array
+    {
+        $gateResultsRaw = $this->nullableString(((array) $row)['gate_results'] ?? null);
+        $gateResults = $gateResultsRaw !== null ? json_decode($gateResultsRaw, true) : null;
+
+        return [
+            'public_id' => $this->rowString($row, 'public_id'),
+            'review_public_id' => $this->nullableString(((array) $row)['review_public_id'] ?? null),
+            'family_code' => $this->rowString($row, 'family_code'),
+            'checklist_template_version' => $this->rowString($row, 'checklist_template_version'),
+            'snapshot_hash' => $this->rowString($row, 'snapshot_hash'),
+            'evaluated_at' => $this->nullableString(((array) $row)['evaluated_at'] ?? null),
+            'created_at' => $this->nullableString(((array) $row)['created_at'] ?? null),
+            'gate_results' => is_array($gateResults) ? $gateResults : null,
+        ];
     }
 
     private function rowString(object $row, string $key): string

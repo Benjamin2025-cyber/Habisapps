@@ -1,7 +1,7 @@
 # IF-002 Implementation Plan: Capture Local Regulatory Sign-Off
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified (2026-05-25)
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-002
 Proof-method: proof by contradiction
 
@@ -400,3 +400,33 @@ The plan is sound only if every answer is yes:
 - Can active sign-off exist without evidence and accountable owner? No.
 - Are lifecycle and linking actions auditable? Yes.
 - Is the gate reusable for later origination and account-activation checks? Yes.
+
+## Implementation Evidence (2026-05-25)
+
+Contradiction finding discovered:
+
+1. IF-002 required readiness-block auditing at regulatory-signoff level (`islamic.regulatory_signoff.readiness_blocked`), but failures were only logged as generic product readiness blocks.
+
+Fix applied:
+
+1. Added gate-specific audit emission in `IslamicProductWorkflow::reviewCompliance()`:
+   - when `islamic_regulatory_signoff` fails, record `islamic.regulatory_signoff.readiness_blocked` with review id and reasons.
+2. Extended contradiction tests in `IslamicRegulatorySignoffTest` to assert this event is persisted for both:
+   - pure sign-off failure path
+   - combined standards + sign-off failure path.
+
+Verification runs:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicRegulatorySignoffTest
+```
+
+Result:
+- `OK (21 tests, 261 assertions)` in ~8.7s.
+
+```bash
+composer test
+```
+
+Result:
+- `OK (565 tests, 8548 assertions)` in ~41.7s.

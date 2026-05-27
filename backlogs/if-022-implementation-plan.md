@@ -1,7 +1,7 @@
 # IF-022 Implementation Plan: Interest Control Guardrails
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-022
 Proof-method: proof by contradiction
 
@@ -271,3 +271,28 @@ Command rules:
 - Use `composer test` as default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
+
+## Implemented And Verified (2026-05-25)
+
+Proof by contradiction checks closed:
+
+1. Assume Islamic product config can bind conventional-interest formula semantics.
+   - Contradiction: interest formula bindings are rejected by guardrails at product configuration time.
+2. Assume Islamic postings can use conventional interest mappings.
+   - Contradiction: runtime mapping guard blocks conventional-interest mapping usage in Islamic flows.
+3. Assume forbidden statement terminology can be configured for Islamic products.
+   - Contradiction: statement terminology guard rejects forbidden interest labels and allows only approved labels.
+4. Assume Islamic late-payment can use interest-penalty treatment.
+   - Contradiction: late-payment guard rejects forbidden treatment values.
+
+Verification commands executed:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+composer test
+```
+
+Observed result:
+
+- `composer test` passed: `OK (610 tests, 9506 assertions)` before IF-020/021/022 test additions.
+- `IslamicFinanceTest` then passed after additions: `OK (126 tests, 3052 assertions)`.

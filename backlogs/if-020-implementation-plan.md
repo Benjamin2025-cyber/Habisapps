@@ -1,7 +1,7 @@
 # IF-020 Implementation Plan: Screening Policy Configuration
 
 Date: 2026-05-24
-Status: implementation plan
+Status: implemented and verified
 Based-on: `backlogs/islamic-finance-complete-implementation-backlog.md`, IF-020
 Proof-method: proof by contradiction
 
@@ -378,3 +378,28 @@ Command rules:
 - Use `composer test` as default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
+
+## Implemented And Verified (2026-05-25)
+
+Proof by contradiction checks closed:
+
+1. Assume prohibited activities are advisory-only and do not block.
+   - Contradiction: screening `block` action yields fail outcomes that block guarded workflows.
+2. Assume restricted matches do not produce enforceable review workflow.
+   - Contradiction: restricted/manual-review outcomes route to compliance cases with active blockers.
+3. Assume screening results can lose historical policy context after policy edits.
+   - Contradiction: every result persists policy snapshot/version evidence.
+4. Assume manual override can bypass controls without approved exception workflow.
+   - Contradiction: override requires approved `islamic_exception` workflow; unapproved override is rejected.
+
+Verification commands executed:
+
+```bash
+php artisan test --parallel --recreate-databases --filter IslamicFinanceTest
+composer test
+```
+
+Observed result:
+
+- `composer test` passed: `OK (610 tests, 9506 assertions)` before IF-020/021/022 test additions.
+- `IslamicFinanceTest` then passed after additions: `OK (126 tests, 3052 assertions)`.

@@ -47,4 +47,3 @@ ALTER TABLE islamic_compliance_cases ADD CONSTRAINT islamic_compliance_cases_sub
 SQL);
     }
 };
-
