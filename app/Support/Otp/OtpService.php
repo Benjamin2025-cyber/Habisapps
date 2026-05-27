@@ -130,7 +130,7 @@ final class OtpService
 
     private function deliver(OtpChallenge $challenge, User $user, string $code): void
     {
-        $channels = $this->configuredChannels();
+        $channels = $this->resolvedChannels($user);
 
         if (in_array(OtpDelivery::CHANNEL_SMS, $channels, true)) {
             $this->recordDelivery(
@@ -184,7 +184,7 @@ final class OtpService
     private function sendOtp(string $channel, string $destination, string $code): OtpDeliveryResult
     {
         try {
-            return $this->deliveryChannelManager->driver()->send($channel, $destination, $code);
+            return $this->deliveryChannelManager->send($channel, $destination, $code);
         } catch (\Throwable $e) {
             return OtpDeliveryResult::failed($e->getMessage());
         }
@@ -193,15 +193,22 @@ final class OtpService
     /**
      * @return array<int, string>
      */
-    private function configuredChannels(): array
+    private function resolvedChannels(User $user): array
     {
         $channels = config('security.otp.delivery_channels', [OtpDelivery::CHANNEL_SMS, OtpDelivery::CHANNEL_EMAIL]);
 
         if (! is_array($channels)) {
-            return [OtpDelivery::CHANNEL_SMS];
+            $channels = [OtpDelivery::CHANNEL_SMS];
         }
 
-        return array_values(array_filter($channels, static fn (mixed $channel): bool => is_string($channel) && $channel !== ''));
+        $resolved = array_values(array_unique(array_filter($channels, static fn (mixed $channel): bool => is_string($channel) && $channel !== '')));
+        $requireEmail = config('security.otp.require_email_delivery', true) === true;
+
+        if ($requireEmail && is_string($user->email) && $user->email !== '' && ! in_array(OtpDelivery::CHANNEL_EMAIL, $resolved, true)) {
+            $resolved[] = OtpDelivery::CHANNEL_EMAIL;
+        }
+
+        return $resolved;
     }
 
     private function generateCode(): string

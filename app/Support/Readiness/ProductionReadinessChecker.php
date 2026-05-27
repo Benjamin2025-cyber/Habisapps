@@ -19,6 +19,7 @@ final class ProductionReadinessChecker
             $this->queueConnectionIsAsync(),
             $this->moneyCurrencyConfigured(),
             $this->formulaPoliciesRemainExplicit(),
+            $this->otpEmailProviderIsReady(),
         ];
     }
 
@@ -101,5 +102,30 @@ final class ProductionReadinessChecker
         }
 
         return ReadinessCheckResult::pass('formulas.policies', 'Formula policy approval gates are explicit.');
+    }
+
+    private function otpEmailProviderIsReady(): ReadinessCheckResult
+    {
+        $requireEmail = config('security.otp.require_email_delivery', true) === true;
+        if (! $requireEmail) {
+            return ReadinessCheckResult::pass('security.otp.require_email_delivery', 'Mandatory email OTP delivery is disabled by policy.');
+        }
+
+        $provider = config('security.otp.email_provider', 'log');
+        $providerName = is_string($provider) && $provider !== '' ? $provider : 'log';
+        if (! in_array($providerName, ['log', 'mail'], true)) {
+            return ReadinessCheckResult::fail('security.otp.email_provider', 'OTP email provider must be one of: log, mail.');
+        }
+
+        if ($providerName === 'mail') {
+            $mailFromAddress = config('mail.from.address');
+            $hasMailFrom = is_string($mailFromAddress) && $mailFromAddress !== '';
+
+            if (! $hasMailFrom) {
+                return ReadinessCheckResult::fail('mail.from.address', 'OTP mail provider requires a non-empty MAIL_FROM_ADDRESS.');
+            }
+        }
+
+        return ReadinessCheckResult::pass('security.otp.email_provider', 'OTP email provider readiness checks passed.');
     }
 }

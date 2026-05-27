@@ -40,6 +40,15 @@
 - If scheduler execution is delayed, use the intended business date on the batch run. Do not infer the business date from wall-clock retry time.
 - A failed agency-scoped batch must not mark an institution/global close as complete. Global close orchestration should inspect child agency run statuses.
 
+## OTP Delivery Channels (SMS + Mandatory Email)
+
+- Policy: when `security.otp.require_email_delivery=true`, OTP issuance must attempt email delivery whenever the user has a non-empty email, even if SMS is also enabled.
+- SMS provider uses `security.otp.delivery_provider` (`log` or `http_sms`).
+- Email provider uses `security.otp.email_provider` (`log` or `mail`).
+- For `mail` provider, configure `MAIL_FROM_ADDRESS` (required) and `MAIL_FROM_NAME`.
+- Channel failures are persisted per delivery row and must not change generic public OTP endpoint responses.
+- Destination confidentiality is mandatory: only masked/hash destination fields are persisted in `otp_deliveries`.
+
 ## Quality gate
 
 - Required checks: `vendor/bin/pint --test`, `vendor/bin/phpstan analyze`, `php artisan test`.

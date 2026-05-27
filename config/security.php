@@ -38,6 +38,7 @@ return [
         'max_attempts' => (int) env('OTP_MAX_ATTEMPTS', 5),
         'resend_decay_minutes' => (int) env('OTP_RESEND_DECAY_MINUTES', 1),
         'delivery_max_attempts' => (int) env('OTP_DELIVERY_MAX_ATTEMPTS', 3),
+        'require_email_delivery' => (bool) env('OTP_REQUIRE_EMAIL_DELIVERY', true),
         'delivery_channels' => [
             'sms',
             'email',
@@ -49,6 +50,7 @@ return [
             'sender' => env('OTP_HTTP_SMS_SENDER', 'HABIS'),
             'timeout_seconds' => (int) env('OTP_HTTP_SMS_TIMEOUT_SECONDS', 10),
         ],
+        'email_provider' => env('OTP_EMAIL_PROVIDER', 'mail'),
     ],
     'crm' => [
         'kyc' => [

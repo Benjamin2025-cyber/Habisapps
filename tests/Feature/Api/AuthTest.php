@@ -10,6 +10,7 @@ use App\Support\Otp\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 final class AuthTest extends TestCase
@@ -241,6 +242,88 @@ final class AuthTest extends TestCase
             'status' => 'failed',
             'provider_reference' => null,
             'error_summary' => 'HTTP SMS OTP provider is not configured.',
+        ]);
+    }
+
+    public function test_email_delivery_is_mandatory_even_if_email_channel_is_not_listed(): void
+    {
+        config([
+            'security.otp.delivery_provider' => 'log',
+            'security.otp.email_provider' => 'log',
+            'security.otp.delivery_channels' => ['sms'],
+            'security.otp.require_email_delivery' => true,
+        ]);
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000022',
+            'email' => 'ops22@example.com',
+            'password' => null,
+        ]);
+
+        app(OtpService::class)->issueActivationChallenge($user, request());
+
+        $this->assertDatabaseHas('otp_deliveries', [
+            'channel' => 'sms',
+            'destination_masked' => '*********0022',
+            'status' => 'sent',
+        ]);
+        $this->assertDatabaseHas('otp_deliveries', [
+            'channel' => 'email',
+            'destination_masked' => 'o***@example.com',
+            'status' => 'sent',
+        ]);
+    }
+
+    public function test_mail_email_provider_records_success_when_configured(): void
+    {
+        Mail::fake();
+        config([
+            'security.otp.delivery_provider' => 'log',
+            'security.otp.email_provider' => 'mail',
+            'security.otp.delivery_channels' => ['email'],
+            'security.otp.require_email_delivery' => true,
+            'mail.from.address' => 'no-reply@example.com',
+            'mail.from.name' => 'HABIS',
+        ]);
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000023',
+            'email' => 'ops23@example.com',
+            'password' => null,
+        ]);
+
+        app(OtpService::class)->issueActivationChallenge($user, request());
+
+        $this->assertDatabaseHas('otp_deliveries', [
+            'channel' => 'email',
+            'destination_masked' => 'o***@example.com',
+            'status' => 'sent',
+            'provider_reference' => 'mail-delivery',
+        ]);
+    }
+
+    public function test_mail_email_provider_failure_is_recorded_without_throwing(): void
+    {
+        Mail::fake();
+        config([
+            'security.otp.delivery_provider' => 'log',
+            'security.otp.email_provider' => 'mail',
+            'security.otp.delivery_channels' => ['email'],
+            'security.otp.require_email_delivery' => true,
+            'mail.from.address' => null,
+        ]);
+        $user = User::factory()->unverified()->createOne([
+            'phone_number' => '+237699000024',
+            'email' => 'ops24@example.com',
+            'password' => null,
+        ]);
+
+        app(OtpService::class)->issueActivationChallenge($user, request());
+
+        $this->assertDatabaseHas('otp_deliveries', [
+            'channel' => 'email',
+            'destination_masked' => 'o***@example.com',
+            'status' => 'failed',
+            'provider_reference' => null,
+            'error_summary' => 'OTP mail provider is not configured.',
         ]);
     }
 
