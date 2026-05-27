@@ -26,6 +26,8 @@ Route::post('password/reset', [AuthController::class, 'resetPassword'])->middlew
 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
 Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('me', [AuthController::class, 'me']);
+
     Route::get('agencies', [AgencyController::class, 'index']);
     Route::post('agencies', [AgencyController::class, 'store']);
     Route::get('agencies/{agency}', [AgencyController::class, 'show']);

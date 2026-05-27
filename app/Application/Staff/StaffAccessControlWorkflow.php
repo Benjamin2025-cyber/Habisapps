@@ -44,7 +44,7 @@ final class StaffAccessControlWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor'])),
+            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])),
             'Staff user status updated successfully'
         );
     }
@@ -77,7 +77,7 @@ final class StaffAccessControlWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor'])),
+            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])),
             'Staff user roles updated successfully'
         );
     }

@@ -31,7 +31,7 @@ final class StaffUserProfileWorkflow extends BaseController
         $this->authorize('viewAny', User::class);
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $query = User::query()->with(['agency', 'hrEmployee.supervisor'])->latest();
+        $query = User::query()->with(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])->latest();
 
         if (! $actor instanceof User) {
             return $this->respondForbidden();
@@ -90,7 +90,7 @@ final class StaffUserProfileWorkflow extends BaseController
         $this->securityAudit->record('staff.created', actor: $actor, subject: $user, request: $request);
 
         return $this->respondCreated(
-            StaffUserResource::make($user->loadMissing(['agency', 'hrEmployee.supervisor'])),
+            StaffUserResource::make($user->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])),
             'Staff user created successfully'
         );
     }
@@ -100,7 +100,7 @@ final class StaffUserProfileWorkflow extends BaseController
         $this->authorize('view', $staffUser);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->loadMissing(['agency', 'hrEmployee.supervisor']))
+            StaffUserResource::make($staffUser->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions']))
         );
     }
 
@@ -153,7 +153,7 @@ final class StaffUserProfileWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor'])),
+            StaffUserResource::make($staffUser->refresh()->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])),
             'Staff user updated successfully'
         );
     }
