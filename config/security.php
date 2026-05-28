@@ -19,7 +19,7 @@ return [
         'registration' => [
             'enabled' => (bool) env('AUTH_REGISTRATION_ENABLED', false),
         ],
-        'token_ttl_minutes' => (int) env('AUTH_TOKEN_TTL_MINUTES', 60),
+        'token_ttl_minutes' => (int) env('AUTH_TOKEN_TTL_MINUTES', 1440),
         'token_abilities' => [
             'access-api',
         ],
