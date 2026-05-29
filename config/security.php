@@ -52,6 +52,14 @@ return [
         ],
         'email_provider' => env('OTP_EMAIL_PROVIDER', 'mail'),
     ],
+    'bootstrap_admin' => [
+        'enabled' => (bool) env('SEED_BOOTSTRAP_ADMIN', false),
+        'email' => env('SEED_BOOTSTRAP_ADMIN_EMAIL'),
+        'phone' => env('SEED_BOOTSTRAP_ADMIN_PHONE'),
+        'name' => env('SEED_BOOTSTRAP_ADMIN_NAME'),
+        'password' => env('SEED_BOOTSTRAP_ADMIN_PASSWORD'),
+        'role' => env('SEED_BOOTSTRAP_ADMIN_ROLE', 'platform-admin'),
+    ],
     'crm' => [
         'kyc' => [
             'enforce_maker_checker' => (bool) env('CRM_KYC_ENFORCE_MAKER_CHECKER', true),
