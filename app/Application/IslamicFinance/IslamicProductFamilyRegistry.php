@@ -303,8 +303,11 @@ final class IslamicProductFamilyRegistry
     {
         $canonical = self::familyForContractType($familyCode) ?? $familyCode;
         $metadata = self::FAMILY_METADATA[$canonical] ?? null;
+        if (! is_array($metadata)) {
+            return null;
+        }
 
-        return is_array($metadata) && is_string($metadata['family_kind'] ?? null) ? $metadata['family_kind'] : null;
+        return $metadata['family_kind'];
     }
 
     /**
@@ -315,6 +318,7 @@ final class IslamicProductFamilyRegistry
      */
     public function assertDraftRulesAllowed(string $contractType, array $rules): void
     {
+        $rules = $this->stringKeyedArrayOrEmpty($rules);
         $family = self::familyForContractType($contractType);
         if ($family === null) {
             throw new InvalidArgumentException('Unsupported Islamic product family.');
@@ -326,7 +330,8 @@ final class IslamicProductFamilyRegistry
                 throw new InvalidArgumentException('Mourabaha products must include rules.mourabaha_configuration.');
             }
 
-            $failures = $this->mourabahaConfigurationFailures($configuration);
+            $normalizedConfiguration = $this->stringKeyedArrayOrEmpty($configuration);
+            $failures = $this->mourabahaConfigurationFailures($normalizedConfiguration);
             if ($failures !== []) {
                 $messages = [];
                 foreach ($failures as $gate => $gateMessages) {
@@ -399,9 +404,10 @@ final class IslamicProductFamilyRegistry
             }
         }
 
+        $lossRatioRules = is_array($rules['loss_ratio_rules'] ?? null) ? $rules['loss_ratio_rules'] : null;
         if ($family === 'moucharaka'
-            && $this->stringValue($rules['loss_ratio_rules']['allocation_basis'] ?? null) === 'profit_ratio'
-            && ! $this->hasApprovedException($rules['loss_ratio_rules'] ?? null)
+            && $this->stringValue($lossRatioRules['allocation_basis'] ?? null) === 'profit_ratio'
+            && ! $this->hasApprovedException($lossRatioRules)
         ) {
             throw new InvalidArgumentException('Moucharaka loss allocation cannot follow profit ratio without an approved exception.');
         }
@@ -413,6 +419,7 @@ final class IslamicProductFamilyRegistry
      */
     public function activationFailures(string $contractType, array $rules): array
     {
+        $rules = $this->stringKeyedArrayOrEmpty($rules);
         $family = self::familyForContractType($contractType);
         if ($family === null) {
             return ['islamic_product_family' => ['Unsupported Islamic product family.']];
@@ -430,7 +437,10 @@ final class IslamicProductFamilyRegistry
         };
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function mourabahaFailures(array $rules): array
     {
         $configuration = $rules['mourabaha_configuration'] ?? null;
@@ -438,7 +448,9 @@ final class IslamicProductFamilyRegistry
             return ['mourabaha_configuration' => ['Mourabaha configuration is required for activation.']];
         }
 
-        return $this->mourabahaConfigurationFailures($configuration);
+        $normalized = $this->stringKeyedArrayOrEmpty($configuration);
+
+        return $this->mourabahaConfigurationFailures($normalized);
     }
 
     /**
@@ -472,14 +484,14 @@ final class IslamicProductFamilyRegistry
             if (($marginRule['compounding'] ?? false) === true) {
                 $failures['mourabaha_configuration.margin_rule'][] = 'Compounding is forbidden for Mourabaha margin rule.';
             }
-            if (is_string($marginRule['calculus_class'] ?? null) && $this->tokenForbidden((string) $marginRule['calculus_class'])) {
+            if (is_string($marginRule['calculus_class'] ?? null) && $this->tokenForbidden($marginRule['calculus_class'])) {
                 $failures['mourabaha_configuration.margin_rule'][] = 'Margin rule cannot use interest-like calculus classes.';
             }
         }
 
         if (is_array($configuration['repayment_schedule_rules'] ?? null)) {
             $scheduleRules = $configuration['repayment_schedule_rules'];
-            if (is_string($scheduleRules['calculation_mode'] ?? null) && $this->tokenForbidden((string) $scheduleRules['calculation_mode'])) {
+            if (is_string($scheduleRules['calculation_mode'] ?? null) && $this->tokenForbidden($scheduleRules['calculation_mode'])) {
                 $failures['mourabaha_configuration.repayment_schedule_rules'][] = 'Repayment schedule calculation mode cannot use interest semantics.';
             }
         }
@@ -489,7 +501,7 @@ final class IslamicProductFamilyRegistry
             if (($latePolicy['compounding'] ?? false) === true) {
                 $failures['mourabaha_configuration.late_payment_policy'][] = 'Late-payment policy cannot compound penalties.';
             }
-            if (is_string($latePolicy['mode'] ?? null) && $this->tokenForbidden((string) $latePolicy['mode'])) {
+            if (is_string($latePolicy['mode'] ?? null) && $this->tokenForbidden($latePolicy['mode'])) {
                 $failures['mourabaha_configuration.late_payment_policy'][] = 'Late-payment policy cannot use interest-like mode.';
             }
         }
@@ -516,17 +528,17 @@ final class IslamicProductFamilyRegistry
 
         if (is_array($configuration['sharia_approval_reference'] ?? null)) {
             $reference = $configuration['sharia_approval_reference'];
-            if (! is_string($reference['workflow_public_id'] ?? null) || trim((string) $reference['workflow_public_id']) === '') {
+            if (! is_string($reference['workflow_public_id'] ?? null) || trim($reference['workflow_public_id']) === '') {
                 $failures['mourabaha_configuration.sharia_approval_reference'][] = 'Sharia approval reference must include workflow_public_id.';
             }
-            if (! is_string($reference['decision_reference'] ?? null) || trim((string) $reference['decision_reference']) === '') {
+            if (! is_string($reference['decision_reference'] ?? null) || trim($reference['decision_reference']) === '') {
                 $failures['mourabaha_configuration.sharia_approval_reference'][] = 'Sharia approval reference must include decision_reference.';
             }
         }
 
         if (is_array($configuration['contract_template_reference'] ?? null)) {
             $reference = $configuration['contract_template_reference'];
-            if (! is_string($reference['template_public_id'] ?? null) || trim((string) $reference['template_public_id']) === '') {
+            if (! is_string($reference['template_public_id'] ?? null) || trim($reference['template_public_id']) === '') {
                 $failures['mourabaha_configuration.contract_template_reference'][] = 'Contract template reference must include template_public_id.';
             }
             if (! is_numeric($reference['version'] ?? null) || (int) $reference['version'] < 1) {
@@ -541,7 +553,10 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function ijaraFailures(array $rules, bool $transferVariant): array
     {
         $failures = [];
@@ -569,7 +584,7 @@ final class IslamicProductFamilyRegistry
         if (is_array($rules['contract_template_reference'] ?? null)) {
             $templateRef = $rules['contract_template_reference'];
             $requiredTemplateCode = $transferVariant ? 'ijara_wa_iqtina_contract_template' : 'ijara_contract_template';
-            $templateCode = is_string($templateRef['template_code'] ?? null) ? trim((string) $templateRef['template_code']) : '';
+            $templateCode = is_string($templateRef['template_code'] ?? null) ? trim($templateRef['template_code']) : '';
             if ($templateCode !== '' && $templateCode !== $requiredTemplateCode) {
                 $failures['contract_template_reference'][] = sprintf(
                     'Template code must match variant template (%s).',
@@ -585,7 +600,10 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function salamFailures(array $rules): array
     {
         $failures = [];
@@ -609,14 +627,17 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function salamShapeFailures(array $rules): array
     {
         $failures = [];
 
         foreach (array_keys($rules) as $key) {
-            if (! in_array((string) $key, self::SALAM_ALLOWED_RULE_KEYS, true)) {
-                $failures['rules_schema'][] = sprintf('Unknown Salam rule key "%s" is not allowed.', (string) $key);
+            if (! in_array($key, self::SALAM_ALLOWED_RULE_KEYS, true)) {
+                $failures['rules_schema'][] = sprintf('Unknown Salam rule key "%s" is not allowed.', $key);
             }
         }
 
@@ -680,7 +701,10 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function istisnaaFailures(array $rules): array
     {
         $failures = [];
@@ -700,14 +724,17 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function istisnaaShapeFailures(array $rules): array
     {
         $failures = [];
 
         foreach (array_keys($rules) as $key) {
-            if (! in_array((string) $key, self::ISTISNAA_ALLOWED_RULE_KEYS, true)) {
-                $failures['rules_schema'][] = sprintf("Unknown Istisna'a rule key \"%s\" is not allowed.", (string) $key);
+            if (! in_array($key, self::ISTISNAA_ALLOWED_RULE_KEYS, true)) {
+                $failures['rules_schema'][] = sprintf("Unknown Istisna'a rule key \"%s\" is not allowed.", $key);
             }
         }
 
@@ -740,13 +767,16 @@ final class IslamicProductFamilyRegistry
 
         $mappingProfile = $rules['project_accounting_mapping_profile'] ?? null;
         if ($mappingProfile !== null && ! is_array($mappingProfile)) {
-            $failures['project_accounting_mapping_profile'][] = "Project accounting mapping profile must be an object/array.";
+            $failures['project_accounting_mapping_profile'][] = 'Project accounting mapping profile must be an object/array.';
         }
 
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function moudarabaFailures(array $rules): array
     {
         $failures = [];
@@ -769,14 +799,17 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function moudarabaShapeFailures(array $rules): array
     {
         $failures = [];
 
         foreach (array_keys($rules) as $key) {
-            if (! in_array((string) $key, self::MOUDARABA_ALLOWED_RULE_KEYS, true)) {
-                $failures['rules_schema'][] = sprintf('Unknown Moudaraba rule key "%s" is not allowed.', (string) $key);
+            if (! in_array($key, self::MOUDARABA_ALLOWED_RULE_KEYS, true)) {
+                $failures['rules_schema'][] = sprintf('Unknown Moudaraba rule key "%s" is not allowed.', $key);
             }
         }
 
@@ -797,18 +830,23 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, mixed> $rules @return array<string, array<int, string>> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<string, array<int, string>>
+     */
     private function moucharakaFailures(array $rules): array
     {
         $failures = [];
         $this->requireRule($failures, $rules, 'contribution_evidence_policy', 'Contribution evidence policy is required for Moucharaka activation.');
 
-        if (($rules['buyout_policy']['enabled'] ?? false) === true && ! $this->hasRule($rules, 'valuation_policy')) {
+        $buyoutPolicy = is_array($rules['buyout_policy'] ?? null) ? $rules['buyout_policy'] : null;
+        if (($buyoutPolicy['enabled'] ?? false) === true && ! $this->hasRule($rules, 'valuation_policy')) {
             $failures['valuation_policy'][] = 'Valuation policy is required when Moucharaka buyout is enabled.';
         }
 
-        if ($this->stringValue($rules['loss_ratio_rules']['allocation_basis'] ?? null) === 'profit_ratio'
-            && ! $this->hasApprovedException($rules['loss_ratio_rules'] ?? null)
+        $lossRatioRules = is_array($rules['loss_ratio_rules'] ?? null) ? $rules['loss_ratio_rules'] : null;
+        if ($this->stringValue($lossRatioRules['allocation_basis'] ?? null) === 'profit_ratio'
+            && ! $this->hasApprovedException($lossRatioRules)
         ) {
             $failures['loss_ratio_rules'][] = 'Loss by profit ratio requires an approved exception.';
         }
@@ -821,7 +859,10 @@ final class IslamicProductFamilyRegistry
         return $failures;
     }
 
-    /** @param array<string, array<int, string>> $failures @param array<string, mixed> $rules */
+    /**
+     * @param  array<string, array<int, string>>  $failures
+     * @param  array<string, mixed>  $rules
+     */
     private function requireRule(array &$failures, array $rules, string $key, string $message): void
     {
         if (! $this->hasRule($rules, $key)) {
@@ -843,7 +884,10 @@ final class IslamicProductFamilyRegistry
         return true;
     }
 
-    /** @param array<string, mixed> $rules @param list<string> $keys */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @param  list<string>  $keys
+     */
     private function hasTruthyAny(array $rules, array $keys): bool
     {
         foreach ($keys as $key) {
@@ -863,10 +907,13 @@ final class IslamicProductFamilyRegistry
             && $value['exception_reference'] !== '';
     }
 
-    /** @param array<int, mixed> $value @return list<string> */
+    /**
+     * @param  array<mixed, mixed>  $value
+     * @return list<string>
+     */
     private function listOfStrings(array $value): array
     {
-        $values = array_map(static fn (mixed $item): string => is_string($item) ? trim($item) : '', $value);
+        $values = array_map(static fn (mixed $item): string => is_string($item) ? trim($item) : '', array_values($value));
         $values = array_values(array_filter($values, static fn (string $item): bool => $item !== ''));
 
         return array_values(array_unique($values));
@@ -876,13 +923,13 @@ final class IslamicProductFamilyRegistry
     private function containsForbiddenMourabahaSemantics(array $value): bool
     {
         foreach ($value as $key => $item) {
-            if (is_string($key) && $this->tokenForbidden($key)) {
+            if ($this->tokenForbidden($key)) {
                 return true;
             }
             if (is_string($item) && $this->tokenForbidden($item)) {
                 return true;
             }
-            if (is_array($item) && $this->containsForbiddenMourabahaSemantics($item)) {
+            if (is_array($item) && $this->containsForbiddenMourabahaSemantics($this->stringKeyedArrayOrEmpty($item))) {
                 return true;
             }
         }
@@ -892,7 +939,11 @@ final class IslamicProductFamilyRegistry
 
     private function tokenForbidden(string $token): bool
     {
-        $normalized = strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '_', $token)));
+        $normalizedToken = preg_replace('/[^a-z0-9]+/i', '_', $token);
+        if (! is_string($normalizedToken)) {
+            return false;
+        }
+        $normalized = strtolower(trim($normalizedToken));
         if ($normalized === '') {
             return false;
         }
@@ -911,7 +962,10 @@ final class IslamicProductFamilyRegistry
         return is_string($value) ? $value : '';
     }
 
-    /** @param array<string, mixed> $metadata @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
     private function metadataPayload(string $code, array $metadata): array
     {
         return [
@@ -932,5 +986,22 @@ final class IslamicProductFamilyRegistry
             'reporting_category' => $metadata['reporting_category'],
             'readiness_checklist_template' => $metadata['readiness_checklist'],
         ];
+    }
+
+    /**
+     * @param  array<mixed, mixed>  $value
+     * @return array<string, mixed>
+     */
+    private function stringKeyedArrayOrEmpty(array $value): array
+    {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            if (! is_string($key)) {
+                continue;
+            }
+            $normalized[$key] = $item;
+        }
+
+        return $normalized;
     }
 }

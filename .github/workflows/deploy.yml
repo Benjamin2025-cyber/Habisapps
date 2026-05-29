@@ -29,4 +29,6 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose up -d --build --remove-orphans --wait
+            docker compose exec -T api php artisan migrate --force --ansi
+            docker compose exec -T api php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force --ansi
             docker compose exec -T api php -d memory_limit=512M artisan scramble:export --path=public/docs/api.json

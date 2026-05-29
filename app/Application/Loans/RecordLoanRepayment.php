@@ -615,24 +615,6 @@ final class RecordLoanRepayment
     }
 
     /**
-     * @return array<int, array<string, string>>
-     */
-    private function allocationComponentGroups(Loan $loan): array
-    {
-        $components = $this->components();
-        $order = $this->allocationComponentOrder($loan);
-        $groups = [];
-
-        foreach ($order as $component) {
-            if (isset($components[$component])) {
-                $groups[] = [$component => $components[$component]];
-            }
-        }
-
-        return $groups;
-    }
-
-    /**
      * @return list<string>
      */
     private function allocationComponentOrder(Loan $loan): array

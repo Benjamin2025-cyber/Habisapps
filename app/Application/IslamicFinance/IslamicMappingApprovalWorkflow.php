@@ -89,7 +89,7 @@ final class IslamicMappingApprovalWorkflow extends BaseController
         try {
             $row = DB::transaction(function () use ($validated, $actor, $request): object {
                 $operationCode = DB::table('operation_codes')
-                    ->where('public_id', (string) $validated['operation_code_public_id'])
+                    ->where('public_id', $this->requiredString($validated, 'operation_code_public_id'))
                     ->where('module', 'islamic_finance')
                     ->where('status', 'active')
                     ->first(['id']);
@@ -105,7 +105,7 @@ final class IslamicMappingApprovalWorkflow extends BaseController
                     'debit_ledger_account_id' => $this->ledgerIdByPublicId($validated['debit_ledger_account_public_id'] ?? null),
                     'credit_ledger_account_id' => $this->ledgerIdByPublicId($validated['credit_ledger_account_public_id'] ?? null),
                     'currency' => is_string($validated['currency'] ?? null) ? strtoupper($validated['currency']) : null,
-                    'effective_from' => (string) $validated['effective_from'],
+                    'effective_from' => $this->requiredString($validated, 'effective_from'),
                     'effective_to' => is_string($validated['effective_to'] ?? null) ? $validated['effective_to'] : null,
                     'status' => OperationAccountMapping::STATUS_INACTIVE,
                     'approval_status' => OperationAccountMapping::APPROVAL_DRAFT,
@@ -510,7 +510,20 @@ final class IslamicMappingApprovalWorkflow extends BaseController
             return null;
         }
 
-        return is_string($value) ? $value : (string) $value;
+        return is_string($value) ? $value : (is_scalar($value) ? (string) $value : null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function requiredString(array $payload, string $key): string
+    {
+        $value = $payload[$key] ?? null;
+        if (! is_string($value) || $value === '') {
+            throw new InvalidArgumentException(sprintf('Expected non-empty string for %s.', $key));
+        }
+
+        return $value;
     }
 
     /**

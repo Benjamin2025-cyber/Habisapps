@@ -56,8 +56,8 @@ final class IslamicTreatmentRoutingService
             throw new InvalidArgumentException('Islamic treatment amount must be positive.');
         }
 
-        $asOf = $context['as_of'] ?? now();
-        $asOfDate = $asOf instanceof CarbonInterface ? $asOf->toDateString() : now()->toDateString();
+        $asOf = $context['as_of'] ?? null;
+        $asOfDate = $asOf?->toDateString() ?? now()->toDateString();
         $agencyId = is_int($context['agency_id'] ?? null) ? $context['agency_id'] : null;
         $policy = $this->resolvePolicy(
             policyPublicId: $policyPublicId,
@@ -72,7 +72,7 @@ final class IslamicTreatmentRoutingService
         $usability = $this->approvalWorkflow->isUsableForNewActions(
             IslamicApprovalStateMachine::SUBJECT_TREATMENT_POLICY,
             $policyPublicIdResolved,
-            $asOf instanceof CarbonInterface ? $asOf : null,
+            $asOf,
         );
         if (! $usability['ok']) {
             throw new InvalidArgumentException('Islamic treatment policy is not usable: '.implode(' ', $usability['reasons']));
@@ -89,20 +89,27 @@ final class IslamicTreatmentRoutingService
 
         $actor = $context['actor'] ?? null;
         $request = $context['request'] ?? null;
-        $debit = $this->mappingValidation->resolvePostingMapping($operationCode, $agencyId, $currency, [
+        $debitContext = [
             'side' => 'debit',
             'lock_for_update' => true,
-            'as_of' => $asOf,
             'actor' => $actor,
             'request' => $request,
-        ]);
-        $credit = $this->mappingValidation->resolvePostingMapping($operationCode, $agencyId, $currency, [
+        ];
+        if ($asOf instanceof CarbonInterface) {
+            $debitContext['as_of'] = $asOf;
+        }
+        $debit = $this->mappingValidation->resolvePostingMapping($operationCode, $agencyId, $currency, $debitContext);
+
+        $creditContext = [
             'side' => 'credit',
             'lock_for_update' => true,
-            'as_of' => $asOf,
             'actor' => $actor,
             'request' => $request,
-        ]);
+        ];
+        if ($asOf instanceof CarbonInterface) {
+            $creditContext['as_of'] = $asOf;
+        }
+        $credit = $this->mappingValidation->resolvePostingMapping($operationCode, $agencyId, $currency, $creditContext);
 
         $debitLedger = $debit['debit_ledger_account_id'] ?? null;
         $creditLedger = $credit['credit_ledger_account_id'] ?? null;
@@ -133,8 +140,8 @@ final class IslamicTreatmentRoutingService
         array $context = [],
         ?string $policyPublicId = null,
     ): object {
-        $asOf = $context['as_of'] ?? now();
-        $asOfDate = $asOf instanceof CarbonInterface ? $asOf->toDateString() : now()->toDateString();
+        $asOf = $context['as_of'] ?? null;
+        $asOfDate = $asOf?->toDateString() ?? now()->toDateString();
 
         return $this->resolvePolicy(
             policyPublicId: $policyPublicId,
@@ -287,14 +294,14 @@ final class IslamicTreatmentRoutingService
     private function decodeJsonObject(mixed $value): ?array
     {
         if (is_array($value)) {
-            return $value;
+            return $this->normalizeJsonObject($value);
         }
         if (! is_string($value) || $value === '') {
             return null;
         }
         $decoded = json_decode($value, true);
 
-        return is_array($decoded) ? $decoded : null;
+        return is_array($decoded) ? $this->normalizeJsonObject($decoded) : null;
     }
 
     private function rowString(object $row, string $key): string
@@ -309,7 +316,30 @@ final class IslamicTreatmentRoutingService
         if ($value === null || $value === '') {
             return null;
         }
+        if (is_string($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value) || is_bool($value)) {
+            return (string) $value;
+        }
 
-        return is_string($value) ? $value : (string) $value;
+        return null;
+    }
+
+    /**
+     * @param  array<mixed, mixed>  $value
+     * @return array<string, mixed>|null
+     */
+    private function normalizeJsonObject(array $value): ?array
+    {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            if (! is_string($key)) {
+                return null;
+            }
+            $normalized[$key] = $item;
+        }
+
+        return $normalized;
     }
 }

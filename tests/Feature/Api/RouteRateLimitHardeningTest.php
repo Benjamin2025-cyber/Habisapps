@@ -46,7 +46,7 @@ final class RouteRateLimitHardeningTest extends TestCase
         self::assertLessThanOrEqual(60, $retryAfter);
         self::assertMatchesRegularExpression(
             '/^Rate limit exceeded\. Try again in [1-9][0-9]? seconds\.$/',
-            (string) $response->json('message'),
+            is_string($response->json('message')) ? $response->json('message') : '',
         );
         $response->assertJsonMissingPath('exception');
         $response->assertJsonMissingPath('trace');

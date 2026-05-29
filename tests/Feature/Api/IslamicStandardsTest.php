@@ -231,9 +231,10 @@ final class IslamicStandardsTest extends TestCase
             ->orderByDesc('id')
             ->first(['properties']);
         self::assertIsObject($audit);
-        $properties = is_string($audit->properties ?? null) ? json_decode((string) $audit->properties, true) : [];
+        $properties = is_string($audit->properties ?? null) ? json_decode($audit->properties, true) : [];
         self::assertIsArray($properties);
-        self::assertContains('title', $properties['changed_fields'] ?? []);
+        $changedFields = is_array($properties['changed_fields'] ?? null) ? $properties['changed_fields'] : [];
+        self::assertContains('title', $changedFields);
     }
 
     public function test_draft_update_creates_audit_event(): void
@@ -257,11 +258,12 @@ final class IslamicStandardsTest extends TestCase
             ->orderByDesc('id')
             ->first(['properties']);
         self::assertIsObject($audit);
-        $properties = is_string($audit->properties ?? null) ? json_decode((string) $audit->properties, true) : [];
+        $properties = is_string($audit->properties ?? null) ? json_decode($audit->properties, true) : [];
         self::assertIsArray($properties);
         self::assertArrayHasKey('before', $properties);
         self::assertArrayHasKey('after', $properties);
-        self::assertContains('scope_summary', $properties['changed_fields'] ?? []);
+        $changedFields = is_array($properties['changed_fields'] ?? null) ? $properties['changed_fields'] : [];
+        self::assertContains('scope_summary', $changedFields);
     }
 
     public function test_activation_requires_attachment_and_link(): void

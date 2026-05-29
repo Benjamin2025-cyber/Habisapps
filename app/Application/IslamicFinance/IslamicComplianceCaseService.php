@@ -142,7 +142,10 @@ final class IslamicComplianceCaseService
         return $row;
     }
 
-    /** @param array<string, mixed> $context */
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array{ok: bool, reasons: list<string>}
+     */
     public function isConditionallyUsable(string $casePublicId, ?CarbonInterface $asOf = null, array $context = []): array
     {
         $case = $this->caseByPublicId($casePublicId);
@@ -174,8 +177,10 @@ final class IslamicComplianceCaseService
         }
 
         if (isset($conditions['required_controls']) && is_array($conditions['required_controls']) && $conditions['required_controls'] !== []) {
+            $requiredControls = array_values(array_filter($conditions['required_controls'], static fn (mixed $value): bool => is_string($value) && $value !== ''));
             $provided = is_array($context['satisfied_controls'] ?? null) ? $context['satisfied_controls'] : [];
-            $missing = array_values(array_diff($conditions['required_controls'], $provided));
+            $providedControls = array_values(array_filter($provided, static fn (mixed $value): bool => is_string($value) && $value !== ''));
+            $missing = array_values(array_diff($requiredControls, $providedControls));
             if ($missing !== []) {
                 $reasons[] = 'Missing required controls: '.implode(', ', $missing).'.';
             }
@@ -212,25 +217,22 @@ final class IslamicComplianceCaseService
 
         $failures = [];
         foreach ($rows as $row) {
-            if (! is_object($row)) {
+            if ($this->nullableRowString($row, 'blocking_mode') !== 'hard') {
                 continue;
             }
-            if (($row->blocking_mode ?? null) !== 'hard') {
-                continue;
-            }
-            if (($row->latest_decision ?? null) === 'conditionally_approved' && $asOf !== null) {
-                $conditional = $this->isConditionallyUsable((string) $row->case_public_id, $asOf);
+            if ($this->nullableRowString($row, 'latest_decision') === 'conditionally_approved' && $asOf !== null) {
+                $conditional = $this->isConditionallyUsable($this->rowString($row, 'case_public_id'), $asOf);
                 if ($conditional['ok']) {
                     continue;
                 }
             }
 
             $failures[] = [
-                'case_public_id' => (string) $row->case_public_id,
-                'blocker_public_id' => (string) $row->blocker_public_id,
-                'reason_code' => (string) $row->reason_code,
-                'decision' => is_string($row->latest_decision) ? $row->latest_decision : null,
-                'blocking_mode' => (string) $row->blocking_mode,
+                'case_public_id' => $this->rowString($row, 'case_public_id'),
+                'blocker_public_id' => $this->rowString($row, 'blocker_public_id'),
+                'reason_code' => $this->rowString($row, 'reason_code'),
+                'decision' => $this->nullableRowString($row, 'latest_decision'),
+                'blocking_mode' => $this->rowString($row, 'blocking_mode'),
             ];
         }
 
@@ -355,10 +357,11 @@ final class IslamicComplianceCaseService
             ->where('is_active', true)
             ->get(['public_id']);
         foreach ($blockers as $blocker) {
-            if (! is_object($blocker) || ! is_string($blocker->public_id)) {
+            $blockerPublicId = $this->nullableRowString($blocker, 'public_id');
+            if ($blockerPublicId === null) {
                 continue;
             }
-            $this->releaseBlocker($blocker->public_id, $actor, $reason);
+            $this->releaseBlocker($blockerPublicId, $actor, $reason);
         }
     }
 
@@ -463,7 +466,8 @@ final class IslamicComplianceCaseService
 
     private function rowInt(object $row, string $column): int
     {
-        $value = $row->{$column} ?? null;
+        $payload = get_object_vars($row);
+        $value = $payload[$column] ?? null;
         if (! is_numeric($value)) {
             throw new InvalidArgumentException('Expected integer for '.$column.'.');
         }
@@ -473,7 +477,8 @@ final class IslamicComplianceCaseService
 
     private function rowString(object $row, string $column): string
     {
-        $value = $row->{$column} ?? null;
+        $payload = get_object_vars($row);
+        $value = $payload[$column] ?? null;
         if (! is_string($value) || $value === '') {
             throw new InvalidArgumentException('Expected non-empty string for '.$column.'.');
         }
@@ -483,14 +488,17 @@ final class IslamicComplianceCaseService
 
     private function nullableRowString(object $row, string $column): ?string
     {
-        $value = $row->{$column} ?? null;
+        $payload = get_object_vars($row);
+        $value = $payload[$column] ?? null;
 
         return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function rowAny(object $row, string $column): mixed
     {
-        return $row->{$column} ?? null;
+        $payload = get_object_vars($row);
+
+        return $payload[$column] ?? null;
     }
 
     /**
@@ -499,6 +507,7 @@ final class IslamicComplianceCaseService
     private function decodeJsonObject(mixed $value): ?array
     {
         if (is_array($value)) {
+            /** @var array<string, mixed> $value */
             return $value;
         }
         if (! is_string($value) || $value === '') {
@@ -509,6 +518,7 @@ final class IslamicComplianceCaseService
             return null;
         }
 
+        /** @var array<string, mixed> $decoded */
         return $decoded;
     }
 }

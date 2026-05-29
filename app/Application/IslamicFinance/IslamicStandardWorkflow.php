@@ -1259,7 +1259,10 @@ final class IslamicStandardWorkflow extends BaseController
         ];
     }
 
-    /** @param array<string,mixed> $row */
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
     private function standardAuditSnapshotFromArray(array $row): array
     {
         return $this->standardAuditSnapshot((object) $row);
@@ -1275,7 +1278,7 @@ final class IslamicStandardWorkflow extends BaseController
         $changed = [];
         foreach ($after as $key => $value) {
             if (($before[$key] ?? null) !== $value) {
-                $changed[] = (string) $key;
+                $changed[] = $key;
             }
         }
 

@@ -177,9 +177,6 @@ final class IslamicSalamGoodsStateMachine
                 throw new InvalidArgumentException(sprintf('Salam goods transition to "%s" requires evidence key "%s".', $toStatus, $key));
             }
             $value = $evidence[$key];
-            if ($value === null) {
-                throw new InvalidArgumentException(sprintf('Salam goods transition to "%s" evidence key "%s" cannot be null.', $toStatus, $key));
-            }
             if (is_string($value) && trim($value) === '') {
                 throw new InvalidArgumentException(sprintf('Salam goods transition to "%s" evidence key "%s" cannot be empty.', $toStatus, $key));
             }

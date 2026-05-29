@@ -89,14 +89,22 @@ final class IslamicInterestGuardPolicy
     private function containsForbiddenSemantics(array $rules): bool
     {
         foreach ($rules as $key => $value) {
-            if (is_string($key) && $this->tokenForbidden($key)) {
+            if ($this->tokenForbidden($key)) {
                 return true;
             }
             if (is_string($value) && $this->tokenForbidden($value)) {
                 return true;
             }
-            if (is_array($value) && $this->containsForbiddenSemantics($value)) {
-                return true;
+            if (is_array($value)) {
+                $nested = [];
+                foreach ($value as $nestedKey => $nestedValue) {
+                    if (is_string($nestedKey)) {
+                        $nested[$nestedKey] = $nestedValue;
+                    }
+                }
+                if ($nested !== [] && $this->containsForbiddenSemantics($nested)) {
+                    return true;
+                }
             }
         }
 

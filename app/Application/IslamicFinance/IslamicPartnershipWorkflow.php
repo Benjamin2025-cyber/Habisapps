@@ -204,10 +204,9 @@ final class IslamicPartnershipWorkflow extends BaseController
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
-                DB::table('islamic_partnerships')->where('id', $this->rowInt($partnership, 'id'))->update([
-                    'contributed_total_capital_minor' => DB::raw('contributed_total_capital_minor + '.(int) $validated['amount_minor']),
-                    'updated_at' => now(),
-                ]);
+                DB::table('islamic_partnerships')
+                    ->where('id', $this->rowInt($partnership, 'id'))
+                    ->increment('contributed_total_capital_minor', (int) $validated['amount_minor'], ['updated_at' => now()]);
                 $row = DB::table('islamic_partnership_contributions')->where('id', $id)->first();
                 if (! is_object($row)) {
                     throw new InvalidArgumentException('Contribution could not be reloaded.');
@@ -461,8 +460,8 @@ final class IslamicPartnershipWorkflow extends BaseController
                     'loss_type' => (string) $validated['loss_type'],
                     'amount_minor' => (int) $validated['amount_minor'],
                     'evidence_document_public_id' => (string) $validated['evidence_document_public_id'],
-                    'description' => is_string($validated['description'] ?? null) ? (string) $validated['description'] : null,
-                    'blocks_distribution' => (bool) ($validated['blocks_distribution'] ?? ((string) $validated['loss_type'] === 'misconduct')),
+                    'description' => is_string($validated['description'] ?? null) ? $validated['description'] : null,
+                    'blocks_distribution' => (bool) ($validated['blocks_distribution'] ?? ($validated['loss_type'] === 'misconduct')),
                     'recorded_at' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -573,7 +572,7 @@ final class IslamicPartnershipWorkflow extends BaseController
                     throw new InvalidArgumentException('Buyout requires an approved valuation (IF-043 buyout gate).');
                 }
                 $today = now()->toDateString();
-                if (is_string($valuation->validity_until ?? null) && $valuation->validity_until !== '' && $today > (string) $valuation->validity_until) {
+                if (is_string($valuation->validity_until ?? null) && $valuation->validity_until !== '' && $today > $valuation->validity_until) {
                     throw new InvalidArgumentException('Buyout valuation is expired; refresh valuation before proceeding.');
                 }
                 $latestApprovedValuation = DB::table('islamic_partnership_valuations')
@@ -668,14 +667,14 @@ final class IslamicPartnershipWorkflow extends BaseController
                     throw new InvalidArgumentException('Liquidation must reference the most recent approved valuation.');
                 }
 
-                $metadata = is_string($partnership->metadata ?? null) && $partnership->metadata !== '' ? (string) $partnership->metadata : '{}';
+                $metadata = is_string($partnership->metadata ?? null) && $partnership->metadata !== '' ? $partnership->metadata : '{}';
                 $decoded = json_decode($metadata, true);
                 $decoded = is_array($decoded) ? $decoded : [];
                 $decoded['liquidation'] = [
                     'valuation_public_id' => (string) $validated['valuation_public_id'],
                     'settlement_plan_document_public_id' => (string) $validated['settlement_plan_document_public_id'],
                     'liquidation_evidence_document_public_id' => (string) $validated['liquidation_evidence_document_public_id'],
-                    'comments' => is_string($validated['comments'] ?? null) ? (string) $validated['comments'] : null,
+                    'comments' => is_string($validated['comments'] ?? null) ? $validated['comments'] : null,
                     'liquidated_at' => now()->toIso8601String(),
                 ];
 

@@ -77,7 +77,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     if (! is_object($financing) || ! is_numeric($financing->id)) {
                         throw new InvalidArgumentException('Linked Islamic financing is invalid.');
                     }
-                    if (is_string($financing->status ?? null) && (string) $financing->status !== 'draft') {
+                    if (is_string($financing->status ?? null) && $financing->status !== 'draft') {
                         throw new InvalidArgumentException('Istisnaa projects can only be linked to draft financings.');
                     }
                     $financingId = (int) $financing->id;
@@ -91,7 +91,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     'site_location' => (string) $validated['site_location'],
                     'inspection_rules' => isset($validated['inspection_rules']) && is_array($validated['inspection_rules']) ? json_encode($validated['inspection_rules'], JSON_THROW_ON_ERROR) : null,
                     'acceptance_criteria' => isset($validated['acceptance_criteria']) && is_array($validated['acceptance_criteria']) ? json_encode($validated['acceptance_criteria'], JSON_THROW_ON_ERROR) : null,
-                    'parallel_supplier_reference' => is_string($validated['parallel_supplier_reference'] ?? null) && $validated['parallel_supplier_reference'] !== '' ? (string) $validated['parallel_supplier_reference'] : null,
+                    'parallel_supplier_reference' => is_string($validated['parallel_supplier_reference'] ?? null) && $validated['parallel_supplier_reference'] !== '' ? $validated['parallel_supplier_reference'] : null,
                     'parallel_supplier_approved' => (bool) ($validated['parallel_supplier_approved'] ?? false),
                     'status' => self::STATUS_DRAFT,
                     'metadata' => isset($validated['metadata']) && is_array($validated['metadata']) ? json_encode($validated['metadata'], JSON_THROW_ON_ERROR) : null,
@@ -196,7 +196,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
             return $this->respondForbidden();
         }
         try {
-            $row = DB::transaction(function () use ($projectPublicId, $validated, $actor): object {
+            $row = DB::transaction(function () use ($projectPublicId, $validated): object {
                 $project = DB::table('islamic_istisnaa_projects')->where('public_id', $projectPublicId)->lockForUpdate()->first();
                 if (! is_object($project)) {
                     throw new InvalidArgumentException('Istisnaa project is invalid.');
@@ -221,10 +221,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                 ]);
                 DB::table('islamic_istisnaa_projects')
                     ->where('id', $this->rowInt($project, 'id'))
-                    ->update([
-                        'total_planned_amount_minor' => DB::raw('total_planned_amount_minor + '.(int) $validated['planned_amount_minor']),
-                        'updated_at' => now(),
-                    ]);
+                    ->increment('total_planned_amount_minor', (int) $validated['planned_amount_minor'], ['updated_at' => now()]);
                 $row = DB::table('islamic_istisnaa_milestones')->where('id', $id)->first();
                 if (! is_object($row)) {
                     throw new InvalidArgumentException('Milestone could not be reloaded.');
@@ -259,7 +256,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                 if (! is_object($milestone)) {
                     throw new InvalidArgumentException('Istisnaa milestone is invalid.');
                 }
-                if ((string) $milestone->payment_status === 'paid_in_full') {
+                if ($this->rowString($milestone, 'payment_status') === 'paid_in_full') {
                     throw new InvalidArgumentException('Cannot record inspection on a fully-paid milestone.');
                 }
                 $inspectionId = DB::table('islamic_istisnaa_inspections')->insertGetId([
@@ -268,7 +265,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     'decision' => (string) $validated['decision'],
                     'evidence_document_public_id' => (string) $validated['evidence_document_public_id'],
                     'inspector_user_id' => $actor->id,
-                    'comments' => is_string($validated['comments'] ?? null) ? (string) $validated['comments'] : null,
+                    'comments' => is_string($validated['comments'] ?? null) ? $validated['comments'] : null,
                     'decided_at' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -276,7 +273,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                 DB::table('islamic_istisnaa_milestones')
                     ->where('id', $this->rowInt($milestone, 'id'))
                     ->update([
-                        'inspection_status' => (string) $validated['decision'],
+                        'inspection_status' => $validated['decision'],
                         'updated_at' => now(),
                     ]);
                 $row = DB::table('islamic_istisnaa_inspections')->where('id', $inspectionId)->first();
@@ -326,7 +323,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     throw new InvalidArgumentException('Istisnaa project is invalid.');
                 }
 
-                $inspectionStatus = (string) $milestone->inspection_status;
+                $inspectionStatus = $this->rowString($milestone, 'inspection_status');
                 if ($inspectionStatus !== self::INSPECTION_APPROVED) {
                     $this->securityAudit->record('islamic.istisnaa_milestone.payment_blocked', actor: $actor, properties: [
                         'milestone_public_id' => $milestonePublicId,
@@ -369,7 +366,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     'islamic_istisnaa_milestone_id' => $this->rowInt($milestone, 'id'),
                     'amount_minor' => $newAmount,
                     'idempotency_key' => $idempotency,
-                    'inspection_public_id' => (string) $latestApprovedInspection->public_id,
+                    'inspection_public_id' => $this->rowString($latestApprovedInspection, 'public_id'),
                     'actor_user_id' => $actor->id,
                     'posted_at' => now(),
                     'created_at' => now(),
@@ -386,8 +383,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     ]);
                 DB::table('islamic_istisnaa_projects')
                     ->where('id', (int) $milestone->islamic_istisnaa_project_id)
-                    ->update([
-                        'total_paid_amount_minor' => DB::raw('total_paid_amount_minor + '.$newAmount),
+                    ->increment('total_paid_amount_minor', $newAmount, [
                         'screening_result_public_id' => $screening['screening_result_public_id'],
                         'updated_at' => now(),
                     ]);
@@ -449,13 +445,13 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     if ((int) $milestone->paid_amount_minor > 0) {
                         throw new InvalidArgumentException('Cannot apply variation: posted payment facts are immutable (IF-042 variation policy).');
                     }
-                    if ((string) $milestone->payment_status === 'paid_in_full') {
+                    if ($this->rowString($milestone, 'payment_status') === 'paid_in_full') {
                         throw new InvalidArgumentException('Cannot apply variation to a fully-paid milestone.');
                     }
                     $beforeSnapshot = [
                         'planned_amount_minor' => (int) $milestone->planned_amount_minor,
-                        'due_date' => (string) $milestone->due_date,
-                        'title' => (string) $milestone->title,
+                        'due_date' => $this->rowString($milestone, 'due_date'),
+                        'title' => $this->rowString($milestone, 'title'),
                     ];
                     $update = ['updated_at' => now()];
                     if (isset($afterSnapshot['planned_amount_minor']) && is_numeric($afterSnapshot['planned_amount_minor'])) {
@@ -463,16 +459,13 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                         $update['planned_amount_minor'] = (int) $afterSnapshot['planned_amount_minor'];
                         DB::table('islamic_istisnaa_projects')
                             ->where('id', $this->rowInt($project, 'id'))
-                            ->update([
-                                'total_planned_amount_minor' => DB::raw('total_planned_amount_minor + '.$delta),
-                                'updated_at' => now(),
-                            ]);
+                            ->increment('total_planned_amount_minor', $delta, ['updated_at' => now()]);
                     }
                     if (isset($afterSnapshot['due_date']) && is_string($afterSnapshot['due_date'])) {
-                        $update['due_date'] = (string) $afterSnapshot['due_date'];
+                        $update['due_date'] = $afterSnapshot['due_date'];
                     }
                     if (isset($afterSnapshot['title']) && is_string($afterSnapshot['title'])) {
-                        $update['title'] = (string) $afterSnapshot['title'];
+                        $update['title'] = $afterSnapshot['title'];
                     }
                     DB::table('islamic_istisnaa_milestones')->where('id', (int) $milestone->id)->update($update);
                 } else {
@@ -485,10 +478,10 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                     ];
                     $update = ['updated_at' => now()];
                     if (isset($afterSnapshot['project_specification']) && is_string($afterSnapshot['project_specification'])) {
-                        $update['project_specification'] = (string) $afterSnapshot['project_specification'];
+                        $update['project_specification'] = $afterSnapshot['project_specification'];
                     }
                     if (isset($afterSnapshot['site_location']) && is_string($afterSnapshot['site_location'])) {
-                        $update['site_location'] = (string) $afterSnapshot['site_location'];
+                        $update['site_location'] = $afterSnapshot['site_location'];
                     }
                     DB::table('islamic_istisnaa_projects')->where('id', $this->rowInt($project, 'id'))->update($update);
                 }
@@ -540,7 +533,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
             return $this->respondForbidden();
         }
         try {
-            $row = DB::transaction(function () use ($projectPublicId, $validated, $actor): object {
+            $row = DB::transaction(function () use ($projectPublicId, $validated): object {
                 $project = DB::table('islamic_istisnaa_projects')->where('public_id', $projectPublicId)->lockForUpdate()->first();
                 if (! is_object($project)) {
                     throw new InvalidArgumentException('Istisnaa project is invalid.');
@@ -551,12 +544,12 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                 if ((bool) ($project->parallel_supplier_approved ?? false) === true) {
                     throw new InvalidArgumentException('Parallel supplier reference is already approved.');
                 }
-                $metadata = is_string($project->metadata ?? null) && $project->metadata !== '' ? (string) $project->metadata : '{}';
+                $metadata = is_string($project->metadata ?? null) && $project->metadata !== '' ? $project->metadata : '{}';
                 $decoded = json_decode($metadata, true);
                 $decoded = is_array($decoded) ? $decoded : [];
                 $decoded['parallel_supplier_approval'] = [
-                    'evidence_document_public_id' => (string) $validated['approval_evidence_document_public_id'],
-                    'comments' => is_string($validated['comments'] ?? null) ? (string) $validated['comments'] : null,
+                    'evidence_document_public_id' => $validated['approval_evidence_document_public_id'],
+                    'comments' => is_string($validated['comments'] ?? null) ? $validated['comments'] : null,
                     'approved_at' => now()->toIso8601String(),
                 ];
                 DB::table('islamic_istisnaa_projects')->where('id', $this->rowInt($project, 'id'))->update([
@@ -613,7 +606,7 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                 if ($milestones->isEmpty()) {
                     throw new InvalidArgumentException('Project requires at least one milestone before acceptance.');
                 }
-                $unsettled = $milestones->filter(static fn (object $m): bool => (string) ($m->payment_status ?? '') !== 'paid_in_full');
+                $unsettled = $milestones->filter(fn (object $m): bool => $this->rowString($m, 'payment_status') !== 'paid_in_full');
                 if ($unsettled->isNotEmpty()) {
                     throw new InvalidArgumentException('Project acceptance requires all milestones paid in full (IF-042 closure rule).');
                 }
@@ -624,12 +617,12 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
                 if ($screening['result'] === 'manual_review') {
                     throw new InvalidArgumentException('Project acceptance requires manual compliance review for project approval screening (IF-042 screening gate).');
                 }
-                $metadata = is_string($project->metadata ?? null) && $project->metadata !== '' ? (string) $project->metadata : '{}';
+                $metadata = is_string($project->metadata ?? null) && $project->metadata !== '' ? $project->metadata : '{}';
                 $decoded = json_decode($metadata, true);
                 $decoded = is_array($decoded) ? $decoded : [];
-                $decoded['acceptance_evidence_document_public_id'] = (string) $validated['acceptance_evidence_document_public_id'];
+                $decoded['acceptance_evidence_document_public_id'] = $validated['acceptance_evidence_document_public_id'];
                 if (is_string($validated['comments'] ?? null) && $validated['comments'] !== '') {
-                    $decoded['acceptance_comments'] = (string) $validated['comments'];
+                    $decoded['acceptance_comments'] = $validated['comments'];
                 }
                 DB::table('islamic_istisnaa_projects')->where('id', $this->rowInt($project, 'id'))->update([
                     'status' => self::STATUS_ACCEPTED,
@@ -730,12 +723,12 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
         );
 
         return [
-            'result' => is_string($screeningOutcome['result'] ?? null) ? (string) $screeningOutcome['result'] : 'not_applicable',
+            'result' => is_string($screeningOutcome['result'] ?? null) ? $screeningOutcome['result'] : 'not_applicable',
             'screening_result_public_id' => is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== ''
-                ? (string) $screeningOutcome['public_id']
+                ? $screeningOutcome['public_id']
                 : null,
             'compliance_case_public_id' => is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== ''
-                ? (string) $screeningOutcome['review_case_public_id']
+                ? $screeningOutcome['review_case_public_id']
                 : null,
         ];
     }

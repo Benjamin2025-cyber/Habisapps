@@ -39,7 +39,7 @@ final class IslamicContractTemplateWorkflow extends BaseController
         $query = DB::table('islamic_contract_templates')->orderByDesc('id');
         foreach (['family_code', 'language_code', 'status', 'template_code'] as $key) {
             if (is_string($validated[$key] ?? null) && $validated[$key] !== '') {
-                $query->where($key, (string) $validated[$key]);
+                $query->where($key, $validated[$key]);
             }
         }
 
@@ -62,7 +62,7 @@ final class IslamicContractTemplateWorkflow extends BaseController
 
         try {
             $row = DB::transaction(function () use ($validated, $actor, $request): object {
-                $familyCode = (string) $validated['family_code'];
+                $familyCode = $this->requiredString($validated, 'family_code');
                 if ($this->families->metadataFor($familyCode) === null) {
                     throw new InvalidArgumentException('Unknown Islamic product family code.');
                 }
@@ -72,11 +72,11 @@ final class IslamicContractTemplateWorkflow extends BaseController
                 $id = DB::table('islamic_contract_templates')->insertGetId([
                     'public_id' => $publicId,
                     'family_code' => $familyCode,
-                    'language_code' => (string) $validated['language_code'],
-                    'template_code' => (string) $validated['template_code'],
-                    'version' => (int) $validated['version'],
+                    'language_code' => $this->requiredString($validated, 'language_code'),
+                    'template_code' => $this->requiredString($validated, 'template_code'),
+                    'version' => $this->requiredInt($validated, 'version'),
                     'status' => 'draft',
-                    'effective_from' => (string) $validated['effective_from'],
+                    'effective_from' => $this->requiredString($validated, 'effective_from'),
                     'effective_to' => is_string($validated['effective_to'] ?? null) ? $validated['effective_to'] : null,
                     'fields_schema' => isset($validated['fields_schema']) ? json_encode($validated['fields_schema'], JSON_THROW_ON_ERROR) : null,
                     'commercial_terms_schema' => isset($validated['commercial_terms_schema']) ? json_encode($validated['commercial_terms_schema'], JSON_THROW_ON_ERROR) : null,
@@ -165,7 +165,7 @@ final class IslamicContractTemplateWorkflow extends BaseController
                     }
                 }
                 if (isset($validated['version'])) {
-                    $update['version'] = (int) $validated['version'];
+                    $update['version'] = $this->requiredInt($validated, 'version');
                 }
                 if (array_key_exists('fields_schema', $validated)) {
                     $update['fields_schema'] = is_array($validated['fields_schema']) ? json_encode($validated['fields_schema'], JSON_THROW_ON_ERROR) : null;
@@ -349,6 +349,9 @@ final class IslamicContractTemplateWorkflow extends BaseController
         return $this->respondSuccess($this->templatePayload($row), 'Islamic contract template '.$status);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function validateTemplatePayload(Request $request, bool $isUpdate): array
     {
         return Validator::make($request->all(), [
@@ -443,6 +446,32 @@ final class IslamicContractTemplateWorkflow extends BaseController
         }
 
         return is_scalar($value) ? (string) $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function requiredString(array $payload, string $key): string
+    {
+        $value = $payload[$key] ?? null;
+        if (! is_string($value) || $value === '') {
+            throw new InvalidArgumentException(sprintf('Expected non-empty string for %s.', $key));
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function requiredInt(array $payload, string $key): int
+    {
+        $value = $payload[$key] ?? null;
+        if (! is_int($value)) {
+            throw new InvalidArgumentException(sprintf('Expected integer for %s.', $key));
+        }
+
+        return $value;
     }
 
     /** @return array<string, mixed>|array<int, mixed>|null */

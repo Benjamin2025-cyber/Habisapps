@@ -31,7 +31,7 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
 
         $query = DB::table('islamic_screening_policies')->orderByDesc('id');
         if (is_string($request->query('status')) && $request->query('status') !== '') {
-            $query->where('status', (string) $request->query('status'));
+            $query->where('status', $request->query('status'));
         }
 
         $rows = $query->get();
@@ -60,7 +60,8 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
             'metadata' => ['sometimes', 'nullable', 'array'],
         ])->validate();
 
-        $version = (int) DB::table('islamic_screening_policies')->where('code', (string) $validated['code'])->max('version');
+        $versionRaw = DB::table('islamic_screening_policies')->where('code', (string) $validated['code'])->max('version');
+        $version = is_numeric($versionRaw) ? (int) $versionRaw : 0;
         $id = DB::table('islamic_screening_policies')->insertGetId([
             'public_id' => (string) Str::ulid(),
             'code' => (string) $validated['code'],
@@ -251,16 +252,16 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
         }
         $query = DB::table('islamic_screening_results')->orderByDesc('id');
         if (is_string($request->query('subject_type')) && $request->query('subject_type') !== '') {
-            $query->where('subject_type', (string) $request->query('subject_type'));
+            $query->where('subject_type', $request->query('subject_type'));
         }
         if (is_string($request->query('subject_public_id')) && $request->query('subject_public_id') !== '') {
-            $query->where('subject_public_id', (string) $request->query('subject_public_id'));
+            $query->where('subject_public_id', $request->query('subject_public_id'));
         }
         if (is_string($request->query('context_type')) && $request->query('context_type') !== '') {
-            $query->where('context_type', (string) $request->query('context_type'));
+            $query->where('context_type', $request->query('context_type'));
         }
         if (is_string($request->query('result')) && $request->query('result') !== '') {
-            $query->where('result', (string) $request->query('result'));
+            $query->where('result', $request->query('result'));
         }
 
         $rows = $query->get();
@@ -403,7 +404,11 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
                 ->where('public_id', $rulePublicId)
                 ->value('id');
         }
-        $rule = DB::table('islamic_screening_policy_rules')->where('id', (int) $id)->first();
+        $ruleId = is_numeric($id) ? (int) $id : null;
+        if ($ruleId === null) {
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => ['Rule id is invalid after save.']]);
+        }
+        $rule = DB::table('islamic_screening_policy_rules')->where('id', $ruleId)->first();
         if (! is_object($rule)) {
             return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => ['Rule could not be reloaded.']]);
         }
@@ -424,39 +429,69 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
     private function policyPayload(object $row): array
     {
         return [
-            'public_id' => (string) $row->public_id,
-            'code' => (string) $row->code,
-            'name' => (string) $row->name,
-            'version' => (int) $row->version,
-            'scope_type' => (string) $row->scope_type,
-            'scope_value' => is_string($row->scope_value ?? null) ? $row->scope_value : null,
-            'status' => (string) $row->status,
-            'effective_from' => is_string($row->effective_from ?? null) ? $row->effective_from : null,
-            'effective_to' => is_string($row->effective_to ?? null) ? $row->effective_to : null,
-            'description' => is_string($row->description ?? null) ? $row->description : null,
+            'public_id' => $this->rowString($row, 'public_id'),
+            'code' => $this->rowString($row, 'code'),
+            'name' => $this->rowString($row, 'name'),
+            'version' => $this->rowInt($row, 'version'),
+            'scope_type' => $this->rowString($row, 'scope_type'),
+            'scope_value' => $this->nullableString(((array) $row)['scope_value'] ?? null),
+            'status' => $this->rowString($row, 'status'),
+            'effective_from' => $this->nullableString(((array) $row)['effective_from'] ?? null),
+            'effective_to' => $this->nullableString(((array) $row)['effective_to'] ?? null),
+            'description' => $this->nullableString(((array) $row)['description'] ?? null),
         ];
     }
 
     /** @return array<string,mixed> */
     private function resultPayload(object $row): array
     {
-        $snapshotRaw = is_string($row->policy_snapshot ?? null) ? $row->policy_snapshot : null;
+        $snapshotRaw = $this->nullableString(((array) $row)['policy_snapshot'] ?? null);
         $snapshot = $snapshotRaw !== null ? json_decode($snapshotRaw, true) : null;
+        $matchedRulesRaw = $this->nullableString(((array) $row)['matched_rules'] ?? null);
 
         return [
-            'public_id' => (string) $row->public_id,
-            'subject_type' => (string) $row->subject_type,
-            'subject_public_id' => (string) $row->subject_public_id,
-            'context_type' => (string) $row->context_type,
-            'result' => (string) $row->result,
-            'policy_public_id' => (string) $row->policy_public_id,
-            'policy_version' => (int) $row->policy_version,
+            'public_id' => $this->rowString($row, 'public_id'),
+            'subject_type' => $this->rowString($row, 'subject_type'),
+            'subject_public_id' => $this->rowString($row, 'subject_public_id'),
+            'context_type' => $this->rowString($row, 'context_type'),
+            'result' => $this->rowString($row, 'result'),
+            'policy_public_id' => $this->rowString($row, 'policy_public_id'),
+            'policy_version' => $this->rowInt($row, 'policy_version'),
             'policy_snapshot' => is_array($snapshot) ? $snapshot : null,
             'policy_snapshot_checksum' => hash('sha256', $snapshotRaw ?? ''),
-            'matched_rules' => is_string($row->matched_rules ?? null) ? json_decode($row->matched_rules, true) : null,
-            'block_reason' => is_string($row->block_reason ?? null) ? $row->block_reason : null,
-            'review_case_public_id' => is_string($row->review_case_public_id ?? null) ? $row->review_case_public_id : null,
-            'evaluated_at' => is_string($row->evaluated_at ?? null) ? $row->evaluated_at : null,
+            'matched_rules' => is_string($matchedRulesRaw) ? json_decode($matchedRulesRaw, true) : null,
+            'block_reason' => $this->nullableString(((array) $row)['block_reason'] ?? null),
+            'review_case_public_id' => $this->nullableString(((array) $row)['review_case_public_id'] ?? null),
+            'evaluated_at' => $this->nullableString(((array) $row)['evaluated_at'] ?? null),
         ];
+    }
+
+    private function rowString(object $row, string $key): string
+    {
+        $value = ((array) $row)[$key] ?? '';
+
+        return is_string($value) ? $value : (is_numeric($value) || is_bool($value) ? (string) $value : '');
+    }
+
+    private function rowInt(object $row, string $key): int
+    {
+        $value = ((array) $row)[$key] ?? null;
+
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_string($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value) || is_bool($value)) {
+            return (string) $value;
+        }
+
+        return null;
     }
 }

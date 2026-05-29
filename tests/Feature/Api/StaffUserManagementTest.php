@@ -77,7 +77,7 @@ final class StaffUserManagementTest extends TestCase
             'channel' => 'email',
             'destination_masked' => 'c***@example.com',
             'status' => 'sent',
-            'provider_reference' => 'test-delivery',
+            'provider_reference' => 'mail-delivery',
         ]);
         $this->assertDatabaseMissing('otp_deliveries', [
             'provider_reference' => 'test-123456',

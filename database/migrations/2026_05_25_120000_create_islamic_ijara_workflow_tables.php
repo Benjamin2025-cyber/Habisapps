@@ -103,4 +103,3 @@ return new class extends Migration
         Schema::dropIfExists('islamic_ijara_condition_reports');
     }
 };
-

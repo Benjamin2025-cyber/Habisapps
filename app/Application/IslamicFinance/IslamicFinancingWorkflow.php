@@ -172,11 +172,11 @@ final class IslamicFinancingWorkflow extends BaseController
                     allowLanguageFallback: (bool) ($validated['allow_template_language_fallback'] ?? false),
                 );
                 $template = $templateResolution['template'];
-                if (($templateResolution['fallback_used'] ?? false) === true) {
+                if ($templateResolution['fallback_used'] === true) {
                     $this->securityAudit->record('islamic.contract_template.language_fallback_used', actor: $actor, properties: [
                         'family_code' => $familyCode,
-                        'preferred_language_code' => $templateResolution['preferred_language_code'] ?? null,
-                        'selected_language_code' => $templateResolution['selected_language_code'] ?? null,
+                        'preferred_language_code' => $templateResolution['preferred_language_code'],
+                        'selected_language_code' => $templateResolution['selected_language_code'],
                         'template_public_id' => $this->rowString($template, 'public_id'),
                     ]);
                 }
@@ -404,8 +404,8 @@ final class IslamicFinancingWorkflow extends BaseController
                 if (is_object($existingPurchaseEvidence)) {
                     // Run acceptance screening before initializing to purchased — IF-040 Phase 4 invariant.
                     $supplierFlagsForInit = [];
-                    $supplierNameForInit = is_string($validated['supplier_name'] ?? null) && $validated['supplier_name'] !== '' ? (string) $validated['supplier_name'] : null;
-                    $supplierReferenceForInit = is_string($validated['supplier_reference'] ?? null) && $validated['supplier_reference'] !== '' ? (string) $validated['supplier_reference'] : null;
+                    $supplierNameForInit = is_string($validated['supplier_name'] ?? null) && $validated['supplier_name'] !== '' ? $validated['supplier_name'] : null;
+                    $supplierReferenceForInit = is_string($validated['supplier_reference'] ?? null) && $validated['supplier_reference'] !== '' ? $validated['supplier_reference'] : null;
                     if ($supplierNameForInit !== null) {
                         $supplierFlagsForInit[] = strtolower(trim($supplierNameForInit));
                     }
@@ -433,8 +433,8 @@ final class IslamicFinancingWorkflow extends BaseController
                         strictPolicy: false,
                         overrideExceptionSubjectPublicId: null,
                     );
-                    $autoInitStatus = is_string($autoInitScreening['result'] ?? null) ? (string) $autoInitScreening['result'] : 'not_applicable';
-                    $autoInitScreeningResultPublicId = is_string($autoInitScreening['public_id'] ?? null) && $autoInitScreening['public_id'] !== '' ? (string) $autoInitScreening['public_id'] : null;
+                    $autoInitStatus = is_string($autoInitScreening['result'] ?? null) ? $autoInitScreening['result'] : 'not_applicable';
+                    $autoInitScreeningResultPublicId = is_string($autoInitScreening['public_id'] ?? null) && $autoInitScreening['public_id'] !== '' ? $autoInitScreening['public_id'] : null;
                     if ($autoInitStatus === 'fail') {
                         throw new InvalidArgumentException('Asset acceptance blocked by screening result; cannot auto-initialize at purchased status.');
                     }
@@ -449,19 +449,19 @@ final class IslamicFinancingWorkflow extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'islamic_financing_id' => $this->rowInt($financing, 'id'),
                     'asset_type' => (string) $validated['asset_type'],
-                    'asset_category' => is_string($validated['asset_category'] ?? null) && $validated['asset_category'] !== '' ? (string) $validated['asset_category'] : null,
+                    'asset_category' => is_string($validated['asset_category'] ?? null) && $validated['asset_category'] !== '' ? $validated['asset_category'] : null,
                     'description' => (string) $validated['description'],
-                    'supplier_name' => is_string($validated['supplier_name'] ?? null) && $validated['supplier_name'] !== '' ? (string) $validated['supplier_name'] : null,
-                    'supplier_reference' => is_string($validated['supplier_reference'] ?? null) && $validated['supplier_reference'] !== '' ? (string) $validated['supplier_reference'] : null,
+                    'supplier_name' => is_string($validated['supplier_name'] ?? null) && $validated['supplier_name'] !== '' ? $validated['supplier_name'] : null,
+                    'supplier_reference' => is_string($validated['supplier_reference'] ?? null) && $validated['supplier_reference'] !== '' ? $validated['supplier_reference'] : null,
                     'purchase_amount_minor' => is_numeric($validated['purchase_amount_minor'] ?? null) ? (int) $validated['purchase_amount_minor'] : null,
                     'acquisition_cost_minor' => is_numeric($validated['acquisition_cost_minor'] ?? null) ? (int) $validated['acquisition_cost_minor'] : null,
                     'currency' => is_string($validated['currency'] ?? null) && $validated['currency'] !== '' ? $validated['currency'] : 'XAF',
-                    'location' => is_string($validated['location'] ?? null) && $validated['location'] !== '' ? (string) $validated['location'] : null,
-                    'condition_status' => is_string($validated['condition_status'] ?? null) && $validated['condition_status'] !== '' ? (string) $validated['condition_status'] : null,
+                    'location' => is_string($validated['location'] ?? null) && $validated['location'] !== '' ? $validated['location'] : null,
+                    'condition_status' => is_string($validated['condition_status'] ?? null) && $validated['condition_status'] !== '' ? $validated['condition_status'] : null,
                     'document_bundle' => isset($validated['document_bundle']) && is_array($validated['document_bundle']) ? json_encode($validated['document_bundle'], JSON_THROW_ON_ERROR) : null,
-                    'customer_request_ref' => is_string($validated['customer_request_ref'] ?? null) && $validated['customer_request_ref'] !== '' ? (string) $validated['customer_request_ref'] : null,
+                    'customer_request_ref' => is_string($validated['customer_request_ref'] ?? null) && $validated['customer_request_ref'] !== '' ? $validated['customer_request_ref'] : null,
                     'screening_result_public_id' => $autoInitScreeningResultPublicId
-                        ?? (is_string($validated['screening_result_public_id'] ?? null) && $validated['screening_result_public_id'] !== '' ? (string) $validated['screening_result_public_id'] : null),
+                        ?? (is_string($validated['screening_result_public_id'] ?? null) && $validated['screening_result_public_id'] !== '' ? $validated['screening_result_public_id'] : null),
                     'ownership_status' => $initialOwnership,
                     'lifecycle_status' => $initialLifecycle,
                     'metadata' => isset($validated['metadata']) ? json_encode($validated['metadata'], JSON_THROW_ON_ERROR) : null,
@@ -469,7 +469,7 @@ final class IslamicFinancingWorkflow extends BaseController
                     'updated_at' => now(),
                 ]);
 
-                if (is_object($existingPurchaseEvidence) && $initialLifecycle === IslamicFinancedAssetStateMachine::STATUS_PURCHASED) {
+                if (is_object($existingPurchaseEvidence)) {
                     DB::table('islamic_financed_asset_transitions')->insert([
                         'public_id' => (string) Str::ulid(),
                         'islamic_financed_asset_id' => $id,
@@ -537,10 +537,10 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $toStatus = (string) $validated['to_status'];
         $evidence = is_array($validated['evidence'] ?? null) ? $validated['evidence'] : [];
-        $reasonCode = is_string($validated['reason_code'] ?? null) && $validated['reason_code'] !== '' ? (string) $validated['reason_code'] : null;
-        $reasonNote = is_string($validated['reason_note'] ?? null) && $validated['reason_note'] !== '' ? (string) $validated['reason_note'] : null;
-        $screeningResultRef = is_string($validated['screening_result_public_id'] ?? null) && $validated['screening_result_public_id'] !== '' ? (string) $validated['screening_result_public_id'] : null;
-        $overrideExceptionRef = is_string($validated['override_exception_subject_public_id'] ?? null) && $validated['override_exception_subject_public_id'] !== '' ? (string) $validated['override_exception_subject_public_id'] : null;
+        $reasonCode = is_string($validated['reason_code'] ?? null) && $validated['reason_code'] !== '' ? $validated['reason_code'] : null;
+        $reasonNote = is_string($validated['reason_note'] ?? null) && $validated['reason_note'] !== '' ? $validated['reason_note'] : null;
+        $screeningResultRef = is_string($validated['screening_result_public_id'] ?? null) && $validated['screening_result_public_id'] !== '' ? $validated['screening_result_public_id'] : null;
+        $overrideExceptionRef = is_string($validated['override_exception_subject_public_id'] ?? null) && $validated['override_exception_subject_public_id'] !== '' ? $validated['override_exception_subject_public_id'] : null;
 
         try {
             $result = DB::transaction(function () use ($assetPublicId, $toStatus, $evidence, $reasonCode, $reasonNote, $screeningResultRef, $overrideExceptionRef, $actor, $request): array {
@@ -605,9 +605,9 @@ final class IslamicFinancingWorkflow extends BaseController
                         strictPolicy: false,
                         overrideExceptionSubjectPublicId: $overrideExceptionRef,
                     );
-                    $resultStatus = is_string($screeningOutcome['result'] ?? null) ? (string) $screeningOutcome['result'] : 'not_applicable';
-                    $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? (string) $screeningOutcome['public_id'] : $screeningResultPublicId;
-                    $screeningCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? (string) $screeningOutcome['review_case_public_id'] : null;
+                    $resultStatus = is_string($screeningOutcome['result'] ?? null) ? $screeningOutcome['result'] : 'not_applicable';
+                    $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? $screeningOutcome['public_id'] : $screeningResultPublicId;
+                    $screeningCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? $screeningOutcome['review_case_public_id'] : null;
 
                     if ($resultStatus === 'fail') {
                         $this->securityAudit->record('islamic.asset.acceptance_screening_blocked', actor: $actor, properties: [
@@ -1092,7 +1092,8 @@ final class IslamicFinancingWorkflow extends BaseController
                 $institutionControlStatus = is_string($validated['institution_control_status'] ?? null) ? $validated['institution_control_status'] : 'pending';
                 $advancedAssets = [];
                 if (in_array($institutionControlStatus, ['controlled_by_institution', 'owned_by_institution'], true)) {
-                    $financingContractType = (string) (DB::table('islamic_financings')->where('id', $this->rowInt($financing, 'id'))->value('contract_type') ?? '');
+                    $financingContractTypeValue = DB::table('islamic_financings')->where('id', $this->rowInt($financing, 'id'))->value('contract_type');
+                    $financingContractType = is_string($financingContractTypeValue) ? $financingContractTypeValue : '';
                     $canonicalFamily = IslamicProductFamilyRegistry::familyForContractType($financingContractType) ?? $financingContractType;
                     $advancedAssets = $this->advanceMourabahaAssetsToPurchased(
                         $this->rowInt($financing, 'id'),
@@ -1167,13 +1168,13 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $results = [];
         foreach ($assets as $asset) {
-            $fromStatus = (string) ($asset->lifecycle_status ?? '');
+            $fromStatus = is_string($asset->lifecycle_status ?? null) ? $asset->lifecycle_status : '';
             $toStatus = IslamicFinancedAssetStateMachine::STATUS_PURCHASED;
             IslamicFinancedAssetStateMachine::assertTransitionAllowed($fromStatus, $toStatus);
 
             $screeningResultPublicId = null;
             $complianceCasePublicId = null;
-            $assetPublicId = (string) $asset->public_id;
+            $assetPublicId = $this->rowString($asset, 'public_id');
             $supplierFlags = [];
             if (is_string($asset->supplier_name ?? null) && $asset->supplier_name !== '') {
                 $supplierFlags[] = strtolower(trim($asset->supplier_name));
@@ -1199,9 +1200,9 @@ final class IslamicFinancingWorkflow extends BaseController
                 strictPolicy: false,
                 overrideExceptionSubjectPublicId: null,
             );
-            $screeningStatus = is_string($screeningOutcome['result'] ?? null) ? (string) $screeningOutcome['result'] : 'not_applicable';
-            $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? (string) $screeningOutcome['public_id'] : null;
-            $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? (string) $screeningOutcome['review_case_public_id'] : null;
+            $screeningStatus = is_string($screeningOutcome['result'] ?? null) ? $screeningOutcome['result'] : 'not_applicable';
+            $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? $screeningOutcome['public_id'] : null;
+            $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? $screeningOutcome['review_case_public_id'] : null;
 
             if ($screeningStatus === 'fail') {
                 throw new InvalidArgumentException(sprintf('Asset %s acceptance blocked by screening result while attaching Mourabaha purchase evidence.', $assetPublicId));
@@ -1754,7 +1755,7 @@ final class IslamicFinancingWorkflow extends BaseController
                         throw new InvalidArgumentException(sprintf('%s financing requires at least one financed asset.', ucfirst($canonicalFamily)));
                     }
                     $eligibleAssetCount = $lockedAssetRows->filter(
-                        static fn (object $row): bool => is_string($row->lifecycle_status ?? null) && in_array((string) $row->lifecycle_status, $eligibleAssetStatuses, true)
+                        static fn (object $row): bool => is_string($row->lifecycle_status ?? null) && in_array($row->lifecycle_status, $eligibleAssetStatuses, true)
                     )->count();
                     if ($eligibleAssetCount === 0) {
                         throw new InvalidArgumentException(sprintf(
@@ -1995,7 +1996,7 @@ final class IslamicFinancingWorkflow extends BaseController
         }
 
         try {
-            $result = DB::transaction(function () use ($financingPublicId, $validated, $actor): array {
+            $result = DB::transaction(function () use ($financingPublicId, $validated): array {
                 $financing = DB::table('islamic_financings')->where('public_id', $financingPublicId)->lockForUpdate()->first();
                 if (! is_object($financing)) {
                     throw new InvalidArgumentException('Islamic financing is invalid.');
@@ -2138,7 +2139,7 @@ final class IslamicFinancingWorkflow extends BaseController
                         'event_type' => 'lease_activation',
                         'operation_code' => 'ijara_rental_receivable',
                         'amount_minor' => $totalRental,
-                        'mapping_public_id' => (string) $receivable['mapping_public_id'],
+                        'mapping_public_id' => $receivable['mapping_public_id'],
                         'post_payload' => json_encode(['side' => 'debit', 'line_count' => $scheduleLines->count()], JSON_THROW_ON_ERROR),
                         'actor_user_id' => $actor->id,
                         'posted_at' => now(),
@@ -2151,7 +2152,7 @@ final class IslamicFinancingWorkflow extends BaseController
                         'event_type' => 'lease_activation',
                         'operation_code' => 'ijara_rental_income',
                         'amount_minor' => $totalRental,
-                        'mapping_public_id' => (string) $income['mapping_public_id'],
+                        'mapping_public_id' => $income['mapping_public_id'],
                         'post_payload' => json_encode(['side' => 'credit', 'line_count' => $scheduleLines->count()], JSON_THROW_ON_ERROR),
                         'actor_user_id' => $actor->id,
                         'posted_at' => now(),
@@ -2276,7 +2277,7 @@ final class IslamicFinancingWorkflow extends BaseController
                     'event_type' => 'early_termination',
                     'operation_code' => 'ijara_termination_adjustment',
                     'amount_minor' => (int) $validated['settlement_adjustment_minor'],
-                    'mapping_public_id' => (string) $mapping['mapping_public_id'],
+                    'mapping_public_id' => $mapping['mapping_public_id'],
                     'post_payload' => json_encode(['reason' => $validated['reason']], JSON_THROW_ON_ERROR),
                     'actor_user_id' => $actor->id,
                     'posted_at' => now(),
@@ -2370,7 +2371,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 $hasApprovedException = is_array($approvedException)
                     && (($approvedException['approved'] ?? false) === true)
                     && is_string($approvedException['reference'] ?? null)
-                    && trim((string) $approvedException['reference']) !== '';
+                    && trim($approvedException['reference']) !== '';
                 if ($outstandingRentals > 0 && ! $hasApprovedException) {
                     throw new InvalidArgumentException('Transfer requires completed rental obligations or an approved exception.');
                 }
@@ -2508,7 +2509,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 $hasApprovedException = is_array($exceptionPayload)
                     && (($exceptionPayload['approved'] ?? false) === true)
                     && is_string($exceptionPayload['reference'] ?? null)
-                    && trim((string) $exceptionPayload['reference']) !== '';
+                    && trim($exceptionPayload['reference']) !== '';
 
                 if ($residual === 0 && ! $hasApprovedException) {
                     throw new InvalidArgumentException('Zero residual transfer requires approved exception evidence.');
@@ -2529,7 +2530,7 @@ final class IslamicFinancingWorkflow extends BaseController
                     'event_type' => 'transfer_posting',
                     'operation_code' => $operationCode,
                     'amount_minor' => $netSettlement,
-                    'mapping_public_id' => (string) $mapping['mapping_public_id'],
+                    'mapping_public_id' => $mapping['mapping_public_id'],
                     'post_payload' => json_encode([
                         'residual_amount_minor' => $residual,
                         'waiver_amount_minor' => $waiver,
@@ -2575,7 +2576,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 DB::table('islamic_ijara_transfer_events')->where('id', $this->rowInt($transfer, 'id'))->update([
                     'status' => 'posted',
                     'idempotency_key' => (string) $validated['idempotency_key'],
-                    'posted_mapping_public_id' => (string) $mapping['mapping_public_id'],
+                    'posted_mapping_public_id' => $mapping['mapping_public_id'],
                     'posted_at' => now(),
                     'completed_at' => now(),
                     'posted_by_user_id' => $actor->id,
@@ -2785,7 +2786,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 $sourceEventId = null;
                 if (is_string($validated['source_event_public_id'] ?? null) && $validated['source_event_public_id'] !== '') {
                     $source = DB::table('islamic_mourabaha_receivable_events')
-                        ->where('public_id', (string) $validated['source_event_public_id'])
+                        ->where('public_id', $validated['source_event_public_id'])
                         ->where('islamic_financing_id', $financingId)
                         ->first(['id', 'status', 'event_type']);
                     if (! is_object($source) || ! is_numeric($source->id)) {
@@ -3249,7 +3250,7 @@ final class IslamicFinancingWorkflow extends BaseController
     /** @return list<array{installment_number:int,allocated_minor:int}> */
     private function receivableAllocationsPayload(int $receivableEventId): array
     {
-        return DB::table('islamic_mourabaha_receivable_allocations')
+        $allocations = DB::table('islamic_mourabaha_receivable_allocations')
             ->where('receivable_event_id', $receivableEventId)
             ->orderBy('installment_number')
             ->orderBy('id')
@@ -3258,7 +3259,10 @@ final class IslamicFinancingWorkflow extends BaseController
                 'installment_number' => $this->rowInt($row, 'installment_number'),
                 'allocated_minor' => $this->rowInt($row, 'allocated_minor'),
             ])
+            ->values()
             ->all();
+
+        return array_values($allocations);
     }
 
     /**
@@ -3297,7 +3301,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 }
 
                 $evidenceDocumentPublicId = is_string($validated['evidence_document_public_id'] ?? null)
-                    ? (string) $validated['evidence_document_public_id']
+                    ? $validated['evidence_document_public_id']
                     : null;
                 $eventPublicId = (string) Str::ulid();
                 DB::table('islamic_ijara_events')->insert([
@@ -3507,19 +3511,42 @@ final class IslamicFinancingWorkflow extends BaseController
     }
 
     /**
-     * @param  Collection<int, object>  $candidates
+     * @param  Collection<int, \stdClass>  $candidates
      */
     private function resolveLatestNonConflictingTemplate(Collection $candidates, string $scope): object
     {
         $latestVersion = $candidates
-            ->filter(fn (object $row): bool => is_numeric($row->version ?? null))
-            ->max(fn (object $row): int => (int) $row->version);
+            ->filter(function (\stdClass $row): bool {
+                $payload = get_object_vars($row);
+
+                return is_numeric($payload['version'] ?? null);
+            })
+            ->max(function (\stdClass $row): int {
+                $payload = get_object_vars($row);
+                $version = $payload['version'] ?? null;
+                if (is_int($version)) {
+                    return $version;
+                }
+                if (is_float($version)) {
+                    return (int) $version;
+                }
+                if (is_string($version) && is_numeric($version)) {
+                    return (int) $version;
+                }
+
+                return 0;
+            });
         if (! is_int($latestVersion)) {
             throw new InvalidArgumentException('Template candidate set is invalid.');
         }
 
         $latestCandidates = $candidates
-            ->filter(fn (object $row): bool => is_numeric($row->version ?? null) && (int) $row->version === $latestVersion)
+            ->filter(function (\stdClass $row) use ($latestVersion): bool {
+                $payload = get_object_vars($row);
+                $version = $payload['version'] ?? null;
+
+                return is_numeric($version) && (int) $version === $latestVersion;
+            })
             ->values();
 
         if ($latestCandidates->count() > 1) {
@@ -3549,8 +3576,8 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $metadata = $this->decodeJson(((array) $row)['metadata'] ?? null);
         $profile = is_array($metadata['islamic_profile'] ?? null) ? $metadata['islamic_profile'] : $metadata;
-        $mode = is_string($profile['reversal_mode'] ?? null) ? (string) $profile['reversal_mode'] : 'manual_reverse';
-        $reversalCode = is_string($profile['reversal_operation_code'] ?? null) ? (string) $profile['reversal_operation_code'] : null;
+        $mode = is_string($profile['reversal_mode'] ?? null) ? $profile['reversal_mode'] : 'manual_reverse';
+        $reversalCode = is_string($profile['reversal_operation_code'] ?? null) ? $profile['reversal_operation_code'] : null;
         if (! in_array($mode, ['auto_reverse', 'manual_reverse', 'forbidden', 'requires_reason'], true)) {
             $mode = 'manual_reverse';
         }

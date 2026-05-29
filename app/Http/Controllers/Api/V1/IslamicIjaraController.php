@@ -63,4 +63,3 @@ final class IslamicIjaraController extends BaseController
         return $this->workflow->showIjaraTransferEvent($request, $transferEventPublicId);
     }
 }
-

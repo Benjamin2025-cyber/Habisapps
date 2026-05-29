@@ -70,7 +70,7 @@ final class IslamicScreeningPolicyService
 
         foreach ($candidates as $candidate) {
             $row = $candidate['row'];
-            if (! is_object($row) || ! is_string($row->public_id ?? null)) {
+            if (! is_string($row->public_id ?? null)) {
                 continue;
             }
             $workflow = $this->approvalWorkflows->workflowFor(
@@ -88,7 +88,7 @@ final class IslamicScreeningPolicyService
                 $row->public_id,
                 $asOf,
             );
-            if (($workflowUsability['ok'] ?? false) === true) {
+            if ($workflowUsability['ok'] === true) {
                 return $row;
             }
         }
@@ -96,7 +96,10 @@ final class IslamicScreeningPolicyService
         return null;
     }
 
-    /** @param array<string,mixed> $facts */
+    /**
+     * @param  array<string,mixed>  $facts
+     * @return array<string,mixed>
+     */
     public function evaluate(string $subjectType, string $subjectPublicId, string $contextType, array $facts, ?User $actor = null, bool $strictPolicy = false, ?string $overrideExceptionSubjectPublicId = null): array
     {
         $this->assertKnownContextType($contextType);
@@ -137,7 +140,7 @@ final class IslamicScreeningPolicyService
         }
 
         $rules = DB::table('islamic_screening_policy_rules')
-            ->where('policy_id', (int) $policy->id)
+            ->where('policy_id', $this->rowInt($policy, 'id'))
             ->where('is_active', true)
             ->orderBy('priority')
             ->orderBy('id')
@@ -147,22 +150,25 @@ final class IslamicScreeningPolicyService
         $final = 'pass';
         $blockReason = null;
         foreach ($rules as $rule) {
-            if (! is_object($rule) || ! $this->ruleMatches($rule, $facts)) {
+            if (! $this->ruleMatches($rule, $facts)) {
                 continue;
             }
+            $ruleAction = $this->rowString($rule, 'action');
+            $ruleType = $this->rowString($rule, 'rule_type');
+            $ruleMatchKey = $this->rowString($rule, 'match_key');
             $matched[] = [
-                'rule_public_id' => (string) $rule->public_id,
-                'rule_type' => (string) $rule->rule_type,
-                'match_key' => (string) $rule->match_key,
-                'action' => (string) $rule->action,
-                'priority' => (int) $rule->priority,
+                'rule_public_id' => $this->rowString($rule, 'public_id'),
+                'rule_type' => $ruleType,
+                'match_key' => $ruleMatchKey,
+                'action' => $ruleAction,
+                'priority' => $this->rowInt($rule, 'priority'),
             ];
-            if ($rule->action === 'block') {
+            if ($ruleAction === 'block') {
                 $final = 'fail';
-                $blockReason = 'Matched prohibited screening rule '.$rule->rule_type.':'.$rule->match_key.'.';
+                $blockReason = 'Matched prohibited screening rule '.$ruleType.':'.$ruleMatchKey.'.';
                 break;
             }
-            if ($rule->action === 'manual_review' && $final !== 'fail') {
+            if ($ruleAction === 'manual_review' && $final === 'pass') {
                 $final = 'manual_review';
             }
         }
@@ -201,7 +207,7 @@ final class IslamicScreeningPolicyService
                         blockingMode: 'hard',
                         metadata: ['context_type' => $contextType],
                     );
-                    $reviewCasePublicId = (string) $case->public_id;
+                    $reviewCasePublicId = $this->rowString($case, 'public_id');
                 } catch (UniqueConstraintViolationException) {
                     $racedCase = DB::table('islamic_compliance_cases')
                         ->where('subject_type', $subjectType)
@@ -253,7 +259,10 @@ final class IslamicScreeningPolicyService
         );
     }
 
-    /** @param array<string,mixed> $facts */
+    /**
+     * @param  array<string,mixed>  $facts
+     * @return array<string,mixed>
+     */
     public function evaluateForAction(string $subjectType, string $subjectPublicId, string $contextType, array $facts, ?User $actor = null, bool $strictPolicy = true): array
     {
         $result = $this->evaluate(
@@ -264,14 +273,18 @@ final class IslamicScreeningPolicyService
             actor: $actor,
             strictPolicy: $strictPolicy,
         );
-        if (($result['result'] ?? null) !== 'pass') {
-            throw new InvalidArgumentException('Screening result must be pass before action. Received '.$result['result'].'.');
+        $resultValue = is_string($result['result'] ?? null) ? $result['result'] : 'unknown';
+        if ($resultValue !== 'pass') {
+            throw new InvalidArgumentException('Screening result must be pass before action. Received '.$resultValue.'.');
         }
 
         return $result;
     }
 
-    /** @param list<array<string,mixed>> $matchedRules */
+    /**
+     * @param  list<array<string,mixed>>  $matchedRules
+     * @return array<string,mixed>
+     */
     private function persistResult(
         string $subjectType,
         string $subjectPublicId,
@@ -285,33 +298,33 @@ final class IslamicScreeningPolicyService
     ): array {
         $snapshot = $policy === null ? ['policy' => null, 'rules' => []] : [
             'policy' => [
-                'public_id' => (string) $policy->public_id,
-                'code' => (string) $policy->code,
-                'name' => (string) $policy->name,
-                'version' => (int) $policy->version,
-                'scope_type' => (string) $policy->scope_type,
-                'scope_value' => is_string($policy->scope_value ?? null) ? $policy->scope_value : null,
-                'effective_from' => is_string($policy->effective_from ?? null) ? $policy->effective_from : null,
-                'effective_to' => is_string($policy->effective_to ?? null) ? $policy->effective_to : null,
+                'public_id' => $this->rowString($policy, 'public_id'),
+                'code' => $this->rowString($policy, 'code'),
+                'name' => $this->rowString($policy, 'name'),
+                'version' => $this->rowInt($policy, 'version'),
+                'scope_type' => $this->rowString($policy, 'scope_type'),
+                'scope_value' => $this->rowNullableString($policy, 'scope_value'),
+                'effective_from' => $this->rowNullableString($policy, 'effective_from'),
+                'effective_to' => $this->rowNullableString($policy, 'effective_to'),
             ],
             'rules' => DB::table('islamic_screening_policy_rules')
-                ->where('policy_id', (int) $policy->id)
+                ->where('policy_id', $this->rowInt($policy, 'id'))
                 ->orderBy('priority')
                 ->orderBy('id')
                 ->get(['public_id', 'rule_type', 'match_key', 'match_operator', 'risk_level', 'action', 'priority', 'is_active', 'metadata'])
-                ->map(static fn (object $rule): array => [
-                    'public_id' => (string) $rule->public_id,
-                    'rule_type' => (string) $rule->rule_type,
-                    'match_key' => (string) $rule->match_key,
-                    'match_operator' => (string) $rule->match_operator,
-                    'risk_level' => is_string($rule->risk_level ?? null) ? $rule->risk_level : null,
-                    'action' => (string) $rule->action,
-                    'priority' => (int) $rule->priority,
-                    'is_active' => (bool) $rule->is_active,
+                ->map(fn (object $rule): array => [
+                    'public_id' => $this->rowString($rule, 'public_id'),
+                    'rule_type' => $this->rowString($rule, 'rule_type'),
+                    'match_key' => $this->rowString($rule, 'match_key'),
+                    'match_operator' => $this->rowString($rule, 'match_operator'),
+                    'risk_level' => $this->rowNullableString($rule, 'risk_level'),
+                    'action' => $this->rowString($rule, 'action'),
+                    'priority' => $this->rowInt($rule, 'priority'),
+                    'is_active' => $this->rowBool($rule, 'is_active'),
                 ])->all(),
         ];
-        $policyPublicId = is_object($policy) ? (string) $policy->public_id : 'none';
-        $policyVersion = is_object($policy) ? (int) $policy->version : 0;
+        $policyPublicId = is_object($policy) ? $this->rowString($policy, 'public_id') : 'none';
+        $policyVersion = is_object($policy) ? $this->rowInt($policy, 'version') : 0;
 
         $id = DB::table('islamic_screening_results')->insertGetId([
             'public_id' => (string) Str::ulid(),
@@ -336,7 +349,7 @@ final class IslamicScreeningPolicyService
         }
 
         $this->securityAudit->record('islamic.screening.evaluated', actor: $actor, properties: [
-            'result_public_id' => (string) $stored->public_id,
+            'result_public_id' => $this->rowString($stored, 'public_id'),
             'subject_type' => $subjectType,
             'subject_public_id' => $subjectPublicId,
             'context_type' => $contextType,
@@ -346,7 +359,7 @@ final class IslamicScreeningPolicyService
         ]);
 
         return [
-            'public_id' => (string) $stored->public_id,
+            'public_id' => $this->rowString($stored, 'public_id'),
             'result' => $result,
             'policy_public_id' => $policyPublicId,
             'policy_version' => $policyVersion,
@@ -380,9 +393,12 @@ final class IslamicScreeningPolicyService
     /** @param array<string,mixed> $facts */
     private function ruleMatches(object $rule, array $facts): bool
     {
-        $ruleType = (string) ($rule->rule_type ?? '');
-        $operator = (string) ($rule->match_operator ?? 'equals');
-        $key = (string) ($rule->match_key ?? '');
+        $ruleType = $this->rowString($rule, 'rule_type');
+        $operator = $this->rowString($rule, 'match_operator');
+        if ($operator === '') {
+            $operator = 'equals';
+        }
+        $key = $this->rowString($rule, 'match_key');
         $haystack = $this->factValuesByRuleType($ruleType, $facts);
         foreach ($haystack as $value) {
             if ($this->matches($operator, $value, $key)) {
@@ -393,7 +409,10 @@ final class IslamicScreeningPolicyService
         return false;
     }
 
-    /** @return list<string> */
+    /**
+     * @param  array<string, mixed>  $facts
+     * @return list<string>
+     */
     private function factValuesByRuleType(string $ruleType, array $facts): array
     {
         $map = [
@@ -459,5 +478,40 @@ final class IslamicScreeningPolicyService
         if (! array_key_exists($contextType, self::CONTEXT_BLOCKER_MAP)) {
             throw new InvalidArgumentException('Unknown screening context type: '.$contextType.'.');
         }
+    }
+
+    private function rowString(object $row, string $key): string
+    {
+        $value = ((array) $row)[$key] ?? '';
+
+        return is_string($value) ? $value : (is_numeric($value) || is_bool($value) ? (string) $value : '');
+    }
+
+    private function rowInt(object $row, string $key): int
+    {
+        $value = ((array) $row)[$key] ?? null;
+
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function rowBool(object $row, string $key): bool
+    {
+        return (bool) (((array) $row)[$key] ?? false);
+    }
+
+    private function rowNullableString(object $row, string $key): ?string
+    {
+        $value = ((array) $row)[$key] ?? null;
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_string($value)) {
+            return $value;
+        }
+        if (is_numeric($value) || is_bool($value)) {
+            return (string) $value;
+        }
+
+        return null;
     }
 }

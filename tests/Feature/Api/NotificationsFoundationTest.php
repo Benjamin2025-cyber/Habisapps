@@ -514,15 +514,16 @@ final class NotificationsFoundationTest extends TestCase
     public function test_report_deadline_producer_targets_configured_roles(): void
     {
         $this->seedInternalAlertTemplates();
+        $businessDate = Carbon::parse('2026-05-10');
         $this->seedReportDefinitionWithDeadline([
             'frequency' => 'monthly',
-            'due_day_of_month' => Carbon::today()->addDays(2)->day,
+            'due_day_of_month' => 12,
             'alert_lead_days' => 5,
             'target_roles' => ['platform-admin'],
         ]);
 
         $producer = app(InternalAlertProducer::class);
-        $created = $producer->produceReportDeadlineAlerts(Carbon::today());
+        $created = $producer->produceReportDeadlineAlerts($businessDate);
 
         self::assertSame(1, $created);
         $this->assertDatabaseHas('notification_deliveries', [

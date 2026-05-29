@@ -35,7 +35,7 @@ final class IslamicProductReadinessService
             return [
                 'overall_status' => 'fail',
                 'family_code' => '',
-                'evaluated_at' => ($asOf ?? CarbonImmutable::now())->toISOString(),
+                'evaluated_at' => ($asOf ?? CarbonImmutable::now())->toIso8601String(),
                 'gates' => [[
                     'gate_key' => 'islamic_product',
                     'status' => 'fail',
@@ -52,7 +52,7 @@ final class IslamicProductReadinessService
             return [
                 'overall_status' => 'fail',
                 'family_code' => '',
-                'evaluated_at' => ($asOf ?? CarbonImmutable::now())->toISOString(),
+                'evaluated_at' => ($asOf ?? CarbonImmutable::now())->toIso8601String(),
                 'gates' => [[
                     'gate_key' => 'islamic_product',
                     'status' => 'fail',
@@ -153,9 +153,9 @@ final class IslamicProductReadinessService
 
         $familyMetadata = $this->productFamilies->metadataFor($family);
         $expectedReportingCategory = is_array($familyMetadata) && is_string($familyMetadata['reporting_category'] ?? null)
-            ? (string) $familyMetadata['reporting_category']
+            ? $familyMetadata['reporting_category']
             : null;
-        $reportingCategoryValue = is_string($rules['reporting_category'] ?? null) ? (string) $rules['reporting_category'] : null;
+        $reportingCategoryValue = is_string($rules['reporting_category'] ?? null) ? $rules['reporting_category'] : null;
 
         $documentRequirementFailures = is_array($rules['document_requirements'] ?? null) && $rules['document_requirements'] !== []
             ? []
@@ -271,7 +271,7 @@ final class IslamicProductReadinessService
         if (in_array($screening['result'], ['fail', 'manual_review', 'expired'], true)) {
             $messages = ['Screening policy returned '.$screening['result'].'.'];
             if (is_string($screening['block_reason'] ?? null) && $screening['block_reason'] !== '') {
-                $messages[] = (string) $screening['block_reason'];
+                $messages[] = $screening['block_reason'];
             }
             if (is_string($screening['review_case_public_id'] ?? null) && $screening['review_case_public_id'] !== '') {
                 $messages[] = 'review_case_public_id='.$screening['review_case_public_id'];
@@ -303,7 +303,7 @@ final class IslamicProductReadinessService
         return [
             'overall_status' => $failuresByGate === [] ? 'pass' : 'fail',
             'family_code' => $family,
-            'evaluated_at' => $evaluatedAt->toISOString(),
+            'evaluated_at' => $evaluatedAt->toIso8601String(),
             'gates' => $gates,
             'failures_by_gate' => $failuresByGate,
             'missing_items' => array_values(array_unique($missingItems)),
@@ -397,7 +397,10 @@ final class IslamicProductReadinessService
             ->exists();
     }
 
-    /** @param array<string, mixed> $rules @return array<int, string> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<int, string>
+     */
     private function mourabahaReferenceFailures(array $rules, ?CarbonInterface $asOf): array
     {
         $configuration = is_array($rules['mourabaha_configuration'] ?? null) ? $rules['mourabaha_configuration'] : null;
@@ -411,7 +414,10 @@ final class IslamicProductReadinessService
         return [];
     }
 
-    /** @param array<string, mixed> $rules @return array<int, string> */
+    /**
+     * @param  array<string, mixed>  $rules
+     * @return array<int, string>
+     */
     private function mourabahaMappingRequirementFailures(array $rules, ?CarbonInterface $asOf): array
     {
         $configuration = is_array($rules['mourabaha_configuration'] ?? null) ? $rules['mourabaha_configuration'] : null;

@@ -198,9 +198,6 @@ final class IslamicFinancedAssetStateMachine
             if (is_string($value) && trim($value) === '') {
                 throw new InvalidArgumentException(sprintf('Asset transition to "%s" evidence key "%s" cannot be empty.', $toStatus, $key));
             }
-            if ($value === null) {
-                throw new InvalidArgumentException(sprintf('Asset transition to "%s" evidence key "%s" cannot be null.', $toStatus, $key));
-            }
         }
     }
 

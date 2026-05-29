@@ -65,7 +65,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     if (! is_object($financing) || ! is_numeric($financing->id)) {
                         throw new InvalidArgumentException('Linked Islamic financing is invalid.');
                     }
-                    if (is_string($financing->status ?? null) && (string) $financing->status !== 'draft') {
+                    if (is_string($financing->status ?? null) && $financing->status !== 'draft') {
                         throw new InvalidArgumentException('Salam goods can only be linked to draft financings.');
                     }
                     $financingId = (int) $financing->id;
@@ -80,7 +80,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     'quantity_unit' => (string) $validated['quantity_unit'],
                     'delivery_date' => (string) $validated['delivery_date'],
                     'delivery_place' => (string) $validated['delivery_place'],
-                    'counterparty_reference' => is_string($validated['counterparty_reference'] ?? null) && $validated['counterparty_reference'] !== '' ? (string) $validated['counterparty_reference'] : null,
+                    'counterparty_reference' => is_string($validated['counterparty_reference'] ?? null) && $validated['counterparty_reference'] !== '' ? $validated['counterparty_reference'] : null,
                     'inspection_requirements' => isset($validated['inspection_requirements']) && is_array($validated['inspection_requirements']) ? json_encode($validated['inspection_requirements'], JSON_THROW_ON_ERROR) : null,
                     'acceptance_rules' => isset($validated['acceptance_rules']) && is_array($validated['acceptance_rules']) ? json_encode($validated['acceptance_rules'], JSON_THROW_ON_ERROR) : null,
                     'status' => IslamicSalamGoodsStateMachine::STATUS_SPECIFIED,
@@ -191,7 +191,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                 $this->assertGoodsReadyForApproval($this->rowInt($financing, 'id'));
 
                 $referenceGoodsId = null;
-                $referenceGoodsPublicId = is_string($validated['reference_goods_public_id'] ?? null) ? (string) $validated['reference_goods_public_id'] : null;
+                $referenceGoodsPublicId = is_string($validated['reference_goods_public_id'] ?? null) ? $validated['reference_goods_public_id'] : null;
                 if ($referenceGoodsPublicId !== null && $referenceGoodsPublicId !== '') {
                     $goods = DB::table('islamic_salam_goods')->where('public_id', $referenceGoodsPublicId)->lockForUpdate()->first(['id', 'islamic_financing_id']);
                     if (! is_object($goods) || $this->rowInt($goods, 'islamic_financing_id') !== $this->rowInt($financing, 'id')) {
@@ -209,8 +209,8 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                 }
                 $rules = $this->decodeJsonArray($product, 'rules') ?? [];
                 $upfrontPaymentMapping = is_array($rules['upfront_payment_mapping'] ?? null) ? $rules['upfront_payment_mapping'] : [];
-                $operationCode = is_string($upfrontPaymentMapping['operation_code'] ?? null) && trim((string) $upfrontPaymentMapping['operation_code']) !== ''
-                    ? trim((string) $upfrontPaymentMapping['operation_code'])
+                $operationCode = is_string($upfrontPaymentMapping['operation_code'] ?? null) && trim($upfrontPaymentMapping['operation_code']) !== ''
+                    ? trim($upfrontPaymentMapping['operation_code'])
                     : 'salam_upfront_payment';
 
                 $this->interestGuard->assertIslamicMappingAllowed($operationCode);
@@ -276,7 +276,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     'islamic_financing_id' => $this->rowInt($financing, 'id'),
                     'islamic_salam_goods_id' => $referenceGoodsId,
                     'operation_code' => $operationCode,
-                    'mapping_public_id' => (string) $creditMapping['mapping_public_id'],
+                    'mapping_public_id' => $creditMapping['mapping_public_id'],
                     'journal_entry_id' => $journal->id,
                     'amount_minor' => $amount,
                     'currency' => $currency,
@@ -284,9 +284,9 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     'idempotency_key' => $idempotencyKey,
                     'event_payload' => json_encode([
                         'reference_goods_public_id' => $referenceGoodsPublicId,
-                        'notes' => is_string($validated['notes'] ?? null) ? (string) $validated['notes'] : null,
-                        'debit_mapping_public_id' => (string) $debitMapping['mapping_public_id'],
-                        'credit_mapping_public_id' => (string) $creditMapping['mapping_public_id'],
+                        'notes' => is_string($validated['notes'] ?? null) ? $validated['notes'] : null,
+                        'debit_mapping_public_id' => $debitMapping['mapping_public_id'],
+                        'credit_mapping_public_id' => $creditMapping['mapping_public_id'],
                     ], JSON_THROW_ON_ERROR),
                     'actor_user_id' => $actor->id,
                     'posted_at' => now(),
@@ -337,8 +337,8 @@ final class IslamicSalamGoodsWorkflow extends BaseController
         if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
-        $inventoryRef = is_string($validated['inventory_reference'] ?? null) && $validated['inventory_reference'] !== '' ? (string) $validated['inventory_reference'] : null;
-        $settlementRef = is_string($validated['settlement_reference'] ?? null) && $validated['settlement_reference'] !== '' ? (string) $validated['settlement_reference'] : null;
+        $inventoryRef = is_string($validated['inventory_reference'] ?? null) && $validated['inventory_reference'] !== '' ? $validated['inventory_reference'] : null;
+        $settlementRef = is_string($validated['settlement_reference'] ?? null) && $validated['settlement_reference'] !== '' ? $validated['settlement_reference'] : null;
         if ($inventoryRef === null && $settlementRef === null) {
             return $this->respondUnprocessable(errors: ['islamic_salam_goods_delivery' => ['Delivery requires inventory_reference or settlement_reference (IF-041 Phase 4).']]);
         }
@@ -379,9 +379,9 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     actor: $actor,
                     strictPolicy: false,
                 );
-                $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? (string) $screeningOutcome['public_id'] : null;
-                $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? (string) $screeningOutcome['review_case_public_id'] : null;
-                $resultStatus = is_string($screeningOutcome['result'] ?? null) ? (string) $screeningOutcome['result'] : 'not_applicable';
+                $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? $screeningOutcome['public_id'] : null;
+                $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? $screeningOutcome['review_case_public_id'] : null;
+                $resultStatus = is_string($screeningOutcome['result'] ?? null) ? $screeningOutcome['result'] : 'not_applicable';
                 if ($resultStatus === 'fail') {
                     throw new InvalidArgumentException('Salam goods delivery blocked by screening result.');
                 }
@@ -397,7 +397,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     'delivery_evidence' => $deliveryEvidencePublicId,
                     'inventory_reference' => $inventoryRef,
                     'settlement_reference' => $settlementRef,
-                    'notes' => is_string($validated['notes'] ?? null) ? (string) $validated['notes'] : null,
+                    'notes' => is_string($validated['notes'] ?? null) ? $validated['notes'] : null,
                     'actor_user_id' => $actor->id,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -550,9 +550,9 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                         actor: $actor,
                         strictPolicy: false,
                     );
-                    $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? (string) $screeningOutcome['public_id'] : null;
-                    $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? (string) $screeningOutcome['review_case_public_id'] : null;
-                    $resultStatus = is_string($screeningOutcome['result'] ?? null) ? (string) $screeningOutcome['result'] : 'not_applicable';
+                    $screeningResultPublicId = is_string($screeningOutcome['public_id'] ?? null) && $screeningOutcome['public_id'] !== '' ? $screeningOutcome['public_id'] : null;
+                    $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? $screeningOutcome['review_case_public_id'] : null;
+                    $resultStatus = is_string($screeningOutcome['result'] ?? null) ? $screeningOutcome['result'] : 'not_applicable';
                     if ($resultStatus === 'fail') {
                         throw new InvalidArgumentException('Salam goods acceptance transition blocked by screening result.');
                     }
@@ -567,8 +567,8 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     'islamic_salam_goods_id' => $this->rowInt($goods, 'id'),
                     'from_status' => $fromStatus,
                     'to_status' => $toStatus,
-                    'reason_code' => is_string($validated['reason_code'] ?? null) && $validated['reason_code'] !== '' ? (string) $validated['reason_code'] : null,
-                    'reason_note' => is_string($validated['reason_note'] ?? null) && $validated['reason_note'] !== '' ? (string) $validated['reason_note'] : null,
+                    'reason_code' => is_string($validated['reason_code'] ?? null) && $validated['reason_code'] !== '' ? $validated['reason_code'] : null,
+                    'reason_note' => is_string($validated['reason_note'] ?? null) && $validated['reason_note'] !== '' ? $validated['reason_note'] : null,
                     'screening_result_public_id' => $screeningResultPublicId,
                     'compliance_case_public_id' => $complianceCasePublicId,
                     'evidence_refs' => json_encode($evidence, JSON_THROW_ON_ERROR),
@@ -584,7 +584,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                     $goodsUpdate['screening_result_public_id'] = $screeningResultPublicId;
                 }
                 if ($toStatus === IslamicSalamGoodsStateMachine::STATUS_SETTLED && isset($evidence['settlement_reference']) && is_string($evidence['settlement_reference'])) {
-                    $goodsUpdate['settlement_reference'] = (string) $evidence['settlement_reference'];
+                    $goodsUpdate['settlement_reference'] = $evidence['settlement_reference'];
                 }
                 DB::table('islamic_salam_goods')->where('id', $this->rowInt($goods, 'id'))->update($goodsUpdate);
                 $this->upsertSettlementState(
@@ -671,7 +671,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
             if (! is_string($row->quality_spec ?? null) || $row->quality_spec === '') {
                 throw new InvalidArgumentException('Salam goods specification requires a quality spec (IF-041 activation gate).');
             }
-            if ($this->isVagueQualitySpec((string) $row->quality_spec)) {
+            if ($this->isVagueQualitySpec($row->quality_spec)) {
                 throw new InvalidArgumentException('Salam goods specification contains vague quality terms and cannot be approved (IF-081 goods precision gate).');
             }
         }
@@ -786,12 +786,32 @@ final class IslamicSalamGoodsWorkflow extends BaseController
     private function decodeJsonArray(object $row, string $field): ?array
     {
         $raw = ((array) $row)[$field] ?? null;
+        if (is_array($raw)) {
+            return $this->normalizeJsonObject($raw);
+        }
         if (! is_string($raw) || $raw === '') {
             return null;
         }
         $decoded = json_decode($raw, true);
 
-        return is_array($decoded) ? $decoded : null;
+        return is_array($decoded) ? $this->normalizeJsonObject($decoded) : null;
+    }
+
+    /**
+     * @param  array<mixed, mixed>  $value
+     * @return array<string, mixed>|null
+     */
+    private function normalizeJsonObject(array $value): ?array
+    {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            if (! is_string($key)) {
+                return null;
+            }
+            $normalized[$key] = $item;
+        }
+
+        return $normalized;
     }
 
     private function postSystemJournal(JournalEntry $journalEntry, User $actor): void

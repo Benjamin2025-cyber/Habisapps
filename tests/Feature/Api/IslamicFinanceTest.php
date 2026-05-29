@@ -400,7 +400,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->getJson('/api/v1/islamic-compliance-cases/report/summary');
         $this->assertJsonSuccess($summary);
-        self::assertGreaterThanOrEqual(1, (int) $summary->json('data.active_blockers'));
+        self::assertGreaterThanOrEqual(1, $this->asInt($summary->json('data.active_blockers')));
 
         $timeline = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -577,9 +577,9 @@ final class IslamicFinanceTest extends TestCase
         $result = DB::table('islamic_screening_results')->where('public_id', $resultPublicId)->first();
         self::assertIsObject($result);
         self::assertSame(7, (int) $result->policy_version);
-        self::assertSame((string) $policy['public_id'], (string) $result->policy_public_id);
+        self::assertSame($policy['public_id'], $result->policy_public_id);
         self::assertIsString($result->policy_snapshot);
-        self::assertStringContainsString('"version":7', (string) $result->policy_snapshot);
+        self::assertStringContainsString('"version":7', $result->policy_snapshot);
     }
 
     public function test_policy_activation_fails_unless_approval_workflow_is_approved(): void
@@ -643,7 +643,7 @@ final class IslamicFinanceTest extends TestCase
             ]);
         $this->assertJsonSuccess($response);
         self::assertSame('fail', $response->json('data.result'));
-        self::assertStringContainsString('No active screening policy', (string) $response->json('data.block_reason'));
+        self::assertStringContainsString('No active screening policy', $this->asString($response->json('data.block_reason')));
     }
 
     public function test_missing_screening_blocks_contract_activation(): void
@@ -747,7 +747,10 @@ final class IslamicFinanceTest extends TestCase
         self::assertIsObject($productRow);
         $rules = json_decode((string) ($productRow->rules ?? ''), true);
         self::assertIsArray($rules);
-        unset($rules['mourabaha_configuration']['allowed_costs_policy']);
+        $mourabahaConfiguration = $rules['mourabaha_configuration'] ?? [];
+        self::assertIsArray($mourabahaConfiguration);
+        unset($mourabahaConfiguration['allowed_costs_policy']);
+        $rules['mourabaha_configuration'] = $mourabahaConfiguration;
         DB::table('islamic_products')->where('public_id', $productPublicId)->update([
             'rules' => json_encode($rules, JSON_THROW_ON_ERROR),
             'updated_at' => now(),
@@ -823,7 +826,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
         $this->assertJsonError($approve, 422);
-        self::assertStringContainsString('Screening result must be pass', (string) $approve->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('Screening result must be pass', $this->asString($approve->json('errors.islamic_financing.0')));
 
         $caseId = DB::table('islamic_compliance_cases')
             ->where('subject_type', 'islamic_financing')
@@ -927,7 +930,7 @@ final class IslamicFinanceTest extends TestCase
             $this->assertJsonSuccess($response);
             self::assertSame('manual_review', $response->json('data.result'));
             $reviewCasePublicId = $this->requireStringJsonPath($response, 'data.review_case_public_id');
-            $caseId = (int) DB::table('islamic_compliance_cases')->where('public_id', $reviewCasePublicId)->value('id');
+            $caseId = $this->asInt(DB::table('islamic_compliance_cases')->where('public_id', $reviewCasePublicId)->value('id'));
             self::assertGreaterThan(0, $caseId);
 
             $this->assertDatabaseHas('islamic_compliance_case_blockers', [
@@ -1110,7 +1113,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($attachEvidence, 422);
         self::assertStringContainsString(
             'Purchase approval is required before purchase evidence can be attached.',
-            (string) $attachEvidence->json('errors.islamic_mourabaha_purchase_evidence.0')
+            $this->asString($attachEvidence->json('errors.islamic_mourabaha_purchase_evidence.0'))
         );
     }
 
@@ -1154,7 +1157,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($approve, 422);
         self::assertStringContainsString(
             'requires purchase/control evidence',
-            (string) $approve->json('errors.islamic_financing.0')
+            $this->asString($approve->json('errors.islamic_financing.0'))
         );
     }
 
@@ -1180,7 +1183,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($response, 422);
         self::assertStringContainsString(
             'Declared sale price must equal purchase_cost + allowed_costs + markup.',
-            (string) $response->json('errors.islamic_financing.0')
+            $this->asString($response->json('errors.islamic_financing.0'))
         );
     }
 
@@ -1270,7 +1273,7 @@ final class IslamicFinanceTest extends TestCase
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
 
         $this->assertJsonError($approve, 422);
-        self::assertStringContainsString('Approved Islamic mapping is required', (string) $approve->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('Approved Islamic mapping is required', $this->asString($approve->json('errors.islamic_financing.0')));
     }
 
     public function test_expired_mapping_blocks_posting(): void
@@ -1316,7 +1319,7 @@ final class IslamicFinanceTest extends TestCase
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
 
         $this->assertJsonError($approve, 422);
-        self::assertStringContainsString('murabaha_profit', (string) $approve->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('murabaha_profit', $this->asString($approve->json('errors.islamic_financing.0')));
     }
 
     public function test_sharia_required_mapping_blocks_until_sharia_approved(): void
@@ -1361,7 +1364,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('requires Sharia approval', (string) $blocked->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('requires Sharia approval', $this->asString($blocked->json('errors.islamic_financing.0')));
 
         DB::table('operation_account_mappings')
             ->where('public_id', $payableMappingPublicId)
@@ -1416,7 +1419,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('Approved Islamic mapping is required', (string) $blocked->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('Approved Islamic mapping is required', $this->asString($blocked->json('errors.islamic_financing.0')));
 
         $this->assertDatabaseHas('activity_log', [
             'event' => 'islamic.mapping.use_blocked',
@@ -1472,7 +1475,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-mappings/'.$mappingPublicId.'/approve');
         $this->assertJsonError($approveBlocked, 422);
-        self::assertStringContainsString('Sharia-required mapping cannot be approved', (string) $approveBlocked->json('errors.islamic_mapping.0'));
+        self::assertStringContainsString('Sharia-required mapping cannot be approved', $this->asString($approveBlocked->json('errors.islamic_mapping.0')));
 
         $approve = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -1524,7 +1527,7 @@ final class IslamicFinanceTest extends TestCase
             ]);
 
         $this->assertJsonError($createEvent, 422);
-        self::assertStringContainsString('Late-payment treatment is not enabled', (string) $createEvent->json('errors.islamic_treatment_event.0'));
+        self::assertStringContainsString('Late-payment treatment is not enabled', $this->asString($createEvent->json('errors.islamic_treatment_event.0')));
     }
 
     public function test_zakat_mapping_required_when_zakat_policy_enabled(): void
@@ -1563,7 +1566,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-treatment-events/'.$eventPublicId.'/post');
         $this->assertJsonError($post, 422);
-        self::assertStringContainsString('Approved Islamic mapping is required', (string) $post->json('errors.islamic_treatment_event.0'));
+        self::assertStringContainsString('Approved Islamic mapping is required', $this->asString($post->json('errors.islamic_treatment_event.0')));
     }
 
     public function test_non_compliant_income_cannot_post_to_ordinary_profit_mapping(): void
@@ -1602,7 +1605,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-treatment-events/'.$eventPublicId.'/post');
         $this->assertJsonError($post, 422);
-        self::assertStringContainsString('cannot use ordinary profit', (string) $post->json('errors.islamic_treatment_event.0'));
+        self::assertStringContainsString('cannot use ordinary profit', $this->asString($post->json('errors.islamic_treatment_event.0')));
     }
 
     public function test_expired_treatment_policy_blocks_new_event_routing(): void
@@ -1638,7 +1641,7 @@ final class IslamicFinanceTest extends TestCase
                 'occurred_on' => now()->toDateString(),
             ]);
         $this->assertJsonError($createEvent, 422);
-        self::assertStringContainsString('not effective', (string) $createEvent->json('errors.islamic_treatment_event.0'));
+        self::assertStringContainsString('not effective', $this->asString($createEvent->json('errors.islamic_treatment_event.0')));
     }
 
     public function test_reconciliation_report_matches_source_events_to_posted_journals(): void
@@ -1884,7 +1887,7 @@ final class IslamicFinanceTest extends TestCase
             ]);
 
         $this->assertJsonError($collect, 422);
-        self::assertStringContainsString('approved financings', (string) $collect->json('errors.islamic_mourabaha_collection.0'));
+        self::assertStringContainsString('approved financings', $this->asString($collect->json('errors.islamic_mourabaha_collection.0')));
     }
 
     public function test_interest_revenue_mapping_rejected_for_collection(): void
@@ -1922,7 +1925,7 @@ final class IslamicFinanceTest extends TestCase
                 'operation_code' => 'interest_revenue_collection',
             ]);
         $this->assertJsonError($collect, 422);
-        self::assertStringContainsString('conventional interest mapping', (string) $collect->json('errors.islamic_mourabaha_collection.0'));
+        self::assertStringContainsString('conventional interest mapping', $this->asString($collect->json('errors.islamic_mourabaha_collection.0')));
     }
 
     public function test_over_collection_is_rejected(): void
@@ -1959,7 +1962,7 @@ final class IslamicFinanceTest extends TestCase
                 'amount_minor' => 1500000,
             ]);
         $this->assertJsonError($collect, 422);
-        self::assertStringContainsString('cannot exceed outstanding', (string) $collect->json('errors.islamic_mourabaha_collection.0'));
+        self::assertStringContainsString('cannot exceed outstanding', $this->asString($collect->json('errors.islamic_mourabaha_collection.0')));
     }
 
     public function test_reversal_offsets_original_journal_effect(): void
@@ -2016,7 +2019,7 @@ final class IslamicFinanceTest extends TestCase
         $reversalJournal = JournalEntry::query()->find((int) $reversalEvent->journal_entry_id);
         self::assertInstanceOf(JournalEntry::class, $reversalJournal);
 
-        self::assertSame((int) $sourceJournal->id, (int) $reversalJournal->reversal_of_journal_entry_id);
+        self::assertSame($sourceJournal->id, (int) $reversalJournal->reversal_of_journal_entry_id);
         self::assertSame(JournalEntry::STATUS_REVERSED, (string) JournalEntry::query()->find($sourceJournal->id)?->status);
     }
 
@@ -2141,7 +2144,7 @@ final class IslamicFinanceTest extends TestCase
                 'reason' => 'reversal mapping missing',
             ]);
         $this->assertJsonError($reverse, 422);
-        self::assertStringContainsString('Approved Islamic mapping is required', (string) $reverse->json('errors.islamic_mourabaha_reversal.0'));
+        self::assertStringContainsString('Approved Islamic mapping is required', $this->asString($reverse->json('errors.islamic_mourabaha_reversal.0')));
     }
 
     public function test_rebate_applies_approved_policy_and_adjusts_outstanding(): void
@@ -2284,7 +2287,7 @@ final class IslamicFinanceTest extends TestCase
                 'amount_minor' => 10000,
             ]);
         $this->assertJsonError($default, 422);
-        self::assertStringContainsString('approved treatment policy route', (string) $default->json('errors.islamic_mourabaha_default_treatment.0'));
+        self::assertStringContainsString('approved treatment policy route', $this->asString($default->json('errors.islamic_mourabaha_default_treatment.0')));
     }
 
     public function test_default_treatment_applies_approved_policy_and_adjusts_receivable(): void
@@ -2378,7 +2381,7 @@ final class IslamicFinanceTest extends TestCase
                 'amount_minor' => 50000,
             ]);
         $this->assertJsonError($missingSource, 422);
-        self::assertStringContainsString('requires source event reference', (string) $missingSource->json('errors.islamic_mourabaha_correction.0'));
+        self::assertStringContainsString('requires source event reference', $this->asString($missingSource->json('errors.islamic_mourabaha_correction.0')));
 
         $correction = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -2484,7 +2487,9 @@ final class IslamicFinanceTest extends TestCase
             ->getJson('/api/v1/islamic-product-families');
         $this->assertJsonSuccess($list);
 
-        $codes = collect($list->json('data'))->pluck('code')->all();
+        $listData = $list->json('data');
+        self::assertIsArray($listData);
+        $codes = collect($listData)->pluck('code')->all();
         foreach ([
             'mourabaha',
             'ijara',
@@ -2527,9 +2532,13 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonSuccess($ijara);
         $this->assertJsonSuccess($salam);
 
-        self::assertContains('maintenance_policy', $ijara->json('data.required_fields_schema.required'));
-        self::assertNotContains('maintenance_policy', $salam->json('data.required_fields_schema.required'));
-        self::assertContains('allowed_goods_policy', $salam->json('data.required_fields_schema.required'));
+        $ijaraRequiredFields = $ijara->json('data.required_fields_schema.required');
+        $salamRequiredFields = $salam->json('data.required_fields_schema.required');
+        self::assertIsArray($ijaraRequiredFields);
+        self::assertIsArray($salamRequiredFields);
+        self::assertContains('maintenance_policy', $ijaraRequiredFields);
+        self::assertNotContains('maintenance_policy', $salamRequiredFields);
+        self::assertContains('allowed_goods_policy', $salamRequiredFields);
     }
 
     public function test_financing_creation_rejects_account_family_kind(): void
@@ -2601,7 +2610,7 @@ final class IslamicFinanceTest extends TestCase
                 'linkable_code' => 'islamic_current_account',
             ]);
         $this->assertJsonError($invalidStandardLink, 422);
-        self::assertStringContainsString('Unknown product family code', (string) $invalidStandardLink->json('errors.islamic_standard_link.0'));
+        self::assertStringContainsString('Unknown product family code', $this->asString($invalidStandardLink->json('errors.islamic_standard_link.0')));
 
         $validStandardAccountLink = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -2654,7 +2663,7 @@ final class IslamicFinanceTest extends TestCase
                 'restriction_mode' => 'allow',
             ]);
         $this->assertJsonError($invalidSignoffLink, 422);
-        self::assertStringContainsString('Unknown product family code', (string) $invalidSignoffLink->json('errors.islamic_regulatory_signoff_link.0'));
+        self::assertStringContainsString('Unknown product family code', $this->asString($invalidSignoffLink->json('errors.islamic_regulatory_signoff_link.0')));
 
         $validSignoffAccountLink = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -2768,7 +2777,7 @@ final class IslamicFinanceTest extends TestCase
                 'markup_minor' => 200000,
             ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('allow_template_language_fallback', (string) $blocked->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('allow_template_language_fallback', $this->asString($blocked->json('errors.islamic_financing.0')));
 
         $allowed = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -2828,7 +2837,7 @@ final class IslamicFinanceTest extends TestCase
                 'markup_minor' => 200000,
             ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('Multiple approved/effective Islamic contract templates are eligible', (string) $blocked->json('errors.islamic_financing.0'));
+        self::assertStringContainsString('Multiple approved/effective Islamic contract templates are eligible', $this->asString($blocked->json('errors.islamic_financing.0')));
     }
 
     public function test_existing_contract_keeps_old_template_snapshot_after_retirement(): void
@@ -3157,7 +3166,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($create, 422);
-        self::assertStringContainsString('cannot enable transfer_option', strtolower((string) $create->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString('cannot enable transfer_option', strtolower($this->asString($create->json('errors.islamic_interest_guardrails.0'))));
     }
 
     public function test_if070_ijara_payload_exposes_variant_and_transfer_flags(): void
@@ -3235,7 +3244,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($unknownKey, 422);
-        self::assertStringContainsString('unknown salam rule key', strtolower((string) $unknownKey->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString('unknown salam rule key', strtolower($this->asString($unknownKey->json('errors.islamic_interest_guardrails.0'))));
 
         $wildcardGoods = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -3248,7 +3257,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($wildcardGoods, 422);
-        self::assertStringContainsString('wildcard', strtolower((string) $wildcardGoods->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString('wildcard', strtolower($this->asString($wildcardGoods->json('errors.islamic_interest_guardrails.0'))));
     }
 
     public function test_if080_missing_upfront_payment_mapping_blocks_activation(): void
@@ -3329,7 +3338,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($unknownKey, 422);
-        self::assertStringContainsString("unknown istisna'a rule key", strtolower((string) $unknownKey->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString("unknown istisna'a rule key", strtolower($this->asString($unknownKey->json('errors.islamic_interest_guardrails.0'))));
 
         $stagedWithoutMilestones = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -3343,7 +3352,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($stagedWithoutMilestones, 422);
-        self::assertStringContainsString('requires explicit milestone', strtolower((string) $stagedWithoutMilestones->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString('requires explicit milestone', strtolower($this->asString($stagedWithoutMilestones->json('errors.islamic_interest_guardrails.0'))));
     }
 
     public function test_if090_missing_milestone_variation_and_project_mapping_each_block_activation(): void
@@ -3436,7 +3445,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($response, 422);
-        self::assertStringContainsString('unknown moudaraba rule key', strtolower((string) $response->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString('unknown moudaraba rule key', strtolower($this->asString($response->json('errors.islamic_interest_guardrails.0'))));
     }
 
     public function test_if100_fixed_institution_profit_entitlement_is_rejected(): void
@@ -3457,7 +3466,7 @@ final class IslamicFinanceTest extends TestCase
                 ]),
             ]);
         $this->assertJsonError($response, 422);
-        self::assertStringContainsString('fixed institution profit entitlement is forbidden', strtolower((string) $response->json('errors.islamic_interest_guardrails.0')));
+        self::assertStringContainsString('fixed institution profit entitlement is forbidden', strtolower($this->asString($response->json('errors.islamic_interest_guardrails.0'))));
     }
 
     public function test_if100_missing_reporting_cadence_and_loss_rules_block_activation(): void
@@ -3548,7 +3557,9 @@ final class IslamicFinanceTest extends TestCase
 
         $response->assertJsonPath('data.status', 'fail');
         self::assertNotEmpty($response->json('data.failures_by_gate.islamic_product_maintenance_policy'));
-        self::assertContains('islamic_product:maintenance_policy', $response->json('data.missing_items'));
+        $missingItems = $response->json('data.missing_items');
+        self::assertIsArray($missingItems);
+        self::assertContains('islamic_product:maintenance_policy', $missingItems);
     }
 
     public function test_product_approval_persists_readiness_snapshot_and_exposes_it(): void
@@ -3668,7 +3679,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($approve, 422);
         self::assertStringContainsString(
             'IF-040 activation gate',
-            (string) $approve->json('errors.islamic_financing.0')
+            $this->asString($approve->json('errors.islamic_financing.0'))
         );
     }
 
@@ -3696,7 +3707,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($jump, 422);
         self::assertStringContainsString(
             'not allowed',
-            (string) $jump->json('errors.islamic_financed_asset.0')
+            $this->asString($jump->json('errors.islamic_financed_asset.0'))
         );
     }
 
@@ -3723,7 +3734,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($response, 422);
         self::assertStringContainsString(
             'requires evidence key',
-            (string) $response->json('errors.islamic_financed_asset.0')
+            $this->asString($response->json('errors.islamic_financed_asset.0'))
         );
     }
 
@@ -3799,7 +3810,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($follow, 422);
         self::assertStringContainsString(
             'terminal',
-            (string) $follow->json('errors.islamic_financed_asset.0')
+            $this->asString($follow->json('errors.islamic_financed_asset.0'))
         );
     }
 
@@ -3835,7 +3846,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($response, 422);
         self::assertStringContainsString(
             'references unknown document',
-            (string) $response->json('errors.islamic_financed_asset.0')
+            $this->asString($response->json('errors.islamic_financed_asset.0'))
         );
     }
 
@@ -3912,7 +3923,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($response, 422);
         self::assertStringContainsString(
             'blocked by screening',
-            (string) $response->json('errors.islamic_mourabaha_purchase_evidence.0')
+            $this->asString($response->json('errors.islamic_mourabaha_purchase_evidence.0'))
         );
     }
 
@@ -4068,7 +4079,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($excess, 422);
         self::assertStringContainsString(
             'exceeds specified quantity',
-            (string) $excess->json('errors.islamic_salam_goods_delivery.0')
+            $this->asString($excess->json('errors.islamic_salam_goods_delivery.0'))
         );
     }
 
@@ -4100,7 +4111,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($missingRef, 422);
         self::assertStringContainsString(
             'inventory_reference or settlement_reference',
-            (string) $missingRef->json('errors.islamic_salam_goods_delivery.0')
+            $this->asString($missingRef->json('errors.islamic_salam_goods_delivery.0'))
         );
     }
 
@@ -4130,7 +4141,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($missingReason, 422);
         self::assertStringContainsString(
             'requires evidence key "substitution_reason"',
-            (string) $missingReason->json('errors.islamic_salam_goods.0')
+            $this->asString($missingReason->json('errors.islamic_salam_goods.0'))
         );
 
         $missingEvidence = $this->withApiHeaders()
@@ -4142,7 +4153,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($missingEvidence, 422);
         self::assertStringContainsString(
             'requires evidence key "non_delivery_evidence"',
-            (string) $missingEvidence->json('errors.islamic_salam_goods.0')
+            $this->asString($missingEvidence->json('errors.islamic_salam_goods.0'))
         );
     }
 
@@ -4171,7 +4182,7 @@ final class IslamicFinanceTest extends TestCase
                 'evidence' => ['settlement_reference' => 'SET-001'],
             ]);
         $this->assertJsonError($jump, 422);
-        self::assertStringContainsString('not allowed', (string) $jump->json('errors.islamic_salam_goods.0'));
+        self::assertStringContainsString('not allowed', $this->asString($jump->json('errors.islamic_salam_goods.0')));
 
         $cancel = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -4188,7 +4199,7 @@ final class IslamicFinanceTest extends TestCase
                 'evidence' => ['delivery_evidence' => 'doc-x'],
             ]);
         $this->assertJsonError($afterTerminal, 422);
-        self::assertStringContainsString('terminal', (string) $afterTerminal->json('errors.islamic_salam_goods.0'));
+        self::assertStringContainsString('terminal', $this->asString($afterTerminal->json('errors.islamic_salam_goods.0')));
     }
 
     public function test_if041_delivery_state_transitions_must_use_deliveries_endpoint(): void
@@ -4216,7 +4227,7 @@ final class IslamicFinanceTest extends TestCase
                 'evidence' => ['delivery_evidence' => $document],
             ]);
         $this->assertJsonError($transition, 422);
-        self::assertStringContainsString('deliveries endpoint', strtolower((string) $transition->json('errors.islamic_salam_goods.0')));
+        self::assertStringContainsString('deliveries endpoint', strtolower($this->asString($transition->json('errors.islamic_salam_goods.0'))));
     }
 
     public function test_if041_delivery_evidence_must_reference_existing_document(): void
@@ -4243,7 +4254,7 @@ final class IslamicFinanceTest extends TestCase
                 'delivered_on' => '2026-12-20',
                 'delivery_evidence' => '01JFAKEDOCXXXXX',
                 'inventory_reference' => 'INV-99',
-        ]);
+            ]);
         $this->assertJsonError($forged, 422);
     }
 
@@ -4281,7 +4292,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($approve, 422);
         self::assertStringContainsString(
             'cannot proceed with goods in "cancelled" status',
-            strtolower((string) $approve->json('errors.islamic_financing.0'))
+            strtolower($this->asString($approve->json('errors.islamic_financing.0')))
         );
     }
 
@@ -4331,7 +4342,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
         $this->assertJsonError($approve, 422);
-        self::assertStringContainsString('vague quality', strtolower((string) $approve->json('errors.islamic_financing.0')));
+        self::assertStringContainsString('vague quality', strtolower($this->asString($approve->json('errors.islamic_financing.0'))));
     }
 
     public function test_if081_salam_upfront_payment_before_approval_is_rejected(): void
@@ -4371,7 +4382,7 @@ final class IslamicFinanceTest extends TestCase
                 'idempotency_key' => 'salam-pre-approval-1',
             ]);
         $this->assertJsonError($rejected, 422);
-        self::assertStringContainsString('only be posted after financing approval', strtolower((string) $rejected->json('errors.islamic_salam_upfront_payment.0')));
+        self::assertStringContainsString('only be posted after financing approval', strtolower($this->asString($rejected->json('errors.islamic_salam_upfront_payment.0'))));
     }
 
     public function test_if081_salam_upfront_payment_after_approval_posts_successfully(): void
@@ -4478,7 +4489,7 @@ final class IslamicFinanceTest extends TestCase
         $delivery->assertJsonPath('data.goods.status', 'partially_delivered');
 
         $this->assertDatabaseHas('islamic_salam_settlement_states', [
-            'islamic_salam_goods_id' => (int) $goodsId,
+            'islamic_salam_goods_id' => $goodsId,
             'status' => 'open',
             'total_units' => 100,
             'delivered_units' => 40,
@@ -4518,7 +4529,7 @@ final class IslamicFinanceTest extends TestCase
             'idempotency_key' => 'pay-1',
         ]);
         $this->assertJsonError($denied, 422);
-        self::assertStringContainsString('inspection must be approved', (string) $denied->json('errors.islamic_istisnaa_payment.0'));
+        self::assertStringContainsString('inspection must be approved', $this->asString($denied->json('errors.islamic_istisnaa_payment.0')));
 
         // Reject inspection -> payment still blocked.
         $document = $this->createEvidenceDocument($actor);
@@ -4582,7 +4593,7 @@ final class IslamicFinanceTest extends TestCase
             'idempotency_key' => 'pay-excess',
         ]);
         $this->assertJsonError($excess, 422);
-        self::assertStringContainsString('exceeds remaining approved', (string) $excess->json('errors.islamic_istisnaa_payment.0'));
+        self::assertStringContainsString('exceeds remaining approved', $this->asString($excess->json('errors.islamic_istisnaa_payment.0')));
     }
 
     public function test_if042_variation_cannot_change_already_posted_payment_facts(): void
@@ -4625,7 +4636,7 @@ final class IslamicFinanceTest extends TestCase
             'approval_evidence_document_public_id' => $doc,
         ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('posted payment facts are immutable', (string) $blocked->json('errors.islamic_istisnaa_variation.0'));
+        self::assertStringContainsString('posted payment facts are immutable', $this->asString($blocked->json('errors.islamic_istisnaa_variation.0')));
     }
 
     public function test_if042_variation_creates_before_after_snapshot_for_unpaid_milestone(): void
@@ -4690,7 +4701,7 @@ final class IslamicFinanceTest extends TestCase
             'acceptance_evidence_document_public_id' => $acceptanceDoc,
         ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('requires all milestones paid in full', (string) $blocked->json('errors.islamic_istisnaa_project.0'));
+        self::assertStringContainsString('requires all milestones paid in full', $this->asString($blocked->json('errors.islamic_istisnaa_project.0')));
 
         // Fully pay milestone, then acceptance succeeds.
         $doc = $this->createEvidenceDocument($actor);
@@ -4761,7 +4772,7 @@ final class IslamicFinanceTest extends TestCase
             'approval_evidence_document_public_id' => $doc,
         ]);
         $this->assertJsonError($response, 422);
-        self::assertStringContainsString('no parallel supplier reference', strtolower((string) $response->json('errors.islamic_istisnaa_project.0')));
+        self::assertStringContainsString('no parallel supplier reference', strtolower($this->asString($response->json('errors.islamic_istisnaa_project.0'))));
     }
 
     public function test_if042_payment_idempotency_key_prevents_double_post(): void
@@ -4800,7 +4811,7 @@ final class IslamicFinanceTest extends TestCase
             'idempotency_key' => 'dup-key',
         ]);
         $this->assertJsonError($dup, 422);
-        self::assertStringContainsString('idempotency_key already posted', (string) $dup->json('errors.islamic_istisnaa_payment.0'));
+        self::assertStringContainsString('idempotency_key already posted', $this->asString($dup->json('errors.islamic_istisnaa_payment.0')));
     }
 
     public function test_if042_istisnaa_financing_approval_does_not_require_murabaha_posting_chain(): void
@@ -4875,7 +4886,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/approve');
         $this->assertJsonError($approve, 422);
-        self::assertStringContainsString('project approval screening result', strtolower((string) $approve->json('errors.islamic_financing.0')));
+        self::assertStringContainsString('project approval screening result', strtolower($this->asString($approve->json('errors.islamic_financing.0'))));
 
         $doc = $this->createEvidenceDocument($actor);
         $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-istisnaa-milestones/'.$milestonePublicId.'/inspection', [
@@ -4888,7 +4899,7 @@ final class IslamicFinanceTest extends TestCase
             'idempotency_key' => 'blocked-payment',
         ]);
         $this->assertJsonError($payment, 422);
-        self::assertStringContainsString('project approval screening result', strtolower((string) $payment->json('errors.islamic_istisnaa_payment.0')));
+        self::assertStringContainsString('project approval screening result', strtolower($this->asString($payment->json('errors.islamic_istisnaa_payment.0'))));
     }
 
     public function test_if042_financing_approval_validates_all_linked_projects_not_just_first(): void
@@ -4936,11 +4947,11 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($blocked, 422);
         self::assertStringContainsString(
             'parallel supplier reference must be approved',
-            strtolower((string) $blocked->json('errors.islamic_financing.0'))
+            strtolower($this->asString($blocked->json('errors.islamic_financing.0')))
         );
         self::assertStringContainsString(
             strtolower($projectBPublicId),
-            strtolower((string) $blocked->json('errors.islamic_financing.0'))
+            strtolower($this->asString($blocked->json('errors.islamic_financing.0')))
         );
 
         $approvalDoc = $this->createEvidenceDocument($actor);
@@ -4974,7 +4985,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($response, 422);
         self::assertStringContainsString(
             'only be linked to draft financings',
-            strtolower((string) $response->json('errors.islamic_istisnaa_project.0'))
+            strtolower($this->asString($response->json('errors.islamic_istisnaa_project.0')))
         );
     }
 
@@ -5061,7 +5072,7 @@ final class IslamicFinanceTest extends TestCase
             'idempotency_key' => 'if091-no-approval',
         ]);
         $this->assertJsonError($payment, 422);
-        self::assertStringContainsString('inspection must be approved', strtolower((string) $payment->json('errors.islamic_istisnaa_payment.0')));
+        self::assertStringContainsString('inspection must be approved', strtolower($this->asString($payment->json('errors.islamic_istisnaa_payment.0'))));
     }
 
     public function test_if091_variation_requires_approval_before_future_obligation_change(): void
@@ -5214,7 +5225,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-financings/'.$financingPublicId.'/activate-lease');
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('owned/controlled asset', strtolower((string) $blocked->json('errors.islamic_ijara_activation.0')));
+        self::assertStringContainsString('owned/controlled asset', strtolower($this->asString($blocked->json('errors.islamic_ijara_activation.0'))));
     }
 
     public function test_if071_ijara_damage_event_creates_approved_workflow(): void
@@ -5354,7 +5365,7 @@ final class IslamicFinanceTest extends TestCase
             'evidence' => ['transfer_evidence' => $transferDoc],
         ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('direct transfer mutation rejected', strtolower((string) $blocked->json('errors.islamic_financed_asset.0')));
+        self::assertStringContainsString('direct transfer mutation rejected', strtolower($this->asString($blocked->json('errors.islamic_financed_asset.0'))));
     }
 
     public function test_if072_transfer_requires_completed_rental_obligations_or_approved_exception(): void
@@ -5410,7 +5421,7 @@ final class IslamicFinanceTest extends TestCase
             ],
         ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('completed rental obligations', strtolower((string) $blocked->json('errors.islamic_ijara_transfer.0')));
+        self::assertStringContainsString('completed rental obligations', strtolower($this->asString($blocked->json('errors.islamic_ijara_transfer.0'))));
     }
 
     public function test_if072_transfer_posts_configured_residual_or_approved_zero_residual_mapping(): void
@@ -5570,7 +5581,7 @@ final class IslamicFinanceTest extends TestCase
         $this->assertJsonError($approve, 422);
         self::assertStringContainsString(
             'IF-040 activation gate',
-            (string) $approve->json('errors.islamic_financing.0')
+            $this->asString($approve->json('errors.islamic_financing.0'))
         );
     }
 
@@ -5614,7 +5625,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/activate');
         $this->assertJsonError($activate, 422);
-        self::assertStringContainsString('evidence-backed contributions', strtolower((string) $activate->json('errors.islamic_partnership.0')));
+        self::assertStringContainsString('evidence-backed contributions', strtolower($this->asString($activate->json('errors.islamic_partnership.0'))));
     }
 
     public function test_if043_moudaraba_rules_reject_invalid_partner_role_configuration(): void
@@ -5635,7 +5646,7 @@ final class IslamicFinanceTest extends TestCase
             'expected_contribution_minor' => 100000,
         ]);
         $this->assertJsonError($invalid, 422);
-        self::assertStringContainsString('moudaraba partnership requires capital_provider/entrepreneur roles', strtolower((string) $invalid->json('errors.islamic_partnership_partner.0')));
+        self::assertStringContainsString('moudaraba partnership requires capital_provider/entrepreneur roles', strtolower($this->asString($invalid->json('errors.islamic_partnership_partner.0'))));
     }
 
     public function test_if043_moucharaka_rules_require_joint_contribution_structure(): void
@@ -5671,7 +5682,7 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/activate');
         $this->assertJsonError($activate, 422);
-        self::assertStringContainsString('at least two joint partners', strtolower((string) $activate->json('errors.islamic_partnership.0')));
+        self::assertStringContainsString('at least two joint partners', strtolower($this->asString($activate->json('errors.islamic_partnership.0'))));
     }
 
     public function test_if043_profit_declaration_requires_approved_report_evidence(): void
@@ -5720,7 +5731,7 @@ final class IslamicFinanceTest extends TestCase
             'amount_minor' => 10000,
         ]);
         $this->assertJsonError($declaration, 422);
-        self::assertStringContainsString('requires an approved report', strtolower((string) $declaration->json('errors.islamic_partnership_profit_declaration.0')));
+        self::assertStringContainsString('requires an approved report', strtolower($this->asString($declaration->json('errors.islamic_partnership_profit_declaration.0'))));
     }
 
     public function test_if043_buyout_requires_approved_valuation(): void
@@ -5733,7 +5744,7 @@ final class IslamicFinanceTest extends TestCase
         ]);
         $this->assertJsonSuccess($partnership, 201);
         $partnershipPublicId = $this->requireStringJsonPath($partnership, 'data.public_id');
-        $partnershipId = (int) DB::table('islamic_partnerships')->where('public_id', $partnershipPublicId)->value('id');
+        $partnershipId = $this->asInt(DB::table('islamic_partnerships')->where('public_id', $partnershipPublicId)->value('id'));
 
         $p1 = $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/partners', [
             'partner_role' => 'joint_partner',
@@ -5744,7 +5755,7 @@ final class IslamicFinanceTest extends TestCase
         ]);
         $this->assertJsonSuccess($p1, 201);
         $partnerPublicId = $this->requireStringJsonPath($p1, 'data.public_id');
-        $partnerId = (int) DB::table('islamic_partnership_partners')->where('public_id', $partnerPublicId)->value('id');
+        $partnerId = $this->asInt(DB::table('islamic_partnership_partners')->where('public_id', $partnerPublicId)->value('id'));
         $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/partners', [
             'partner_role' => 'joint_partner',
             'partner_reference' => 'B2',
@@ -5760,10 +5771,10 @@ final class IslamicFinanceTest extends TestCase
             'contributed_on' => '2026-12-01',
             'evidence_document_public_id' => $doc,
         ])->assertCreated();
-        $secondPartnerPublicId = (string) DB::table('islamic_partnership_partners')
+        $secondPartnerPublicId = $this->asString(DB::table('islamic_partnership_partners')
             ->where('islamic_partnership_id', $partnershipId)
             ->where('id', '!=', $partnerId)
-            ->value('public_id');
+            ->value('public_id'));
         $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/contributions', [
             'partner_public_id' => $secondPartnerPublicId,
             'amount_minor' => 50000,
@@ -5794,7 +5805,7 @@ final class IslamicFinanceTest extends TestCase
             'idempotency_key' => 'if043-buyout-unapproved',
         ]);
         $this->assertJsonError($buyout, 422);
-        self::assertStringContainsString('approved valuation', strtolower((string) $buyout->json('errors.islamic_partnership_buyout.0')));
+        self::assertStringContainsString('approved valuation', strtolower($this->asString($buyout->json('errors.islamic_partnership_buyout.0'))));
     }
 
     public function test_if043_liquidation_requires_approved_valuation_and_timeline_is_queryable(): void
@@ -5807,7 +5818,7 @@ final class IslamicFinanceTest extends TestCase
         ]);
         $this->assertJsonSuccess($partnership, 201);
         $partnershipPublicId = $this->requireStringJsonPath($partnership, 'data.public_id');
-        $partnershipId = (int) DB::table('islamic_partnerships')->where('public_id', $partnershipPublicId)->value('id');
+        $partnershipId = $this->asInt(DB::table('islamic_partnerships')->where('public_id', $partnershipPublicId)->value('id'));
 
         $first = $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/partners', [
             'partner_role' => 'joint_partner',
@@ -5818,7 +5829,7 @@ final class IslamicFinanceTest extends TestCase
         ]);
         $this->assertJsonSuccess($first, 201);
         $firstPartnerPublicId = $this->requireStringJsonPath($first, 'data.public_id');
-        $firstPartnerId = (int) DB::table('islamic_partnership_partners')->where('public_id', $firstPartnerPublicId)->value('id');
+        $firstPartnerId = $this->asInt(DB::table('islamic_partnership_partners')->where('public_id', $firstPartnerPublicId)->value('id'));
         $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/partners', [
             'partner_role' => 'joint_partner',
             'partner_reference' => 'L2',
@@ -5834,10 +5845,10 @@ final class IslamicFinanceTest extends TestCase
             'contributed_on' => '2026-12-01',
             'evidence_document_public_id' => $doc,
         ])->assertCreated();
-        $secondPartnerPublicId = (string) DB::table('islamic_partnership_partners')
+        $secondPartnerPublicId = $this->asString(DB::table('islamic_partnership_partners')
             ->where('islamic_partnership_id', $partnershipId)
             ->where('id', '!=', $firstPartnerId)
-            ->value('public_id');
+            ->value('public_id'));
         $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/contributions', [
             'partner_public_id' => $secondPartnerPublicId,
             'amount_minor' => 50000,
@@ -5865,7 +5876,7 @@ final class IslamicFinanceTest extends TestCase
             'liquidation_evidence_document_public_id' => $doc,
         ]);
         $this->assertJsonError($blocked, 422);
-        self::assertStringContainsString('approved valuation', strtolower((string) $blocked->json('errors.islamic_partnership.0')));
+        self::assertStringContainsString('approved valuation', strtolower($this->asString($blocked->json('errors.islamic_partnership.0'))));
 
         $approvedValuation = $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/valuations', [
             'valuation_method' => 'nav',
@@ -5896,6 +5907,9 @@ final class IslamicFinanceTest extends TestCase
         ]);
     }
 
+    /**
+     * @param  array<string, mixed>|null  $rules
+     */
     private function createProduct(User $actor, string $code, string $contractType, ?string $agencyPublicId = null, ?array $rules = null): string
     {
         $rules = $rules === null ? $this->defaultGovernanceRulesFor($contractType) : array_merge($this->defaultGovernanceRulesFor($contractType), $rules);
@@ -5907,9 +5921,7 @@ final class IslamicFinanceTest extends TestCase
         if ($agencyPublicId !== null) {
             $payload['agency_public_id'] = $agencyPublicId;
         }
-        if ($rules !== null) {
-            $payload['rules'] = $rules;
-        }
+        $payload['rules'] = $rules;
 
         $response = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -7009,9 +7021,9 @@ final class IslamicFinanceTest extends TestCase
             'version' => 1,
             'scope_type' => 'agency',
             'agency_public_id' => $agencyPublicId,
-            'zakat_enabled' => (bool) ($overrides['zakat_enabled'] ?? false),
-            'charity_treatment_enabled' => (bool) ($overrides['charity_treatment_enabled'] ?? false),
-            'non_compliant_income_treatment_enabled' => (bool) ($overrides['non_compliant_income_treatment_enabled'] ?? false),
+            'zakat_enabled' => $overrides['zakat_enabled'] ?? false,
+            'charity_treatment_enabled' => $overrides['charity_treatment_enabled'] ?? false,
+            'non_compliant_income_treatment_enabled' => $overrides['non_compliant_income_treatment_enabled'] ?? false,
             'purification_mode' => $overrides['purification_mode'] ?? null,
             'required_operation_codes' => $overrides['required_operation_codes'] ?? [],
             'effective_from' => is_string($overrides['effective_from'] ?? null) ? $overrides['effective_from'] : now()->subDay()->toDateString(),
@@ -7162,6 +7174,16 @@ final class IslamicFinanceTest extends TestCase
         self::assertIsString($value);
 
         return $value;
+    }
+
+    private function asString(mixed $value): string
+    {
+        return is_string($value) ? $value : '';
+    }
+
+    private function asInt(mixed $value): int
+    {
+        return is_int($value) ? $value : 0;
     }
 
     private function insertComplianceCaseWithBlocker(

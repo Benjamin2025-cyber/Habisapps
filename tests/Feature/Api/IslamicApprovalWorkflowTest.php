@@ -326,7 +326,9 @@ final class IslamicApprovalWorkflowTest extends TestCase
             ]);
         $this->assertJsonSuccess($after);
         $after->assertJsonPath('data.result', 'fail');
-        self::assertStringContainsString('No active screening policy', (string) $after->json('data.block_reason'));
+        $blockReason = $after->json('data.block_reason');
+        self::assertIsString($blockReason);
+        self::assertStringContainsString('No active screening policy', $blockReason);
     }
 
     public function test_expired_state_blocks_new_use_while_preserving_history(): void

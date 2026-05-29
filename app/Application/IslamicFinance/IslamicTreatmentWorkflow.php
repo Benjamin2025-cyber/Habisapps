@@ -437,8 +437,8 @@ final class IslamicTreatmentWorkflow extends BaseController
 
         $sourceTotal = (int) $eventQuery->sum('e.amount_minor');
         $postedTotal = (int) (clone $eventQuery)->where('e.status', 'posted')->sum('e.amount_minor');
-        $postedCount = (int) (clone $eventQuery)->where('e.status', 'posted')->count();
-        $blockedCount = (int) (clone $eventQuery)->where('e.status', 'blocked')->count();
+        $postedCount = (clone $eventQuery)->where('e.status', 'posted')->count();
+        $blockedCount = (clone $eventQuery)->where('e.status', 'blocked')->count();
 
         $orphanJournals = DB::table('journal_entries as j')
             ->leftJoin('islamic_treatment_events as e', 'e.public_id', '=', 'j.source_public_id')
@@ -457,7 +457,7 @@ final class IslamicTreatmentWorkflow extends BaseController
             'posted_event_count' => $postedCount,
             'blocked_event_count' => $blockedCount,
             'unposted_total_minor' => $sourceTotal - $postedTotal,
-            'orphan_journal_count' => (int) $orphanJournals,
+            'orphan_journal_count' => $orphanJournals,
             'reconciled' => $sourceTotal === $postedTotal && $orphanJournals === 0,
         ];
 
@@ -626,8 +626,14 @@ final class IslamicTreatmentWorkflow extends BaseController
         if ($value === null || $value === '') {
             return null;
         }
+        if (is_string($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value) || is_bool($value)) {
+            return (string) $value;
+        }
 
-        return is_string($value) ? $value : (string) $value;
+        return null;
     }
 
     private function journalEntryPublicId(?int $journalEntryId): ?string
@@ -646,13 +652,30 @@ final class IslamicTreatmentWorkflow extends BaseController
     private function decodeJsonObject(mixed $value): ?array
     {
         if (is_array($value)) {
-            return $value;
+            return $this->normalizeJsonObject($value);
         }
         if (! is_string($value) || $value === '') {
             return null;
         }
         $decoded = json_decode($value, true);
 
-        return is_array($decoded) ? $decoded : null;
+        return is_array($decoded) ? $this->normalizeJsonObject($decoded) : null;
+    }
+
+    /**
+     * @param  array<mixed, mixed>  $value
+     * @return array<string, mixed>|null
+     */
+    private function normalizeJsonObject(array $value): ?array
+    {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            if (! is_string($key)) {
+                return null;
+            }
+            $normalized[$key] = $item;
+        }
+
+        return $normalized;
     }
 }

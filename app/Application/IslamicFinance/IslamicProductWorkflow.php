@@ -430,9 +430,9 @@ final class IslamicProductWorkflow extends BaseController
         if (is_array($readinessSnapshot)) {
             $this->securityAudit->record('islamic.product.readiness.approved', actor: $actor, properties: [
                 'review_public_id' => $reviewPublicId,
-                'snapshot_public_id' => $readinessSnapshot['snapshot_public_id'] ?? null,
-                'snapshot_hash' => $readinessSnapshot['snapshot_hash'] ?? null,
-                'family_code' => $readinessSnapshot['family_code'] ?? null,
+                'snapshot_public_id' => $readinessSnapshot['snapshot_public_id'],
+                'snapshot_hash' => $readinessSnapshot['snapshot_hash'],
+                'family_code' => $readinessSnapshot['family_code'],
             ], request: $request);
         }
 
@@ -488,19 +488,19 @@ final class IslamicProductWorkflow extends BaseController
             ->orderByDesc('c.id');
 
         if (is_string($request->query('subject_type')) && $request->query('subject_type') !== '') {
-            $query->where('c.subject_type', (string) $request->query('subject_type'));
+            $query->where('c.subject_type', $request->query('subject_type'));
         }
         if (is_string($request->query('subject_public_id')) && $request->query('subject_public_id') !== '') {
-            $query->where('c.subject_public_id', (string) $request->query('subject_public_id'));
+            $query->where('c.subject_public_id', $request->query('subject_public_id'));
         }
         if (is_string($request->query('risk_level')) && $request->query('risk_level') !== '') {
-            $query->where('c.risk_level', (string) $request->query('risk_level'));
+            $query->where('c.risk_level', $request->query('risk_level'));
         }
         if (is_string($request->query('status')) && $request->query('status') !== '') {
-            $query->where('c.status', (string) $request->query('status'));
+            $query->where('c.status', $request->query('status'));
         }
         if (is_string($request->query('decision')) && $request->query('decision') !== '') {
-            $query->where('c.latest_decision', (string) $request->query('decision'));
+            $query->where('c.latest_decision', $request->query('decision'));
         }
         if ($request->boolean('overdue')) {
             $query->whereNotNull('c.due_at')->where('c.due_at', '<', now());
@@ -840,13 +840,30 @@ final class IslamicProductWorkflow extends BaseController
     private function decodeJsonObject(mixed $value): ?array
     {
         if (is_array($value)) {
-            return $value;
+            return $this->normalizeJsonObject($value);
         }
         if (! is_string($value) || $value === '') {
             return null;
         }
         $decoded = json_decode($value, true);
 
-        return is_array($decoded) ? $decoded : null;
+        return is_array($decoded) ? $this->normalizeJsonObject($decoded) : null;
+    }
+
+    /**
+     * @param  array<mixed, mixed>  $value
+     * @return array<string, mixed>|null
+     */
+    private function normalizeJsonObject(array $value): ?array
+    {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            if (! is_string($key)) {
+                return null;
+            }
+            $normalized[$key] = $item;
+        }
+
+        return $normalized;
     }
 }

@@ -46,7 +46,7 @@ final class IslamicMappingValidationService
         array $context = [],
     ): array {
         $side = ($context['side'] ?? 'credit') === 'debit' ? 'debit' : 'credit';
-        $lock = (bool) ($context['lock_for_update'] ?? false);
+        $lock = $context['lock_for_update'] ?? false;
         $asOfDate = ($context['as_of'] ?? now())->toDateString();
         $actor = $context['actor'] ?? null;
         $request = $context['request'] ?? null;
@@ -89,7 +89,7 @@ final class IslamicMappingValidationService
             $query->lockForUpdate();
         }
 
-        /** @var Collection<int, object> $rows */
+        /** @var Collection<int, \stdClass> $rows */
         $rows = $query->get();
         if ($rows->isEmpty()) {
             $this->recordBlockedUse(
@@ -102,8 +102,8 @@ final class IslamicMappingValidationService
             throw new InvalidArgumentException('Approved Islamic mapping is required for '.$operationCode.' ('.$side.').');
         }
 
-        $exactCurrency = $rows->filter(fn (object $row): bool => is_string($row->currency) && $row->currency === $currency)->values();
-        $fallbackCurrency = $rows->filter(fn (object $row): bool => $row->currency === null)->values();
+        $exactCurrency = $rows->filter(fn (\stdClass $row): bool => $this->rowNullableString($row, 'currency') === $currency)->values();
+        $fallbackCurrency = $rows->filter(fn (\stdClass $row): bool => $this->rowNullableString($row, 'currency') === null)->values();
 
         if ($exactCurrency->count() > 1 || ($exactCurrency->count() === 0 && $fallbackCurrency->count() > 1)) {
             $this->recordBlockedUse(
@@ -189,6 +189,9 @@ final class IslamicMappingValidationService
         $this->resolvePostingMapping($operationCode, $agencyId, $currency, $context);
     }
 
+    /**
+     * @param  array<string, mixed>  $details
+     */
     private function recordBlockedUse(
         ?User $actor,
         ?Request $request,
@@ -224,5 +227,10 @@ final class IslamicMappingValidationService
         }
 
         return $value;
+    }
+
+    private function rowNullableString(object $row, string $key): ?string
+    {
+        return $this->nullableString(((array) $row)[$key] ?? null);
     }
 }
