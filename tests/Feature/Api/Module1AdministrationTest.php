@@ -367,6 +367,42 @@ final class Module1AdministrationTest extends TestCase
             'permission_id' => DB::table('permissions')->where('name', 'documents.view')->value('id'),
         ]);
 
+        $refreshedCatalogResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('refreshed-token')->plainTextToken])
+            ->getJson('/api/v1/roles');
+
+        $this->assertJsonSuccess($refreshedCatalogResponse);
+        $auditorRole = collect($refreshedCatalogResponse->json('data.roles'))
+            ->firstWhere('name', 'auditor');
+        self::assertIsArray($auditorRole);
+        self::assertSame(
+            ['audit.view', 'documents.view', 'users.view'],
+            $auditorRole['permissions'] ?? null,
+            'GET /roles must reflect persisted role_has_permissions, not config defaults.'
+        );
+
+        $tellerPermissions = array_values(array_unique(array_merge(
+            config('security.permissions.roles.teller', []),
+            ['cash.tills.manage'],
+        )));
+        $tellerUpdateResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('teller-update-token')->plainTextToken])
+            ->putJson('/api/v1/roles/teller/permissions', [
+                'permissions' => $tellerPermissions,
+            ]);
+
+        $this->assertJsonSuccess($tellerUpdateResponse);
+
+        $tellerCatalogResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('teller-catalog-token')->plainTextToken])
+            ->getJson('/api/v1/roles');
+
+        $this->assertJsonSuccess($tellerCatalogResponse);
+        $tellerRole = collect($tellerCatalogResponse->json('data.roles'))
+            ->firstWhere('name', 'teller');
+        self::assertIsArray($tellerRole);
+        self::assertContains('cash.tills.manage', $tellerRole['permissions'] ?? []);
+
         $protectedPermissionResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
             ->putJson('/api/v1/roles/auditor/permissions', [

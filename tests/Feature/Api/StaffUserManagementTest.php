@@ -249,6 +249,51 @@ final class StaffUserManagementTest extends TestCase
         ]);
     }
 
+    public function test_staff_role_assignment_is_visible_to_subsequent_gets_without_restart(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('AG-I');
+
+        $createResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('create-token')->plainTextToken])
+            ->postJson('/api/v1/staff-users', [
+                'name' => 'Fresh Teller',
+                'phone_number' => '+237699200022',
+                'agency_code' => 'AG-I',
+            ]);
+
+        $this->assertJsonSuccess($createResponse, 201);
+        $staffPublicId = $createResponse->json('data.public_id');
+        self::assertIsString($staffPublicId);
+
+        $roleResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('role-token')->plainTextToken])
+            ->putJson('/api/v1/staff-users/'.$staffPublicId.'/roles', [
+                'roles' => ['teller'],
+            ]);
+
+        $this->assertJsonSuccess($roleResponse);
+        $roleResponse->assertJsonPath('data.roles.0', 'teller');
+        self::assertContains('cash.transactions.manage', $roleResponse->json('data.permissions'));
+
+        $indexResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('index-token')->plainTextToken])
+            ->getJson('/api/v1/staff-users');
+
+        $this->assertJsonSuccess($indexResponse);
+        $indexResponse->assertJsonFragment(['public_id' => $staffPublicId]);
+        $indexResponse->assertJsonFragment(['roles' => ['teller']]);
+
+        $showResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('show-token')->plainTextToken])
+            ->getJson('/api/v1/staff-users/'.$staffPublicId);
+
+        $this->assertJsonSuccess($showResponse);
+        $showResponse->assertJsonPath('data.roles.0', 'teller');
+        self::assertContains('cash.transactions.manage', $showResponse->json('data.permissions'));
+        self::assertSame($agencyId, User::query()->where('public_id', $staffPublicId)->value('agency_id'));
+    }
+
     public function test_only_active_platform_admin_cannot_be_demoted_or_suspended(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

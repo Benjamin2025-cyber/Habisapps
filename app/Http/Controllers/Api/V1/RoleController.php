@@ -43,7 +43,8 @@ final class RoleController extends BaseController
             return $this->respondNotFound();
         }
 
-        $permissions = $validated['permissions'];
+        $permissions = array_values(array_unique($validated['permissions']));
+        sort($permissions);
 
         if ($role !== 'platform-admin') {
             $protectedPermissions = $this->protectedPermissions();
@@ -74,7 +75,7 @@ final class RoleController extends BaseController
             'role' => [
                 'name' => $roleModel->name,
                 'guard_name' => $roleModel->guard_name,
-                'permissions' => $roleModel->permissions->pluck('name')->values()->all(),
+                'permissions' => $roleModel->permissions->pluck('name')->sort()->values()->all(),
             ],
         ], 'Role permissions updated successfully');
     }
@@ -85,9 +86,20 @@ final class RoleController extends BaseController
     private function roleCatalog(): array
     {
         $roleDefinitions = $this->configuredRoleDefinitions();
+        $roleModels = Role::query()
+            ->with('permissions')
+            ->whereIn('name', array_keys($roleDefinitions))
+            ->get()
+            ->keyBy('name');
         $roles = [];
 
-        foreach ($roleDefinitions as $name => $permissions) {
+        foreach (array_keys($roleDefinitions) as $name) {
+            /** @var Role|null $roleModel */
+            $roleModel = $roleModels->get($name);
+            $permissions = $roleModel instanceof Role
+                ? $roleModel->permissions->pluck('name')->sort()->values()->all()
+                : [];
+
             $roles[] = [
                 'name' => $name,
                 'display_name' => str($name)->replace('-', ' ')->title()->toString(),

@@ -11,6 +11,7 @@ use App\Http\Resources\StaffUserResource;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
+use Spatie\Permission\PermissionRegistrar;
 
 final class StaffAccessControlWorkflow extends BaseController
 {
@@ -72,6 +73,7 @@ final class StaffAccessControlWorkflow extends BaseController
         }
 
         $staffUser->syncRoles($roles);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
         $this->securityAudit->record('staff.roles_changed', actor: $actor instanceof User ? $actor : null, subject: $staffUser, properties: [
             'roles' => $roles,
         ], request: $request);
