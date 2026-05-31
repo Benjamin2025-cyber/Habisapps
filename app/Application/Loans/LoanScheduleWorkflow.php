@@ -27,6 +27,33 @@ final class LoanScheduleWorkflow extends BaseController
         private readonly RescheduleLoan $rescheduleLoan,
     ) {}
 
+    public function showActiveSchedule(Request $request, Loan $loan): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $loan)) {
+            return $this->respondForbidden();
+        }
+
+        if (! $this->canAccessLoanAgency($actor, $loan)) {
+            return $this->respondForbidden('Loan is outside your agency scope.');
+        }
+
+        $snapshot = LoanScheduleSnapshot::query()
+            ->where('loan_id', $loan->id)
+            ->where('status', LoanScheduleSnapshot::STATUS_ACTIVE)
+            ->with('lines')
+            ->latest('id')
+            ->first();
+
+        if (! $snapshot instanceof LoanScheduleSnapshot) {
+            return $this->respondNotFound('Loan has no active schedule.');
+        }
+
+        return $this->respondSuccess([
+            'snapshot' => $this->schedulePayload($snapshot),
+        ]);
+    }
+
     public function generateSchedule(Request $request, Loan $loan): JsonResponse
     {
         $actor = $request->user();

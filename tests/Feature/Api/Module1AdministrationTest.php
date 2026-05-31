@@ -194,6 +194,53 @@ final class Module1AdministrationTest extends TestCase
         $forbiddenResponse->assertForbidden();
     }
 
+    public function test_agency_index_supports_server_side_search(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $this->createAgency('AKWA-001', 'Akwa Douala Branch');
+        $this->createAgency('BONA-002', 'Bonanjo Branch');
+        $this->createAgency('YDE-003', 'Yaounde Centre');
+
+        // Match by code.
+        $byCode = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('search-1')->plainTextToken])
+            ->getJson('/api/v1/agencies?search=AKWA');
+        $this->assertJsonSuccess($byCode);
+        $byCode->assertJsonPath('meta.pagination.total', 1);
+        $byCode->assertJsonPath('data.agencies.0.code', 'AKWA-001');
+
+        // Match by name (case-insensitive).
+        $byName = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('search-2')->plainTextToken])
+            ->getJson('/api/v1/agencies?search=bonanjo');
+        $this->assertJsonSuccess($byName);
+        $byName->assertJsonPath('meta.pagination.total', 1);
+        $byName->assertJsonPath('data.agencies.0.code', 'BONA-002');
+
+        // Blank search is ignored: all agencies returned, pagination stable.
+        $blank = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('search-3')->plainTextToken])
+            ->getJson('/api/v1/agencies?search=');
+        $this->assertJsonSuccess($blank);
+        $blank->assertJsonPath('meta.pagination.total', 3);
+    }
+
+    public function test_agency_search_never_leaks_outside_non_platform_scope(): void
+    {
+        $agencyA = $this->createAgency('SCOPE-AKWA', 'Scope Akwa');
+        $this->createAgency('OTHER-AKWA', 'Other Akwa');
+        $manager = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
+
+        // A matching term spanning both agencies still only returns the
+        // manager's own agency.
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$manager->createToken('scope-1')->plainTextToken])
+            ->getJson('/api/v1/agencies?search=AKWA');
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('meta.pagination.total', 1);
+        $response->assertJsonPath('data.agencies.0.code', 'SCOPE-AKWA');
+    }
+
     public function test_staff_assignment_transfer_preserves_history_and_replaces_primary_assignment(): void
     {
         $agencyA = $this->createAgency('AG-C1');
@@ -358,6 +405,7 @@ final class Module1AdministrationTest extends TestCase
         $updateResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
             ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
                 'permissions' => ['audit.view', 'users.view', 'documents.view'],
             ]);
 
@@ -372,22 +420,21 @@ final class Module1AdministrationTest extends TestCase
             ->getJson('/api/v1/roles');
 
         $this->assertJsonSuccess($refreshedCatalogResponse);
-        $auditorRole = collect($refreshedCatalogResponse->json('data.roles'))
-            ->firstWhere('name', 'auditor');
-        self::assertIsArray($auditorRole);
-        self::assertSame(
-            ['audit.view', 'documents.view', 'users.view'],
-            $auditorRole['permissions'] ?? null,
-            'GET /roles must reflect persisted role_has_permissions, not config defaults.'
-        );
+        // GET /roles must reflect persisted role_has_permissions, not config defaults.
+        $refreshedCatalogResponse->assertJsonFragment([
+            'name' => 'auditor',
+            'permissions' => ['audit.view', 'documents.view', 'users.view'],
+        ]);
 
-        $tellerPermissions = array_values(array_unique(array_merge(
-            config('security.permissions.roles.teller', []),
-            ['cash.tills.manage'],
-        )));
+        $tellerConfig = config('security.permissions.roles.teller', []);
+        self::assertIsArray($tellerConfig);
+        $tellerPermissions = array_values(array_filter($tellerConfig, 'is_string'));
+        $tellerPermissions[] = 'cash.tills.manage';
+        $tellerPermissions = array_values(array_unique($tellerPermissions));
         $tellerUpdateResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('teller-update-token')->plainTextToken])
             ->putJson('/api/v1/roles/teller/permissions', [
+                'replace' => true,
                 'permissions' => $tellerPermissions,
             ]);
 
@@ -398,18 +445,198 @@ final class Module1AdministrationTest extends TestCase
             ->getJson('/api/v1/roles');
 
         $this->assertJsonSuccess($tellerCatalogResponse);
-        $tellerRole = collect($tellerCatalogResponse->json('data.roles'))
-            ->firstWhere('name', 'teller');
-        self::assertIsArray($tellerRole);
-        self::assertContains('cash.tills.manage', $tellerRole['permissions'] ?? []);
+        $expectedTellerPermissions = $tellerPermissions;
+        sort($expectedTellerPermissions);
+        $tellerCatalogResponse->assertJsonFragment([
+            'name' => 'teller',
+            'permissions' => $expectedTellerPermissions,
+        ]);
 
         $protectedPermissionResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
             ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
                 'permissions' => ['audit.view', 'roles.manage'],
             ]);
 
         $this->assertJsonError($protectedPermissionResponse, 422, 'Protected permissions can only be granted to platform administrators.');
+    }
+
+    public function test_protected_permission_delegation_is_policy_gated(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Default policy (delegation disabled): protected permission rejected.
+        config(['security.permissions.allow_protected_delegation' => false]);
+        $blocked = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
+                'permissions' => ['audit.view', 'crm.pii.view'],
+            ]);
+        $this->assertJsonError($blocked, 422, 'Protected permissions can only be granted to platform administrators.');
+
+        // Delegation enabled: a delegable protected permission can be granted
+        // to a non-platform role, and GET /roles reflects it immediately.
+        config(['security.permissions.allow_protected_delegation' => true]);
+        $delegated = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
+                'permissions' => ['audit.view', 'crm.pii.view'],
+            ]);
+        $this->assertJsonSuccess($delegated);
+        $delegated->assertJsonPath('data.role.permissions', ['audit.view', 'crm.pii.view']);
+
+        // GET /roles reflects the delegated permission immediately.
+        $this->assertDatabaseHas('role_has_permissions', [
+            'role_id' => DB::table('roles')->where('name', 'auditor')->value('id'),
+            'permission_id' => DB::table('permissions')->where('name', 'crm.pii.view')->value('id'),
+        ]);
+        $catalog = $this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/roles');
+        $catalog->assertJsonFragment(['name' => 'auditor', 'permissions' => ['audit.view', 'crm.pii.view']]);
+
+        // Even with delegation enabled, the institution-control floor can never
+        // be delegated to a non-platform role.
+        $floor = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
+                'permissions' => ['audit.view', 'roles.manage'],
+            ]);
+        $floor->assertStatus(422);
+
+        // Platform-admin can never drop its minimum administration permissions.
+        $minimumPermissions = config('security.permissions.roles.platform-admin', []);
+        self::assertIsArray($minimumPermissions);
+        $withoutAgencies = array_values(array_filter($minimumPermissions, static fn ($p): bool => $p !== 'agencies.manage'));
+        $stripped = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/platform-admin/permissions', [
+                'replace' => true,
+                'permissions' => $withoutAgencies,
+            ]);
+        $this->assertJsonError($stripped, 422, 'Platform administrator must retain the minimum administration permissions.');
+    }
+
+    public function test_role_permission_replacement_reports_diff_and_supports_version_guard(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Establish a known baseline.
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', ['replace' => true, 'permissions' => ['audit.view', 'users.view']])
+            ->assertOk();
+
+        // Replacement mode must be explicit. This prevents old checkbox-style
+        // clients from accidentally using PUT as a destructive partial update.
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', ['permissions' => ['audit.view']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['replace']);
+
+        // A replacement reports exactly what changed instead of silently
+        // revoking omitted permissions (AIR-001).
+        $replace = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', ['replace' => true, 'permissions' => ['audit.view', 'documents.view']]);
+        $this->assertJsonSuccess($replace);
+        $replace->assertJsonPath('data.role.previous_permissions', ['audit.view', 'users.view']);
+        $replace->assertJsonPath('data.role.added_permissions', ['documents.view']);
+        $replace->assertJsonPath('data.role.removed_permissions', ['users.view']);
+        $replace->assertJsonPath('data.role.permissions', ['audit.view', 'documents.view']);
+
+        $version = $replace->json('data.role.permissions_version');
+        self::assertIsString($version);
+
+        // A concurrent change moves the version forward.
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', ['replace' => true, 'permissions' => ['audit.view']])
+            ->assertOk();
+
+        // Replaying the now-stale baseline is rejected (409), not a misleading success.
+        $stale = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
+                'permissions' => ['audit.view', 'documents.view', 'users.view'],
+                'expected_permissions_version' => $version,
+            ]);
+        $stale->assertStatus(409);
+        $stale->assertJsonValidationErrors(['expected_permissions_version']);
+    }
+
+    public function test_role_permission_toggle_endpoints_do_not_revoke_other_permissions(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', ['replace' => true, 'permissions' => ['audit.view', 'users.view']])
+            ->assertOk();
+
+        // Granting a single permission leaves the others intact.
+        $grant = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/roles/auditor/permissions/documents.view');
+        $this->assertJsonSuccess($grant);
+        $grant->assertJsonPath('data.role.added_permissions', ['documents.view']);
+        $grant->assertJsonPath('data.role.removed_permissions', []);
+        $grant->assertJsonPath('data.role.permissions', ['audit.view', 'documents.view', 'users.view']);
+
+        // Revoking a single permission removes only that one.
+        $revoke = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->deleteJson('/api/v1/roles/auditor/permissions/users.view');
+        $this->assertJsonSuccess($revoke);
+        $revoke->assertJsonPath('data.role.removed_permissions', ['users.view']);
+        $revoke->assertJsonPath('data.role.permissions', ['audit.view', 'documents.view']);
+    }
+
+    public function test_seeded_protected_role_permissions_can_be_resaved_but_new_ones_are_blocked(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $kycPermissions = array_values(array_filter(
+            DB::table('permissions')
+                ->join('role_has_permissions', 'role_has_permissions.permission_id', '=', 'permissions.id')
+                ->join('roles', 'roles.id', '=', 'role_has_permissions.role_id')
+                ->where('roles.name', 'kyc-officer')
+                ->pluck('permissions.name')
+                ->all(),
+            'is_string',
+        ));
+        // Sanity: the seeded role genuinely carries a protected permission.
+        self::assertContains('crm.pii.view', $kycPermissions);
+
+        // Re-saving the role's own current set (which includes configured
+        // protected permissions) must not fail under default policy (AIR-002).
+        $resave = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/kyc-officer/permissions', ['replace' => true, 'permissions' => $kycPermissions]);
+        $this->assertJsonSuccess($resave);
+
+        // Adding a brand-new non-delegable protected permission is still blocked.
+        $escalate = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/kyc-officer/permissions', [
+                'replace' => true,
+                'permissions' => array_values(array_unique([...$kycPermissions, 'roles.manage'])),
+            ]);
+        $escalate->assertStatus(422);
+    }
+
+    public function test_roles_index_exposes_permission_policy_metadata(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/roles');
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('data.permission_policy.delegation_enabled', false);
+
+        $protected = $response->json('data.permission_policy.protected');
+        $nonDelegable = $response->json('data.permission_policy.non_delegable');
+        self::assertIsArray($protected);
+        self::assertIsArray($nonDelegable);
+        self::assertContains('crm.pii.view', $protected);
+        self::assertContains('roles.manage', $nonDelegable);
+
+        // Each role carries a permissions_version for optimistic concurrency.
+        $roles = $response->json('data.roles');
+        self::assertIsArray($roles);
+        foreach ($roles as $role) {
+            self::assertIsArray($role);
+            self::assertArrayHasKey('permissions_version', $role);
+        }
     }
 
     public function test_batch_registry_and_run_idempotency_work(): void

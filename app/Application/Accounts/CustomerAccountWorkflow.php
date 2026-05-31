@@ -15,6 +15,7 @@ use App\Models\Client;
 use App\Models\CustomerAccount;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\References\ReferenceNumberGenerator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +27,7 @@ final class CustomerAccountWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly ReferenceNumberGenerator $referenceNumberGenerator,
     ) {}
 
     public function index(Request $request): CustomerAccountCollection|JsonResponse
@@ -136,13 +138,18 @@ final class CustomerAccountWorkflow extends BaseController
             $ledgerAccount = $accountProduct->ledgerAccount;
         }
 
+        $providedAccountNumber = $request->string('account_number')->toString();
+        $accountNumber = $providedAccountNumber !== ''
+            ? $providedAccountNumber
+            : $this->referenceNumberGenerator->reserve('account');
+
         $account = CustomerAccount::query()->create([
             'public_id' => (string) Str::ulid(),
             'client_id' => $client->id,
             'agency_id' => $agency->id,
             'ledger_account_id' => $ledgerAccount?->id,
             'account_product_id' => $accountProduct instanceof AccountProduct ? $accountProduct->id : null,
-            'account_number' => $request->string('account_number')->toString(),
+            'account_number' => $accountNumber,
             'account_title' => $request->input('account_title'),
             'account_type' => $request->input('account_type', $accountProduct instanceof AccountProduct ? $accountProduct->account_family : null),
             'currency' => strtoupper($request->string('currency', $accountProduct instanceof AccountProduct ? $accountProduct->currency : 'XAF')->toString()),

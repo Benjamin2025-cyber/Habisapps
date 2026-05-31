@@ -11,6 +11,7 @@ use App\Models\Agency;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -43,6 +44,21 @@ final class AgencyWorkflow extends BaseController
             }
 
             $query->whereKey($currentAgencyId);
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('city', 'ilike', '%'.$term.'%')
+                    ->orWhere('region', 'ilike', '%'.$term.'%')
+                    ->orWhere('branch_name', 'ilike', '%'.$term.'%')
+                    ->orWhere('email', 'ilike', '%'.$term.'%')
+                    ->orWhere('phone_number', 'ilike', '%'.$term.'%');
+            });
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);

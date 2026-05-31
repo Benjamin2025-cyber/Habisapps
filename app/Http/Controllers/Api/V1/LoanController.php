@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Application\Loans\LoanWorkflowControllerAdapter;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreLoanRequest;
+use App\Http\Requests\UpdateLoanLinkedAccountsRequest;
 use App\Http\Requests\UpdateLoanRequest;
 use App\Models\Loan;
 use Illuminate\Http\JsonResponse;
@@ -38,6 +39,11 @@ final class LoanController extends BaseController
         return $this->loan->update($request, $loan);
     }
 
+    public function updateLinkedAccounts(UpdateLoanLinkedAccountsRequest $request, Loan $loan): JsonResponse
+    {
+        return $this->loan->updateLinkedAccounts($request, $loan);
+    }
+
     public function assessSetupCharges(Request $request, Loan $loan): JsonResponse
     {
         return $this->loan->assessSetupCharges($request, $loan);
@@ -58,9 +64,19 @@ final class LoanController extends BaseController
         return $this->loan->collectInsurancePremium($request, $loan, $premiumPublicId);
     }
 
+    public function listApprovals(Request $request, Loan $loan): JsonResponse
+    {
+        return $this->loan->listApprovals($request, $loan);
+    }
+
     public function decideApproval(Request $request, Loan $loan, string $step): JsonResponse
     {
         return $this->loan->decideApproval($request, $loan, $step);
+    }
+
+    public function showSchedule(Request $request, Loan $loan): JsonResponse
+    {
+        return $this->loan->showActiveSchedule($request, $loan);
     }
 
     public function transitionStatus(Request $request, Loan $loan): JsonResponse

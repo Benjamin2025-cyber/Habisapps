@@ -14,6 +14,7 @@ use App\Models\Client;
 use App\Models\ClientIdentityDocument;
 use App\Models\Document;
 use App\Models\User;
+use App\Support\Crm\IdentityDocumentTypeCatalog;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
@@ -91,6 +92,19 @@ final class ClientIdentityDocumentController extends BaseController
             }
         }
 
+        $backDocumentModel = null;
+        if (is_string($request->input('back_document_public_id')) && $request->input('back_document_public_id') !== '') {
+            $backDocumentModel = $this->resolveLinkableDocument(
+                $client,
+                $request->string('back_document_public_id')->toString(),
+                null,
+            );
+
+            if (! $backDocumentModel instanceof Document) {
+                return $this->respondUnprocessable('Back document attachment is invalid for this client.');
+            }
+        }
+
         try {
             $normalizedNumber = ClientIdentityDocument::normalizeDocumentNumber($request->string('document_number')->toString());
             if ($this->hasDuplicateDocumentNumber(
@@ -113,6 +127,7 @@ final class ClientIdentityDocumentController extends BaseController
                 'expires_on' => $request->input('expires_on'),
                 'verification_status' => ClientIdentityDocument::VERIFICATION_PENDING,
                 'document_id' => $documentModel?->id,
+                'back_document_id' => $backDocumentModel?->id,
                 'created_by_user_id' => $actor->id,
                 'status' => ClientIdentityDocument::STATUS_ACTIVE,
             ]);
@@ -130,7 +145,7 @@ final class ClientIdentityDocumentController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            ClientIdentityDocumentResource::make($record->loadMissing(['client', 'document'])),
+            ClientIdentityDocumentResource::make($record->loadMissing(['client', 'document', 'backDocument'])),
             'Client identity document created successfully'
         );
     }
@@ -160,7 +175,7 @@ final class ClientIdentityDocumentController extends BaseController
         }
 
         return $this->respondSuccess(
-            ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document']))
+            ClientIdentityDocumentResource::make($identityDocument->loadMissing(['client', 'document', 'backDocument']))
         );
     }
 
@@ -240,6 +255,39 @@ final class ClientIdentityDocumentController extends BaseController
             $attributes['document_id'] = $linked?->id;
         }
 
+        if ($request->has('back_document_public_id')) {
+            $linkedBack = null;
+            if (is_string($request->input('back_document_public_id')) && $request->input('back_document_public_id') !== '') {
+                $linkedBack = $this->resolveLinkableDocument(
+                    $client,
+                    $request->string('back_document_public_id')->toString(),
+                    $identityDocument->id,
+                );
+
+                if (! $linkedBack instanceof Document) {
+                    return $this->respondUnprocessable('Back document attachment is invalid for this client.');
+                }
+            }
+
+            $attributes['back_document_id'] = $linkedBack?->id;
+        }
+
+        // Guard against front == back no matter which side is being changed.
+        // FormRequest's `different` rule only compares fields present in the
+        // same payload, so a front-only update could otherwise point at the
+        // current back face.
+        $effectiveFrontId = array_key_exists('document_id', $attributes)
+            ? $attributes['document_id']
+            : $identityDocument->document_id;
+        $effectiveBackId = array_key_exists('back_document_id', $attributes)
+            ? $attributes['back_document_id']
+            : $identityDocument->back_document_id;
+        if ($effectiveFrontId !== null && $effectiveBackId !== null && $effectiveFrontId === $effectiveBackId) {
+            return $this->respondUnprocessable(errors: [
+                'back_document_public_id' => ['The back face must be a different document from the front face.'],
+            ]);
+        }
+
         try {
             $identityDocument->update($attributes);
         } catch (QueryException $exception) {
@@ -255,7 +303,7 @@ final class ClientIdentityDocumentController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document'])),
+            ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document', 'backDocument'])),
             'Client identity document updated successfully'
         );
     }
@@ -305,6 +353,19 @@ final class ClientIdentityDocumentController extends BaseController
 
             if (! $this->hasLinkedDocumentEvidence($identityDocument)) {
                 return $this->respondUnprocessable('Identity document verification requires linked KYC document evidence.');
+            }
+
+            $requiredFaces = IdentityDocumentTypeCatalog::requiredFaces($identityDocument->document_type);
+            if ($requiredFaces !== null && $requiredFaces >= 2 && ! $this->hasBackDocumentEvidence($identityDocument)) {
+                return $this->respondUnprocessable(errors: [
+                    'back_document_public_id' => [sprintf('A %s requires both front and back faces before it can be verified.', $identityDocument->document_type)],
+                ]);
+            }
+
+            if (IdentityDocumentTypeCatalog::requiresExpiry($identityDocument->document_type) === true && $identityDocument->expires_on === null) {
+                return $this->respondUnprocessable(errors: [
+                    'expires_on' => [sprintf('A %s requires an expiry date before it can be verified.', $identityDocument->document_type)],
+                ]);
             }
 
             if ($this->isPastDateValue($identityDocument->expires_on)) {
@@ -358,7 +419,7 @@ final class ClientIdentityDocumentController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document'])),
+            ClientIdentityDocumentResource::make($identityDocument->refresh()->loadMissing(['client', 'document', 'backDocument'])),
             'Client identity document status updated successfully'
         );
     }
@@ -429,13 +490,19 @@ final class ClientIdentityDocumentController extends BaseController
             return null;
         }
 
+        // An evidence file belongs to a single identity-document face: reject
+        // it if any other identity record already links it as front OR back
+        // (AIR-004).
         $existingLink = ClientIdentityDocument::query()
-            ->where('document_id', $document->id)
+            ->where(function (Builder $query) use ($document): void {
+                $query->where('document_id', $document->id)
+                    ->orWhere('back_document_id', $document->id);
+            })
             ->where('agency_id', $client->agency_id)
             ->when($currentIdentityDocumentId !== null, fn (Builder $query): Builder => $query->where('id', '!=', $currentIdentityDocumentId))
             ->first();
 
-        if ($existingLink instanceof ClientIdentityDocument && $existingLink->client_id !== $client->id) {
+        if ($existingLink instanceof ClientIdentityDocument) {
             return null;
         }
 
@@ -444,8 +511,16 @@ final class ClientIdentityDocumentController extends BaseController
 
     private function hasLinkedDocumentEvidence(ClientIdentityDocument $identityDocument): bool
     {
-        $document = $identityDocument->document;
+        return $this->isUsableEvidence($identityDocument->document);
+    }
 
+    private function hasBackDocumentEvidence(ClientIdentityDocument $identityDocument): bool
+    {
+        return $this->isUsableEvidence($identityDocument->backDocument);
+    }
+
+    private function isUsableEvidence(?Document $document): bool
+    {
         return $document instanceof Document
             && $document->status === Document::STATUS_ACTIVE
             && in_array($document->category, ['kyc', 'identity', 'proof_of_address'], true)

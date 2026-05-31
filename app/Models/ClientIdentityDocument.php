@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Crypt;
     'rejected_at',
     'rejection_reason',
     'document_id',
+    'back_document_id',
     'created_by_user_id',
     'status',
     'archived_at',
@@ -140,6 +141,12 @@ final class ClientIdentityDocument extends Model
     public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
+    }
+
+    /** @return BelongsTo<Document, $this> */
+    public function backDocument(): BelongsTo
+    {
+        return $this->belongsTo(Document::class, 'back_document_id');
     }
 
     /** @return BelongsTo<User, $this> */

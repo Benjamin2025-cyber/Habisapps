@@ -150,6 +150,54 @@ final class Module3AccountingProductTest extends TestCase
         $inactive->assertJsonValidationErrors(['account_product_public_id']);
     }
 
+    public function test_customer_account_number_is_auto_generated_when_omitted(): void
+    {
+        $agency = $this->createAgency('AP-GEN');
+        $actor = $this->createUserWithRole('platform-admin');
+        $client = $this->createVerifiedClient($agency['id']);
+        $ledger = $this->createLedgerAccount($agency['id']);
+
+        $first = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('gen-1')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client['public_id'],
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledger['public_id'],
+                'account_title' => 'Generated Account',
+                'opened_on' => '2026-05-11',
+            ]);
+        $this->assertJsonSuccess($first, 201);
+        $firstNumber = $this->requireStringJsonPath($first, 'data.account_number');
+        self::assertMatchesRegularExpression('/^ACC\d{8}$/', $firstNumber);
+
+        $second = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('gen-2')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client['public_id'],
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledger['public_id'],
+                'account_title' => 'Generated Account 2',
+                'opened_on' => '2026-05-11',
+            ]);
+        $this->assertJsonSuccess($second, 201);
+        $secondNumber = $this->requireStringJsonPath($second, 'data.account_number');
+        self::assertMatchesRegularExpression('/^ACC\d{8}$/', $secondNumber);
+
+        // Sequential generation never collides.
+        self::assertNotSame($firstNumber, $secondNumber);
+
+        // A client-provided number is still honored.
+        $provided = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('gen-3')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client['public_id'],
+                'agency_public_id' => $agency['public_id'],
+                'ledger_account_public_id' => $ledger['public_id'],
+                'account_number' => 'CUSTOM-ACC-001',
+                'account_title' => 'Provided Account',
+                'opened_on' => '2026-05-11',
+            ]);
+        $this->assertJsonSuccess($provided, 201);
+        $provided->assertJsonPath('data.account_number', 'CUSTOM-ACC-001');
+    }
+
     public function test_platform_admin_can_manage_emf_regulatory_account_hierarchy(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

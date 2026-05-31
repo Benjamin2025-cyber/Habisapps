@@ -35,6 +35,7 @@ final class StoreDocumentRequest extends FormRequest
                     }
                 },
             ],
+            'agency_public_id' => ['sometimes', 'nullable', 'string', 'exists:agencies,public_id'],
             'category' => ['required', 'string', 'max:64'],
             'title' => ['required', 'string', 'max:255'],
             'metadata' => ['sometimes', 'array'],

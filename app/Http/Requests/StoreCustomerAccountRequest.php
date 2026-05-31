@@ -29,7 +29,10 @@ final class StoreCustomerAccountRequest extends FormRequest
             'agency_public_id' => ['nullable', 'string', 'exists:agencies,public_id'],
             'ledger_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
             'account_product_public_id' => ['nullable', 'string', 'exists:account_products,public_id'],
-            'account_number' => ['required', 'string', 'max:64', 'unique:customer_accounts,account_number'],
+            // Optional: when omitted, the backend reserves the next ACC########
+            // value from the configured account sequence. A client-provided
+            // value is still accepted and must be unique.
+            'account_number' => ['nullable', 'string', 'max:64', 'unique:customer_accounts,account_number'],
             'account_title' => ['nullable', 'string', 'max:255'],
             'account_type' => ['nullable', 'string', 'max:64'],
             'currency' => ['nullable', 'string', 'size:3'],

@@ -66,6 +66,16 @@ return [
         ],
     ],
     'permissions' => [
+        /*
+         * When false (default), protected permissions (PII, KYC verification,
+         * institution scope, etc.) can only be granted to platform-admin.
+         * When true, a role editor may delegate the delegable subset of
+         * protected permissions to non-platform roles; the institution-control
+         * floor (see RoleController::nonDelegableProtectedPermissions) is never
+         * delegable regardless of this flag.
+         */
+        'allow_protected_delegation' => env('SECURITY_ALLOW_PROTECTED_DELEGATION', false),
+
         'roles' => [
             'platform-admin' => [
                 'system.view-health',

@@ -7,6 +7,7 @@ namespace Tests\Feature\Api;
 use App\Http\Resources\ClientResource;
 use App\Models\Agency;
 use App\Models\Client;
+use App\Models\ClientGuarantor;
 use App\Models\ClientIdentityDocument;
 use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
@@ -310,6 +311,40 @@ final class Module2CrmKycTest extends TestCase
         ]);
     }
 
+    public function test_platform_admin_can_verify_kyc_submitted_by_another_user_and_self_verify_is_explained(): void
+    {
+        Storage::fake('local');
+        config(['security.crm.kyc.enforce_maker_checker' => true]);
+
+        $agency = $this->createAgency('AG-KYC-PA');
+        $submitter = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($submitter, $agency['public_id']);
+        $this->attachVerifiedIdentity($submitter, $clientPublicId);
+
+        $this->withApiHeaders()->actingAsSanctum($submitter)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/kyc-status', ['action' => 'submit'])
+            ->assertOk();
+
+        // The submitter cannot self-verify without the override; the error now
+        // explains the override path instead of a bare 403.
+        $selfVerify = $this->withApiHeaders()->actingAsSanctum($submitter)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/kyc-status', ['action' => 'verify']);
+        $selfVerify->assertForbidden();
+        $selfVerify->assertJsonPath('success', false);
+        $message = $selfVerify->json('message');
+        self::assertIsString($message);
+        self::assertStringContainsString('allow_self_verify', $message);
+
+        // A platform-admin (a different user with the permission) verifies the
+        // submitted KYC successfully — the role's permission is sufficient when
+        // it is not self-verification.
+        $platformAdmin = $this->createUserWithRole('platform-admin');
+        $verify = $this->withApiHeaders()->actingAsSanctum($platformAdmin)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/kyc-status', ['action' => 'verify']);
+        $this->assertJsonSuccess($verify);
+        $verify->assertJsonPath('data.kyc_status', Client::KYC_STATUS_VERIFIED);
+    }
+
     public function test_configurable_maker_checker_kyc_segregation(): void
     {
         Storage::fake('local');
@@ -533,6 +568,538 @@ final class Module2CrmKycTest extends TestCase
         $expire->assertJsonPath('data.status', 'expired');
     }
 
+    public function test_proxy_creation_stores_encrypted_id_document_number_without_overflow(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-CRM-PROXYENC');
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($actor, $agency['public_id']);
+
+        $documentNumber = 'CMR-NID-2026-0099887766';
+
+        $proxy = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('proxy-enc')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/proxies', [
+                'proxy_full_name' => 'Encrypted Proxy',
+                'mandate_type' => 'full',
+                'proxy_id_document_type' => 'national_id',
+                'proxy_id_document_number' => $documentNumber,
+            ]);
+
+        $this->assertJsonSuccess($proxy, 201);
+        $proxyPublicId = $this->requireStringJsonPath($proxy, 'data.public_id');
+
+        $stored = ClientProxy::query()->where('public_id', $proxyPublicId)->firstOrFail();
+
+        // The encrypted payload on disk must exceed the original varchar(128)
+        // limit; if the column were still varchar(128) this insert would have
+        // overflowed and the request would have returned 500.
+        $rawCiphertext = DB::table('client_proxies')
+            ->where('public_id', $proxyPublicId)
+            ->value('proxy_id_document_number');
+        self::assertIsString($rawCiphertext);
+        self::assertGreaterThan(128, strlen($rawCiphertext));
+
+        // The decrypted value round-trips to the original plaintext.
+        self::assertSame($documentNumber, $stored->proxy_id_document_number);
+    }
+
+    public function test_platform_admin_must_select_agency_when_uploading_documents(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-DOC-UP');
+        $platformAdmin = $this->createUserWithRole('platform-admin');
+
+        // Platform-admin has documents.create but no current agency: without a
+        // selection the response is a structured 422, not an unexplained 403.
+        $missingAgency = $this->withApiHeaders()
+            ->actingAsSanctum($platformAdmin)
+            ->postJson('/api/v1/documents', [
+                'file' => UploadedFile::fake()->image('id.jpg'),
+                'category' => 'identity',
+                'title' => 'Doc',
+            ]);
+        $missingAgency->assertStatus(422);
+        $missingAgency->assertJsonValidationErrors(['agency_public_id']);
+
+        // With agency_public_id the upload succeeds and is stored in that agency.
+        $withAgency = $this->withApiHeaders()
+            ->actingAsSanctum($platformAdmin)
+            ->postJson('/api/v1/documents', [
+                'file' => UploadedFile::fake()->image('id.jpg'),
+                'category' => 'identity',
+                'title' => 'Doc',
+                'agency_public_id' => $agency['public_id'],
+            ]);
+        $this->assertJsonSuccess($withAgency, 201);
+        $documentPublicId = $this->requireStringJsonPath($withAgency, 'data.public_id');
+        self::assertSame($agency['id'], Document::query()->where('public_id', $documentPublicId)->value('agency_id'));
+
+        // An agency-scoped user cannot upload into a different agency.
+        $otherAgency = $this->createAgency('AG-DOC-OTHER');
+        $agencyUser = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $crossAgency = $this->withApiHeaders()
+            ->actingAsSanctum($agencyUser)
+            ->postJson('/api/v1/documents', [
+                'file' => UploadedFile::fake()->image('id.jpg'),
+                'category' => 'identity',
+                'title' => 'Doc',
+                'agency_public_id' => $otherAgency['public_id'],
+            ]);
+        $crossAgency->assertForbidden();
+    }
+
+    public function test_platform_admin_document_lifecycle_without_current_agency(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-DOC-LC');
+        $platformAdmin = $this->createUserWithRole('platform-admin');
+
+        // Upload for a selected agency (platform-admin has no current agency).
+        $upload = $this->withApiHeaders()->actingAsSanctum($platformAdmin)
+            ->postJson('/api/v1/documents', [
+                'file' => UploadedFile::fake()->image('lc.jpg'),
+                'category' => 'identity',
+                'title' => 'Lifecycle Doc',
+                'agency_public_id' => $agency['public_id'],
+            ]);
+        $this->assertJsonSuccess($upload, 201);
+        $documentPublicId = $this->requireStringJsonPath($upload, 'data.public_id');
+
+        // Metadata, file download, and archive all succeed for that same actor
+        // (AIR-003) — not just the upload.
+        $this->withApiHeaders()->actingAsSanctum($platformAdmin)
+            ->getJson('/api/v1/documents/'.$documentPublicId)
+            ->assertOk();
+
+        $this->withApiHeaders()->actingAsSanctum($platformAdmin)
+            ->getJson('/api/v1/documents/'.$documentPublicId.'/file')
+            ->assertStatus(200);
+
+        $this->withApiHeaders()->actingAsSanctum($platformAdmin)
+            ->patchJson('/api/v1/documents/'.$documentPublicId.'/archive')
+            ->assertOk();
+
+        // A normal user from another agency still cannot read it.
+        $otherAgency = $this->createAgency('AG-DOC-LC2');
+        $foreignUser = $this->createUserWithRole('kyc-officer', $otherAgency['code'], $otherAgency['name']);
+        $this->withApiHeaders()->actingAsSanctum($foreignUser)
+            ->getJson('/api/v1/documents/'.$documentPublicId)
+            ->assertForbidden();
+    }
+
+    public function test_uploaded_document_file_is_retrievable_and_agency_scoped(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-DOC-DL');
+
+        // Unauthenticated requests are rejected (checked before any acting-as,
+        // since Sanctum's test guard persists once set).
+        $seedDocument = $this->createDocumentInAgency($agency['id'], 'profile_photo');
+        $unauth = $this->withApiHeaders(['Authorization' => ''])
+            ->getJson('/api/v1/documents/'.$seedDocument.'/file');
+        $unauth->assertStatus(401);
+
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+
+        $upload = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/documents', [
+                'file' => UploadedFile::fake()->image('photo.jpg'),
+                'category' => 'profile_photo',
+                'title' => 'Profile Photo',
+            ]);
+        $this->assertJsonSuccess($upload, 201);
+        $documentPublicId = $this->requireStringJsonPath($upload, 'data.public_id');
+        $expectedChecksum = Document::query()->where('public_id', $documentPublicId)->value('checksum_sha256');
+        self::assertIsString($expectedChecksum);
+
+        $download = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/documents/'.$documentPublicId.'/file');
+        $download->assertStatus(200);
+        self::assertStringStartsWith('image/', (string) $download->headers->get('Content-Type'));
+        self::assertStringContainsString('inline', (string) $download->headers->get('Content-Disposition'));
+
+        // The streamed bytes match the checksum computed at upload time.
+        ob_start();
+        $download->baseResponse->sendContent();
+        $bytes = (string) ob_get_clean();
+        self::assertSame($expectedChecksum, hash('sha256', $bytes));
+
+        // A user from another agency cannot retrieve the file.
+        $otherAgency = $this->createAgency('AG-DOC-DL2');
+        $foreignUser = $this->createUserWithRole('kyc-officer', $otherAgency['code'], $otherAgency['name']);
+        $forbidden = $this->withApiHeaders()
+            ->actingAsSanctum($foreignUser)
+            ->getJson('/api/v1/documents/'.$documentPublicId.'/file');
+        $forbidden->assertForbidden();
+    }
+
+    public function test_client_pii_masking_exposes_pii_redacted_flag(): void
+    {
+        $agency = $this->createAgency('AG-PIIFLAG');
+        $client = Client::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-PIIFLAG',
+            'first_name' => 'Mariama',
+            'last_name' => 'Bello',
+            'phone_number' => '+237699445566',
+            'email' => 'mariama.bello@example.test',
+            'status' => Client::STATUS_ACTIVE,
+            'kyc_status' => Client::KYC_STATUS_VERIFIED,
+        ]);
+
+        // agency-manager has crm.clients.view but not crm.pii.view: data is
+        // masked and pii_redacted=true signals the masking to the frontend.
+        $manager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $masked = $this->withApiHeaders()->actingAsSanctum($manager)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $this->assertJsonSuccess($masked);
+        $masked->assertJsonPath('data.pii_redacted', true);
+        self::assertNotSame('Mariama', $masked->json('data.first_name'));
+
+        // platform-admin has crm.pii.view: full data and pii_redacted=false.
+        $admin = $this->createUserWithRole('platform-admin');
+        $full = $this->withApiHeaders()->actingAsSanctum($admin)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $this->assertJsonSuccess($full);
+        $full->assertJsonPath('data.pii_redacted', false);
+        $full->assertJsonPath('data.first_name', 'Mariama');
+    }
+
+    public function test_identity_back_face_evidence_uniqueness_is_enforced(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-FACE-UNIQ');
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $token = 'Bearer '.$actor->createToken('face-uniq')->plainTextToken;
+
+        $clientA = $this->createClientViaApi($actor, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($actor);
+        $backDoc = $this->createDocumentViaApi($actor);
+
+        $identity = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/clients/'.$clientA.'/identity-documents', [
+                'document_type' => 'national_id',
+                'document_number' => 'NID-UNIQ-1',
+                'document_public_id' => $frontDoc,
+                'back_document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonSuccess($identity, 201);
+        $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
+
+        // Re-saving the same record's own evidence is not a false positive.
+        $resave = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/clients/'.$clientA.'/identity-documents/'.$identityPublicId, [
+                'back_document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonSuccess($resave);
+
+        // Update rejects setting the back face equal to the front face.
+        $sameAsFront = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/clients/'.$clientA.'/identity-documents/'.$identityPublicId, [
+                'back_document_public_id' => $frontDoc,
+            ]);
+        $sameAsFront->assertStatus(422);
+        $sameAsFront->assertJsonValidationErrors(['back_document_public_id']);
+
+        // Front-only update also cannot point at the current back face.
+        $frontToCurrentBack = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/clients/'.$clientA.'/identity-documents/'.$identityPublicId, [
+                'document_public_id' => $backDoc,
+            ]);
+        $frontToCurrentBack->assertStatus(422);
+        $frontToCurrentBack->assertJsonValidationErrors(['back_document_public_id']);
+
+        // A document already used on one identity record cannot be reused on
+        // another record for the same client.
+        $sameClientReuse = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/clients/'.$clientA.'/identity-documents', [
+                'document_type' => 'passport',
+                'document_number' => 'PP-SAME-CLIENT-REUSE',
+                'document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonError($sameClientReuse, 422, 'Document attachment is invalid for this client.');
+
+        // A document already used as another client's back face cannot be reused.
+        $clientB = $this->createClientViaApi($actor, $agency['public_id']);
+        $reuse = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/clients/'.$clientB.'/identity-documents', [
+                'document_type' => 'passport',
+                'document_number' => 'PP-REUSE-1',
+                'document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonError($reuse, 422, 'Document attachment is invalid for this client.');
+    }
+
+    public function test_two_face_identity_document_cannot_be_verified_without_both_faces(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-FACES-1');
+        $submitter = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($submitter, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($submitter);
+        $backDoc = $this->createDocumentViaApi($submitter);
+
+        $identity = $this->withApiHeaders(['Authorization' => 'Bearer '.$submitter->createToken('faces-1')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'national_id',
+                'document_number' => 'NID-FACE-1',
+                'expires_on' => now()->addYear()->toDateString(),
+                'document_public_id' => $frontDoc,
+            ]);
+        $this->assertJsonSuccess($identity, 201);
+        $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
+
+        // A different officer attempts verification with only the front face.
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $blocked = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $blocked->assertStatus(422);
+        $blocked->assertJsonValidationErrors(['back_document_public_id']);
+
+        // Attach the back face, then verification succeeds.
+        $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId, [
+                'back_document_public_id' => $backDoc,
+            ])->assertOk();
+
+        $verified = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($verified);
+        $verified->assertJsonPath('data.verification_status', 'verified');
+        $verified->assertJsonPath('data.back_document_public_id', $backDoc);
+    }
+
+    public function test_single_face_identity_document_verifies_with_one_face(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-FACES-2');
+        $submitter = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($submitter, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($submitter);
+
+        $identity = $this->withApiHeaders(['Authorization' => 'Bearer '.$submitter->createToken('faces-2')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'passport',
+                'document_number' => 'PP-FACE-1',
+                'expires_on' => now()->addYear()->toDateString(),
+                'document_public_id' => $frontDoc,
+            ]);
+        $this->assertJsonSuccess($identity, 201);
+        $identityPublicId = $this->requireStringJsonPath($identity, 'data.public_id');
+
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $verified = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$identityPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($verified);
+        $verified->assertJsonPath('data.verification_status', 'verified');
+    }
+
+    public function test_identity_document_expiry_requirement_is_enforced_from_catalog(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-EXP-CAT');
+        $submitter = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($submitter, $agency['public_id']);
+
+        $passport = $this->withApiHeaders()->actingAsSanctum($submitter)
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'passport',
+                'document_number' => 'PP-NO-EXP-1',
+                'document_public_id' => $this->createDocumentViaApi($submitter),
+            ]);
+        $this->assertJsonSuccess($passport, 201);
+        $passportPublicId = $this->requireStringJsonPath($passport, 'data.public_id');
+
+        $passportVerify = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$passportPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $passportVerify->assertStatus(422);
+        $passportVerify->assertJsonValidationErrors(['expires_on']);
+
+        // Voter card is catalogued as no-expiry-required, so it can be
+        // verified with one face and no expires_on value.
+        $voterCard = $this->withApiHeaders()->actingAsSanctum($submitter)
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'voter_card',
+                'document_number' => 'VC-NO-EXP-1',
+                'document_public_id' => $this->createDocumentViaApi($submitter),
+            ]);
+        $this->assertJsonSuccess($voterCard, 201);
+        $voterCardPublicId = $this->requireStringJsonPath($voterCard, 'data.public_id');
+
+        $voterCardVerify = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/identity-documents/'.$voterCardPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($voterCardVerify);
+        $voterCardVerify->assertJsonPath('data.verification_status', 'verified');
+    }
+
+    public function test_identity_document_type_catalog_is_exposed_and_enforced(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-IDCAT');
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+
+        $catalog = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/reference/identity-document-types');
+        $this->assertJsonSuccess($catalog);
+        $catalog->assertJsonFragment(['key' => 'national_id', 'label' => 'National ID Card', 'required_faces' => 2, 'requires_expiry' => true]);
+        $catalog->assertJsonFragment(['key' => 'passport', 'label' => 'Passport', 'required_faces' => 1, 'requires_expiry' => true]);
+
+        $clientPublicId = $this->createClientViaApi($actor, $agency['public_id']);
+        $documentPublicId = $this->createDocumentViaApi($actor);
+
+        // A known catalog key is accepted.
+        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'national_id',
+                'document_number' => 'NID-VALID-1',
+                'document_public_id' => $documentPublicId,
+            ]);
+        $this->assertJsonSuccess($valid, 201);
+
+        // A typo / unknown type is rejected with 422 on document_type.
+        $invalid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
+                'document_type' => 'national_idd',
+                'document_number' => 'NID-INVALID-1',
+                'document_public_id' => $this->createDocumentViaApi($actor),
+            ]);
+        $invalid->assertStatus(422);
+        $invalid->assertJsonValidationErrors(['document_type']);
+    }
+
+    public function test_guarantor_directory_supports_institution_scope_filters_and_search(): void
+    {
+        $agencyA = $this->createAgency('AG-DIR-A');
+        $agencyB = $this->createAgency('AG-DIR-B');
+        $clientA = $this->makeDirectoryClient($agencyA['id'], 'DIR-A');
+        $clientB = $this->makeDirectoryClient($agencyB['id'], 'DIR-B');
+
+        $guarantorA = ClientGuarantor::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyA['id'],
+            'client_id' => $clientA->id,
+            'guarantor_full_name' => 'Alpha Guarantor',
+            'status' => ClientGuarantor::STATUS_ACTIVE,
+            'verification_status' => ClientGuarantor::VERIFICATION_PENDING,
+        ]);
+        $guarantorB = ClientGuarantor::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyB['id'],
+            'client_id' => $clientB->id,
+            'guarantor_full_name' => 'Beta Guarantor',
+            'status' => ClientGuarantor::STATUS_INACTIVE,
+            'verification_status' => ClientGuarantor::VERIFICATION_VERIFIED,
+        ]);
+
+        $institutionReader = $this->createUserWithRole('platform-admin');
+
+        // scope=all returns both agencies for an institution reader, and the
+        // payload carries the client_public_id needed by the UI.
+        $all = $this->withApiHeaders()->actingAsSanctum($institutionReader)
+            ->getJson('/api/v1/guarantors?scope=all');
+        $this->assertJsonSuccess($all);
+        $all->assertJsonFragment(['public_id' => $guarantorA->public_id]);
+        $all->assertJsonFragment(['public_id' => $guarantorB->public_id]);
+        $all->assertJsonFragment(['client_public_id' => $clientA->public_id]);
+
+        // status / verification_status / agency filters.
+        $byStatus = $this->withApiHeaders()->actingAsSanctum($institutionReader)
+            ->getJson('/api/v1/guarantors?scope=all&filter[status]=inactive');
+        $byStatus->assertJsonFragment(['public_id' => $guarantorB->public_id]);
+        $byStatus->assertJsonMissing(['public_id' => $guarantorA->public_id]);
+
+        $byVerification = $this->withApiHeaders()->actingAsSanctum($institutionReader)
+            ->getJson('/api/v1/guarantors?scope=all&filter[verification_status]=verified');
+        $byVerification->assertJsonFragment(['public_id' => $guarantorB->public_id]);
+        $byVerification->assertJsonMissing(['public_id' => $guarantorA->public_id]);
+
+        $byAgency = $this->withApiHeaders()->actingAsSanctum($institutionReader)
+            ->getJson('/api/v1/guarantors?scope=all&filter[agency_public_id]='.$agencyB['public_id']);
+        $byAgency->assertJsonFragment(['public_id' => $guarantorB->public_id]);
+        $byAgency->assertJsonMissing(['public_id' => $guarantorA->public_id]);
+
+        $bySearch = $this->withApiHeaders()->actingAsSanctum($institutionReader)
+            ->getJson('/api/v1/guarantors?scope=all&search=Alpha');
+        $bySearch->assertJsonFragment(['public_id' => $guarantorA->public_id]);
+        $bySearch->assertJsonMissing(['public_id' => $guarantorB->public_id]);
+
+        // An agency-scoped actor only ever sees its own agency, even when it
+        // requests scope=all.
+        $agencyActor = $this->createUserWithRole('kyc-officer', $agencyA['code'], $agencyA['name']);
+        $scoped = $this->withApiHeaders()->actingAsSanctum($agencyActor)
+            ->getJson('/api/v1/guarantors?scope=all');
+        $this->assertJsonSuccess($scoped);
+        $scoped->assertJsonFragment(['public_id' => $guarantorA->public_id]);
+        $scoped->assertJsonMissing(['public_id' => $guarantorB->public_id]);
+    }
+
+    public function test_proxy_directory_returns_linked_public_ids_with_institution_scope(): void
+    {
+        $agencyA = $this->createAgency('AG-PXY-A');
+        $agencyB = $this->createAgency('AG-PXY-B');
+        $clientA = $this->makeDirectoryClient($agencyA['id'], 'PXY-A');
+        $clientB = $this->makeDirectoryClient($agencyB['id'], 'PXY-B');
+        $accountA = $this->createCustomerAccount($clientA);
+
+        $proxyA = ClientProxy::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyA['id'],
+            'client_id' => $clientA->id,
+            'customer_account_id' => $accountA->id,
+            'proxy_full_name' => 'Alpha Proxy',
+            'mandate_type' => 'full',
+            'status' => ClientProxy::STATUS_ACTIVE,
+            'verification_status' => ClientProxy::VERIFICATION_PENDING,
+        ]);
+        $proxyB = ClientProxy::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyB['id'],
+            'client_id' => $clientB->id,
+            'proxy_full_name' => 'Beta Proxy',
+            'mandate_type' => 'full',
+            'status' => ClientProxy::STATUS_ACTIVE,
+            'verification_status' => ClientProxy::VERIFICATION_PENDING,
+        ]);
+
+        $institutionReader = $this->createUserWithRole('platform-admin');
+        $all = $this->withApiHeaders()->actingAsSanctum($institutionReader)
+            ->getJson('/api/v1/proxies?scope=all');
+        $this->assertJsonSuccess($all);
+        $all->assertJsonFragment(['public_id' => $proxyA->public_id]);
+        $all->assertJsonFragment(['public_id' => $proxyB->public_id]);
+        $all->assertJsonFragment(['customer_account_public_id' => $accountA->public_id]);
+        $all->assertJsonFragment(['client_public_id' => $clientA->public_id]);
+
+        $agencyActor = $this->createUserWithRole('kyc-officer', $agencyB['code'], $agencyB['name']);
+        $scoped = $this->withApiHeaders()->actingAsSanctum($agencyActor)
+            ->getJson('/api/v1/proxies?scope=all');
+        $scoped->assertJsonFragment(['public_id' => $proxyB->public_id]);
+        $scoped->assertJsonMissing(['public_id' => $proxyA->public_id]);
+    }
+
     public function test_self_verify_override_flags_do_not_bypass_verification_controls(): void
     {
         Storage::fake('local');
@@ -599,8 +1166,9 @@ final class Module2CrmKycTest extends TestCase
         $overrideIdentity = $this->withApiHeaders()
             ->actingAsSanctum($overrideActor)
             ->postJson('/api/v1/clients/'.$clientPublicId.'/identity-documents', [
-                'document_type' => 'national_id',
+                'document_type' => 'passport',
                 'document_number' => 'SELFVERIFY-OVERRIDE-1',
+                'expires_on' => now()->addYear()->toDateString(),
                 'document_public_id' => $overrideDocumentPublicId,
             ]);
         $this->assertJsonSuccess($overrideIdentity, 201);
@@ -1048,6 +1616,19 @@ final class Module2CrmKycTest extends TestCase
             ->toMediaCollection('kyc_documents');
 
         return $document->public_id;
+    }
+
+    private function makeDirectoryClient(int $agencyId, string $reference): Client
+    {
+        return Client::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agencyId,
+            'client_reference' => 'CLI-'.$reference,
+            'first_name' => 'Dir',
+            'last_name' => $reference,
+            'status' => Client::STATUS_ACTIVE,
+            'kyc_status' => Client::KYC_STATUS_VERIFIED,
+        ]);
     }
 
     private function createCustomerAccount(Client $client): CustomerAccount

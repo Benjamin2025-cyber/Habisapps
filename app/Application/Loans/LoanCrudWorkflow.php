@@ -6,6 +6,7 @@ namespace App\Application\Loans;
 
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreLoanRequest;
+use App\Http\Requests\UpdateLoanLinkedAccountsRequest;
 use App\Http\Requests\UpdateLoanRequest;
 use App\Http\Resources\LoanResource;
 use App\Models\Client;
@@ -51,6 +52,15 @@ final class LoanCrudWorkflow extends BaseController
             $query->where('status', $status);
         }
 
+        $clientPublicId = $this->clientFilterValue($request);
+        if ($clientPublicId !== null) {
+            $clientId = Client::query()->where('public_id', $clientPublicId)->value('id');
+            // An unknown or out-of-scope client id produces an impossible
+            // predicate so the response is an empty, scope-safe page rather
+            // than leaking another client's loans.
+            $query->where('client_id', is_int($clientId) ? $clientId : 0);
+        }
+
         $loans = $query->paginate(min(max($request->integer('per_page', 25), 1), 100));
 
         return $this->respondSuccess([
@@ -83,6 +93,15 @@ final class LoanCrudWorkflow extends BaseController
             && ! $actor->can('crm.scope.institution.manage')
             && $this->staffAgencyScope->currentAgencyId($actor) !== $client->agency_id) {
             return $this->respondForbidden('Loan can only be created inside your agency scope.');
+        }
+
+        // Defense in depth: a product created before formula-policy approval
+        // gating (or mutated directly) can reference an unapproved policy.
+        // Detect it here and return a field-level 422 naming the failing
+        // policy instead of letting the snapshotter throw a 500.
+        $policyErrors = $this->formulaPolicySnapshotter->approvalErrors($product);
+        if ($policyErrors !== []) {
+            return $this->respondUnprocessable(errors: $policyErrors);
         }
 
         $currency = $validated['currency'] ?? 'XAF';
@@ -145,6 +164,90 @@ final class LoanCrudWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(LoanResource::make($loan->refresh()->loadMissing($this->relations())), 'Loan application updated successfully');
+    }
+
+    /**
+     * Update only the linked customer accounts (amortization, unpaid,
+     * recovery, transfer) after the application stage. Loan terms are left
+     * untouched. This lets operations attach a missing recovery account once
+     * a loan is disbursed/active without reopening the full application.
+     */
+    public function updateLinkedAccounts(UpdateLoanLinkedAccountsRequest $request, Loan $loan): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User || ! $this->canAccessLoanAgency($actor, $loan)) {
+            return $this->respondForbidden('Loan is outside your agency scope.');
+        }
+
+        if (in_array($loan->status, [Loan::STATUS_CLOSED, Loan::STATUS_REJECTED, Loan::STATUS_WRITTEN_OFF], true)) {
+            return $this->respondUnprocessable(errors: ['status' => ['Linked accounts cannot be changed once the loan is closed, rejected, or written off.']]);
+        }
+
+        $loan->loadMissing('client');
+        $client = $loan->client;
+        if (! $client instanceof Client) {
+            return $this->respondUnprocessable(errors: ['client_public_id' => ['Loan client is missing.']]);
+        }
+
+        // Reject no-op payloads: an empty body, or a body whose keys are all
+        // unrecognized (e.g. the typo `recovery_account_id` instead of
+        // `recovery_account_public_id`), must not return a misleading success
+        // while changing nothing (AIR-005).
+        $accountFieldNames = array_keys($this->accountFields());
+        $unknownFields = array_values(array_diff(array_keys($request->all()), $accountFieldNames));
+        if ($unknownFields !== []) {
+            return $this->respondUnprocessable(errors: [
+                'accounts' => ['Unknown linked-account field(s): '.implode(', ', $unknownFields).'.'],
+            ]);
+        }
+
+        $presentFields = array_values(array_filter($accountFieldNames, fn (string $field): bool => $request->has($field)));
+        if ($presentFields === []) {
+            return $this->respondUnprocessable(errors: [
+                'accounts' => ['Provide at least one linked-account field: '.implode(', ', $accountFieldNames).'.'],
+            ]);
+        }
+
+        $validated = $request->validated();
+        $accountErrors = [];
+        foreach ($this->accountFields() as $field => $column) {
+            $publicId = $validated[$field] ?? null;
+            if ($publicId === null || $publicId === '') {
+                continue;
+            }
+
+            $account = CustomerAccount::query()->where('public_id', $publicId)->first();
+            if (! $account instanceof CustomerAccount
+                || $account->status !== CustomerAccount::STATUS_ACTIVE
+                || $account->client_id !== $client->id
+                || $account->agency_id !== $client->agency_id) {
+                $accountErrors[$field] = ['Selected account must be active and belong to the loan client and agency.'];
+            }
+        }
+
+        if ($accountErrors !== []) {
+            return $this->respondUnprocessable(errors: $accountErrors);
+        }
+
+        $updates = [];
+        foreach ($this->accountFields() as $field => $column) {
+            if (array_key_exists($field, $validated)) {
+                $updates[$column] = $this->resolveCustomerAccountId($validated[$field] ?? null);
+            }
+        }
+        $loan->forceFill($updates)->save();
+
+        $changedFields = array_values(array_intersect($accountFieldNames, array_keys($validated)));
+
+        $this->securityAudit->record('loan.linked_accounts.updated', actor: $actor, subject: $loan, properties: [
+            'changed_fields' => $changedFields,
+        ], request: $request);
+
+        return $this->respondSuccess(
+            LoanResource::make($loan->refresh()->loadMissing($this->relations())),
+            'Loan linked accounts updated successfully',
+            meta: ['changed_fields' => $changedFields],
+        );
     }
 
     /**
@@ -384,6 +487,26 @@ final class LoanCrudWorkflow extends BaseController
         $id = CustomerAccount::query()->where('public_id', $publicId)->value('id');
 
         return is_int($id) ? $id : null;
+    }
+
+    /**
+     * Read the client public id filter from either the top-level
+     * `client_public_id` query parameter or the `filter[client_public_id]`
+     * bracket form. Returns null when no usable value is present.
+     */
+    private function clientFilterValue(Request $request): ?string
+    {
+        $direct = $request->query('client_public_id');
+        if (is_string($direct) && $direct !== '') {
+            return $direct;
+        }
+
+        $filter = $request->query('filter');
+        if (is_array($filter) && isset($filter['client_public_id']) && is_string($filter['client_public_id']) && $filter['client_public_id'] !== '') {
+            return $filter['client_public_id'];
+        }
+
+        return null;
     }
 
     private function canAccessLoanAgency(User $actor, Loan $loan): bool

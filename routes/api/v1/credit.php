@@ -22,16 +22,19 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('loans', [LoanController::class, 'store']);
     Route::get('loans/{loan}', [LoanController::class, 'show']);
     Route::patch('loans/{loan}', [LoanController::class, 'update']);
+    Route::patch('loans/{loan}/linked-accounts', [LoanController::class, 'updateLinkedAccounts']);
     Route::post('loans/{loan}/setup-charges/assess', [LoanController::class, 'assessSetupCharges']);
     Route::post('loans/{loan}/setup-charges/{chargePublicId}/collect', [LoanController::class, 'collectSetupCharge']);
     Route::post('loans/{loan}/insurance-premiums/{premiumPublicId}/collect', [LoanController::class, 'collectInsurancePremium']);
     Route::post('loans/{loan}/setup-charges/{chargePublicId}/direction-decision', [LoanController::class, 'decideSetupChargeException']);
+    Route::get('loans/{loan}/approvals', [LoanController::class, 'listApprovals']);
     Route::post('loans/{loan}/approvals/{step}', [LoanController::class, 'decideApproval']);
     Route::post('loans/{loan}/status-transitions', [LoanController::class, 'transitionStatus']);
     Route::post('loans/{loan}/disburse', [LoanController::class, 'disburse']);
     Route::post('loans/{loan}/repayments', [LoanController::class, 'repay']);
     Route::post('loans/{loan}/arrears/assess', [LoanController::class, 'assessArrears']);
     Route::post('loans/{loan}/early-repayment', [LoanController::class, 'earlyRepay']);
+    Route::get('loans/{loan}/schedule', [LoanController::class, 'showSchedule']);
     Route::post('loans/{loan}/schedule/generate', [LoanController::class, 'generateSchedule']);
     Route::post('loans/{loan}/schedule/reschedule', [LoanController::class, 'reschedule']);
 

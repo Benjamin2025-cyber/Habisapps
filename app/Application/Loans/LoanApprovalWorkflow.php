@@ -28,6 +28,31 @@ final class LoanApprovalWorkflow extends BaseController
         private readonly TransitionLoanStatus $transitionLoanStatus,
     ) {}
 
+    public function listApprovals(Request $request, Loan $loan): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $loan)) {
+            return $this->respondForbidden();
+        }
+
+        if (! $this->canAccessLoanAgency($actor, $loan)) {
+            return $this->respondForbidden('Loan is outside your agency scope.');
+        }
+
+        $approvals = LoanApproval::query()
+            ->where('loan_id', $loan->id)
+            ->with('actedBy')
+            ->oldest('id')
+            ->get();
+
+        return $this->respondSuccess([
+            'approvals' => $approvals
+                ->map(fn (LoanApproval $approval): array => $this->approvalPayload($approval))
+                ->values()
+                ->all(),
+        ]);
+    }
+
     public function decideApproval(Request $request, Loan $loan, string $step): JsonResponse
     {
         $actor = $request->user();

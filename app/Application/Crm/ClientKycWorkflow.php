@@ -62,6 +62,17 @@ final class ClientKycWorkflow extends BaseController
         $allowSelfVerify = $request->boolean('allow_self_verify', false);
         if ($transition === Client::KYC_STATUS_VERIFIED
             && ! $this->canVerifySubmittedKyc($client, $actor, $allowSelfVerify)) {
+            // Distinguish "you are the submitter" (resolvable via the override
+            // flag + permission) from a plain authorization failure, so an
+            // otherwise-permitted actor is not left guessing why approval 403s.
+            if ($this->isSelfVerification($client, $actor)) {
+                return $this->respondForbidden(
+                    $allowSelfVerify
+                        ? 'Self-verification requires the crm.kyc.override.self_verify permission.'
+                        : 'You submitted this client KYC, so a different checker must verify it. To self-verify, set allow_self_verify=true and provide a reason; this also requires the crm.kyc.override.self_verify permission.'
+                );
+            }
+
             return $this->respondForbidden('KYC verification requires a checker different from the submitter.');
         }
 
@@ -133,6 +144,13 @@ final class ClientKycWorkflow extends BaseController
             'archive' => $actor->can('archive', $client),
             default => false,
         };
+    }
+
+    private function isSelfVerification(Client $client, User $actor): bool
+    {
+        return (bool) config('security.crm.kyc.enforce_maker_checker', true)
+            && $client->kyc_submitted_by_user_id !== null
+            && $client->kyc_submitted_by_user_id === $actor->id;
     }
 
     private function canVerifySubmittedKyc(Client $client, User $actor, bool $allowSelfVerify): bool

@@ -29,6 +29,7 @@ final class ClientIdentityDocumentResource extends JsonResource
             'public_id' => $record->public_id,
             'client_public_id' => $record->relationLoaded('client') ? $record->client?->public_id : null,
             'document_public_id' => $record->relationLoaded('document') ? $record->document?->public_id : null,
+            'back_document_public_id' => $record->relationLoaded('backDocument') ? $record->backDocument?->public_id : null,
             'document_type' => $record->document_type,
             'document_number' => $showPii ? $record->document_number : $this->maskDocumentNumber($record->document_number),
             'issuing_authority' => $showPii ? $record->issuing_authority : null,

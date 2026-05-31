@@ -60,6 +60,9 @@ final class ClientResource extends JsonResource
             'collection_type' => $client->collection_type,
             'collection_frequency' => $client->collection_frequency,
             'collection_target_amount' => $client->collection_target_amount,
+            // Lets the frontend distinguish masked PII (actor lacks
+            // crm.pii.view) from genuinely missing data (FBI-007).
+            'pii_redacted' => ! $showPii,
             'status' => $client->status,
             'kyc_status' => $client->kyc_status,
             'onboarded_on' => $this->formatDate($client->onboarded_on),

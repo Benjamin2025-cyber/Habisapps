@@ -68,6 +68,23 @@ final class LoanProduct extends Model
     public const string TERM_UNIT_MONTH = 'month';
 
     /**
+     * Accepted descriptive values for the penalty configuration fields.
+     * Authoritative penalty calculation is governed by the
+     * `penalties_and_arrears` formula policy; these fields describe the
+     * product's declared penalty shape and are validated against these enums
+     * so typos cannot be persisted.
+     *
+     * @var array<int, string>
+     */
+    public const array PENALTY_FORMULA_TYPES = ['fixed', 'flat_rate', 'variable_rate', 'percentage'];
+
+    /** @var array<int, string> */
+    public const array PENALTY_FORMULA_BASES = ['principal', 'outstanding_principal', 'unpaid_scheduled_due', 'overdue_amount'];
+
+    /** @var array<int, string> */
+    public const array PENALTY_VALUE_TYPES = ['amount', 'percentage'];
+
+    /**
      * @return array<int, string>
      */
     public function uniqueIds(): array

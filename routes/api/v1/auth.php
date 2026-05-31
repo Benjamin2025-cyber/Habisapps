@@ -12,10 +12,12 @@ use App\Http\Controllers\Api\V1\ClientGuarantorController;
 use App\Http\Controllers\Api\V1\ClientIdentityDocumentController;
 use App\Http\Controllers\Api\V1\ClientProxyController;
 use App\Http\Controllers\Api\V1\DocumentController;
+use App\Http\Controllers\Api\V1\ReferenceCatalogController;
 use App\Http\Controllers\Api\V1\ReferenceNumberController;
 use App\Http\Controllers\Api\V1\RoleController;
 use App\Http\Controllers\Api\V1\StaffAssignmentController;
 use App\Http\Controllers\Api\V1\StaffUserController;
+use App\Http\Controllers\Api\V1\StakeholderDirectoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:auth.login');
@@ -49,7 +51,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('documents', [DocumentController::class, 'index']);
     Route::post('documents', [DocumentController::class, 'store'])->middleware('throttle:document.upload');
     Route::get('documents/{document}', [DocumentController::class, 'show']);
+    Route::get('documents/{document}/file', [DocumentController::class, 'download']);
     Route::patch('documents/{document}/archive', [DocumentController::class, 'archive']);
+
+    // Transversal (institution-wide) read-only directories. Mutations stay
+    // nested under clients/{client} (see FBI-012/FBI-013).
+    Route::get('guarantors', [StakeholderDirectoryController::class, 'guarantors']);
+    Route::get('proxies', [StakeholderDirectoryController::class, 'proxies']);
 
     Route::get('clients', [ClientController::class, 'index']);
     Route::post('clients', [ClientController::class, 'store'])->middleware('throttle:client.create');
@@ -80,6 +88,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     Route::get('roles', [RoleController::class, 'index']);
     Route::put('roles/{role}/permissions', [RoleController::class, 'updatePermissions']);
+    Route::post('roles/{role}/permissions/{permission}', [RoleController::class, 'grantPermission']);
+    Route::delete('roles/{role}/permissions/{permission}', [RoleController::class, 'revokePermission']);
 
     Route::get('batch-procedures', [BatchProcedureController::class, 'index']);
     Route::post('batch-procedures', [BatchProcedureController::class, 'store']);
@@ -96,6 +106,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::patch('batch-runs/{batchRun}/status', [BatchRunController::class, 'updateStatus']);
 
     Route::post('reference-numbers', [ReferenceNumberController::class, 'store'])->middleware('throttle:reference.reserve');
+
+    Route::get('reference/identity-document-types', [ReferenceCatalogController::class, 'identityDocumentTypes']);
+    Route::get('formula-policies', [ReferenceCatalogController::class, 'formulaPolicies']);
 
     Route::get('audit-events', [AuditEventController::class, 'index'])->middleware('throttle:audit.browse');
 });

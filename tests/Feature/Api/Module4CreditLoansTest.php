@@ -10,6 +10,7 @@ use App\Models\ClientGuarantor;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\Loan;
+use App\Models\LoanApproval;
 use App\Models\LoanProduct;
 use App\Models\ReportDefinition;
 use App\Models\StaffAgencyAssignment;
@@ -138,6 +139,58 @@ final class Module4CreditLoansTest extends TestCase
         $forbidden->assertForbidden();
     }
 
+    public function test_loan_product_penalty_descriptor_fields_reject_typos(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $typo = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-PEN-TYPO',
+                'name' => 'Penalty Typo Product',
+                'penalty_formula_type' => 'flate_rate',
+                'penalty_formula_base' => 'principel',
+                'penalty_value_type' => 'percent',
+            ]);
+        $typo->assertStatus(422);
+        $typo->assertJsonValidationErrors(['penalty_formula_type', 'penalty_formula_base', 'penalty_value_type']);
+
+        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-PEN-OK',
+                'name' => 'Penalty Valid Product',
+                'penalty_formula_type' => 'flat_rate',
+                'penalty_formula_base' => 'principal',
+                'penalty_value_type' => 'percentage',
+                'penalty_value' => '2.5',
+            ]);
+        $this->assertJsonSuccess($valid, 201);
+    }
+
+    public function test_formula_policy_catalog_exposes_keys_approval_and_product_fields(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/formula-policies');
+        $this->assertJsonSuccess($response);
+
+        // Every enum case is present.
+        $response->assertJsonCount(count(FormulaPolicyKey::cases()), 'data.formula_policies');
+        foreach (FormulaPolicyKey::cases() as $case) {
+            $response->assertJsonFragment(['key' => $case->value]);
+        }
+
+        // Approval status mirrors config: penalties_and_arrears is unapproved.
+        $response->assertJsonFragment(['key' => FormulaPolicyKey::PenaltiesAndArrears->value, 'approved' => false]);
+        $response->assertJsonFragment(['key' => FormulaPolicyKey::XafRounding->value, 'approved' => true]);
+
+        // The catalog's product-field mapping is the same source used by the
+        // snapshotter/validation: the penalty policy maps to penalty_policy_key.
+        $response->assertJsonFragment(['key' => FormulaPolicyKey::PenaltiesAndArrears->value, 'product_fields' => ['penalty_policy_key']]);
+        $response->assertJsonFragment(['key' => FormulaPolicyKey::LoanInterestMethod->value, 'product_fields' => ['interest_policy_key']]);
+    }
+
     public function test_loan_product_formula_policies_fail_closed_until_approved_and_snapshot_to_loan(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -232,6 +285,40 @@ final class Module4CreditLoansTest extends TestCase
         self::assertSame(FormulaPolicyKey::LoanInterestMethod->value, $interestPolicy['policy_key']);
         self::assertSame(FormulaPolicyKey::LoanInstallmentAmount->value, $schedulePolicy['policy_key']);
         self::assertSame('Risk', $reportingPolicy['owner']);
+    }
+
+    public function test_loan_creation_from_unapproved_formula_policy_product_returns_422_naming_policy(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-POLICY-1');
+        $client = $this->createClientRecord($agencyId, 'verified');
+
+        // Simulate a product that references an unapproved policy
+        // (penalties_and_arrears is approved=false in config by default), as
+        // could exist from before product-level gating was added. The product
+        // also references an approved interest policy so the failing-policy
+        // reporting is exercised against a multi-policy product.
+        $product = $this->createLoanProduct($agencyId, [
+            'interest_policy_key' => FormulaPolicyKey::LoanInterestMethod->value,
+            'penalty_policy_key' => FormulaPolicyKey::PenaltiesAndArrears->value,
+        ]);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 250000,
+            ]);
+
+        // Controlled 422, not a 500, and the error identifies the exact field
+        // and the failing policy key (penalties_and_arrears), not the first
+        // configured policy.
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['penalty_policy_key']);
+        $message = $this->requireStringJsonPath($response, 'errors.penalty_policy_key.0');
+        self::assertStringContainsString(FormulaPolicyKey::PenaltiesAndArrears->value, $message);
+        self::assertStringNotContainsString(FormulaPolicyKey::LoanInterestMethod->value, $message);
     }
 
     public function test_platform_admin_can_manage_loan_applications_with_scope_and_kyc_rules(): void
@@ -331,6 +418,273 @@ final class Module4CreditLoansTest extends TestCase
                 'requested_amount_minor' => 250000,
             ]);
         $crossAgency->assertForbidden();
+    }
+
+    public function test_linked_account_update_rejects_empty_and_unknown_key_payloads(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-ACCT-NOOP');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $recoveryAccount = $this->createCustomerAccount($agencyId, $client['id']);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
+        $loan->forceFill(['status' => Loan::STATUS_DISBURSED])->save();
+
+        // Empty payload changes nothing -> 422, not a misleading success.
+        $empty = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', []);
+        $empty->assertStatus(422);
+
+        // A typo'd / unrecognized key is rejected instead of silently no-op.
+        $unknownKey = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', [
+                'recovery_account_id' => $recoveryAccount['public_id'],
+            ]);
+        $unknownKey->assertStatus(422);
+
+        // Unknown keys are rejected even when a valid key is also present,
+        // so frontend typos cannot be masked by a partial valid update.
+        $mixedUnknown = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', [
+                'recovery_account_public_id' => $recoveryAccount['public_id'],
+                'recovery_account_id' => $recoveryAccount['public_id'],
+            ]);
+        $mixedUnknown->assertStatus(422);
+
+        // A valid update lists the exact changed fields in the response.
+        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', [
+                'recovery_account_public_id' => $recoveryAccount['public_id'],
+            ]);
+        $this->assertJsonSuccess($valid);
+        $valid->assertJsonPath('meta.changed_fields', ['recovery_account_public_id']);
+    }
+
+    public function test_disbursed_loan_linked_accounts_can_be_updated_without_reopening_terms(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-ACCT-1');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $recoveryAccount = $this->createCustomerAccount($agencyId, $client['id']);
+
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
+        $loan->forceFill(['status' => Loan::STATUS_DISBURSED])->save();
+
+        // Recovery account can be attached after disbursement via the dedicated
+        // linked-accounts endpoint.
+        $update = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', [
+                'recovery_account_public_id' => $recoveryAccount['public_id'],
+            ]);
+        $this->assertJsonSuccess($update);
+        $update->assertJsonPath('data.recovery_account_public_id', $recoveryAccount['public_id']);
+
+        // The recovery workflow reads loan.recovery_account_id, so the column
+        // must reflect the new account.
+        self::assertSame(
+            $recoveryAccount['id'],
+            Loan::query()->whereKey($loan->id)->value('recovery_account_id'),
+        );
+
+        // Loan terms remain frozen after the application stage: the general
+        // update endpoint still rejects non-account edits on a disbursed loan.
+        $blockedTerms = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id, [
+                'requested_amount_minor' => 999999,
+            ]);
+        $blockedTerms->assertStatus(422);
+
+        // An account from another agency cannot be linked.
+        $otherAgencyId = $this->createAgency('CR-ACCT-2');
+        $otherClient = $this->createClientRecord($otherAgencyId, 'verified');
+        $foreignAccount = $this->createCustomerAccount($otherAgencyId, $otherClient['id']);
+        $crossAgency = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', [
+                'recovery_account_public_id' => $foreignAccount['public_id'],
+            ]);
+        $crossAgency->assertStatus(422);
+        $crossAgency->assertJsonValidationErrors(['recovery_account_public_id']);
+
+        // Closed loans reject linked-account changes.
+        $loan->forceFill(['status' => Loan::STATUS_CLOSED])->save();
+        $closed = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id.'/linked-accounts', [
+                'recovery_account_public_id' => $recoveryAccount['public_id'],
+            ]);
+        $closed->assertStatus(422);
+    }
+
+    public function test_loan_index_filters_by_client_public_id_across_pages(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-FILTER-1');
+        $targetClient = $this->createClientRecord($agencyId, 'verified');
+        $otherClient = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+
+        // Older loan for the target client created first, plus several newer
+        // loans for the other client so a naive first-page scan would miss it.
+        $targetLoan = $this->createLoanApplication($agencyId, $targetClient['id'], $product->id, 100000);
+        for ($i = 0; $i < 5; $i++) {
+            $this->createLoanApplication($agencyId, $otherClient['id'], $product->id, 120000 + $i);
+        }
+
+        $filtered = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans?filter[client_public_id]='.$targetClient['public_id']);
+        $this->assertJsonSuccess($filtered);
+        $filtered->assertJsonPath('meta.pagination.total', 1);
+        $filtered->assertJsonPath('data.loans.0.public_id', $targetLoan->public_id);
+        $filtered->assertJsonPath('data.loans.0.client_public_id', $targetClient['public_id']);
+
+        // Top-level form is also accepted.
+        $topLevel = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans?client_public_id='.$targetClient['public_id']);
+        $this->assertJsonSuccess($topLevel);
+        $topLevel->assertJsonPath('meta.pagination.total', 1);
+    }
+
+    public function test_loan_index_client_filter_is_agency_scope_safe(): void
+    {
+        $agencyId = $this->createAgency('CR-FILTER-2');
+        $otherAgencyId = $this->createAgency('CR-FILTER-3');
+        $localClient = $this->createClientRecord($agencyId, 'verified');
+        $foreignClient = $this->createClientRecord($otherAgencyId, 'verified');
+        $product = $this->createLoanProduct($otherAgencyId);
+        $foreignLoan = $this->createLoanApplication($otherAgencyId, $foreignClient['id'], $product->id, 100000);
+
+        $agent = $this->createUserWithRole('loan-officer');
+        $agent->givePermissionTo('loans.view');
+        $this->assignStaffToAgency($agent, $agencyId, 'loan-officer');
+
+        // An agency-scoped actor filtering by a client in another agency must
+        // get an empty result, never the foreign client's loans.
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($agent)
+            ->getJson('/api/v1/loans?filter[client_public_id]='.$foreignClient['public_id']);
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('meta.pagination.total', 0);
+        $response->assertJsonMissing(['public_id' => $foreignLoan->public_id]);
+    }
+
+    public function test_loan_resource_exposes_outstanding_projection_amounts(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-OUT-1');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+
+        $withProjections = $this->createLoanApplication($agencyId, $client['id'], $product->id, 500000);
+        $withProjections->forceFill([
+            'outstanding_principal_minor' => 350000,
+            'installment_amount_minor' => 60000,
+            'total_unpaid_amount_minor' => 75000,
+            'due_amount_minor' => 60000,
+            'global_outstanding_amount_minor' => 410000,
+            'total_principal_repaid_minor' => 150000,
+        ])->save();
+
+        $show = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$withProjections->public_id);
+        $this->assertJsonSuccess($show);
+        $show->assertJsonPath('data.outstanding_principal_minor', 350000);
+        $show->assertJsonPath('data.installment_amount_minor', 60000);
+        $show->assertJsonPath('data.total_unpaid_amount_minor', 75000);
+        $show->assertJsonPath('data.due_amount_minor', 60000);
+        $show->assertJsonPath('data.global_outstanding_amount_minor', 410000);
+        $show->assertJsonPath('data.total_principal_repaid_minor', 150000);
+
+        // A fresh loan with no projections serializes them as null, not as a
+        // misleading requested/approved fallback.
+        $fresh = $this->createLoanApplication($agencyId, $client['id'], $product->id, 250000);
+        $freshShow = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$fresh->public_id);
+        $this->assertJsonSuccess($freshShow);
+        $freshShow->assertJsonPath('data.outstanding_principal_minor', null);
+        $freshShow->assertJsonPath('data.global_outstanding_amount_minor', null);
+    }
+
+    public function test_loan_approvals_and_active_schedule_are_retrievable_by_get(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-GET-1');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
+
+        $montage = LoanApproval::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'loan_id' => $loan->id,
+            'agency_id' => $agencyId,
+            'step' => LoanApproval::STEP_MONTAGE,
+            'decision' => LoanApproval::DECISION_APPROVED,
+            'acted_by_user_id' => $actor->id,
+            'acted_at' => now()->subHour(),
+            'comments' => 'Montage approved',
+        ]);
+        $comptabilite = LoanApproval::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'loan_id' => $loan->id,
+            'agency_id' => $agencyId,
+            'step' => LoanApproval::STEP_COMPTABILITE,
+            'decision' => LoanApproval::DECISION_PENDING,
+            'acted_by_user_id' => null,
+            'acted_at' => null,
+            'comments' => null,
+        ]);
+
+        $approvals = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$loan->public_id.'/approvals');
+        $this->assertJsonSuccess($approvals);
+        $approvals->assertJsonPath('data.approvals.0.public_id', $montage->public_id);
+        $approvals->assertJsonPath('data.approvals.0.step', 'montage');
+        $approvals->assertJsonPath('data.approvals.0.decision', 'approved');
+        $approvals->assertJsonPath('data.approvals.0.acted_by_user_public_id', $actor->public_id);
+        $approvals->assertJsonPath('data.approvals.1.public_id', $comptabilite->public_id);
+        $approvals->assertJsonPath('data.approvals.1.decision', 'pending');
+
+        // No active schedule yet -> 404 explicit empty state.
+        $missingSchedule = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$loan->public_id.'/schedule');
+        $missingSchedule->assertStatus(404);
+
+        $this->createActiveSchedule($loan->id, [
+            ['due_date' => now()->addMonth()->toDateString(), 'principal_minor' => 50000, 'interest_minor' => 5000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
+            ['due_date' => now()->addMonths(2)->toDateString(), 'principal_minor' => 50000, 'interest_minor' => 4000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
+        ]);
+
+        $schedule = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$loan->public_id.'/schedule');
+        $this->assertJsonSuccess($schedule);
+        $schedule->assertJsonPath('data.snapshot.status', 'active');
+        $schedule->assertJsonCount(2, 'data.snapshot.lines');
+        $schedule->assertJsonPath('data.snapshot.lines.0.installment_number', 1);
+        $schedule->assertJsonPath('data.snapshot.lines.0.principal_minor', 50000);
+
+        // Agency scoping mirrors GET /loans/{loan}: a cross-agency actor is denied.
+        $otherAgencyId = $this->createAgency('CR-GET-2');
+        $foreignAgent = $this->createUserWithRole('loan-officer');
+        $foreignAgent->givePermissionTo('loans.view');
+        $this->assignStaffToAgency($foreignAgent, $otherAgencyId, 'loan-officer');
+        $forbiddenApprovals = $this->withApiHeaders()
+            ->actingAsSanctum($foreignAgent)
+            ->getJson('/api/v1/loans/'.$loan->public_id.'/approvals');
+        $forbiddenApprovals->assertForbidden();
+        $forbiddenSchedule = $this->withApiHeaders()
+            ->actingAsSanctum($foreignAgent)
+            ->getJson('/api/v1/loans/'.$loan->public_id.'/schedule');
+        $forbiddenSchedule->assertForbidden();
     }
 
     public function test_setup_charge_assessment_creates_non_insurance_charges_and_insurance_premium(): void
@@ -2197,6 +2551,35 @@ final class Module4CreditLoansTest extends TestCase
             'public_id' => $itemPublicId,
             'amount_minor' => 260000,
         ]);
+    }
+
+    public function test_guarantee_obligation_release_condition_is_restricted_to_loan_closed(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-REL');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
+        $guarantor = $this->createVerifiedClientGuarantor($agencyId, $client['id'], 'Release Guarantor');
+
+        // An unsupported release condition is rejected.
+        $invalid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/guarantee-obligations', [
+                'client_guarantor_public_id' => $guarantor['public_id'],
+                'obligation_type' => 'personal_guarantee',
+                'release_condition' => 'manual',
+            ]);
+        $invalid->assertStatus(422);
+        $invalid->assertJsonValidationErrors(['release_condition']);
+
+        // The only supported value is accepted.
+        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/guarantee-obligations', [
+                'client_guarantor_public_id' => $guarantor['public_id'],
+                'obligation_type' => 'personal_guarantee',
+                'release_condition' => 'loan_closed',
+            ]);
+        $this->assertJsonSuccess($valid, 201);
     }
 
     public function test_loan_guarantee_obligations_scope_release_and_snapshot_immutability(): void

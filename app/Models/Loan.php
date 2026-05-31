@@ -109,6 +109,22 @@ final class Loan extends Model
             'applied_interest_rate' => 'decimal:6',
             'applied_tax_rate' => 'decimal:6',
             'formula_policy_snapshot' => 'array',
+            // Outstanding / repayment projection columns. These are written by
+            // domain services via forceFill (not client-fillable) and are
+            // nullable until the loan has an active schedule and repayments.
+            'outstanding_principal_minor' => 'integer',
+            'installment_amount_minor' => 'integer',
+            'total_unpaid_amount_minor' => 'integer',
+            'due_amount_minor' => 'integer',
+            'global_outstanding_amount_minor' => 'integer',
+            'total_interest_repaid_minor' => 'integer',
+            'total_penalties_paid_minor' => 'integer',
+            'total_principal_repaid_minor' => 'integer',
+            'installments_repaid_count' => 'integer',
+            'capitalized_interest_minor' => 'integer',
+            'cumulative_capitalized_interest_minor' => 'integer',
+            'last_repayment_date' => 'date',
+            'next_repayment_date' => 'date',
         ];
     }
 

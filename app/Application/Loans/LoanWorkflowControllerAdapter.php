@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Loans;
 
 use App\Http\Requests\StoreLoanRequest;
+use App\Http\Requests\UpdateLoanLinkedAccountsRequest;
 use App\Http\Requests\UpdateLoanRequest;
 use App\Models\Loan;
 use Illuminate\Http\JsonResponse;
@@ -40,6 +41,11 @@ final class LoanWorkflowControllerAdapter
         return $this->crud->update($request, $loan);
     }
 
+    public function updateLinkedAccounts(UpdateLoanLinkedAccountsRequest $request, Loan $loan): JsonResponse
+    {
+        return $this->crud->updateLinkedAccounts($request, $loan);
+    }
+
     public function assessSetupCharges(Request $request, Loan $loan): JsonResponse
     {
         return $this->setupCharge->assessSetupCharges($request, $loan);
@@ -60,9 +66,19 @@ final class LoanWorkflowControllerAdapter
         return $this->setupCharge->collectInsurancePremium($request, $loan, $premiumPublicId);
     }
 
+    public function listApprovals(Request $request, Loan $loan): JsonResponse
+    {
+        return $this->approval->listApprovals($request, $loan);
+    }
+
     public function decideApproval(Request $request, Loan $loan, string $step): JsonResponse
     {
         return $this->approval->decideApproval($request, $loan, $step);
+    }
+
+    public function showActiveSchedule(Request $request, Loan $loan): JsonResponse
+    {
+        return $this->schedule->showActiveSchedule($request, $loan);
     }
 
     public function transitionStatus(Request $request, Loan $loan): JsonResponse

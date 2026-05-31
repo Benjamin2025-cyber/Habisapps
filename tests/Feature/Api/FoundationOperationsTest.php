@@ -406,7 +406,10 @@ final class FoundationOperationsTest extends TestCase
         $agencyA = $this->createAgency('SEC3');
         $agencyB = $this->createAgency('SEC4');
         $actorA = $this->createUserWithRole('platform-admin', $agencyA['code'], $agencyA['name']);
-        $actorB = $this->createUserWithRole('platform-admin', $agencyB['code'], $agencyB['name']);
+        // A normal agency-scoped user from another agency: platform-admin has
+        // institution-wide document access (FBI-011/AIR-003), so cross-agency
+        // isolation is asserted with an ordinary agency user here.
+        $actorB = $this->createUserWithRole('kyc-officer', $agencyB['code'], $agencyB['name']);
 
         $uploadResponse = $this
             ->actingAs($actorA)

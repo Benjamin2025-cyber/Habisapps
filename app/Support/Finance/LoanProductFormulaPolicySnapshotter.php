@@ -36,6 +36,18 @@ final class LoanProductFormulaPolicySnapshotter
     ) {}
 
     /**
+     * The single source of truth mapping loan-product request fields to the
+     * formula policy they configure. Shared by the snapshotter, the formula
+     * policy catalog, and loan-product validation.
+     *
+     * @return array<string, FormulaPolicyKey>
+     */
+    public static function policyFieldMap(): array
+    {
+        return array_merge(self::TOP_LEVEL_POLICY_FIELDS, self::RULE_POLICY_FIELDS);
+    }
+
+    /**
      * @param  array<string, mixed>|LoanProduct  $source
      * @return array<string, array<int, string>>
      */
@@ -59,11 +71,14 @@ final class LoanProductFormulaPolicySnapshotter
     {
         $errors = $this->approvalErrors($product);
         if ($errors !== []) {
-            foreach ($this->configuredPolicies($product) as $policy) {
-                throw FormulaPolicyNotApproved::forPolicy($policy);
-            }
+            // Report the policy that actually failed approval, not just the
+            // first configured policy. The error keys returned by
+            // approvalErrors() map back to the configured policy fields.
+            $configured = $this->configuredPolicies($product);
+            $failingField = array_key_first($errors);
+            $failingPolicy = $configured[$failingField] ?? FormulaPolicyKey::LoanInterestMethod;
 
-            throw FormulaPolicyNotApproved::forPolicy(FormulaPolicyKey::LoanInterestMethod);
+            throw FormulaPolicyNotApproved::forPolicy($failingPolicy);
         }
 
         return [

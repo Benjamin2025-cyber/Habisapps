@@ -178,7 +178,10 @@ final class LoanGuaranteeObligationController extends BaseController
             'status' => ['sometimes', Rule::in([LoanGuaranteeObligation::STATUS_ACTIVE, LoanGuaranteeObligation::STATUS_CANCELLED])],
             'starts_on' => ['sometimes', 'nullable', 'date'],
             'ends_on' => ['sometimes', 'nullable', 'date', 'after_or_equal:starts_on'],
-            'release_condition' => ['sometimes', 'nullable', 'string', 'max:128'],
+            // Only `loan_closed` is supported: release() enforces loan closure
+            // before an obligation can be released. Any other value is rejected
+            // so the stored condition always reflects actual release behavior.
+            'release_condition' => ['sometimes', 'nullable', 'string', Rule::in(['loan_closed'])],
         ])->validate();
     }
 

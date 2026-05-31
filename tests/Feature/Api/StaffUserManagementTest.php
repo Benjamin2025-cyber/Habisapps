@@ -123,6 +123,64 @@ final class StaffUserManagementTest extends TestCase
         $response->assertJsonMissing(['public_id' => $otherAgencyStaff->public_id]);
     }
 
+    public function test_staff_index_supports_server_side_search(): void
+    {
+        $agency = $this->createAgency('AG-SEARCH');
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $target = $this->createUserWithRole('staff', $agency);
+        $target->forceFill([
+            'name' => 'Searchable Mbarga',
+            'matricule' => 'MAT-7788',
+            'phone_number' => '+237699123456',
+            'email' => 'mbarga.search@example.test',
+        ])->save();
+
+        $other = $this->createUserWithRole('staff', $agency);
+        $other->forceFill([
+            'name' => 'Unrelated Person',
+            'matricule' => 'MAT-0001',
+            'phone_number' => '+237688000000',
+            'email' => 'other.person@example.test',
+        ])->save();
+
+        foreach (['Mbarga', 'MAT-7788', '699123456', 'mbarga.search'] as $term) {
+            $response = $this
+                ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('staff-search')->plainTextToken])
+                ->getJson('/api/v1/staff-users?search='.$term);
+            $this->assertJsonSuccess($response);
+            $response->assertJsonFragment(['public_id' => $target->public_id]);
+            $response->assertJsonMissing(['public_id' => $other->public_id]);
+        }
+
+        // Blank search returns the unfiltered list (target still present).
+        $blank = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('staff-search-blank')->plainTextToken])
+            ->getJson('/api/v1/staff-users?search=');
+        $this->assertJsonSuccess($blank);
+        $blank->assertJsonFragment(['public_id' => $target->public_id]);
+        $blank->assertJsonFragment(['public_id' => $other->public_id]);
+    }
+
+    public function test_staff_search_is_constrained_to_manager_agency(): void
+    {
+        $agencyA = $this->createAgency('AG-SRCH-A');
+        $agencyB = $this->createAgency('AG-SRCH-B');
+        $manager = $this->createUserWithRole('agency-manager', $agencyA);
+
+        $foreign = $this->createUserWithRole('staff', $agencyB);
+        $foreign->forceFill(['name' => 'Shared Name Token'])->save();
+        $local = $this->createUserWithRole('staff', $agencyA);
+        $local->forceFill(['name' => 'Shared Name Token'])->save();
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$manager->createToken('scoped-search')->plainTextToken])
+            ->getJson('/api/v1/staff-users?search=Shared Name Token');
+        $this->assertJsonSuccess($response);
+        $response->assertJsonFragment(['public_id' => $local->public_id]);
+        $response->assertJsonMissing(['public_id' => $foreign->public_id]);
+    }
+
     public function test_staff_listing_uses_active_assignment_not_cached_user_agency(): void
     {
         $agencyA = $this->createAgency('AG-G');
@@ -274,7 +332,9 @@ final class StaffUserManagementTest extends TestCase
 
         $this->assertJsonSuccess($roleResponse);
         $roleResponse->assertJsonPath('data.roles.0', 'teller');
-        self::assertContains('cash.transactions.manage', $roleResponse->json('data.permissions'));
+        $rolePermissions = $roleResponse->json('data.permissions');
+        self::assertIsArray($rolePermissions);
+        self::assertContains('cash.transactions.manage', $rolePermissions);
 
         $indexResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('index-token')->plainTextToken])
@@ -290,7 +350,9 @@ final class StaffUserManagementTest extends TestCase
 
         $this->assertJsonSuccess($showResponse);
         $showResponse->assertJsonPath('data.roles.0', 'teller');
-        self::assertContains('cash.transactions.manage', $showResponse->json('data.permissions'));
+        $showPermissions = $showResponse->json('data.permissions');
+        self::assertIsArray($showPermissions);
+        self::assertContains('cash.transactions.manage', $showPermissions);
         self::assertSame($agencyId, User::query()->where('public_id', $staffPublicId)->value('agency_id'));
     }
 

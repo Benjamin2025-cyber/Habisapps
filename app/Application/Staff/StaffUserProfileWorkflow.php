@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\Otp\OtpService;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,6 +46,21 @@ final class StaffUserProfileWorkflow extends BaseController
             }
 
             $query->whereKey($this->staffAgencyScope->currentAgencyStaffIdList($agencyId));
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('phone_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('email', 'ilike', '%'.$term.'%')
+                    ->orWhere('matricule', 'ilike', '%'.$term.'%')
+                    ->orWhere('job_title', 'ilike', '%'.$term.'%')
+                    ->orWhere('agency_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('agency_name', 'ilike', '%'.$term.'%');
+            });
         }
 
         return new StaffUserCollection(

@@ -640,6 +640,263 @@ Acceptance criteria:
 3. Authorization and role semantics: FBI-005, FBI-006, FBI-007, FBI-002.
 4. Domain contract decisions: FBI-003, FBI-008, FBI-012, FBI-014, FBI-017, FBI-018, FBI-020, FBI-022, FBI-019.
 
+## Adversarial Implementation Review (2026-05-31)
+
+Scope: review of the current worktree implementation against this backlog, with extra focus on the frontend report that permissions/roles behave inconsistently: granting a permission can revoke another one, and successful responses do not always appear in later reads.
+
+Status: implementation is not yet safe to hand back to frontend as complete. Several tickets have code and tests in progress, but the findings below still make the permission/document/loan contracts ambiguous or brittle.
+
+### AIR-001: Role Permission Updates Still Use Full Replacement Semantics
+
+Severity: High.
+
+Related tickets: FBI-005, FBI-021, FBI-002.
+
+Evidence:
+
+- `app/Http/Controllers/Api/V1/RoleController.php:36-39` accepts a required `permissions` array.
+- `app/Http/Controllers/Api/V1/RoleController.php:82` calls `syncPermissions($permissions)` through `SyncRolePermissions`.
+- `syncPermissions` replaces the entire role permission set. It is not an additive grant endpoint and not a single-permission revoke endpoint.
+- Therefore, if the frontend sends only the checkbox the user just toggled, the backend returns success while every omitted permission is revoked. This matches the frontend symptom: "je donne des permission a un teller meme, mais ca revoke plutot".
+
+Required fix:
+
+- Make the API contract explicit and hard to misuse.
+- Option A: keep `PUT /roles/{role}/permissions` as full replacement, but require an explicit flag such as `mode=replace` or `replace=true`, return `previous_permissions`, `added_permissions`, and `removed_permissions`, and document that the frontend must send the full selected set.
+- Option B: add safer mutation endpoints such as `POST /roles/{role}/permissions/{permission}` and `DELETE /roles/{role}/permissions/{permission}` for checkbox toggles, while keeping `PUT` for bulk replacement only.
+- In both cases, add an optimistic-concurrency guard such as `permissions_version` or `updated_at` so stale role editor state cannot overwrite a newer grant.
+
+Acceptance criteria:
+
+- Test proves sending a partial toggle payload cannot silently revoke all omitted permissions.
+- Test proves a full replacement response includes explicit `added_permissions` and `removed_permissions`.
+- Test proves stale frontend baselines are rejected or detected instead of producing a misleading success.
+
+### AIR-002: Protected Permission Delegation Conflicts With Seeded Non-Platform Roles
+
+Severity: High.
+
+Related tickets: FBI-005, FBI-006, FBI-007, FBI-021.
+
+Evidence:
+
+- `config/security.php:455-483` gives `kyc-officer` protected permissions such as `crm.pii.view`, `crm.kyc.verify`, `crm.identity_documents.verify`, and `crm.guarantors.pii.view`.
+- `app/Http/Controllers/Api/V1/RoleController.php:49-56` rejects any protected permission on a non-`platform-admin` role unless `security.permissions.allow_protected_delegation` is enabled.
+- Therefore, a role can legitimately contain protected permissions from the seed/config baseline, but a role editor cannot save that same full permission set under the default config. That makes normal editing of KYC/admin-like roles fail with 422 or forces the frontend to drop protected permissions from the payload.
+
+Required fix:
+
+- Decide whether configured baseline protected permissions for non-platform roles are allowed.
+- If yes, allow retaining already-granted/configured protected permissions and block only newly-added protected permissions unless delegation is enabled.
+- If no, remove protected permissions from non-platform role defaults and provide a controlled delegation workflow.
+- Surface `protected`, `delegable`, `non_delegable`, and `currently_granted` metadata in `GET /roles` so the frontend can disable or explain restricted checkboxes.
+
+Acceptance criteria:
+
+- Test proves saving the current `kyc-officer` permission set does not fail purely because it already contains configured protected permissions.
+- Test proves adding a new non-delegable protected permission to a non-platform role is still blocked.
+- Test proves `GET /roles` exposes enough metadata for the frontend to distinguish disabled permissions from ordinary unchecked permissions.
+
+### AIR-003: Platform Admin Document Upload Fix Does Not Extend To Read/Download/Archive
+
+Severity: High.
+
+Related tickets: FBI-010, FBI-011, FBI-017.
+
+Evidence:
+
+- `DocumentController::store` now allows platform/institution actors to upload with `agency_public_id`.
+- `app/Policies/DocumentPolicy.php:18-22` still requires `isCurrentAgency($user, $document->agency_id)` for `view`, even for `platform-admin`.
+- `app/Http/Controllers/Api/V1/DocumentController.php:186-200` uses the same `view` policy for the new file endpoint.
+- Therefore, a platform-admin without an active agency assignment can upload a file for a selected agency, receive success, and then fail to show or download that same file for frontend display.
+
+Required fix:
+
+- Update `DocumentPolicy::view` and `archive` so platform-admin or institution-scoped document actors can access selected-agency documents according to the same agency-resolution model used by upload.
+- Preserve same-agency enforcement for normal agency users.
+- Add tests for platform-admin-without-current-agency upload, metadata show, file download, and archive.
+
+Acceptance criteria:
+
+- Test proves platform-admin can upload with `agency_public_id` and immediately retrieve `GET /documents/{document}`.
+- Test proves platform-admin can retrieve `GET /documents/{document}/file` for that document.
+- Test proves cross-agency agency users remain forbidden.
+
+### AIR-004: Back-Face Identity Evidence Can Be Reused Or Duplicated
+
+Severity: Medium.
+
+Related tickets: FBI-003, FBI-017.
+
+Evidence:
+
+- `StoreClientIdentityDocumentRequest` blocks `back_document_public_id` from equaling `document_public_id`.
+- `UpdateClientIdentityDocumentRequest` does not include the same `different:document_public_id` rule.
+- `ClientIdentityDocumentController::resolveLinkableDocument` only checks existing links through `document_id`, not `back_document_id`.
+- Therefore a document already used as another client's back face can be linked again, and update can attach the same file as both front and back evidence unless caught elsewhere.
+
+Required fix:
+
+- Add `different:document_public_id` to update validation.
+- In `resolveLinkableDocument`, check both `document_id` and `back_document_id`.
+- Add a database-level guard if the business invariant is "one evidence file belongs to one identity-document face only".
+
+Acceptance criteria:
+
+- Test proves update rejects identical front/back document IDs.
+- Test proves a back-face document already linked to another client cannot be reused as front or back evidence.
+- Test proves re-saving the same identity document can retain its own current front/back evidence without false positives.
+
+### AIR-005: Loan Linked-Account Update Can Return Success With No Accepted Fields
+
+Severity: Medium.
+
+Related ticket: FBI-022.
+
+Evidence:
+
+- `UpdateLoanLinkedAccountsRequest` defines all four account fields as `sometimes|nullable`.
+- `LoanCrudWorkflow::updateLinkedAccounts` builds `$updates` only from validated known fields and saves even if `$updates` is empty.
+- Laravel validation ignores unknown payload keys by default, so a frontend typo such as `recovery_account_id` instead of `recovery_account_public_id` can produce a success response while changing nothing.
+
+Required fix:
+
+- Require at least one accepted linked-account field with `required_without_all` or an after-validation check.
+- Reject unknown account-update keys or return a structured 422 when no recognized fields are present.
+- Include `changed_fields` in the API response, not only the audit event.
+
+Acceptance criteria:
+
+- Test proves `{}` returns 422.
+- Test proves `{ "recovery_account_id": "..." }` returns 422 instead of success.
+- Test proves a valid update response lists the exact changed fields.
+
+### AIR-006: Missing Regression Tests For The Remaining Ambiguities
+
+Severity: Medium.
+
+Related tickets: FBI-005, FBI-010, FBI-011, FBI-017, FBI-022.
+
+Required test additions:
+
+- Role partial-update misuse: prove a checkbox-style payload cannot revoke omitted permissions silently.
+- Seeded protected role save: prove current `kyc-officer` permissions can be re-saved or returns a deliberate, documented 422 with frontend metadata.
+- Platform-admin document lifecycle: upload with `agency_public_id`, then show/download/archive without current agency assignment.
+- Identity back-face uniqueness: reject front/back equality on update and reject reuse through `back_document_id`.
+- Loan linked-account no-op payload: reject empty and unknown-key payloads.
+
+## Adversarial Implementation Review Round 2 (2026-05-31)
+
+Scope: re-review after AIR-001 through AIR-006 were worked on in the current worktree.
+
+Status: the Round 1 issues now have code/test evidence in progress:
+
+- AIR-001: `PUT /roles/{role}/permissions` now exposes replacement diffs and versioning, and bulk replacement requires explicit `replace=true`. Single-checkbox grant/revoke endpoints exist so toggles do not revoke omitted permissions.
+- AIR-002: protected permission metadata is exposed in `GET /roles`, seeded protected role permissions can be retained, and new non-delegable protected grants remain blocked.
+- AIR-003: `DocumentPolicy` now lets platform/institution-scoped actors read/manage selected-agency documents consistently with upload, while agency users remain scoped.
+- AIR-004: identity document evidence now checks front and back links, and update validation prevents front/back equality across partial updates.
+- AIR-005: linked-account updates now reject empty payloads and unknown fields, including mixed valid-plus-unknown payloads.
+- AIR-006: targeted regression tests were added for role replacement/toggles, protected permission baseline save, platform-admin document lifecycle, identity evidence uniqueness, and linked-account no-op payloads.
+
+### AIR-007: Front-Only Identity Update Could Still Duplicate The Back Face
+
+Severity: High.
+
+Related ticket: FBI-017.
+
+Evidence found in Round 2:
+
+- The first AIR-004 fix guarded `front == back` only inside the `back_document_public_id` branch.
+- A payload changing only `document_public_id` to the current back-face document could still bypass the guard.
+
+Fix applied:
+
+- `ClientIdentityDocumentController::update` now computes effective front and back IDs after both optional branches and rejects equality no matter which field changed.
+- `resolveLinkableDocument` now rejects reuse by any other identity record in the same agency, not only reuse by a different client.
+
+Regression tests:
+
+- `test_identity_back_face_evidence_uniqueness_is_enforced` now covers front-only update to current back face.
+- The same test covers same-client evidence reuse and cross-client reuse.
+
+### AIR-008: Linked-Account Updates Could Mask Unknown Keys When A Valid Key Was Present
+
+Severity: Medium.
+
+Related ticket: FBI-022.
+
+Evidence found in Round 2:
+
+- The first AIR-005 fix rejected payloads where no recognized account fields were present.
+- A mixed payload such as `recovery_account_public_id` plus typo `recovery_account_id` could still succeed while silently ignoring the typo.
+
+Fix applied:
+
+- `LoanCrudWorkflow::updateLinkedAccounts` now rejects any unknown keys before validation/update.
+
+Regression tests:
+
+- `test_linked_account_update_rejects_empty_and_unknown_key_payloads` now covers empty payload, unknown-only payload, mixed valid-plus-unknown payload, and valid changed-field metadata.
+
+### AIR-009: Identity Type Catalog Advertised Expiry Requirements That Verification Did Not Enforce
+
+Severity: Medium.
+
+Related tickets: FBI-003, FBI-017.
+
+Evidence found in Round 2:
+
+- `IdentityDocumentTypeCatalog` returns `requires_expiry=true` for passport/national ID-like documents.
+- Verification only rejected expired dates; it did not reject a missing expiry date for types that require one.
+
+Fix applied:
+
+- `IdentityDocumentTypeCatalog::requiresExpiry` now exposes the catalog rule to runtime code.
+- Identity-document verification now returns 422 on `expires_on` when a required-expiry type has no expiry date.
+
+Regression tests:
+
+- `test_identity_document_expiry_requirement_is_enforced_from_catalog` proves passport without expiry cannot be verified.
+- The same test proves `voter_card` can be verified without expiry because the catalog marks it `requires_expiry=false`.
+
+### Round 2 Verification Evidence
+
+Commands executed sequentially:
+
+```bash
+php artisan test --parallel --recreate-databases --filter=identity_back_face_evidence_uniqueness_is_enforced
+php artisan test --parallel --recreate-databases --filter=linked_account_update_rejects_empty_and_unknown_key_payloads
+php artisan test --parallel --recreate-databases --filter=role_permission
+php artisan test --parallel --recreate-databases --filter=identity_document_expiry_requirement_is_enforced_from_catalog
+php artisan test --parallel --recreate-databases --filter=self_verify_override_flags_do_not_bypass_verification_controls
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module1AdministrationTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module2CrmKycTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module4CreditLoansTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/FoundationOperationsTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/StaffUserManagementTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module3AccountingProductTest.php
+composer test
+```
+
+Observed results:
+
+- `identity_back_face_evidence_uniqueness_is_enforced`: passed, `1 test, 29 assertions`.
+- `linked_account_update_rejects_empty_and_unknown_key_payloads`: passed, `1 test, 12 assertions`.
+- `role_permission`: passed, `4 tests, 51 assertions`.
+- `identity_document_expiry_requirement_is_enforced_from_catalog`: passed, `1 test, 21 assertions`.
+- `self_verify_override_flags_do_not_bypass_verification_controls`: passed, `1 test, 43 assertions`.
+- `Module1AdministrationTest`: passed, `27 tests, 304 assertions`.
+- `Module2CrmKycTest`: passed, `31 tests, 520 assertions`.
+- `Module4CreditLoansTest`: passed, `38 tests, 900 assertions`.
+- `FoundationOperationsTest`: passed, `20 tests, 89 assertions`.
+- `StaffUserManagementTest`: passed, `15 tests, 106 assertions`.
+- `Module3AccountingProductTest`: passed, `6 tests, 96 assertions`.
+- Full suite via `composer test`: passed, `690 tests, 10708 assertions`.
+
+Round 2 conclusion:
+
+- No additional actionable findings remained after the Round 2 fixes and full-suite verification.
+
 ## Verification Checklist For Future Fixes
 
 - Every fixed ticket must add at least one feature or unit test that first fails against the contradiction described above.
@@ -653,7 +910,7 @@ Acceptance criteria:
 Use these commands while implementing FBI tickets:
 
 ```bash
-# Full suite (preferred default)
+# Full suite (preferred default, aligned with IF-020)
 composer test
 
 # Equivalent explicit full-suite command
@@ -666,11 +923,22 @@ php artisan test --parallel --recreate-databases --filter=staff_role_assignment
 # Focused feature files used by current FBI-002/FBI-021 fixes
 php artisan test --parallel --recreate-databases tests/Feature/Api/Module1AdministrationTest.php
 php artisan test --parallel --recreate-databases tests/Feature/Api/StaffUserManagementTest.php
+
+# Focused files for current frontend-integration tickets
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module2CrmKycTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module3AccountingProductTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module4CreditLoansTest.php
+
+# Focused filters for the adversarial findings above
+php artisan test --parallel --recreate-databases --filter=role
+php artisan test --parallel --recreate-databases --filter=document
+php artisan test --parallel --recreate-databases --filter=linked_accounts
 ```
 
 Command rules:
 
 - Use `composer test` as the default full-suite entrypoint.
 - Put `--parallel` before any path argument.
+- Do not run multiple `php artisan test --parallel --recreate-databases ...` commands concurrently; database recreation can collide at the Postgres sequence/table level.
 - Do not run multiple non-parallel `php artisan test ...` processes concurrently.
 - If running targeted commands without `--parallel`, run them sequentially.

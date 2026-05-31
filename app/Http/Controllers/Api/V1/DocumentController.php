@@ -8,6 +8,7 @@ use App\Http\Controllers\BaseController;
 use App\Http\Requests\Api\V1\StoreDocumentRequest;
 use App\Http\Resources\DocumentCollection;
 use App\Http\Resources\DocumentResource;
+use App\Models\Agency;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
@@ -17,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 final class DocumentController extends BaseController
 {
@@ -70,9 +72,10 @@ final class DocumentController extends BaseController
     {
         $file = $request->file('file');
         $actor = $request->user();
-        $agencyId = $this->resolveAgencyId($request);
+        $error = null;
+        $agencyId = $this->resolveAgencyId($request, $error);
         if ($agencyId === null) {
-            return $this->respondForbidden();
+            return $error ?? $this->respondForbidden();
         }
 
         if ($file === null) {
@@ -122,7 +125,7 @@ final class DocumentController extends BaseController
     /**
      * Retrieve a KYC document.
      *
-     * Retrieves metadata for a specific KYC document by its public ID. Note: This endpoint does not return the file content. File download is not currently exposed.
+     * Retrieves metadata for a specific KYC document by its public ID. The file content itself is served by the separate `documents/{document}/file` endpoint.
      *
      * @authenticated
      *
@@ -172,15 +175,83 @@ final class DocumentController extends BaseController
         );
     }
 
-    private function resolveAgencyId(Request $request): ?int
+    /**
+     * Stream a document file for display/preview.
+     *
+     * Authorization mirrors `show`: the actor must hold `documents.view` and
+     * be scoped to the document's agency, which blocks cross-agency access.
+     *
+     * @authenticated
+     */
+    public function download(Request $request, Document $document): HttpResponse
+    {
+        $this->authorize('view', $document);
+
+        $media = $document->getFirstMedia('kyc_documents');
+        if ($media === null) {
+            return $this->respondNotFound('Document file is not available.');
+        }
+
+        $actor = $request->user();
+        $this->securityAudit->record('document.downloaded', actor: $actor instanceof User ? $actor : null, subject: $document, request: $request);
+
+        // Inline response sets Content-Type from the stored mime type and an
+        // inline disposition so browsers can render images/PDFs directly.
+        return $media->toInlineResponse($request);
+    }
+
+    /**
+     * Resolve the agency a document operation targets.
+     *
+     * Platform-admin and institution-scoped actors may target any agency via
+     * `agency_public_id`; everyone else is constrained to their current
+     * agency. When such an actor has no current agency and supplies no
+     * selection, a structured 422 is returned via $error rather than an
+     * unexplained 403.
+     */
+    private function resolveAgencyId(Request $request, ?JsonResponse &$error = null): ?int
     {
         $user = $request->user();
-
         if (! $user instanceof User) {
+            $error = $this->respondForbidden();
+
             return null;
         }
 
-        return $user->currentAgencyId();
+        $canTargetAnyAgency = $user->hasRole('platform-admin') || $user->can('crm.scope.institution.manage');
+        $currentAgencyId = $user->currentAgencyId();
+        $requestedPublicId = $request->input('agency_public_id');
+
+        if (is_string($requestedPublicId) && $requestedPublicId !== '') {
+            $agency = Agency::query()->where('public_id', $requestedPublicId)->first();
+            if (! $agency instanceof Agency) {
+                $error = $this->respondUnprocessable(errors: ['agency_public_id' => ['Selected agency does not exist.']]);
+
+                return null;
+            }
+
+            if ($canTargetAnyAgency || $currentAgencyId === $agency->id) {
+                return $agency->id;
+            }
+
+            $error = $this->respondForbidden('You can only operate on documents within your current agency.');
+
+            return null;
+        }
+
+        if ($currentAgencyId !== null) {
+            return $currentAgencyId;
+        }
+
+        if ($canTargetAnyAgency) {
+            $error = $this->respondUnprocessable(errors: ['agency_public_id' => ['Agency is required. Provide agency_public_id to select the target agency.']]);
+
+            return null;
+        }
+
+        $error = $this->respondForbidden();
+
+        return null;
     }
 
     private function sanitizeFileName(string $fileName): string
