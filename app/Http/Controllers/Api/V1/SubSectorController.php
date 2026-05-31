@@ -14,6 +14,7 @@ use App\Models\SubSector;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -32,9 +33,24 @@ final class SubSectorController extends BaseController
             return $this->respondForbidden();
         }
 
+        $query = SubSector::query()->with('sector')->latest();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('sector', static function (Builder $sectorBuilder) use ($term): void {
+                        $sectorBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
-        return new SubSectorCollection(SubSector::query()->with('sector')->latest()->paginate($perPage));
+        return new SubSectorCollection($query->paginate($perPage));
     }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{sub_sector: \App\Http\Resources\SubSectorResource}, errors: null, meta: null}')]

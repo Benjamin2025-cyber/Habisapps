@@ -432,6 +432,7 @@ final class InsuranceModuleTest extends TestCase
         $response->assertJsonPath('data.totals.count', 2);
         $response->assertJsonPath('data.totals.coverage_amount_minor', 1500000);
         $response->assertJsonPath('meta.report', 'active_subscriptions');
+        $response->assertJsonPath('meta.pagination.total', 2);
         unset($context);
     }
 

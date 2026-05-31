@@ -31,9 +31,22 @@ final class DelinquencyTrackingWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $trackingRows = DB::table('delinquency_trackings')
+        $query = DB::table('delinquency_trackings')
             ->select('id')
-            ->where('loan_id', $loan->id)
+            ->where('loan_id', $loan->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('reason_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('appointment_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('comments', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhere('tracking_date', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $trackingRows = $query
             ->orderByDesc('tracking_date')
             ->orderByDesc('id')
             ->paginate(min(max($request->integer('per_page', 25), 1), 100));

@@ -43,11 +43,37 @@ final class IslamicTreatmentWorkflow extends BaseController
             }
         }
 
-        $rows = $query->get();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('policy_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('scope_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('scope_value', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('purification_mode', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $rows = $query->forPage($page, $perPage)->get();
 
         return $this->respondSuccess(
-            $rows->map(fn (object $row): array => $this->policyPayload($row))->all(),
-            'Islamic treatment policies retrieved'
+            [
+                'treatment_policies' => $rows->map(fn (object $row): array => $this->policyPayload($row))->all(),
+            ],
+            'Islamic treatment policies retrieved',
+            meta: [
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => (int) ceil(max(1, $total) / $perPage),
+                ],
+            ],
         );
     }
 

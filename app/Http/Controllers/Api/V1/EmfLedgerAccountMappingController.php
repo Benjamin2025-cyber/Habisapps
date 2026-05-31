@@ -15,6 +15,7 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -57,6 +58,22 @@ final class EmfLedgerAccountMappingController extends BaseController
             }
 
             $query->where('emf_regulatory_account_id', $emfAccount->id);
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('status', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('emfRegulatoryAccount', static function (Builder $emfBuilder) use ($term): void {
+                        $emfBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('ledgerAccount', static function (Builder $ledgerBuilder) use ($term): void {
+                        $ledgerBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         return new EmfLedgerAccountMappingCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

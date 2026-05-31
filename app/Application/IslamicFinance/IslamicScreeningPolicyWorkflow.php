@@ -34,9 +34,34 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
             $query->where('status', $request->query('status'));
         }
 
-        $rows = $query->get();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('scope_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('scope_value', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%');
+            });
+        }
 
-        return $this->respondSuccess($rows->map(fn (object $row): array => $this->policyPayload($row))->all(), 'Screening policies retrieved');
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $rows = $query->forPage($page, $perPage)->get();
+
+        return $this->respondSuccess([
+            'screening_policies' => $rows->map(fn (object $row): array => $this->policyPayload($row))->all(),
+        ], 'Screening policies retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -264,9 +289,35 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
             $query->where('result', $request->query('result'));
         }
 
-        $rows = $query->get();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('subject_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('subject_public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('context_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('policy_public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('result', 'ilike', '%'.$term.'%')
+                    ->orWhere('block_reason', 'ilike', '%'.$term.'%');
+            });
+        }
 
-        return $this->respondSuccess($rows->map(fn (object $row): array => $this->resultPayload($row))->all(), 'Screening results retrieved');
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $rows = $query->forPage($page, $perPage)->get();
+
+        return $this->respondSuccess([
+            'screening_results' => $rows->map(fn (object $row): array => $this->resultPayload($row))->all(),
+        ], 'Screening results retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
+        ]);
     }
 
     public function showResult(Request $request, string $resultPublicId): JsonResponse

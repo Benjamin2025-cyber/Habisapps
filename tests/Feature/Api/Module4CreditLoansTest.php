@@ -174,6 +174,7 @@ final class Module4CreditLoansTest extends TestCase
             ->actingAsSanctum($actor)
             ->getJson('/api/v1/formula-policies');
         $this->assertJsonSuccess($response);
+        $response->assertJsonPath('meta.pagination.current_page', 1);
 
         // Every enum case is present.
         $response->assertJsonCount(count(FormulaPolicyKey::cases()), 'data.formula_policies');
@@ -189,6 +190,13 @@ final class Module4CreditLoansTest extends TestCase
         // snapshotter/validation: the penalty policy maps to penalty_policy_key.
         $response->assertJsonFragment(['key' => FormulaPolicyKey::PenaltiesAndArrears->value, 'product_fields' => ['penalty_policy_key']]);
         $response->assertJsonFragment(['key' => FormulaPolicyKey::LoanInterestMethod->value, 'product_fields' => ['interest_policy_key']]);
+
+        $search = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/formula-policies?search=rounding');
+        $this->assertJsonSuccess($search);
+        $search->assertJsonPath('meta.pagination.total', 1);
+        $search->assertJsonPath('data.formula_policies.0.key', FormulaPolicyKey::XafRounding->value);
     }
 
     public function test_loan_product_formula_policies_fail_closed_until_approved_and_snapshot_to_loan(): void

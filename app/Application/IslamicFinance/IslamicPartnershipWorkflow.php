@@ -712,46 +712,33 @@ final class IslamicPartnershipWorkflow extends BaseController
             return $this->respondNotFound('Partnership not found.');
         }
         $partnershipId = $this->rowInt($partnership, 'id');
+        $events = $this->partnershipTimelineEvents($partnershipId);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = mb_strtolower(trim($search));
+            $events = array_values(array_filter($events, static function (array $event) use ($term): bool {
+                $haystack = mb_strtolower(json_encode($event, JSON_THROW_ON_ERROR));
 
-        $partners = DB::table('islamic_partnership_partners')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'partner_role', 'partner_reference', 'created_at']);
-        $contributions = DB::table('islamic_partnership_contributions')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'amount_minor', 'contributed_on', 'created_at']);
-        $reports = DB::table('islamic_partnership_reports')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'period_code', 'distributable_profit_minor', 'approval_status', 'created_at']);
-        $declarations = DB::table('islamic_partnership_profit_declarations')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'period_code', 'amount_minor', 'created_at']);
-        $losses = DB::table('islamic_partnership_losses')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'loss_type', 'amount_minor', 'blocks_distribution', 'created_at']);
-        $valuations = DB::table('islamic_partnership_valuations')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'valuation_method', 'valuation_amount_minor', 'approval_status', 'created_at']);
-        $buyouts = DB::table('islamic_partnership_buyouts')
-            ->where('islamic_partnership_id', $partnershipId)
-            ->orderBy('id')
-            ->get(['public_id', 'amount_minor', 'executed_at', 'created_at']);
+                return str_contains($haystack, $term);
+            }));
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = count($events);
+        $slice = array_slice($events, ($page - 1) * $perPage, $perPage);
 
         return $this->respondSuccess([
             'partnership_public_id' => $partnershipPublicId,
             'status' => $this->rowString($partnership, 'status'),
-            'partners' => $partners->map(fn (object $row): array => (array) $row)->all(),
-            'contributions' => $contributions->map(fn (object $row): array => (array) $row)->all(),
-            'reports' => $reports->map(fn (object $row): array => (array) $row)->all(),
-            'profit_declarations' => $declarations->map(fn (object $row): array => (array) $row)->all(),
-            'losses' => $losses->map(fn (object $row): array => (array) $row)->all(),
-            'valuations' => $valuations->map(fn (object $row): array => (array) $row)->all(),
-            'buyouts' => $buyouts->map(fn (object $row): array => (array) $row)->all(),
+            'timeline_events' => $slice,
+        ], 'Partnership timeline retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
         ]);
     }
 
@@ -874,6 +861,65 @@ final class IslamicPartnershipWorkflow extends BaseController
             'idempotency_key' => $this->rowString($row, 'idempotency_key'),
             'executed_at' => $this->rowNullableString($row, 'executed_at'),
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function partnershipTimelineEvents(int $partnershipId): array
+    {
+        $events = [];
+
+        foreach (DB::table('islamic_partnership_partners')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'partner_role', 'partner_reference', 'created_at']) as $row) {
+            $events[] = ['type' => 'partner_added'] + (array) $row;
+        }
+
+        foreach (DB::table('islamic_partnership_contributions')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'amount_minor', 'contributed_on', 'created_at']) as $row) {
+            $events[] = ['type' => 'contribution_recorded'] + (array) $row;
+        }
+
+        foreach (DB::table('islamic_partnership_reports')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'period_code', 'distributable_profit_minor', 'approval_status', 'created_at']) as $row) {
+            $events[] = ['type' => 'report_filed'] + (array) $row;
+        }
+
+        foreach (DB::table('islamic_partnership_profit_declarations')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'period_code', 'amount_minor', 'created_at']) as $row) {
+            $events[] = ['type' => 'profit_declared'] + (array) $row;
+        }
+
+        foreach (DB::table('islamic_partnership_losses')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'loss_type', 'amount_minor', 'blocks_distribution', 'created_at']) as $row) {
+            $events[] = ['type' => 'loss_recorded'] + (array) $row;
+        }
+
+        foreach (DB::table('islamic_partnership_valuations')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'valuation_method', 'valuation_amount_minor', 'approval_status', 'created_at']) as $row) {
+            $events[] = ['type' => 'valuation_recorded'] + (array) $row;
+        }
+
+        foreach (DB::table('islamic_partnership_buyouts')
+            ->where('islamic_partnership_id', $partnershipId)
+            ->orderBy('id')
+            ->get(['public_id', 'amount_minor', 'executed_at', 'created_at']) as $row) {
+            $events[] = ['type' => 'buyout_recorded'] + (array) $row;
+        }
+
+        return $events;
     }
 
     private function rowString(object $row, string $field): string

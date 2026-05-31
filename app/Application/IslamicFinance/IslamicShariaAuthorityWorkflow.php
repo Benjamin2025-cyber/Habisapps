@@ -52,6 +52,18 @@ final class IslamicShariaAuthorityWorkflow extends BaseController
             $query->where('a.jurisdiction', $jurisdiction);
         }
 
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('a.public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('a.name', 'ilike', '%'.$term.'%')
+                    ->orWhere('a.authority_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('a.jurisdiction', 'ilike', '%'.$term.'%')
+                    ->orWhere('a.status', 'ilike', '%'.$term.'%');
+            });
+        }
+
         $perPage = isset($validated['per_page']) && is_numeric($validated['per_page']) ? (int) $validated['per_page'] : 25;
         $page = isset($validated['page']) && is_numeric($validated['page']) ? (int) $validated['page'] : 1;
         $total = (clone $query)->count();

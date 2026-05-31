@@ -9,6 +9,7 @@ use App\Http\Resources\BatchProcedureCollection;
 use App\Http\Resources\BatchProcedureResource;
 use App\Models\BatchProcedure;
 use App\Support\Security\SecurityAudit;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -32,9 +33,20 @@ final class BatchProcedureController extends BaseController
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
-        return new BatchProcedureCollection(
-            BatchProcedure::query()->latest()->paginate($perPage)
-        );
+        $query = BatchProcedure::query()->latest();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('description', 'ilike', '%'.$term.'%')
+                    ->orWhere('schedule_type', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        return new BatchProcedureCollection($query->paginate($perPage));
     }
 
     /**

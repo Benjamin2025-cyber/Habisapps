@@ -62,10 +62,14 @@ final class InsuranceExportWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(
-            $exporter($actor, $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id'))),
-            $message,
-        );
+        $payload = $exporter($actor, $this->scopedAgencyIdForReport($actor, $request->query('agency_public_id')));
+        $meta = [];
+        if (isset($payload['meta']) && is_array($payload['meta'])) {
+            $meta = $payload['meta'];
+            unset($payload['meta']);
+        }
+
+        return $this->respondSuccess($payload, $message, $meta);
     }
 
     private function scopedAgencyIdForReport(User $actor, mixed $agencyPublicId): int

@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -57,6 +58,18 @@ final class AccountProductController extends BaseController
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('account_family', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%');
+            });
         }
 
         return new AccountProductCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

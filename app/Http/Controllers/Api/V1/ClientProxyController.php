@@ -52,22 +52,35 @@ final class ClientProxyController extends BaseController
         $onlyCurrent = $request->boolean('current_only', false);
         $today = now()->toDateString();
 
-        return new ClientProxyCollection(
-            ClientProxy::query()
-                ->with(['client', 'document'])
-                ->with('customerAccount')
-                ->where('client_id', $client->id)
-                ->where('agency_id', $client->agency_id)
-                ->when($onlyCurrent, function (Builder $query) use ($today): void {
-                    $query
-                        ->where('status', ClientProxy::STATUS_ACTIVE)
-                        ->where(function (Builder $activeQuery) use ($today): void {
-                            $activeQuery->where('ends_on', null)->orWhere('ends_on', '>=', $today);
-                        });
-                })
-                ->latest()
-                ->paginate($perPage)
-        );
+        $query = ClientProxy::query()
+            ->with(['client', 'document'])
+            ->with('customerAccount')
+            ->where('client_id', $client->id)
+            ->where('agency_id', $client->agency_id)
+            ->when($onlyCurrent, function (Builder $query) use ($today): void {
+                $query
+                    ->where('status', ClientProxy::STATUS_ACTIVE)
+                    ->where(function (Builder $activeQuery) use ($today): void {
+                        $activeQuery->where('ends_on', null)->orWhere('ends_on', '>=', $today);
+                    });
+            });
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('proxy_full_name', 'ilike', '%'.$term.'%')
+                    ->orWhere('proxy_phone_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('proxy_email', 'ilike', '%'.$term.'%')
+                    ->orWhere('proxy_id_document_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('proxy_id_document_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('mandate_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('verification_status', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        return new ClientProxyCollection($query->latest()->paginate($perPage));
     }
 
     /**

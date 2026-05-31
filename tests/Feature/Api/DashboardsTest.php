@@ -39,6 +39,9 @@ final class DashboardsTest extends TestCase
         $this->assertJsonSuccess($response);
         $response->assertJsonPath('data.agency_public_id', $agency['public_id']);
         $response->assertJsonPath('data.currency', 'XAF');
+        $response->assertJsonPath('meta.pagination.current_page', 1);
+        self::assertIsArray($response->json('data.dashboard_sections'));
+        self::assertGreaterThan(0, count($response->json('data.dashboard_sections')));
         self::assertIsString($response->json('data.data_freshness_at'));
         $response->assertJsonStructure([
             'data' => [
@@ -53,6 +56,25 @@ final class DashboardsTest extends TestCase
         ]);
         $response->assertJsonPath('data.claims_by_status.pending', 1);
         $response->assertJsonPath('data.claims_by_status.settled', 1);
+    }
+
+    public function test_operational_dashboard_search_paginates_dashboard_sections(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('DSH-SEARCH');
+        $this->seedInsuranceClaim($agency['id'], 'pending');
+        $this->seedInsuranceClaim($agency['id'], 'approved');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/dashboards/operational?agency_public_id='.$agency['public_id'].'&search=claim&page=2&per_page=2');
+
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('meta.pagination.total', 4);
+        $response->assertJsonPath('meta.pagination.current_page', 2);
+        $response->assertJsonPath('meta.pagination.per_page', 2);
+        $response->assertJsonPath('data.dashboard_sections.0.key', 'claim_rejected_count');
+        $response->assertJsonPath('data.dashboard_sections.1.key', 'claim_settled_count');
     }
 
     public function test_operational_dashboard_par_reconciles_to_reporting_policy_and_filters_product_status(): void
@@ -117,6 +139,7 @@ final class DashboardsTest extends TestCase
             ->getJson('/api/v1/dashboards/executive');
 
         $this->assertJsonSuccess($response);
+        $response->assertJsonPath('meta.pagination.current_page', 1);
         $payload = $response->json('data');
         self::assertIsArray($payload);
 

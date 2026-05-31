@@ -14,6 +14,7 @@ use App\Models\ClientKycReview;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -115,9 +116,22 @@ final class ClientKycWorkflow extends BaseController
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $reviews = ClientKycReview::query()
             ->with(['client', 'agency', 'actedBy'])
-            ->where('client_id', $client->id)
-            ->latest('created_at')
-            ->paginate($perPage);
+            ->where('client_id', $client->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $reviews->where(static function (Builder $builder) use ($term): void {
+                $builder->where('previous_kyc_status', 'ilike', '%'.$term.'%')
+                    ->orWhere('new_kyc_status', 'ilike', '%'.$term.'%')
+                    ->orWhere('reason', 'ilike', '%'.$term.'%')
+                    ->orWhere('comment', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('actedBy', static function (Builder $userBuilder) use ($term): void {
+                        $userBuilder->where('name', 'ilike', '%'.$term.'%')
+                            ->orWhere('email', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+        $reviews = $reviews->latest('created_at')->paginate($perPage);
 
         return $this->respondSuccess(
             [

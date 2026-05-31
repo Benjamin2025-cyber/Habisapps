@@ -50,14 +50,23 @@ final class ClientIdentityDocumentController extends BaseController
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
-        return new ClientIdentityDocumentCollection(
-            ClientIdentityDocument::query()
-                ->with(['client', 'document'])
-                ->where('client_id', $client->id)
-                ->where('agency_id', $client->agency_id)
-                ->latest()
-                ->paginate($perPage)
-        );
+        $query = ClientIdentityDocument::query()
+            ->with(['client', 'document'])
+            ->where('client_id', $client->id)
+            ->where('agency_id', $client->agency_id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('document_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('document_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('issuing_authority', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('verification_status', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        return new ClientIdentityDocumentCollection($query->latest()->paginate($perPage));
     }
 
     /**

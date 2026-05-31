@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -34,11 +35,20 @@ final class LoanGuaranteeObligationController extends BaseController
             return $this->respondForbidden();
         }
 
-        $obligations = LoanGuaranteeObligation::query()
+        $query = LoanGuaranteeObligation::query()
             ->with(['agency', 'loan', 'clientGuarantor', 'document', 'releasedBy'])
-            ->where('loan_id', $loan->id)
-            ->latest()
-            ->paginate(min(max($request->integer('per_page', 25), 1), 100));
+            ->where('loan_id', $loan->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('obligation_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('release_condition', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%');
+            });
+        }
+        $obligations = $query->latest()->paginate(min(max($request->integer('per_page', 25), 1), 100));
 
         return $this->respondSuccess([
             'guarantee_obligations' => LoanGuaranteeObligationResource::collection($obligations->getCollection()),

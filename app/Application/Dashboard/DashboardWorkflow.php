@@ -72,6 +72,20 @@ final class DashboardWorkflow extends BaseController
         $tellerVariances = $this->tellerVariances($agency, $from, $to);
         $premiums = $this->insurancePremiums($agency, $from, $to, $premiumStatus);
         $claims = $this->claimsByStatus($agency, $claimStatus);
+        $sections = $this->dashboardSections([
+            ['key' => 'portfolio_outstanding_minor', 'label' => 'Portfolio outstanding', 'value' => $portfolio],
+            ['key' => 'par_30_outstanding_at_risk_minor', 'label' => 'PAR 30', 'value' => $par['par30_outstanding_at_risk_minor']],
+            ['key' => 'par_60_outstanding_at_risk_minor', 'label' => 'PAR 60', 'value' => $par['par60_outstanding_at_risk_minor']],
+            ['key' => 'par_90_outstanding_at_risk_minor', 'label' => 'PAR 90', 'value' => $par['par90_outstanding_at_risk_minor']],
+            ['key' => 'cash_position_minor', 'label' => 'Cash position', 'value' => $cashPosition],
+            ['key' => 'insurance_premiums_assessed_minor', 'label' => 'Insurance premiums assessed', 'value' => $premiums['assessed_minor']],
+            ['key' => 'insurance_premiums_paid_minor', 'label' => 'Insurance premiums paid', 'value' => $premiums['paid_minor']],
+            ['key' => 'claim_pending_count', 'label' => 'Pending claims', 'value' => $claims['pending'] ?? 0],
+            ['key' => 'claim_approved_count', 'label' => 'Approved claims', 'value' => $claims['approved'] ?? 0],
+            ['key' => 'claim_rejected_count', 'label' => 'Rejected claims', 'value' => $claims['rejected'] ?? 0],
+            ['key' => 'claim_settled_count', 'label' => 'Settled claims', 'value' => $claims['settled'] ?? 0],
+        ], $request);
+        $pagination = $this->paginateSections($sections, $request, 100);
 
         return $this->respondSuccess([
             'agency_public_id' => $agency?->public_id,
@@ -98,7 +112,8 @@ final class DashboardWorkflow extends BaseController
             'teller_variances' => $tellerVariances,
             'insurance_premiums' => $premiums,
             'claims_by_status' => $claims,
-        ], 'Operational dashboard');
+            'dashboard_sections' => $pagination['items'],
+        ], 'Operational dashboard', ['pagination' => $pagination['pagination']]);
     }
 
     public function executive(Request $request): JsonResponse
@@ -124,6 +139,19 @@ final class DashboardWorkflow extends BaseController
         $collections = $this->collections(null, $currency, $from, $to, null, null);
         $premiumTotals = $this->insurancePremiums(null, $from, $to, null);
         $claimCounts = $this->claimsByStatus(null, null);
+        $sections = $this->dashboardSections([
+            ['key' => 'portfolio_outstanding_minor', 'label' => 'Portfolio outstanding', 'value' => $portfolio],
+            ['key' => 'par_total_minor', 'label' => 'PAR total', 'value' => $par['par30_outstanding_at_risk_minor'] + $par['par60_outstanding_at_risk_minor'] + $par['par90_outstanding_at_risk_minor']],
+            ['key' => 'collection_actual_minor', 'label' => 'Collections actual', 'value' => $collections['actual_collection_minor']],
+            ['key' => 'collection_expected_minor', 'label' => 'Collections expected', 'value' => $collections['expected_collection_minor']],
+            ['key' => 'insurance_premiums_assessed_minor', 'label' => 'Insurance premiums assessed', 'value' => $premiumTotals['assessed_minor']],
+            ['key' => 'insurance_premiums_paid_minor', 'label' => 'Insurance premiums paid', 'value' => $premiumTotals['paid_minor']],
+            ['key' => 'claim_pending_count', 'label' => 'Pending claims', 'value' => $claimCounts['pending'] ?? 0],
+            ['key' => 'claim_approved_count', 'label' => 'Approved claims', 'value' => $claimCounts['approved'] ?? 0],
+            ['key' => 'claim_rejected_count', 'label' => 'Rejected claims', 'value' => $claimCounts['rejected'] ?? 0],
+            ['key' => 'claim_settled_count', 'label' => 'Settled claims', 'value' => $claimCounts['settled'] ?? 0],
+        ], $request);
+        $pagination = $this->paginateSections($sections, $request, 100);
 
         return $this->respondSuccess([
             'currency' => $currency,
@@ -151,7 +179,8 @@ final class DashboardWorkflow extends BaseController
                 'rejected' => $claimCounts['rejected'] ?? 0,
                 'settled' => $claimCounts['settled'] ?? 0,
             ],
-        ], 'Executive dashboard');
+            'dashboard_sections' => $pagination['items'],
+        ], 'Executive dashboard', ['pagination' => $pagination['pagination']]);
     }
 
     private function resolveAgencyScope(User $actor, mixed $requestedAgencyPublicId): ?Agency
@@ -211,6 +240,59 @@ final class DashboardWorkflow extends BaseController
     private function numericValue(mixed $value): int
     {
         return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * @param  array<int, array{key:string,label:string,value:mixed}>  $sections
+     * @return array<int, array{key:string,label:string,value:mixed}>
+     */
+    private function dashboardSections(array $sections, Request $request): array
+    {
+        $decorated = array_map(
+            fn (array $section): array => $section + ['search_blob' => mb_strtolower($section['key'].' '.$section['label'].' '.json_encode($section['value'], JSON_THROW_ON_ERROR))],
+            $sections,
+        );
+        $search = $request->query('search');
+        if (! is_string($search) || trim($search) === '') {
+            return array_map(static fn (array $section): array => [
+                'key' => $section['key'],
+                'label' => $section['label'],
+                'value' => $section['value'],
+            ], $decorated);
+        }
+
+        $term = mb_strtolower(trim($search));
+
+        return array_map(
+            static fn (array $section): array => [
+                'key' => $section['key'],
+                'label' => $section['label'],
+                'value' => $section['value'],
+            ],
+            array_filter($decorated, fn (array $section): bool => str_contains($section['search_blob'], $term)),
+        );
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array{items: array<int, array<string, mixed>>, pagination: array<string, int>}
+     */
+    private function paginateSections(array $items, Request $request, int $defaultPerPage): array
+    {
+        $page = max(1, $request->integer('page', 1));
+        $perPage = min(max($request->integer('per_page', $defaultPerPage), 1), 100);
+        $total = count($items);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+
+        return [
+            'items' => array_slice($items, ($page - 1) * $perPage, $perPage),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $lastPage,
+            ],
+        ];
     }
 
     /**

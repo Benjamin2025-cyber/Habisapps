@@ -12,6 +12,7 @@ use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -39,29 +40,37 @@ final class StaffAssignmentController extends BaseController
         $actor = $request->user();
         $this->authorize('viewAny', [StaffAgencyAssignment::class, $staffUser]);
 
+        $query = StaffAgencyAssignment::query()
+            ->where('user_id', $staffUser->id)
+            ->with('agency');
+
         if ($actor->hasRole('platform-admin')) {
-            $assignments = StaffAgencyAssignment::query()
-                ->where('user_id', $staffUser->id)
-                ->with('agency')
-                ->get()
-                ->sortByDesc('starts_on')
-                ->values();
+            // keep full scope
         } else {
             $actorAgencyId = $this->staffAgencyScope->currentAgencyId($actor);
             if ($actorAgencyId === null) {
                 return $this->respondForbidden();
             }
 
-            $assignments = StaffAgencyAssignment::query()
-                ->where('user_id', $staffUser->id)
-                ->where('agency_id', $actorAgencyId)
-                ->with('agency')
-                ->get()
-                ->sortByDesc('starts_on')
-                ->values();
+            $query->where('agency_id', $actorAgencyId);
         }
 
-        return new StaffAgencyAssignmentCollection($assignments);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('role_at_agency', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('agency', static function (Builder $agencyBuilder) use ($term): void {
+                        $agencyBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+
+        return new StaffAgencyAssignmentCollection($query->latest('starts_on')->paginate($perPage));
     }
 
     /**

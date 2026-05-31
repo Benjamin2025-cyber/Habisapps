@@ -138,44 +138,32 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
             return $this->respondNotFound('Istisnaa project not found.');
         }
 
-        $milestones = DB::table('islamic_istisnaa_milestones')
-            ->where('islamic_istisnaa_project_id', $this->rowInt($project, 'id'))
-            ->orderBy('id')
-            ->get();
-        $milestoneIds = $milestones
-            ->map(fn (object $row): int => $this->rowInt($row, 'id'))
-            ->filter(static fn (int $id): bool => $id > 0)
-            ->values()
-            ->all();
-        $inspections = [];
-        $payments = [];
-        if ($milestoneIds !== []) {
-            $inspections = DB::table('islamic_istisnaa_inspections')
-                ->whereIn('islamic_istisnaa_milestone_id', $milestoneIds)
-                ->orderBy('id')
-                ->get()
-                ->map(fn (object $row): array => $this->inspectionPayload($row))
-                ->all();
-            $payments = DB::table('islamic_istisnaa_payments')
-                ->whereIn('islamic_istisnaa_milestone_id', $milestoneIds)
-                ->orderBy('id')
-                ->get()
-                ->map(fn (object $row): array => $this->paymentPayload($row))
-                ->all();
+        $events = $this->istisnaaTimelineEvents($this->rowInt($project, 'id'));
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = mb_strtolower(trim($search));
+            $events = array_values(array_filter($events, static function (array $event) use ($term): bool {
+                $haystack = mb_strtolower(json_encode($event, JSON_THROW_ON_ERROR));
+
+                return str_contains($haystack, $term);
+            }));
         }
-        $variations = DB::table('islamic_istisnaa_variation_orders')
-            ->where('islamic_istisnaa_project_id', $this->rowInt($project, 'id'))
-            ->orderBy('id')
-            ->get()
-            ->map(fn (object $row): array => $this->variationPayload($row))
-            ->all();
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = count($events);
+        $slice = array_slice($events, ($page - 1) * $perPage, $perPage);
 
         return $this->respondSuccess([
             'project' => $this->projectPayload($project),
-            'milestones' => $milestones->map(fn (object $row): array => $this->milestonePayload($row))->all(),
-            'inspections' => $inspections,
-            'payments' => $payments,
-            'variations' => $variations,
+            'timeline_events' => $slice,
+        ], 'Istisnaa timeline retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
         ]);
     }
 
@@ -815,6 +803,53 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
             'reason' => $this->rowString($row, 'reason'),
             'applied_at' => $this->rowNullableString($row, 'applied_at'),
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function istisnaaTimelineEvents(int $projectId): array
+    {
+        $events = [];
+
+        $milestones = DB::table('islamic_istisnaa_milestones')
+            ->where('islamic_istisnaa_project_id', $projectId)
+            ->orderBy('id')
+            ->get();
+        $milestoneIds = $milestones
+            ->map(fn (object $row): int => $this->rowInt($row, 'id'))
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->values()
+            ->all();
+
+        foreach ($milestones as $row) {
+            $events[] = ['type' => 'milestone'] + $this->milestonePayload($row);
+        }
+
+        if ($milestoneIds !== []) {
+            foreach (DB::table('islamic_istisnaa_inspections')
+                ->whereIn('islamic_istisnaa_milestone_id', $milestoneIds)
+                ->orderBy('id')
+                ->get() as $row) {
+                $events[] = ['type' => 'inspection'] + $this->inspectionPayload($row);
+            }
+
+            foreach (DB::table('islamic_istisnaa_payments')
+                ->whereIn('islamic_istisnaa_milestone_id', $milestoneIds)
+                ->orderBy('id')
+                ->get() as $row) {
+                $events[] = ['type' => 'payment'] + $this->paymentPayload($row);
+            }
+        }
+
+        foreach (DB::table('islamic_istisnaa_variation_orders')
+            ->where('islamic_istisnaa_project_id', $projectId)
+            ->orderBy('id')
+            ->get() as $row) {
+            $events[] = ['type' => 'variation'] + $this->variationPayload($row);
+        }
+
+        return $events;
     }
 
     private function rowString(object $row, string $field): string

@@ -33,9 +33,19 @@ final class LoanTransferWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $transferRows = DB::table('loan_transfers')
+        $query = DB::table('loan_transfers')
             ->select('id')
-            ->where('loan_id', $loan->id)
+            ->where('loan_id', $loan->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('transfer_reason', 'ilike', '%'.$term.'%')
+                    ->orWhere('transfer_date', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $transferRows = $query
             ->orderByDesc('transfer_date')
             ->orderByDesc('id')
             ->paginate(min(max($request->integer('per_page', 25), 1), 100));

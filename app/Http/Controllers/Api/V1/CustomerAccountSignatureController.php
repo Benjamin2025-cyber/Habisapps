@@ -13,6 +13,7 @@ use App\Models\CustomerAccountSignature;
 use App\Models\Document;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -53,6 +54,17 @@ final class CustomerAccountSignatureController extends BaseController
 
         if ($request->filled('signature_type')) {
             $query->where('signature_type', $request->string('signature_type'));
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('signature_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('signer_name', 'ilike', '%'.$term.'%')
+                    ->orWhere('signer_role', 'ilike', '%'.$term.'%');
+            });
         }
 
         return new CustomerAccountSignatureCollection($query->latest()->paginate($perPage));

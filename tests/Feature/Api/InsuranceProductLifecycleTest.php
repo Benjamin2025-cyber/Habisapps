@@ -1027,6 +1027,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         $response->assertJsonPath('data.export_type', 'subscriptions');
         $response->assertJsonPath('data.source_query_version', 'insurance_exports_v1');
         $response->assertJsonPath('data.format', 'json_api_export');
+        $response->assertJsonPath('meta.pagination.total', 0);
         self::assertNotNull($response->json('data.checksum'));
         self::assertIsArray($response->json('data.rows'));
         $this->assertDatabaseCount('insurance_export_records', 1);

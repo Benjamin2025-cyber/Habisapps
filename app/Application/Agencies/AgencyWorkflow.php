@@ -61,6 +61,19 @@ final class AgencyWorkflow extends BaseController
             });
         }
 
+        $status = $request->query('status');
+        if (is_string($status) && trim($status) !== '') {
+            $status = trim($status);
+            if (in_array($status, [
+                Agency::STATUS_ACTIVE,
+                Agency::STATUS_INACTIVE,
+                Agency::STATUS_SUSPENDED,
+                Agency::STATUS_ARCHIVED,
+            ], true)) {
+                $query->where('status', $status);
+            }
+        }
+
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
         return new AgencyCollection($query->paginate($perPage));

@@ -91,7 +91,7 @@ final class ApiResponse
         int $status = Response::HTTP_OK,
         array $headers = [],
     ): JsonResponse {
-        $resolvedMeta = $meta === [] ? null : $meta;
+        $resolvedMeta = self::resolveMeta($meta, $data, $status);
 
         $payload = array_filter([
             'success' => $success,
@@ -102,5 +102,36 @@ final class ApiResponse
         ], static fn (mixed $value): bool => $value !== null);
 
         return response()->json($payload, $status, $headers);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $meta
+     * @return array<array-key, mixed>|null
+     */
+    private static function resolveMeta(array $meta, mixed $data, int $status): ?array
+    {
+        $resolved = $meta;
+
+        if ($resolved === [] && $status >= 200 && $status < 300) {
+            $request = function_exists('request') ? request() : null;
+            if ($request !== null && $request->isMethod('get')) {
+                $page = max($request->integer('page', 1), 1);
+                $perPage = max($request->integer('per_page', 1), 1);
+
+                $total = 1;
+                if (is_array($data) && array_is_list($data)) {
+                    $total = count($data);
+                }
+
+                $resolved['pagination'] = [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => max((int) ceil($total / $perPage), 1),
+                ];
+            }
+        }
+
+        return $resolved === [] ? null : $resolved;
     }
 }

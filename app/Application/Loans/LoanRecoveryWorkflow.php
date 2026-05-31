@@ -34,9 +34,21 @@ final class LoanRecoveryWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $attemptRows = DB::table('loan_recovery_attempts')
+        $query = DB::table('loan_recovery_attempts')
             ->select('id')
-            ->where('loan_id', $loan->id)
+            ->where('loan_id', $loan->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('notes', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhere('attempted_at', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $attemptRows = $query
             ->orderByDesc('attempted_at')
             ->orderByDesc('id')
             ->paginate(min(max($request->integer('per_page', 25), 1), 100));

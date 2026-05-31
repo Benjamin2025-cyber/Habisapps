@@ -113,7 +113,31 @@ final class IslamicProductWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess($this->productFamilies->allMetadata(), 'Islamic product families retrieved');
+        $items = $this->productFamilies->allMetadata();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = mb_strtolower(trim($search));
+            $items = array_values(array_filter($items, static function (array $item) use ($term): bool {
+                $haystack = mb_strtolower(json_encode($item, JSON_THROW_ON_ERROR));
+
+                return str_contains($haystack, $term);
+            }));
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = count($items);
+        $offset = ($page - 1) * $perPage;
+        $slice = array_slice($items, $offset, $perPage);
+
+        return $this->respondSuccess($slice, 'Islamic product families retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
+        ]);
     }
 
     public function showProductFamily(Request $request, string $familyCode): JsonResponse
@@ -514,11 +538,36 @@ final class IslamicProductWorkflow extends BaseController
             }
         }
 
-        $rows = $query->get();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('c.public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('c.subject_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('c.subject_public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('c.reason_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('c.risk_level', 'ilike', '%'.$term.'%')
+                    ->orWhere('c.status', 'ilike', '%'.$term.'%')
+                    ->orWhere('c.latest_decision', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $rows = $query->forPage($page, $perPage)->get();
 
         return $this->respondSuccess(
             $rows->map(fn (object $row): array => $this->complianceCasePayload($row))->all(),
-            'Compliance cases retrieved'
+            'Compliance cases retrieved',
+            meta: [
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => (int) ceil(max(1, $total) / $perPage),
+                ],
+            ],
         );
     }
 
@@ -567,14 +616,39 @@ final class IslamicProductWorkflow extends BaseController
             return $this->respondNotFound('Islamic product not found.');
         }
 
-        $snapshots = DB::table('islamic_product_readiness_snapshots')
+        $query = DB::table('islamic_product_readiness_snapshots')
             ->where('islamic_product_id', $this->rowInt($product, 'id'))
-            ->orderByDesc('id')
-            ->get();
+            ->orderByDesc('id');
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('family_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('overall_status', 'ilike', '%'.$term.'%')
+                    ->orWhere('snapshot_hash', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $snapshots = $query->forPage($page, $perPage)->get();
 
         return $this->respondSuccess(
-            $snapshots->map(fn (object $row): array => $this->readinessSnapshotPayload($row))->all(),
-            'Islamic product readiness snapshots retrieved'
+            [
+                'readiness_snapshots' => $snapshots->map(fn (object $row): array => $this->readinessSnapshotPayload($row))->all(),
+            ],
+            'Islamic product readiness snapshots retrieved',
+            meta: [
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => (int) ceil(max(1, $total) / $perPage),
+                ],
+            ],
         );
     }
 
@@ -600,11 +674,11 @@ final class IslamicProductWorkflow extends BaseController
         if (! is_object($case)) {
             return $this->respondNotFound('Compliance case not found.');
         }
-        $events = DB::table('islamic_compliance_case_decisions')
+        $query = DB::table('islamic_compliance_case_decisions')
             ->where('case_id', $this->rowInt($case, 'id'))
             ->orderBy('decided_at')
             ->orderBy('id')
-            ->get([
+            ->select([
                 'public_id',
                 'decision',
                 'decision_comments',
@@ -614,19 +688,42 @@ final class IslamicProductWorkflow extends BaseController
                 'effective_to',
                 'metadata',
             ]);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('decision', 'ilike', '%'.$term.'%')
+                    ->orWhere('decision_comments', 'ilike', '%'.$term.'%');
+            });
+        }
 
-        return $this->respondSuccess($events->map(function (object $event): array {
-            return [
-                'public_id' => $this->rowString($event, 'public_id'),
-                'decision' => $this->rowString($event, 'decision'),
-                'decision_comments' => $this->nullableString(($event->decision_comments ?? null)),
-                'conditions' => $this->decodeJsonObject($event->conditions ?? null),
-                'decided_at' => $this->nullableString(($event->decided_at ?? null)),
-                'effective_from' => $this->nullableString(($event->effective_from ?? null)),
-                'effective_to' => $this->nullableString(($event->effective_to ?? null)),
-                'metadata' => $this->decodeJsonObject($event->metadata ?? null),
-            ];
-        })->all(), 'Compliance case timeline retrieved');
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $events = $query->forPage($page, $perPage)->get();
+
+        return $this->respondSuccess([
+            'timeline_events' => $events->map(function (object $event): array {
+                return [
+                    'public_id' => $this->rowString($event, 'public_id'),
+                    'decision' => $this->rowString($event, 'decision'),
+                    'decision_comments' => $this->nullableString(($event->decision_comments ?? null)),
+                    'conditions' => $this->decodeJsonObject($event->conditions ?? null),
+                    'decided_at' => $this->nullableString(($event->decided_at ?? null)),
+                    'effective_from' => $this->nullableString(($event->effective_from ?? null)),
+                    'effective_to' => $this->nullableString(($event->effective_to ?? null)),
+                    'metadata' => $this->decodeJsonObject($event->metadata ?? null),
+                ];
+            })->all(),
+        ], 'Compliance case timeline retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
+        ]);
     }
 
     public function complianceCaseSummary(Request $request): JsonResponse

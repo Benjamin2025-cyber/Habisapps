@@ -34,6 +34,8 @@ final class IslamicContractTemplateWorkflow extends BaseController
             'language_code' => ['sometimes', 'nullable', 'string', 'max:8'],
             'status' => ['sometimes', 'nullable', Rule::in(['draft', 'submitted', 'approved', 'suspended', 'revoked', 'expired', 'retired', 'archived'])],
             'template_code' => ['sometimes', 'nullable', 'string', 'max:128'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ])->validate();
 
         $query = DB::table('islamic_contract_templates')->orderByDesc('id');
@@ -43,9 +45,35 @@ final class IslamicContractTemplateWorkflow extends BaseController
             }
         }
 
-        $rows = $query->get();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('family_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('language_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('template_code', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('legal_signoff_ref', 'ilike', '%'.$term.'%')
+                    ->orWhere('sharia_signoff_ref', 'ilike', '%'.$term.'%');
+            });
+        }
 
-        return $this->respondSuccess($rows->map(fn (object $row): array => $this->templatePayload($row))->all(), 'Islamic contract templates retrieved');
+        $perPage = isset($validated['per_page']) && is_numeric($validated['per_page']) ? (int) $validated['per_page'] : 25;
+        $page = isset($validated['page']) && is_numeric($validated['page']) ? (int) $validated['page'] : 1;
+        $total = (clone $query)->count();
+        $rows = $query->forPage($page, $perPage)->get();
+
+        return $this->respondSuccess([
+            'contract_templates' => $rows->map(fn (object $row): array => $this->templatePayload($row))->all(),
+        ], 'Islamic contract templates retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
+        ]);
     }
 
     public function store(Request $request): JsonResponse

@@ -21,6 +21,7 @@ use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\FormulaPolicyRegistry;
 use App\Support\Security\SecurityAudit;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,12 +44,26 @@ final class ReportRunController extends BaseController
             return $this->respondForbidden();
         }
 
-        return new ReportRunCollection(
-            ReportRun::query()
-                ->with(['reportDefinition', 'agency', 'document'])
-                ->latest()
-                ->paginate(min(max($request->integer('per_page', 25), 1), 100))
-        );
+        $query = ReportRun::query()->with(['reportDefinition', 'agency', 'document']);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (EloquentBuilder $builder) use ($term): void {
+                $builder->where('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('reportDefinition', static function (EloquentBuilder $definitionBuilder) use ($term): void {
+                        $definitionBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%')
+                            ->orWhere('report_type', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('agency', static function (EloquentBuilder $agencyBuilder) use ($term): void {
+                        $agencyBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
+        return new ReportRunCollection($query->latest()->paginate(min(max($request->integer('per_page', 25), 1), 100)));
     }
 
     public function store(Request $request): JsonResponse

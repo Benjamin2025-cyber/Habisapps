@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -97,6 +98,26 @@ final class BatchRunWorkflow extends BaseController
             if ($agency !== null) {
                 $query->where('agency_id', $agency->id);
             }
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('batchProcedure', function (Builder $procedureQuery) use ($term): void {
+                        $procedureQuery
+                            ->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('agency', function (Builder $agencyQuery) use ($term): void {
+                        $agencyQuery
+                            ->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         return new BatchRunCollection($query->paginate($perPage));

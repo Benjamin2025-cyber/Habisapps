@@ -15,6 +15,7 @@ use App\Models\OperationCode;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -37,6 +38,31 @@ final class OperationAccountMappingController extends BaseController
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('currency', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('operationCode', function (Builder $codeQuery) use ($term): void {
+                        $codeQuery
+                            ->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('label', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('debitLedgerAccount', function (Builder $ledgerQuery) use ($term): void {
+                        $ledgerQuery
+                            ->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('creditLedgerAccount', function (Builder $ledgerQuery) use ($term): void {
+                        $ledgerQuery
+                            ->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         return new OperationAccountMappingCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

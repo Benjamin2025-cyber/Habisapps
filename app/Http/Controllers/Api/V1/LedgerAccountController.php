@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -44,6 +45,20 @@ final class LedgerAccountController extends BaseController
 
             $query->where(function ($builder) use ($agencyId): void {
                 $builder->where('agency_id', $agencyId)->orWhere('agency_id', null);
+            });
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('account_class', 'ilike', '%'.$term.'%')
+                    ->orWhere('account_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('normal_balance_side', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%');
             });
         }
 

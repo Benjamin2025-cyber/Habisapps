@@ -9,10 +9,30 @@ Method: proof by contradiction. For each frontend issue, assume the current back
 ## Current State Summary
 
 - All 23 reported items have been mapped to current backend code.
-- Fix implementation has not started in this backlog pass.
-- Most issues are confirmed by static code evidence.
-- Issue FBI-002 has a regression test and cache-flush fix for the role-assignment/read-after-write path. No crash reproduced after the fix.
-- Issue FBI-021 has a fix in progress in this worktree: `GET /roles` now reads persisted role permissions instead of config defaults.
+- Fix implementation is in progress and several frontend-blocking issues are now regression-covered by integration tests.
+- Roles/permissions instability reported by frontend was replicated and is currently green on backend integration suite (`FBI-005/FBI-021` scenario).
+- `GET /roles` now reflects persisted role permissions and permission-policy metadata; teller permission grant/revoke flow is read-after-write consistent in integration.
+- `GET /roles`, `GET /formula-policies`, `GET /reference/identity-document-types`, `GET /fx-register`, and insurance report/export list endpoints now expose server-side `search` plus `page`/`per_page` pagination metadata where applicable.
+- Search + pagination coverage has been expanded across list endpoints used by frontend modules, including sectors, sub-sectors, tills, teller sessions, insurance reporting/export surfaces, the Islamic finance timeline / ledger read surfaces, dashboards, health, and catalog/report summary GETs.
+
+## Integration Replication (2026-05-31)
+
+Objective: validate frontend-reported behavior by hitting backend the same way frontend does, not only older backend feature tests.
+
+Executed integration suites:
+
+- `npm run -s test:feedback` in `habis-finance-api-test/suite`
+- `npm run -s test:modules` in `habis-finance-api-test/suite`
+
+Observed:
+
+- `test:feedback`: `9/9` passed, including:
+  - `FBI-005/FBI-021 teller matrix: explicit replace, no silent revoke, read-after-write consistency`
+  - `FBI-002/FBI-021 role assignment reflects immediately and does not crash staff GET`
+- `test:modules`: `347/347` passed after the latest search/pagination changes, including the Islamic timeline/ledger GET contract updates and the OpenAPI walk over all authenticated GET endpoints.
+- Direct feature verification also passed for `tests/Feature/Api/IslamicFinanceTest.php`, `tests/Feature/Api/DashboardsTest.php`, and `tests/Feature/Api/HealthEndpointTest.php`.
+- No integration regression reproduced for the current roles/permissions flows covered by frontend repro tests.
+- Follow-up targeted feature checks also passed for `GET /roles`, `GET /formula-policies`, `GET /fx-register`, `GET /insurance-reports/active-subscriptions`, and `GET /insurance-exports/subscriptions`.
 
 ## FBI-001: Add Search To Agency Index
 
@@ -910,6 +930,11 @@ Round 2 conclusion:
 Use these commands while implementing FBI tickets:
 
 ```bash
+# Frontend-facing integration replication (run first for reported UI issues)
+cd ../habis-finance-api-test/suite
+npm run -s test:feedback
+npm run -s test:modules
+
 # Full suite (preferred default, aligned with IF-020)
 composer test
 
@@ -937,6 +962,7 @@ php artisan test --parallel --recreate-databases --filter=linked_accounts
 
 Command rules:
 
+- For frontend-reported integration bugs, run `test:feedback` before backend-only test filters.
 - Use `composer test` as the default full-suite entrypoint.
 - Put `--parallel` before any path argument.
 - Do not run multiple `php artisan test --parallel --recreate-databases ...` commands concurrently; database recreation can collide at the Postgres sequence/table level.

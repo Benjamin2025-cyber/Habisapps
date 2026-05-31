@@ -28,8 +28,16 @@ final class RoleController extends BaseController
         sort($nonDelegable);
         $delegable = array_values(array_diff($protected, $nonDelegable));
 
+        $roles = $this->roleCatalog();
+        $search = $this->searchTerm($request);
+        if ($search !== null) {
+            $roles = array_values(array_filter($roles, fn (array $role): bool => $this->roleMatchesSearch($role, $search)));
+        }
+
+        $pagination = $this->paginateArray($roles, $request, 100);
+
         return $this->respondSuccess([
-            'roles' => $this->roleCatalog(),
+            'roles' => $pagination['items'],
             'permissions' => $this->permissionCatalog(),
             // Lets the role editor distinguish a disabled/restricted checkbox
             // from an ordinary unchecked one (AIR-002).
@@ -39,7 +47,7 @@ final class RoleController extends BaseController
                 'delegable' => $delegable,
                 'delegation_enabled' => config('security.permissions.allow_protected_delegation', false) === true,
             ],
-        ]);
+        ], 'Roles catalog', ['pagination' => $pagination['pagination']]);
     }
 
     /**
@@ -329,6 +337,61 @@ final class RoleController extends BaseController
         }
 
         return $roles;
+    }
+
+    private function searchTerm(Request $request): ?string
+    {
+        $search = $request->query('search');
+        if (! is_string($search) || trim($search) === '') {
+            return null;
+        }
+
+        return mb_strtolower(trim($search));
+    }
+
+    /**
+     * @param  array<string, mixed>  $role
+     */
+    private function roleMatchesSearch(array $role, string $search): bool
+    {
+        $permissions = $role['permissions'] ?? [];
+        $parts = [
+            $role['name'] ?? '',
+            $role['display_name'] ?? '',
+            $role['description'] ?? '',
+            ...(is_array($permissions) ? array_values($permissions) : []),
+        ];
+
+        $haystack = mb_strtolower(implode(' ', array_map(
+            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+            $parts,
+        )));
+
+        return str_contains($haystack, $search);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array{items: array<int, array<string, mixed>>, pagination: array<string, int>}
+     */
+    private function paginateArray(array $items, Request $request, int $defaultPerPage): array
+    {
+        $page = max(1, $request->integer('page', 1));
+        $perPage = min(max($request->integer('per_page', $defaultPerPage), 1), 100);
+        $total = count($items);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $offset = ($page - 1) * $perPage;
+        $paged = array_slice($items, $offset, $perPage);
+
+        return [
+            'items' => $paged,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $lastPage,
+            ],
+        ];
     }
 
     /**

@@ -729,15 +729,33 @@ final class IslamicFinancingWorkflow extends BaseController
         if (! is_object($asset)) {
             return $this->respondNotFound('Financed asset not found.');
         }
-        $rows = DB::table('islamic_financed_asset_transitions')
-            ->where('islamic_financed_asset_id', $this->rowInt($asset, 'id'))
-            ->orderBy('id')
-            ->get();
+        $rows = $this->financedAssetTimelineItems($this->rowInt($asset, 'id'));
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = mb_strtolower(trim($search));
+            $rows = array_values(array_filter($rows, static function (array $row) use ($term): bool {
+                $haystack = mb_strtolower(json_encode($row, JSON_THROW_ON_ERROR));
+
+                return str_contains($haystack, $term);
+            }));
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = count($rows);
+        $slice = array_slice($rows, ($page - 1) * $perPage, $perPage);
 
         return $this->respondSuccess([
             'asset_public_id' => $assetPublicId,
             'current_status' => $this->rowString($asset, 'lifecycle_status'),
-            'transitions' => $rows->map(fn (object $row): array => $this->assetTransitionPayload($row))->all(),
+            'timeline_events' => $slice,
+        ], 'Financed asset timeline retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
         ]);
     }
 
@@ -1684,30 +1702,68 @@ final class IslamicFinancingWorkflow extends BaseController
         if (! is_object($financing) || ! is_numeric($financing->id)) {
             return $this->respondNotFound('Islamic financing not found.');
         }
-        $events = DB::table('islamic_mourabaha_receivable_events')
-            ->where('islamic_financing_id', (int) $financing->id)
-            ->orderBy('id')
-            ->get();
-        $installments = DB::table('islamic_financing_installments')
-            ->where('islamic_financing_id', (int) $financing->id)
-            ->orderBy('installment_number')
-            ->get(['public_id', 'installment_number', 'due_on', 'amount_minor', 'paid_amount_minor', 'status']);
+        $items = $this->receivableLedgerItems((int) $financing->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = mb_strtolower(trim($search));
+            $items = array_values(array_filter($items, static function (array $item) use ($term): bool {
+                $haystack = mb_strtolower(json_encode($item, JSON_THROW_ON_ERROR));
+
+                return str_contains($haystack, $term);
+            }));
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = count($items);
+        $slice = array_slice($items, ($page - 1) * $perPage, $perPage);
         $outstanding = $this->outstandingReceivableMinor((int) $financing->id, (int) $financing->sale_price_minor);
 
         return $this->respondSuccess([
             'financing_public_id' => $financingPublicId,
             'sale_price_minor' => (int) $financing->sale_price_minor,
             'outstanding_minor' => $outstanding,
-            'events' => $events->map(fn (object $event): array => $this->mourabahaReceivableEventPayload($event))->all(),
-            'installments' => $installments->map(fn (object $inst): array => [
-                'public_id' => $this->rowString($inst, 'public_id'),
-                'installment_number' => $this->rowInt($inst, 'installment_number'),
-                'due_on' => $this->rowNullableString($inst, 'due_on'),
-                'amount_minor' => $this->rowInt($inst, 'amount_minor'),
-                'paid_amount_minor' => $this->rowInt($inst, 'paid_amount_minor'),
-                'status' => $this->rowString($inst, 'status'),
-            ])->all(),
-        ], 'Mourabaha receivable ledger retrieved');
+            'ledger_items' => $slice,
+        ], 'Mourabaha receivable ledger retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function receivableLedgerItems(int $financingId): array
+    {
+        $items = [];
+
+        foreach (DB::table('islamic_mourabaha_receivable_events')
+            ->where('islamic_financing_id', $financingId)
+            ->orderBy('id')
+            ->get() as $row) {
+            $items[] = ['type' => 'event'] + $this->mourabahaReceivableEventPayload($row);
+        }
+
+        foreach (DB::table('islamic_financing_installments')
+            ->where('islamic_financing_id', $financingId)
+            ->orderBy('installment_number')
+            ->get(['public_id', 'installment_number', 'due_on', 'amount_minor', 'paid_amount_minor', 'status']) as $row) {
+            $items[] = [
+                'type' => 'installment',
+                'public_id' => $this->rowString($row, 'public_id'),
+                'installment_number' => $this->rowInt($row, 'installment_number'),
+                'due_on' => $this->rowNullableString($row, 'due_on'),
+                'amount_minor' => $this->rowInt($row, 'amount_minor'),
+                'paid_amount_minor' => $this->rowInt($row, 'paid_amount_minor'),
+                'status' => $this->rowString($row, 'status'),
+            ];
+        }
+
+        return $items;
     }
 
     public function approveFinancing(Request $request, string $financingPublicId): JsonResponse
@@ -3130,6 +3186,21 @@ final class IslamicFinancingWorkflow extends BaseController
             'evidence_refs' => $evidence,
             'transitioned_at' => $this->rowNullableString($row, 'transitioned_at'),
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function financedAssetTimelineItems(int $assetId): array
+    {
+        return array_map(
+            fn (object $row): array => ['type' => 'transition'] + $this->assetTransitionPayload($row),
+            DB::table('islamic_financed_asset_transitions')
+                ->where('islamic_financed_asset_id', $assetId)
+                ->orderBy('id')
+                ->get()
+                ->all(),
+        );
     }
 
     /**

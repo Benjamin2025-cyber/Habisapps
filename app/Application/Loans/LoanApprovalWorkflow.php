@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -39,17 +40,38 @@ final class LoanApprovalWorkflow extends BaseController
             return $this->respondForbidden('Loan is outside your agency scope.');
         }
 
-        $approvals = LoanApproval::query()
+        $query = LoanApproval::query()
             ->where('loan_id', $loan->id)
-            ->with('actedBy')
-            ->oldest('id')
-            ->get();
+            ->with('actedBy');
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('step', 'ilike', '%'.$term.'%')
+                    ->orWhere('decision', 'ilike', '%'.$term.'%')
+                    ->orWhere('comments', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('actedBy', static function (Builder $userBuilder) use ($term): void {
+                        $userBuilder->where('name', 'ilike', '%'.$term.'%')
+                            ->orWhere('email', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $approvals = $query->oldest('id')->paginate($perPage);
 
         return $this->respondSuccess([
-            'approvals' => $approvals
+            'approvals' => $approvals->getCollection()
                 ->map(fn (LoanApproval $approval): array => $this->approvalPayload($approval))
                 ->values()
                 ->all(),
+        ], meta: [
+            'pagination' => [
+                'current_page' => $approvals->currentPage(),
+                'per_page' => $approvals->perPage(),
+                'total' => $approvals->total(),
+                'last_page' => $approvals->lastPage(),
+            ],
         ]);
     }
 

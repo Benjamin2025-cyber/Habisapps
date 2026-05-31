@@ -18,6 +18,7 @@ use App\Models\Till;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,28 @@ final class TellerSessionWorkflow extends BaseController
             }
 
             $query->where('agency_id', $agencyId);
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('business_date', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('agency', static function (Builder $agencyBuilder) use ($term): void {
+                        $agencyBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('till', static function (Builder $tillBuilder) use ($term): void {
+                        $tillBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('teller', static function (Builder $tellerBuilder) use ($term): void {
+                        $tellerBuilder->where('name', 'ilike', '%'.$term.'%')
+                            ->orWhere('email', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         return new TellerSessionCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

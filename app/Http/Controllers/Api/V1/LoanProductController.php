@@ -14,6 +14,7 @@ use App\Models\LoanProduct;
 use App\Models\User;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
 use App\Support\Security\SecurityAudit;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -37,6 +38,19 @@ final class LoanProductController extends BaseController
         $status = $request->query('status');
         if (is_string($status) && $status !== '') {
             $query->where('status', $status);
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('description', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('interest_method', 'ilike', '%'.$term.'%')
+                    ->orWhere('repayment_frequency', 'ilike', '%'.$term.'%');
+            });
         }
 
         return new LoanProductCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

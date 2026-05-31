@@ -16,6 +16,7 @@ use App\Models\CustomerAccount;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -36,8 +37,26 @@ final class AccountHoldController extends BaseController
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $query = AccountHold::query()->with('customerAccount')->latest();
 
-        return new AccountHoldCollection(AccountHold::query()->with('customerAccount')->latest()->paginate($perPage));
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('reason_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('reference', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('customerAccount', function (Builder $accountQuery) use ($term): void {
+                        $accountQuery
+                            ->where('account_number', 'ilike', '%'.$term.'%')
+                            ->orWhere('account_title', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
+        return new AccountHoldCollection($query->paginate($perPage));
     }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{account_hold: \App\Http\Resources\AccountHoldResource}, errors: null, meta: null}')]

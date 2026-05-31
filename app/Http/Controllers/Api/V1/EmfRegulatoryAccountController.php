@@ -13,6 +13,7 @@ use App\Models\EmfRegulatoryAccount;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +39,21 @@ final class EmfRegulatoryAccountController extends BaseController
 
         if ($request->filled('account_class')) {
             $query->where('account_class', $request->string('account_class'));
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('account_class', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('parentAccount', static function (Builder $parentBuilder) use ($term): void {
+                        $parentBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         return new EmfRegulatoryAccountCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

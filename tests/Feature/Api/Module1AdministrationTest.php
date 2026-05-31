@@ -401,6 +401,15 @@ final class Module1AdministrationTest extends TestCase
         $this->assertJsonSuccess($catalogResponse);
         $catalogResponse->assertJsonFragment(['name' => 'platform-admin']);
         $catalogResponse->assertJsonFragment(['agencies.manage']);
+        $catalogResponse->assertJsonPath('meta.pagination.current_page', 1);
+
+        $searchResponse = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('role-search-token')->plainTextToken])
+            ->getJson('/api/v1/roles?search=teller');
+
+        $this->assertJsonSuccess($searchResponse);
+        $searchResponse->assertJsonPath('meta.pagination.total', 1);
+        $searchResponse->assertJsonPath('data.roles.0.name', 'teller');
 
         $updateResponse = $this
             ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('test-token')->plainTextToken])
@@ -622,6 +631,9 @@ final class Module1AdministrationTest extends TestCase
         $response = $this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/roles');
         $this->assertJsonSuccess($response);
         $response->assertJsonPath('data.permission_policy.delegation_enabled', false);
+        $roles = $response->json('data.roles');
+        self::assertIsArray($roles);
+        $response->assertJsonPath('meta.pagination.total', count($roles));
 
         $protected = $response->json('data.permission_policy.protected');
         $nonDelegable = $response->json('data.permission_policy.non_delegable');

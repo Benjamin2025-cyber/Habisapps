@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,31 @@ final class TillController extends BaseController
             }
 
             $query->where('agency_id', $agencyId);
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('type', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('daily_state', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('agency', static function (Builder $agencyBuilder) use ($term): void {
+                        $agencyBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('assignedUser', static function (Builder $userBuilder) use ($term): void {
+                        $userBuilder->where('name', 'ilike', '%'.$term.'%')
+                            ->orWhere('email', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('ledgerAccount', static function (Builder $ledgerBuilder) use ($term): void {
+                        $ledgerBuilder->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);

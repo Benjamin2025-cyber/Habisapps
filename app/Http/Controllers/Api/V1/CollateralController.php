@@ -15,6 +15,7 @@ use App\Models\Loan;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -35,11 +36,21 @@ final class CollateralController extends BaseController
             return $this->respondForbidden();
         }
 
-        $collaterals = Collateral::query()
+        $query = Collateral::query()
             ->with(['agency', 'client', 'loan', 'document', 'items'])
-            ->where('loan_id', $loan->id)
-            ->latest()
-            ->paginate(min(max($request->integer('per_page', 25), 1), 100));
+            ->where('loan_id', $loan->id);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('collateral_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('description', 'ilike', '%'.$term.'%')
+                    ->orWhere('owner_full_name', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%');
+            });
+        }
+        $collaterals = $query->latest()->paginate(min(max($request->integer('per_page', 25), 1), 100));
 
         return $this->respondSuccess([
             'collaterals' => CollateralResource::collection($collaterals->getCollection()),

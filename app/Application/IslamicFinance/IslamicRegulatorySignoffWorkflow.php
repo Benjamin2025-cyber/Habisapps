@@ -77,6 +77,20 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
             });
         }
 
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('s.public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('s.jurisdiction', 'ilike', '%'.$term.'%')
+                    ->orWhere('s.regulator', 'ilike', '%'.$term.'%')
+                    ->orWhere('s.reference', 'ilike', '%'.$term.'%')
+                    ->orWhere('s.approval_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('s.status', 'ilike', '%'.$term.'%')
+                    ->orWhere('s.owner_type', 'ilike', '%'.$term.'%');
+            });
+        }
+
         $perPage = isset($validated['per_page']) && is_numeric($validated['per_page']) ? (int) $validated['per_page'] : 25;
         $page = isset($validated['page']) && is_numeric($validated['page']) ? (int) $validated['page'] : 1;
         $total = (clone $query)->count();

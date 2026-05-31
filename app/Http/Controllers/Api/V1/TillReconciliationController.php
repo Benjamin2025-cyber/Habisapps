@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ final class TillReconciliationController extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
     ) {}
 
-    #[Response(status: 200, type: 'array{success: bool, message: string, data: array{till_reconciliations: array<int, \App\Http\Resources\TillReconciliationResource>}, errors: null, meta: null}')]
+    #[Response(status: 200, type: 'array{success: bool, message: string, data: array{till_reconciliations: array<int, \App\Http\Resources\TillReconciliationResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request, TellerSession $tellerSession): JsonResponse
     {
         $actor = $request->user();
@@ -38,14 +39,36 @@ final class TillReconciliationController extends BaseController
             return $this->respondForbidden();
         }
 
-        $items = TillReconciliation::query()
+        $query = TillReconciliation::query()
             ->with(['tellerSession', 'countedBy', 'lines.denomination'])
-            ->where('teller_session_id', $tellerSession->id)
-            ->latest()
-            ->get();
+            ->where('teller_session_id', $tellerSession->id);
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhere('notes', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('countedBy', static function (Builder $userBuilder) use ($term): void {
+                        $userBuilder->where('name', 'ilike', '%'.$term.'%')
+                            ->orWhere('email', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $items = $query->latest()->paginate($perPage);
 
         return $this->respondSuccess([
-            'till_reconciliations' => TillReconciliationResource::collection($items),
+            'till_reconciliations' => TillReconciliationResource::collection($items->getCollection()),
+        ], meta: [
+            'pagination' => [
+                'current_page' => $items->currentPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+                'last_page' => $items->lastPage(),
+            ],
         ]);
     }
 

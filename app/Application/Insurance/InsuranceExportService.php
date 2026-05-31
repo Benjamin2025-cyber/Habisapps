@@ -48,9 +48,13 @@ final class InsuranceExportService
             ])
             ->orderBy('insurance_subscriptions.created_at')
             ->get()
-            ->toArray();
+            ->map(fn (object $row) => (array) $row)
+            ->all();
 
-        return $this->exportPayload($actor, 'subscriptions', $agencyId, $filters, $rows);
+        $rows = $this->filterRows($rows, $filters);
+        $pagination = $this->paginateRows($rows, $filters, 100);
+
+        return $this->exportPayload($actor, 'subscriptions', $agencyId, $filters, $pagination['rows'], $pagination['pagination']);
     }
 
     /**
@@ -81,9 +85,13 @@ final class InsuranceExportService
             ])
             ->orderBy('insurance_premium_assessments.due_on')
             ->get()
-            ->toArray();
+            ->map(fn (object $row) => (array) $row)
+            ->all();
 
-        return $this->exportPayload($actor, 'premiums', $agencyId, $filters, $rows);
+        $rows = $this->filterRows($rows, $filters);
+        $pagination = $this->paginateRows($rows, $filters, 100);
+
+        return $this->exportPayload($actor, 'premiums', $agencyId, $filters, $pagination['rows'], $pagination['pagination']);
     }
 
     /**
@@ -114,9 +122,13 @@ final class InsuranceExportService
             ])
             ->orderBy('insurance_claims.created_at')
             ->get()
-            ->toArray();
+            ->map(fn (object $row) => (array) $row)
+            ->all();
 
-        return $this->exportPayload($actor, 'claims', $agencyId, $filters, $rows);
+        $rows = $this->filterRows($rows, $filters);
+        $pagination = $this->paginateRows($rows, $filters, 100);
+
+        return $this->exportPayload($actor, 'claims', $agencyId, $filters, $pagination['rows'], $pagination['pagination']);
     }
 
     /**
@@ -145,9 +157,13 @@ final class InsuranceExportService
             ])
             ->orderBy('insurance_remittance_batches.period_from')
             ->get()
-            ->toArray();
+            ->map(fn (object $row) => (array) $row)
+            ->all();
 
-        return $this->exportPayload($actor, 'commissions', $agencyId, $filters, $rows);
+        $rows = $this->filterRows($rows, $filters);
+        $pagination = $this->paginateRows($rows, $filters, 100);
+
+        return $this->exportPayload($actor, 'commissions', $agencyId, $filters, $pagination['rows'], $pagination['pagination']);
     }
 
     /**
@@ -176,9 +192,13 @@ final class InsuranceExportService
             ])
             ->orderBy('insurance_remittance_batches.period_from')
             ->get()
-            ->toArray();
+            ->map(fn (object $row) => (array) $row)
+            ->all();
 
-        return $this->exportPayload($actor, 'remittances', $agencyId, $filters, $rows);
+        $rows = $this->filterRows($rows, $filters);
+        $pagination = $this->paginateRows($rows, $filters, 100);
+
+        return $this->exportPayload($actor, 'remittances', $agencyId, $filters, $pagination['rows'], $pagination['pagination']);
     }
 
     /**
@@ -192,7 +212,10 @@ final class InsuranceExportService
             $this->cancellationRefundRows($filters, $agencyId),
         );
 
-        return $this->exportPayload($actor, 'cancellations_refunds', $agencyId, $filters, $rows);
+        $rows = $this->filterRows($rows, $filters);
+        $pagination = $this->paginateRows($rows, $filters, 100);
+
+        return $this->exportPayload($actor, 'cancellations_refunds', $agencyId, $filters, $pagination['rows'], $pagination['pagination']);
     }
 
     /**
@@ -202,26 +225,31 @@ final class InsuranceExportService
     public function cancellationsRefundsReport(array $filters, ?int $scopedAgencyId): array
     {
         $rows = $this->cancellationRefundRows($filters, $scopedAgencyId);
+        $mapped = array_map(fn (object $row): array => $this->cancellationRefundRow($row), $rows);
+        $mapped = $this->filterRows($mapped, $filters);
+        $pagination = $this->paginateRows($mapped, $filters, 100);
         $refundTotal = 0;
-        foreach ($rows as $row) {
-            $refundTotal += $this->rowNullableInt($row, 'refund_amount_minor') ?? 0;
+        foreach ($mapped as $row) {
+            $refundTotal += is_numeric($row['refund_amount_minor'] ?? null) ? (int) $row['refund_amount_minor'] : 0;
         }
 
         return [
-            'items' => array_map(fn (object $row): array => $this->cancellationRefundRow($row), $rows),
+            'items' => $pagination['rows'],
             'totals' => [
-                'count' => count($rows),
+                'count' => count($mapped),
                 'refund_amount_minor' => $refundTotal,
             ],
+            'meta' => ['pagination' => $pagination['pagination']],
         ];
     }
 
     /**
      * @param  array<string, mixed>  $filters
      * @param  array<int, mixed>  $rows
+     * @param  array<string, int>  $pagination
      * @return array<string, mixed>
      */
-    private function exportPayload(User $actor, string $exportType, int $agencyId, array $filters, array $rows): array
+    private function exportPayload(User $actor, string $exportType, int $agencyId, array $filters, array $rows, array $pagination): array
     {
         $checksum = hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
         $this->recordExport($actor->id, $exportType, $agencyId, $filters, $checksum, count($rows));
@@ -241,6 +269,7 @@ final class InsuranceExportService
             'format' => 'json_api_export',
             'generated_at' => now()->toISOString(),
             'rows' => $rows,
+            'meta' => ['pagination' => $pagination],
         ];
     }
 
@@ -293,6 +322,70 @@ final class InsuranceExportService
             'status' => $this->rowString($row, 'status'),
             'approved_at' => $this->rowNullableString($row, 'approved_at'),
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $filters
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterRows(array $rows, array $filters): array
+    {
+        $search = $this->searchTerm($filters);
+        if ($search === null) {
+            return $rows;
+        }
+
+        return array_values(array_filter($rows, fn (array $row): bool => $this->rowMatchesSearch($row, $search)));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $filters
+     * @return array{rows: array<int, array<string, mixed>>, pagination: array<string, int>}
+     */
+    private function paginateRows(array $rows, array $filters, int $defaultPerPage): array
+    {
+        $pageValue = $filters['page'] ?? 1;
+        $perPageValue = $filters['per_page'] ?? $defaultPerPage;
+        $page = max(1, is_numeric($pageValue) ? (int) $pageValue : 1);
+        $perPage = min(max(is_numeric($perPageValue) ? (int) $perPageValue : $defaultPerPage, 1), 100);
+        $total = count($rows);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $offset = ($page - 1) * $perPage;
+
+        return [
+            'rows' => array_slice($rows, $offset, $perPage),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $lastPage,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function searchTerm(array $filters): ?string
+    {
+        $search = $filters['search'] ?? null;
+        if (! is_string($search) || trim($search) === '') {
+            return null;
+        }
+
+        return mb_strtolower(trim($search));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function rowMatchesSearch(array $row, string $search): bool
+    {
+        $haystack = mb_strtolower(json_encode($row, JSON_THROW_ON_ERROR));
+
+        return str_contains($haystack, $search);
     }
 
     private function recordExport(int $userId, string $exportType, int $agencyId, mixed $filters, string $checksum, int $count): void

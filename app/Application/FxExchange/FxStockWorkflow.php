@@ -276,11 +276,18 @@ final class FxStockWorkflow extends BaseController
             'agency.code as agency_code',
         ])->map(fn (object $row): array => $this->registerEntryPayload($row))->all();
 
+        $search = $this->searchTerm($request);
+        if ($search !== null) {
+            $entries = array_values(array_filter($entries, fn (array $entry): bool => $this->registerEntryMatchesSearch($entry, $search)));
+        }
+
+        $pagination = $this->paginateArray($entries, $request, 100);
+
         return $this->respondSuccess([
             'from' => (string) $validated['from'],
             'to' => (string) $validated['to'],
-            'entries' => $entries,
-        ], 'FX register generated');
+            'entries' => $pagination['items'],
+        ], 'FX register generated', ['pagination' => $pagination['pagination']]);
     }
 
     private function actor(Request $request): ?User
@@ -418,6 +425,52 @@ final class FxStockWorkflow extends BaseController
             'client_identity_type' => $this->rowNullableString($row, 'client_identity_type'),
             'client_identity_issuing_country' => $this->rowNullableString($row, 'client_identity_issuing_country'),
             'status' => $this->rowString($row, 'status'),
+        ];
+    }
+
+    private function searchTerm(Request $request): ?string
+    {
+        $search = $request->query('search');
+        if (! is_string($search) || trim($search) === '') {
+            return null;
+        }
+
+        return mb_strtolower(trim($search));
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     */
+    private function registerEntryMatchesSearch(array $entry, string $search): bool
+    {
+        $haystack = mb_strtolower(implode(' ', array_map(
+            static fn (mixed $value): string => is_scalar($value) || $value === null ? (string) $value : json_encode($value, JSON_THROW_ON_ERROR),
+            $entry,
+        )));
+
+        return str_contains($haystack, $search);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array{items: array<int, array<string, mixed>>, pagination: array<string, int>}
+     */
+    private function paginateArray(array $items, Request $request, int $defaultPerPage): array
+    {
+        $page = max(1, $request->integer('page', 1));
+        $perPage = min(max($request->integer('per_page', $defaultPerPage), 1), 100);
+        $total = count($items);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $offset = ($page - 1) * $perPage;
+
+        return [
+            'items' => array_slice($items, $offset, $perPage),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $lastPage,
+            ],
         ];
     }
 

@@ -94,12 +94,23 @@ final class AccountingBalanceWorkflow extends BaseController
         $page = max($request->integer('page', 1), 1);
 
         $summary = $this->ledgerStatementSummary($ledgerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null);
-        $movements = $this->ledgerMovementQuery($ledgerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null)
+        $query = $this->ledgerMovementQuery($ledgerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder->where('journal_entries.reference', 'ilike', '%'.$term.'%')
+                    ->orWhere('journal_lines.line_memo', 'ilike', '%'.$term.'%')
+                    ->orWhere('journal_entries.public_id', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $total = (clone $query)->count();
+        $movements = (clone $query)
             ->forPage($page, $perPage)
             ->get()
             ->map(fn (object $row): array => $this->movementPayload($row, $ledgerAccount->normal_balance_side))
             ->all();
-        $total = $this->ledgerMovementQuery($ledgerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null)->count();
 
         return $this->respondSuccess([
             'statement' => $summary,
@@ -127,12 +138,23 @@ final class AccountingBalanceWorkflow extends BaseController
         $page = max($request->integer('page', 1), 1);
 
         $summary = $this->customerStatementSummary($customerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null);
-        $movements = $this->customerMovementQuery($customerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null)
+        $query = $this->customerMovementQuery($customerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null);
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder->where('journal_entries.reference', 'ilike', '%'.$term.'%')
+                    ->orWhere('journal_lines.line_memo', 'ilike', '%'.$term.'%')
+                    ->orWhere('journal_entries.public_id', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $total = (clone $query)->count();
+        $movements = (clone $query)
             ->forPage($page, $perPage)
             ->get()
             ->map(fn (object $row): array => $this->movementPayload($row, $this->rowString($row, 'normal_balance_side')))
             ->all();
-        $total = $this->customerMovementQuery($customerAccount, $validated['currency'], $validated['from'] ?? null, $validated['to'] ?? null)->count();
 
         return $this->respondSuccess([
             'statement' => $summary,

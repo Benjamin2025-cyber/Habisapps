@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Support\References\ReferenceNumberGenerator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -84,6 +85,24 @@ final class CustomerAccountWorkflow extends BaseController
 
         if ($request->filled('opened_to')) {
             $query->where('opened_on', '<=', $request->date('opened_to')?->toDateString());
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('account_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('account_title', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('account_type', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('client', function (Builder $clientQuery) use ($term): void {
+                        $clientQuery
+                            ->where('client_reference', 'ilike', '%'.$term.'%')
+                            ->orWhere('first_name', 'ilike', '%'.$term.'%')
+                            ->orWhere('last_name', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         return new CustomerAccountCollection($query->latest()->paginate($perPage));

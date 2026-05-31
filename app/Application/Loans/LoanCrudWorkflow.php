@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -50,6 +51,24 @@ final class LoanCrudWorkflow extends BaseController
         $status = $request->query('status');
         if (is_string($status) && $status !== '') {
             $query->where('status', $status);
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('loan_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%')
+                    ->orWhere('purpose', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('client', function (Builder $clientQuery) use ($term): void {
+                        $clientQuery
+                            ->where('client_reference', 'ilike', '%'.$term.'%')
+                            ->orWhere('first_name', 'ilike', '%'.$term.'%')
+                            ->orWhere('last_name', 'ilike', '%'.$term.'%')
+                            ->orWhere('phone_number', 'ilike', '%'.$term.'%');
+                    });
+            });
         }
 
         $clientPublicId = $this->clientFilterValue($request);

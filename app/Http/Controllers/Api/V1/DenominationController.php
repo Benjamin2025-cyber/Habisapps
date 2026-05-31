@@ -13,6 +13,7 @@ use App\Models\Denomination;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -29,9 +30,22 @@ final class DenominationController extends BaseController
             return $this->respondForbidden();
         }
 
+        $query = Denomination::query()->latest();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('label', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhere('type', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%');
+            });
+        }
+
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
-        return new DenominationCollection(Denomination::query()->latest()->paginate($perPage));
+        return new DenominationCollection($query->paginate($perPage));
     }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{denomination: \App\Http\Resources\DenominationResource}, errors: null, meta: null}')]

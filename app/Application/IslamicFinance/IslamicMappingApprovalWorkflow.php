@@ -66,11 +66,36 @@ final class IslamicMappingApprovalWorkflow extends BaseController
             }
         }
 
-        $rows = $query->get();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function ($builder) use ($term): void {
+                $builder->where('map.public_id', 'ilike', '%'.$term.'%')
+                    ->orWhere('op.code', 'ilike', '%'.$term.'%')
+                    ->orWhere('map.currency', 'ilike', '%'.$term.'%')
+                    ->orWhere('map.status', 'ilike', '%'.$term.'%')
+                    ->orWhere('map.approval_status', 'ilike', '%'.$term.'%');
+            });
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = (clone $query)->count();
+        $rows = $query->forPage($page, $perPage)->get();
 
         return $this->respondSuccess(
-            $rows->map(fn (object $row): array => $this->payload($row))->all(),
-            'Islamic mappings retrieved'
+            [
+                'mappings' => $rows->map(fn (object $row): array => $this->payload($row))->all(),
+            ],
+            'Islamic mappings retrieved',
+            meta: [
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'last_page' => (int) ceil(max(1, $total) / $perPage),
+                ],
+            ],
         );
     }
 

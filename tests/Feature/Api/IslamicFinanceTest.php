@@ -1871,6 +1871,8 @@ final class IslamicFinanceTest extends TestCase
             ->getJson('/api/v1/islamic-financings/'.$financingPublicId.'/receivable-ledger');
         $this->assertJsonSuccess($ledger);
         $ledger->assertJsonPath('data.outstanding_minor', 700000);
+        self::assertNotEmpty($ledger->json('data.ledger_items'));
+        $ledger->assertJsonPath('meta.pagination.current_page', 1);
     }
 
     public function test_collection_requires_approved_financing_activation(): void
@@ -3601,8 +3603,10 @@ final class IslamicFinanceTest extends TestCase
             ->actingAsSanctum($maker)
             ->getJson('/api/v1/islamic-products/'.$productPublicId.'/readiness-snapshots');
         $this->assertJsonSuccess($history);
-        self::assertNotEmpty($history->json('data'));
-        $history->assertJsonPath('data.0.review_public_id', $reviewPublicId);
+        $snapshots = $history->json('data.readiness_snapshots');
+        self::assertIsArray($snapshots);
+        self::assertNotEmpty($snapshots);
+        self::assertContains($reviewPublicId, array_column($snapshots, 'review_public_id'));
 
         $this->assertDatabaseHas('activity_log', [
             'event' => 'islamic.product.readiness.evaluated',
@@ -3770,8 +3774,8 @@ final class IslamicFinanceTest extends TestCase
             ->getJson('/api/v1/islamic-financed-assets/'.$assetPublicId.'/timeline');
         $this->assertJsonSuccess($timeline);
         $timeline->assertJsonPath('data.current_status', 'quoted');
-        self::assertNotEmpty($timeline->json('data.transitions'));
-        $timeline->assertJsonPath('data.transitions.0.to_status', 'quoted');
+        self::assertNotEmpty($timeline->json('data.timeline_events'));
+        $timeline->assertJsonPath('meta.pagination.current_page', 1);
 
         $this->assertDatabaseHas('activity_log', [
             'event' => 'islamic.asset.transitioned',
@@ -5041,10 +5045,8 @@ final class IslamicFinanceTest extends TestCase
             ->getJson('/api/v1/islamic-istisnaa-projects/'.$projectPublicId.'/timeline');
         $this->assertJsonSuccess($timeline);
         $timeline->assertJsonPath('data.project.public_id', $projectPublicId);
-        self::assertNotEmpty($timeline->json('data.milestones'));
-        self::assertNotEmpty($timeline->json('data.inspections'));
-        self::assertNotEmpty($timeline->json('data.payments'));
-        self::assertNotEmpty($timeline->json('data.variations'));
+        self::assertNotEmpty($timeline->json('data.timeline_events'));
+        $timeline->assertJsonPath('meta.pagination.current_page', 1);
     }
 
     public function test_if091_payment_without_approved_milestone_rejected(): void
@@ -5530,8 +5532,8 @@ final class IslamicFinanceTest extends TestCase
             ->getJson('/api/v1/islamic-salam-goods/'.$goodsPublicId.'/timeline');
         $this->assertJsonSuccess($timeline);
         $timeline->assertJsonPath('data.current_status', 'partially_delivered');
-        self::assertNotEmpty($timeline->json('data.transitions'));
-        self::assertNotEmpty($timeline->json('data.deliveries'));
+        self::assertNotEmpty($timeline->json('data.timeline_events'));
+        $timeline->assertJsonPath('meta.pagination.current_page', 1);
 
         $this->assertDatabaseHas('activity_log', [
             'event' => 'islamic.salam_goods.delivery_recorded',
@@ -5899,8 +5901,8 @@ final class IslamicFinanceTest extends TestCase
         $timeline = $this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/islamic-partnerships/'.$partnershipPublicId.'/timeline');
         $this->assertJsonSuccess($timeline);
         $timeline->assertJsonPath('data.status', 'liquidated');
-        self::assertNotEmpty($timeline->json('data.contributions'));
-        self::assertNotEmpty($timeline->json('data.valuations'));
+        self::assertNotEmpty($timeline->json('data.timeline_events'));
+        $timeline->assertJsonPath('meta.pagination.current_page', 1);
         $this->assertDatabaseHas('activity_log', [
             'event' => 'islamic.partnership.liquidated',
             'log_name' => 'security',

@@ -13,6 +13,7 @@ use App\Models\OperationCode;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,19 @@ final class OperationCodeController extends BaseController
         }
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('label', 'ilike', '%'.$term.'%')
+                    ->orWhere('module', 'ilike', '%'.$term.'%')
+                    ->orWhere('operation_type', 'ilike', '%'.$term.'%')
+                    ->orWhere('direction', 'ilike', '%'.$term.'%');
+            });
         }
 
         return new OperationCodeCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));

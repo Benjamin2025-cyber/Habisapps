@@ -133,20 +133,33 @@ final class IslamicSalamGoodsWorkflow extends BaseController
         if (! is_object($row)) {
             return $this->respondNotFound('Salam goods not found.');
         }
-        $transitions = DB::table('islamic_salam_goods_transitions')
-            ->where('islamic_salam_goods_id', $this->rowInt($row, 'id'))
-            ->orderBy('id')
-            ->get();
-        $deliveries = DB::table('islamic_salam_goods_deliveries')
-            ->where('islamic_salam_goods_id', $this->rowInt($row, 'id'))
-            ->orderBy('id')
-            ->get();
+        $events = $this->salamGoodsTimelineEvents($this->rowInt($row, 'id'));
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = mb_strtolower(trim($search));
+            $events = array_values(array_filter($events, static function (array $event) use ($term): bool {
+                $haystack = mb_strtolower(json_encode($event, JSON_THROW_ON_ERROR));
+
+                return str_contains($haystack, $term);
+            }));
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $total = count($events);
+        $slice = array_slice($events, ($page - 1) * $perPage, $perPage);
 
         return $this->respondSuccess([
             'goods_public_id' => $goodsPublicId,
             'current_status' => $this->rowString($row, 'status'),
-            'transitions' => $transitions->map(fn (object $tx): array => $this->transitionPayload($tx))->all(),
-            'deliveries' => $deliveries->map(fn (object $d): array => $this->deliveryPayload($d))->all(),
+            'timeline_events' => $slice,
+        ], 'Salam goods timeline retrieved', meta: [
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => (int) ceil(max(1, $total) / $perPage),
+            ],
         ]);
     }
 
@@ -778,6 +791,30 @@ final class IslamicSalamGoodsWorkflow extends BaseController
             'compliance_case_public_id' => $this->rowNullableString($row, 'compliance_case_public_id'),
             'transitioned_at' => $this->rowNullableString($row, 'transitioned_at'),
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function salamGoodsTimelineEvents(int $goodsId): array
+    {
+        $events = [];
+
+        foreach (DB::table('islamic_salam_goods_transitions')
+            ->where('islamic_salam_goods_id', $goodsId)
+            ->orderBy('id')
+            ->get() as $row) {
+            $events[] = ['type' => 'transition'] + $this->transitionPayload($row);
+        }
+
+        foreach (DB::table('islamic_salam_goods_deliveries')
+            ->where('islamic_salam_goods_id', $goodsId)
+            ->orderBy('id')
+            ->get() as $row) {
+            $events[] = ['type' => 'delivery'] + $this->deliveryPayload($row);
+        }
+
+        return $events;
     }
 
     /**

@@ -16,6 +16,7 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -34,7 +35,29 @@ final class JournalLineController extends BaseController
             return $this->respondForbidden();
         }
 
-        return new JournalLineCollection(JournalLine::query()->with(['journalEntry', 'ledgerAccount', 'customerAccount'])->latest()->paginate(min(max($request->integer('per_page', 25), 1), 100)));
+        $query = JournalLine::query()->with(['journalEntry', 'ledgerAccount', 'customerAccount'])->latest();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('line_memo', 'ilike', '%'.$term.'%')
+                    ->orWhere('currency', 'ilike', '%'.$term.'%')
+                    ->orWhereHas('journalEntry', function (Builder $entryQuery) use ($term): void {
+                        $entryQuery->where('reference', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('ledgerAccount', function (Builder $ledgerQuery) use ($term): void {
+                        $ledgerQuery
+                            ->where('code', 'ilike', '%'.$term.'%')
+                            ->orWhere('name', 'ilike', '%'.$term.'%');
+                    })
+                    ->orWhereHas('customerAccount', function (Builder $accountQuery) use ($term): void {
+                        $accountQuery->where('account_number', 'ilike', '%'.$term.'%');
+                    });
+            });
+        }
+
+        return new JournalLineCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));
     }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{journal_line: \App\Http\Resources\JournalLineResource}, errors: null, meta: null}')]

@@ -218,8 +218,11 @@ final class CurrencyExchangeTest extends TestCase
 
         $register = $this->withApiHeaders()
             ->actingAsSanctum($context['actor'])
-            ->getJson('/api/v1/fx-register?from=2026-05-01&to=2026-05-31');
+            ->getJson('/api/v1/fx-register?from=2026-05-01&to=2026-05-31&search=buy_foreign_currency&page=1&per_page=1');
         $this->assertJsonSuccess($register);
+        $register->assertJsonPath('meta.pagination.current_page', 1);
+        $register->assertJsonPath('meta.pagination.per_page', 1);
+        $register->assertJsonPath('meta.pagination.total', 1);
         $register->assertJsonPath('data.entries.0.direction', 'buy_foreign_currency');
         $register->assertJsonPath('data.entries.0.client_identity_type', 'national_id');
         self::assertIsString($register->json('data.entries.0.slip_number'));

@@ -13,6 +13,7 @@ use App\Models\Sector;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -31,9 +32,20 @@ final class SectorController extends BaseController
             return $this->respondForbidden();
         }
 
+        $query = Sector::query()->latest();
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = trim($search);
+            $query->where(static function (Builder $builder) use ($term): void {
+                $builder->where('code', 'ilike', '%'.$term.'%')
+                    ->orWhere('name', 'ilike', '%'.$term.'%')
+                    ->orWhere('status', 'ilike', '%'.$term.'%');
+            });
+        }
+
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
-        return new SectorCollection(Sector::query()->latest()->paginate($perPage));
+        return new SectorCollection($query->paginate($perPage));
     }
 
     #[Response(status: 201, type: 'array{success: bool, message: string, data: array{sector: \App\Http\Resources\SectorResource}, errors: null, meta: null}')]
