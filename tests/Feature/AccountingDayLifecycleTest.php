@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\AccountingDay\AccountingDayException;
 use App\Support\AccountingDay\AccountingDayGuard;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -115,7 +116,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-RACE');
         $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         AccountingDay::query()->create([
             'public_id' => (string) Str::ulid(),

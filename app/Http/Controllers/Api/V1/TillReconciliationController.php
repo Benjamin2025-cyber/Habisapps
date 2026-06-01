@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreTillReconciliationRequest;
 use App\Http\Resources\TillReconciliationResource;
+use App\Models\Agency;
 use App\Models\Denomination;
 use App\Models\JournalEntry;
 use App\Models\TellerSession;
@@ -17,6 +19,8 @@ use App\Models\TillReconciliationLine;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Closure;
+use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -26,22 +30,62 @@ use Illuminate\Support\Str;
 
 final class TillReconciliationController extends BaseController
 {
+    /** @var array<int, string> */
+    private const array ALLOWED_FILTERS = [
+        'teller_session_public_id',
+        'till_public_id',
+        'teller_user_public_id',
+        'business_date',
+        'business_date_from',
+        'business_date_to',
+        'status',
+        'agency_public_id',
+    ];
+
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly UserNotificationFeed $notifications,
     ) {}
 
+    #[QueryParameter('filter[teller_session_public_id]', 'Limit results to a teller session public ID.', type: 'string')]
+    #[QueryParameter('filter[till_public_id]', 'Limit results to a till public ID.', type: 'string')]
+    #[QueryParameter('filter[teller_user_public_id]', 'Limit results to a teller user public ID.', type: 'string')]
+    #[QueryParameter('filter[business_date]', 'Limit results to an exact teller-session business date in YYYY-MM-DD format.', type: 'string', format: 'date')]
+    #[QueryParameter('filter[business_date_from]', 'Limit results to teller sessions on or after this business date in YYYY-MM-DD format.', type: 'string', format: 'date')]
+    #[QueryParameter('filter[business_date_to]', 'Limit results to teller sessions on or before this business date in YYYY-MM-DD format.', type: 'string', format: 'date')]
+    #[QueryParameter('filter[status]', 'Limit results to a reconciliation status.', type: 'string')]
+    #[QueryParameter('filter[agency_public_id]', 'Platform-admin only. Limit results to reconciliations for an agency public ID.', type: 'string')]
+    #[QueryParameter('search', 'Search reconciliation status, currency, notes, and counted-by user.', type: 'string')]
+    #[QueryParameter('per_page', 'Results per page. Capped at 100.', type: 'integer')]
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{till_reconciliations: array<int, \App\Http\Resources\TillReconciliationResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
-    public function index(Request $request, TellerSession $tellerSession): JsonResponse
+    public function index(Request $request, ?TellerSession $tellerSession = null): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || $actor->cannot('viewAny', TillReconciliation::class) || ! $this->canAccessSession($actor, $tellerSession)) {
+        if (! $actor instanceof User || $actor->cannot('viewAny', TillReconciliation::class)) {
+            return $this->respondForbidden();
+        }
+
+        if ($tellerSession instanceof TellerSession && ! $this->canAccessSession($actor, $tellerSession)) {
             return $this->respondForbidden();
         }
 
         $query = TillReconciliation::query()
-            ->with(['tellerSession', 'countedBy', 'lines.denomination'])
-            ->where('teller_session_id', $tellerSession->id);
+            ->with(['tellerSession.till', 'tellerSession.teller', 'countedBy', 'lines.denomination']);
+
+        if ($tellerSession instanceof TellerSession) {
+            $query->where('teller_session_id', $tellerSession->id);
+        }
+
+        $scopeError = $this->applyAgencyScope($query, $actor, $request);
+        if ($scopeError instanceof JsonResponse) {
+            return $scopeError;
+        }
+
+        $filterError = $this->applyFilters($query, $request, $tellerSession);
+        if ($filterError instanceof JsonResponse) {
+            return $filterError;
+        }
 
         $search = $request->query('search');
         if (is_string($search) && trim($search) !== '') {
@@ -140,6 +184,22 @@ final class TillReconciliationController extends BaseController
             'theoretical_balance_minor' => $theoreticalBalanceMinor,
             'currency' => $currency,
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $tellerSession->agency_id,
+            type: 'success',
+            category: 'till_reconciliation_accepted',
+            title: 'Till reconciliation accepted',
+            message: 'A till reconciliation was accepted with zero difference.',
+            sourceType: TillReconciliation::class,
+            sourcePublicId: $reconciliation->public_id,
+            actionUrl: '/till-reconciliations?filter[teller_session_public_id]='.$tellerSession->public_id,
+            metadata: [
+                'teller_session_public_id' => $tellerSession->public_id,
+                'actual_balance_minor' => $actualBalanceMinor,
+                'theoretical_balance_minor' => $theoreticalBalanceMinor,
+                'currency' => $currency,
+            ],
+        );
 
         return $this->respondCreated(
             TillReconciliationResource::make($reconciliation->loadMissing(['tellerSession', 'countedBy', 'lines.denomination'])),
@@ -154,6 +214,138 @@ final class TillReconciliationController extends BaseController
         }
 
         return $this->staffAgencyScope->currentAgencyId($actor) === $session->agency_id;
+    }
+
+    /**
+     * @param  Builder<TillReconciliation>  $query
+     */
+    private function applyAgencyScope(Builder $query, User $actor, Request $request): ?JsonResponse
+    {
+        $requestedAgencyPublicId = $this->filterString($request, 'agency_public_id');
+        if ($actor->hasRole('platform-admin')) {
+            if ($requestedAgencyPublicId !== null) {
+                $agencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
+                if (! is_numeric($agencyId)) {
+                    return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+                }
+
+                $this->whereSession($query, static function (Builder $builder) use ($agencyId): void {
+                    $builder->where('agency_id', (int) $agencyId);
+                });
+            }
+
+            return null;
+        }
+
+        $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
+        if ($agencyId === null) {
+            return $this->respondForbidden();
+        }
+
+        if ($requestedAgencyPublicId !== null) {
+            $requestedAgencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
+            if (! is_numeric($requestedAgencyId)) {
+                return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+            }
+
+            if ((int) $requestedAgencyId !== $agencyId) {
+                return $this->respondForbidden('You cannot query till reconciliations outside your current agency.');
+            }
+        }
+
+        $this->whereSession($query, static function (Builder $builder) use ($agencyId): void {
+            $builder->where('agency_id', $agencyId);
+        });
+
+        return null;
+    }
+
+    /**
+     * @param  Builder<TillReconciliation>  $query
+     */
+    private function applyFilters(Builder $query, Request $request, ?TellerSession $nestedSession): ?JsonResponse
+    {
+        $filter = $request->query('filter');
+        if (! is_array($filter)) {
+            return null;
+        }
+
+        $unknown = array_diff(array_keys($filter), self::ALLOWED_FILTERS);
+        if ($unknown !== []) {
+            return $this->respondUnprocessable(
+                message: 'Unsupported filter parameters.',
+                errors: ['filter' => ['The following filter keys are not supported: '.implode(', ', $unknown)]]
+            );
+        }
+
+        $sessionPublicId = $this->filterString($request, 'teller_session_public_id');
+        if ($sessionPublicId !== null) {
+            if ($nestedSession instanceof TellerSession && $nestedSession->public_id !== $sessionPublicId) {
+                $query->where('id', -1);
+            } else {
+                $this->whereSession($query, static function (Builder $builder) use ($sessionPublicId): void {
+                    $builder->where('public_id', $sessionPublicId);
+                });
+            }
+        }
+
+        $tillPublicId = $this->filterString($request, 'till_public_id');
+        if ($tillPublicId !== null) {
+            $this->whereSession($query, static function (Builder $builder) use ($tillPublicId): void {
+                $builder->whereHas('till', static function (Builder $tillBuilder) use ($tillPublicId): void {
+                    $tillBuilder->where('public_id', $tillPublicId);
+                });
+            });
+        }
+
+        $tellerPublicId = $this->filterString($request, 'teller_user_public_id');
+        if ($tellerPublicId !== null) {
+            $this->whereSession($query, static function (Builder $builder) use ($tellerPublicId): void {
+                $builder->whereHas('teller', static function (Builder $tellerBuilder) use ($tellerPublicId): void {
+                    $tellerBuilder->where('public_id', $tellerPublicId);
+                });
+            });
+        }
+
+        foreach ([
+            'business_date' => '=',
+            'business_date_from' => '>=',
+            'business_date_to' => '<=',
+        ] as $key => $operator) {
+            $value = $this->filterString($request, $key);
+            if ($value !== null) {
+                $this->whereSession($query, static function (Builder $builder) use ($operator, $value): void {
+                    $builder->where('business_date', $operator, $value);
+                });
+            }
+        }
+
+        $status = $this->filterString($request, 'status');
+        if ($status !== null) {
+            $query->where('status', $status);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  Builder<TillReconciliation>  $query
+     */
+    private function whereSession(Builder $query, Closure $callback): void
+    {
+        $query->whereHas('tellerSession', $callback);
+    }
+
+    private function filterString(Request $request, string $key): ?string
+    {
+        $filter = $request->query('filter');
+        if (! is_array($filter)) {
+            return null;
+        }
+
+        $value = $filter[$key] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function hasPendingTransactions(int $tellerSessionId): bool

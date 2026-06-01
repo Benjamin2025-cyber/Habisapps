@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\CashOperations;
 
+use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\CloseTellerSessionRequest;
 use App\Http\Requests\StoreTellerSessionRequest;
@@ -26,11 +27,34 @@ use Illuminate\Support\Str;
 
 final class TellerSessionWorkflow extends BaseController
 {
+    /** @var array<int, string> */
+    private const array ALLOWED_FILTERS = [
+        'business_date',
+        'business_date_from',
+        'business_date_to',
+        'till_public_id',
+        'teller_user_public_id',
+        'status',
+        'agency_public_id',
+    ];
+
+    /** @var array<string, array{0: string, 1: 'asc'|'desc'}> */
+    private const array ALLOWED_SORTS = [
+        'business_date' => ['business_date', 'asc'],
+        '-business_date' => ['business_date', 'desc'],
+        'opened_at' => ['opened_at', 'asc'],
+        '-opened_at' => ['opened_at', 'desc'],
+        'closed_at' => ['closed_at', 'asc'],
+        '-closed_at' => ['closed_at', 'desc'],
+        'status' => ['status', 'asc'],
+    ];
+
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly TellerSessionSummary $summary,
+        private readonly UserNotificationFeed $notifications,
     ) {}
 
     public function index(Request $request): TellerSessionCollection|JsonResponse
@@ -40,14 +64,16 @@ final class TellerSessionWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = TellerSession::query()->with(['agency', 'till', 'teller'])->latest();
-        if (! $actor->hasRole('platform-admin')) {
-            $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
-            if ($agencyId === null) {
-                return $this->respondForbidden();
-            }
+        $query = TellerSession::query()->with(['agency', 'till', 'teller']);
 
-            $query->where('agency_id', $agencyId);
+        $scopeError = $this->applyAgencyScope($query, $actor, $request);
+        if ($scopeError instanceof JsonResponse) {
+            return $scopeError;
+        }
+
+        $filterError = $this->applyFilters($query, $request);
+        if ($filterError instanceof JsonResponse) {
+            return $filterError;
         }
 
         $search = $request->query('search');
@@ -70,6 +96,11 @@ final class TellerSessionWorkflow extends BaseController
                             ->orWhere('email', 'ilike', '%'.$term.'%');
                     });
             });
+        }
+
+        $sortError = $this->applySort($query, $request);
+        if ($sortError instanceof JsonResponse) {
+            return $sortError;
         }
 
         $paginator = $query->paginate(min(max($request->integer('per_page', 25), 1), 100));
@@ -135,7 +166,7 @@ final class TellerSessionWorkflow extends BaseController
             is_string($requestedDate) ? $requestedDate : null,
             $request,
         );
-        $businessDate = (string) $accountingDay->business_date?->toDateString();
+        $businessDate = $accountingDay->business_date->toDateString();
 
         $session = DB::transaction(function () use ($till, $teller, $openingDeclarationMinor, $currency, $businessDate, $accountingDay): TellerSession {
             $session = TellerSession::query()->create([
@@ -167,6 +198,20 @@ final class TellerSessionWorkflow extends BaseController
             'currency' => $currency,
             'denomination_counts' => $denominationCounts['lines'],
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $session->agency_id,
+            type: 'success',
+            category: 'cash_session_opened',
+            title: 'Teller session opened',
+            message: 'A teller session was opened for '.$teller->name.'.',
+            sourceType: TellerSession::class,
+            sourcePublicId: $session->public_id,
+            actionUrl: '/teller-sessions/'.$session->public_id,
+            metadata: [
+                'till_public_id' => $till->public_id,
+                'teller_user_public_id' => $teller->public_id,
+            ],
+        );
 
         $session->loadMissing(['agency', 'accountingDay', 'till', 'teller']);
         $this->summary->attach([$session]);
@@ -255,6 +300,22 @@ final class TellerSessionWorkflow extends BaseController
             'currency' => $currency,
             'denomination_counts' => $denominationCounts['lines'],
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $tellerSession->agency_id,
+            type: 'info',
+            category: 'cash_session_closed',
+            title: 'Teller session closed',
+            message: 'A teller session was closed with expected cash balance '.$theoreticalBalanceMinor.' '.$currency.'.',
+            sourceType: TellerSession::class,
+            sourcePublicId: $tellerSession->public_id,
+            actionUrl: '/teller-sessions/'.$tellerSession->public_id,
+            metadata: [
+                'till_public_id' => $till->public_id,
+                'closing_declaration_minor' => $closingDeclarationMinor,
+                'theoretical_balance_minor' => $theoreticalBalanceMinor,
+                'currency' => $currency,
+            ],
+        );
 
         $tellerSession->refresh()->loadMissing(['agency', 'accountingDay', 'till', 'teller']);
         $this->summary->attach([$tellerSession]);
@@ -272,6 +333,140 @@ final class TellerSessionWorkflow extends BaseController
         }
 
         return $this->staffAgencyScope->currentAgencyId($actor) === $agencyId;
+    }
+
+    /**
+     * @param  Builder<TellerSession>  $query
+     */
+    private function applyAgencyScope(Builder $query, User $actor, Request $request): ?JsonResponse
+    {
+        $requestedAgencyPublicId = $this->filterString($request, 'agency_public_id');
+        if ($actor->hasRole('platform-admin')) {
+            if ($requestedAgencyPublicId !== null) {
+                $agencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
+                if (! is_numeric($agencyId)) {
+                    return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+                }
+
+                $query->where('agency_id', (int) $agencyId);
+            }
+
+            return null;
+        }
+
+        $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
+        if ($agencyId === null) {
+            return $this->respondForbidden();
+        }
+
+        if ($requestedAgencyPublicId !== null) {
+            $requestedAgencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
+            if (! is_numeric($requestedAgencyId)) {
+                return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+            }
+
+            if ((int) $requestedAgencyId !== $agencyId) {
+                return $this->respondForbidden('You cannot query teller sessions outside your current agency.');
+            }
+        }
+
+        $query->where('agency_id', $agencyId);
+
+        return null;
+    }
+
+    /**
+     * @param  Builder<TellerSession>  $query
+     */
+    private function applyFilters(Builder $query, Request $request): ?JsonResponse
+    {
+        $filter = $request->query('filter');
+        if (! is_array($filter)) {
+            return null;
+        }
+
+        $unknown = array_diff(array_keys($filter), self::ALLOWED_FILTERS);
+        if ($unknown !== []) {
+            return $this->respondUnprocessable(
+                message: 'Unsupported filter parameters.',
+                errors: ['filter' => ['The following filter keys are not supported: '.implode(', ', $unknown)]]
+            );
+        }
+
+        foreach ([
+            'business_date' => '=',
+            'business_date_from' => '>=',
+            'business_date_to' => '<=',
+        ] as $key => $operator) {
+            $value = $this->filterString($request, $key);
+            if ($value !== null) {
+                $query->where('business_date', $operator, $value);
+            }
+        }
+
+        $status = $this->filterString($request, 'status');
+        if ($status !== null) {
+            $query->where('status', $status);
+        }
+
+        $this->filterByRelationPublicId($query, $request, 'till_public_id', 'till');
+        $this->filterByRelationPublicId($query, $request, 'teller_user_public_id', 'teller');
+
+        return null;
+    }
+
+    /**
+     * @param  Builder<TellerSession>  $query
+     */
+    private function applySort(Builder $query, Request $request): ?JsonResponse
+    {
+        $sort = $request->query('sort', '-opened_at');
+        if (! is_string($sort) || ! array_key_exists($sort, self::ALLOWED_SORTS)) {
+            return $this->respondUnprocessable(
+                message: 'Unsupported sort parameter.',
+                errors: ['sort' => ['Allowed sort values: '.implode(', ', array_keys(self::ALLOWED_SORTS))]]
+            );
+        }
+
+        match ($sort) {
+            'business_date' => $query->getQuery()->orderBy('business_date'),
+            '-business_date' => $query->getQuery()->orderByDesc('business_date'),
+            'opened_at' => $query->getQuery()->orderBy('opened_at'),
+            '-opened_at' => $query->getQuery()->orderByDesc('opened_at'),
+            'closed_at' => $query->getQuery()->orderBy('closed_at'),
+            '-closed_at' => $query->getQuery()->orderByDesc('closed_at'),
+            'status' => $query->getQuery()->orderBy('status'),
+        };
+        $query->getQuery()->orderByDesc('id');
+
+        return null;
+    }
+
+    /**
+     * @param  Builder<TellerSession>  $query
+     */
+    private function filterByRelationPublicId(Builder $query, Request $request, string $key, string $relation): void
+    {
+        $value = $this->filterString($request, $key);
+        if ($value === null) {
+            return;
+        }
+
+        $query->whereHas($relation, static function (Builder $builder) use ($value): void {
+            $builder->where('public_id', $value);
+        });
+    }
+
+    private function filterString(Request $request, string $key): ?string
+    {
+        $filter = $request->query('filter');
+        if (! is_array($filter)) {
+            return null;
+        }
+
+        $value = $filter[$key] ?? null;
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function resolveTeller(StoreTellerSessionRequest $request, User $actor): ?User

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\AccountingDays;
 
+use App\Application\BatchRuns\ExecuteRegisteredBatchRun;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\CloseAccountingDayRequest;
 use App\Http\Requests\OpenAccountingDayRequest;
@@ -16,10 +17,10 @@ use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\User;
-use App\Application\BatchRuns\ExecuteRegisteredBatchRun;
 use App\Support\AccountingDay\CloseControlService;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -633,9 +634,9 @@ final class AccountingDayWorkflow extends BaseController
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Builder<AccountingDay>
+     * @return Builder<AccountingDay>
      */
-    private function scopedQuery(string $scopeType, ?int $agencyId): \Illuminate\Database\Eloquent\Builder
+    private function scopedQuery(string $scopeType, ?int $agencyId): Builder
     {
         $query = AccountingDay::query()->where('scope_type', $scopeType);
         $scopeType === AccountingDay::SCOPE_AGENCY

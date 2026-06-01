@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['public_id', 'code', 'label', 'value_minor', 'currency', 'type', 'status'])]
 /**
  * @property int $id
  * @property string $public_id
@@ -20,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $type
  * @property string $status
  */
+#[Fillable(['public_id', 'code', 'label', 'value_minor', 'currency', 'type', 'status'])]
 final class Denomination extends Model
 {
     use HasAuditLog;

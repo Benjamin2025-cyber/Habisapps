@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Application\JournalEntries;
 
-use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\User;

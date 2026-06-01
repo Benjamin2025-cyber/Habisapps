@@ -8,6 +8,7 @@ use App\Models\AccountingDay;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -228,9 +229,9 @@ final class AccountingDayGuard
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder<AccountingDay>  $query
+     * @param  Builder<AccountingDay>  $query
      */
-    private function applyScope(\Illuminate\Database\Eloquent\Builder $query, string $scopeType, ?int $agencyId): void
+    private function applyScope(Builder $query, string $scopeType, ?int $agencyId): void
     {
         if ($scopeType === AccountingDay::SCOPE_AGENCY) {
             $query->where('agency_id', $agencyId);

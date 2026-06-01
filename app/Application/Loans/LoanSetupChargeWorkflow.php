@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Loans;
 
+use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\JournalEntryResource;
 use App\Http\Resources\LoanResource;
@@ -16,8 +17,8 @@ use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
-use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
@@ -38,6 +39,7 @@ final class LoanSetupChargeWorkflow extends BaseController
         private readonly AssessLoanSetupCharges $assessLoanSetupCharges,
         private readonly AccountingBalanceCalculator $balanceCalculator,
         private readonly AccountingDayGuard $accountingDayGuard,
+        private readonly UserNotificationFeed $notifications,
     ) {}
 
     public function assessSetupCharges(Request $request, Loan $loan): JsonResponse
@@ -60,6 +62,17 @@ final class LoanSetupChargeWorkflow extends BaseController
         }
 
         $this->securityAudit->record('loan.setup_charges.assessed', actor: $actor, subject: $loan, request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $loan->agency_id,
+            type: 'info',
+            category: 'loan_setup_charges_assessed',
+            title: 'Loan setup charges assessed',
+            message: 'Loan setup charges were assessed for loan '.$loan->loan_number.'.',
+            sourceType: Loan::class,
+            sourcePublicId: $loan->public_id,
+            actionUrl: '/loans/'.$loan->public_id.'/setup-charges',
+            metadata: ['loan_public_id' => $loan->public_id],
+        );
 
         return $this->respondSuccess([
             'loan' => LoanResource::make($this->loanResult($result)->loadMissing($this->relations())),
@@ -311,6 +324,21 @@ final class LoanSetupChargeWorkflow extends BaseController
             'charge_public_id' => $chargePublicId,
             'journal_entry_public_id' => $result['journal_entry']->public_id,
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $loan->agency_id,
+            type: 'success',
+            category: 'loan_setup_charge_collected',
+            title: 'Loan setup charge collected',
+            message: 'A setup charge was collected for loan '.$loan->loan_number.'.',
+            sourceType: 'loan_charge_assessment',
+            sourcePublicId: $chargePublicId,
+            actionUrl: '/loans/'.$loan->public_id.'/setup-charges',
+            metadata: [
+                'loan_public_id' => $loan->public_id,
+                'journal_entry_public_id' => $result['journal_entry']->public_id,
+            ],
+        );
+        $this->notifyLoanReadyForDisbursementIfReady($loan);
 
         return $this->respondSuccess([
             'charge' => $this->chargePayload($result['charge']),
@@ -506,12 +534,55 @@ final class LoanSetupChargeWorkflow extends BaseController
             'premium_public_id' => $premiumPublicId,
             'journal_entry_public_id' => $result['journal_entry']->public_id,
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $loan->agency_id,
+            type: 'success',
+            category: 'loan_insurance_premium_collected',
+            title: 'Loan insurance premium collected',
+            message: 'An insurance premium was collected for loan '.$loan->loan_number.'.',
+            sourceType: 'insurance_premium_assessment',
+            sourcePublicId: $premiumPublicId,
+            actionUrl: '/loans/'.$loan->public_id.'/setup-charges',
+            metadata: [
+                'loan_public_id' => $loan->public_id,
+                'journal_entry_public_id' => $result['journal_entry']->public_id,
+            ],
+        );
+        $this->notifyLoanReadyForDisbursementIfReady($loan);
 
         return $this->respondSuccess([
             'insurance_premium_assessment' => $this->insurancePremiumPayload($result['assessment']),
             'insurance_premium_payment' => $this->insurancePremiumPaymentPayload($result['payment']),
             'journal_entry' => JournalEntryResource::make($result['journal_entry']),
         ], 'Insurance premium collected successfully');
+    }
+
+    private function notifyLoanReadyForDisbursementIfReady(Loan $loan): void
+    {
+        $blockingCharges = DB::table('loan_charge_assessments')
+            ->where('loan_id', $loan->id)
+            ->whereNotIn('status', ['paid', 'waived_by_direction'])
+            ->exists();
+        $blockingPremiums = DB::table('insurance_premium_assessments')
+            ->where('loan_id', $loan->id)
+            ->whereNotIn('status', ['paid'])
+            ->exists();
+
+        if ($blockingCharges || $blockingPremiums) {
+            return;
+        }
+
+        $this->notifications->notifyAgency(
+            agencyId: $loan->agency_id,
+            type: 'success',
+            category: 'loan_ready_for_disbursement',
+            title: 'Loan ready for disbursement',
+            message: 'Loan '.$loan->loan_number.' is ready for disbursement.',
+            sourceType: Loan::class,
+            sourcePublicId: $loan->public_id,
+            actionUrl: '/loans/'.$loan->public_id,
+            metadata: ['loan_public_id' => $loan->public_id],
+        );
     }
 
     private function canAccessLoanAgency(User $actor, Loan $loan): bool

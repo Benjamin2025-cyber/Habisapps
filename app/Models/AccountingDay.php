@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Support\Traits\HasAuditLog;
+use Database\Factories\AccountingDayFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +13,23 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $public_id
+ * @property string $scope_type
+ * @property int|null $agency_id
+ * @property Carbon $business_date
+ * @property Carbon|null $calendar_opened_at
+ * @property Carbon|null $calendar_closed_at
+ * @property string $status
+ * @property bool $is_holiday
+ * @property string|null $holiday_name
+ * @property array<string, mixed>|null $close_summary_payload
+ * @property string|null $close_failure_reason
+ * @property string|null $reopen_reason
+ * @property string $origin
+ * @property int $write_lock_version
+ */
 #[Fillable([
     'public_id',
     'scope_type',
@@ -33,27 +51,13 @@ use Illuminate\Support\Carbon;
     'origin',
     'write_lock_version',
 ])]
-/**
- * @property int $id
- * @property string $public_id
- * @property string $scope_type
- * @property int|null $agency_id
- * @property Carbon $business_date
- * @property Carbon|null $calendar_opened_at
- * @property Carbon|null $calendar_closed_at
- * @property string $status
- * @property bool $is_holiday
- * @property string|null $holiday_name
- * @property array<string, mixed>|null $close_summary_payload
- * @property string|null $close_failure_reason
- * @property string|null $reopen_reason
- * @property string $origin
- * @property int $write_lock_version
- */
 final class AccountingDay extends Model
 {
     use HasAuditLog;
+
+    /** @use HasFactory<AccountingDayFactory> */
     use HasFactory;
+
     use HasUlids;
 
     public const string SCOPE_AGENCY = 'agency';

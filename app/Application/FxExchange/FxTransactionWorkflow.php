@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\FxExchange;
 
 use App\Http\Controllers\BaseController;
+use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
@@ -445,7 +446,7 @@ final class FxTransactionWorkflow extends BaseController
         ])->save();
     }
 
-    private function createReversingEntry(JournalEntry $original, User $actor, string $idempotencyKey, \App\Models\AccountingDay $accountingDay): JournalEntry
+    private function createReversingEntry(JournalEntry $original, User $actor, string $idempotencyKey, AccountingDay $accountingDay): JournalEntry
     {
         $reversal = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),

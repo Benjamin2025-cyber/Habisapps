@@ -8,6 +8,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $till_reconciliation_id
+ * @property int $denomination_id
+ * @property int $count
+ * @property int $declared_amount_minor
+ */
 #[Fillable([
     'till_reconciliation_id',
     'denomination_id',

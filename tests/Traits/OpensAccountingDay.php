@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Traits;
 
 use App\Models\AccountingDay;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -96,7 +97,7 @@ trait OpensAccountingDay
      */
     protected function agencyIdFromPublicId(string $agencyPublicId): int
     {
-        $id = \Illuminate\Support\Facades\DB::table('agencies')->where('public_id', $agencyPublicId)->value('id');
+        $id = DB::table('agencies')->where('public_id', $agencyPublicId)->value('id');
 
         return is_numeric($id) ? (int) $id : 0;
     }

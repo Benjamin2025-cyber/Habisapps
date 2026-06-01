@@ -52,7 +52,7 @@ final class TellerSessionSummary
             $movement += (self::TILL_BALANCE_DIRECTION[$type] ?? 0) * $amount;
         }
 
-        return ($session->opening_declaration_minor ?? 0) + $movement;
+        return $this->openingDeclarationMinor($session) + $movement;
     }
 
     /**
@@ -93,10 +93,15 @@ final class TellerSessionSummary
         $manual = TellerTransaction::TYPE_MANUAL_JOURNAL;
         $reversal = TellerTransaction::TYPE_REVERSAL;
         $posted = TellerTransaction::STATUS_POSTED;
-        $pending = TellerTransaction::STATUS_PENDING_REVIEW;
+        $closedStatuses = [
+            TellerTransaction::STATUS_POSTED,
+            TellerTransaction::STATUS_REVERSED,
+            TellerTransaction::STATUS_CANCELLED,
+        ];
 
-        // Transaction-type and status values are class constants (never user
-        // input), so binding them as parameters keeps the query injection-safe.
+        // Transaction-type and status values are class constants, never request
+        // input; keep this aggregate grouped so session lists do not run one
+        // transaction query per row.
         $rows = DB::table('teller_transactions')
             ->whereIn('teller_session_id', $sessionIds)
             ->groupBy('teller_session_id')
@@ -108,7 +113,7 @@ final class TellerSessionSummary
                 DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$reversal}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS reversals_total"),
                 DB::raw('COUNT(*) AS transaction_count'),
                 DB::raw("COALESCE(SUM(CASE WHEN status = '{$posted}' THEN 1 ELSE 0 END), 0) AS posted_count"),
-                DB::raw("COALESCE(SUM(CASE WHEN status = '{$pending}' THEN 1 ELSE 0 END), 0) AS pending_count"),
+                DB::raw("COALESCE(SUM(CASE WHEN status NOT IN ('".implode("', '", $closedStatuses)."') THEN 1 ELSE 0 END), 0) AS pending_count"),
                 DB::raw('MAX(created_at) AS last_transaction_at'),
             ]);
 
@@ -141,7 +146,7 @@ final class TellerSessionSummary
 
         // Expected cash balance applies the till-direction map to posted
         // till-affecting components, matching theoreticalBalanceMinor() exactly.
-        $expected = ($session->opening_declaration_minor ?? 0)
+        $expected = $this->openingDeclarationMinor($session)
             + (self::TILL_BALANCE_DIRECTION[TellerTransaction::TYPE_CASH_DEPOSIT] * $deposits)
             + (self::TILL_BALANCE_DIRECTION[TellerTransaction::TYPE_CASH_WITHDRAWAL] * $withdrawals);
 
@@ -164,6 +169,13 @@ final class TellerSessionSummary
     private function intFrom(?array $row, string $key): int
     {
         $value = $row[$key] ?? null;
+
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function openingDeclarationMinor(TellerSession $session): int
+    {
+        $value = $session->getAttribute('opening_declaration_minor');
 
         return is_numeric($value) ? (int) $value : 0;
     }

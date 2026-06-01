@@ -1463,6 +1463,27 @@ final class Module5CashInfrastructureTest extends TestCase
         $ctx = $this->openCashSession('SUMMARY');
         $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 10000, 'sum-dep');
         $this->postWithdrawal($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], $ctx['signature_public_id'], 3000, 'sum-wd');
+        $session = DB::table('teller_sessions')->where('public_id', $ctx['session_public_id'])->first(['id', 'agency_id', 'till_id']);
+        self::assertIsObject($session);
+        self::assertIsInt($session->id);
+        self::assertIsInt($session->agency_id);
+        self::assertIsInt($session->till_id);
+
+        DB::table('teller_transactions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'teller_session_id' => $session->id,
+            'agency_id' => $session->agency_id,
+            'transaction_date' => now()->toDateString(),
+            'till_id' => $session->till_id,
+            'transaction_type' => TellerTransaction::TYPE_MANUAL_JOURNAL,
+            'amount_minor' => 1000,
+            'currency' => 'XAF',
+            'status' => 'pending',
+            'reference' => 'SUMMARY-PENDING-1',
+            'initiator_type' => TellerTransaction::INITIATOR_SYSTEM,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $show = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
             ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id']);
@@ -1472,9 +1493,9 @@ final class Module5CashInfrastructureTest extends TestCase
         $show->assertJsonPath('data.summary.withdrawals_total_minor', 3000);
         $show->assertJsonPath('data.summary.manual_journals_total_minor', 0);
         $show->assertJsonPath('data.summary.reversals_total_minor', 0);
-        $show->assertJsonPath('data.summary.transaction_count', 2);
+        $show->assertJsonPath('data.summary.transaction_count', 3);
         $show->assertJsonPath('data.summary.posted_transaction_count', 2);
-        $show->assertJsonPath('data.summary.pending_transaction_count', 0);
+        $show->assertJsonPath('data.summary.pending_transaction_count', 1);
         // opening 5000 + deposits 10000 - withdrawals 3000.
         $show->assertJsonPath('data.summary.expected_cash_balance_minor', 12000);
         self::assertNotNull($show->json('data.summary.last_transaction_at'));
@@ -1483,6 +1504,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $index = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])->getJson('/api/v1/teller-sessions');
         $this->assertJsonSuccess($index);
         $index->assertJsonPath('data.teller_sessions.0.summary.expected_cash_balance_minor', 12000);
+
+        DB::table('teller_transactions')->where('reference', 'SUMMARY-PENDING-1')->update(['status' => TellerTransaction::STATUS_CANCELLED]);
 
         // The close validation accepts exactly the summary's expected balance,
         // proving the dashboard summary and close use the same direction rules.
@@ -1545,11 +1568,39 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($byAccount);
         self::assertSame(2, $byAccount->json('meta.pagination.total'));
 
+        // Relation filters compose with the actor's agency scope.
+        $bySession = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[teller_session_public_id]='.$ctx['session_public_id']);
+        $this->assertJsonSuccess($bySession);
+        self::assertSame(2, $bySession->json('meta.pagination.total'));
+
+        $byTill = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[till_public_id]='.$ctx['till_public_id']);
+        $this->assertJsonSuccess($byTill);
+        self::assertSame(2, $byTill->json('meta.pagination.total'));
+
+        $byTeller = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[teller_user_public_id]='.$ctx['teller']->public_id);
+        $this->assertJsonSuccess($byTeller);
+        self::assertSame(2, $byTeller->json('meta.pagination.total'));
+
         // A future from-date returns nothing.
         $future = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
             ->getJson('/api/v1/teller-transactions?filter[transaction_date_from]='.now()->addDay()->toDateString());
         $this->assertJsonSuccess($future);
         self::assertSame(0, $future->json('meta.pagination.total'));
+
+        $pastRange = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[transaction_date_from]='.now()->subDay()->toDateString().'&filter[transaction_date_to]='.now()->toDateString());
+        $this->assertJsonSuccess($pastRange);
+        self::assertSame(2, $pastRange->json('meta.pagination.total'));
+
+        $loanPublicId = $this->createLoanLinkedTellerTransaction($ctx);
+        $byLoan = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[loan_public_id]='.$loanPublicId);
+        $this->assertJsonSuccess($byLoan);
+        self::assertSame(1, $byLoan->json('meta.pagination.total'));
+        $byLoan->assertJsonPath('data.teller_transactions.0.reference', 'FILTER-LOAN-1');
 
         // Unknown filter keys are rejected rather than silently widening the query.
         $unknown = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
@@ -1592,6 +1643,99 @@ final class Module5CashInfrastructureTest extends TestCase
 
         $response = $this->withApiHeaders()->actingAsSanctum($teller)->getJson('/api/v1/dashboards/operational');
         $this->assertJsonError($response, 403);
+    }
+
+    // ─── Teller session and reconciliation consultation (FBI2-029) ─────────
+
+    public function test_teller_session_exact_filters_find_historical_rows_without_page_walking(): void
+    {
+        $ctx = $this->openCashSession('CONSULT');
+        $targetPublicId = '';
+        $targetDate = now()->subYears(2)->toDateString();
+
+        for ($i = 0; $i < 105; $i++) {
+            $date = now()->subYears(2)->addDays($i)->toDateString();
+            $sessionPublicId = $this->createHistoricalTellerSession($ctx, $date, 'closed');
+            if ($date === $targetDate) {
+                $targetPublicId = $sessionPublicId;
+            }
+        }
+
+        self::assertNotSame('', $targetPublicId);
+
+        $filtered = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions?per_page=5&filter[business_date]='.$targetDate.'&filter[status]=closed&filter[till_public_id]='.$ctx['till_public_id'].'&filter[teller_user_public_id]='.$ctx['teller']->public_id);
+        $this->assertJsonSuccess($filtered);
+        self::assertSame(1, $filtered->json('meta.pagination.total'));
+        $filtered->assertJsonPath('data.teller_sessions.0.public_id', $targetPublicId);
+
+        $range = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions?filter[business_date_from]='.now()->subYears(2)->toDateString().'&filter[business_date_to]='.now()->subYears(2)->addDays(2)->toDateString().'&sort=business_date');
+        $this->assertJsonSuccess($range);
+        self::assertSame(3, $range->json('meta.pagination.total'));
+
+        $unknownFilter = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions?filter[agency_id]=1');
+        $this->assertJsonError($unknownFilter, 422);
+
+        $unknownSort = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions?sort=created_at');
+        $this->assertJsonError($unknownSort, 422);
+    }
+
+    public function test_teller_session_and_reconciliation_filters_are_agency_scope_safe(): void
+    {
+        $a = $this->openCashSession('CONSULT-A');
+        $b = $this->openCashSession('CONSULT-B');
+        $this->createTillReconciliation($a);
+        $reconciliationB = $this->createTillReconciliation($b);
+
+        $foreignAgencyFilter = $this->withApiHeaders()->actingAsSanctum($a['manager'])
+            ->getJson('/api/v1/teller-sessions?filter[agency_public_id]='.$b['agency']['public_id']);
+        $this->assertJsonError($foreignAgencyFilter, 403);
+
+        $foreignTillFilter = $this->withApiHeaders()->actingAsSanctum($a['manager'])
+            ->getJson('/api/v1/teller-sessions?filter[till_public_id]='.$b['till_public_id']);
+        $this->assertJsonSuccess($foreignTillFilter);
+        self::assertSame(0, $foreignTillFilter->json('meta.pagination.total'));
+
+        $foreignReconciliationAgency = $this->withApiHeaders()->actingAsSanctum($a['manager'])
+            ->getJson('/api/v1/till-reconciliations?filter[agency_public_id]='.$b['agency']['public_id']);
+        $this->assertJsonError($foreignReconciliationAgency, 403);
+
+        $foreignReconciliationTill = $this->withApiHeaders()->actingAsSanctum($a['manager'])
+            ->getJson('/api/v1/till-reconciliations?filter[till_public_id]='.$b['till_public_id']);
+        $this->assertJsonSuccess($foreignReconciliationTill);
+        self::assertSame(0, $foreignReconciliationTill->json('meta.pagination.total'));
+
+        $admin = $this->createUserWithRole('platform-admin');
+        $adminFiltered = $this->withApiHeaders()->actingAsSanctum($admin)
+            ->getJson('/api/v1/till-reconciliations?filter[agency_public_id]='.$b['agency']['public_id']);
+        $this->assertJsonSuccess($adminFiltered);
+        self::assertSame(1, $adminFiltered->json('meta.pagination.total'));
+        $adminFiltered->assertJsonPath('data.till_reconciliations.0.public_id', $reconciliationB);
+    }
+
+    public function test_standalone_reconciliation_index_matches_nested_session_index(): void
+    {
+        $ctx = $this->openCashSession('RECON-IDX');
+        $reconciliationPublicId = $this->createTillReconciliation($ctx);
+
+        $nested = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/reconciliations');
+        $this->assertJsonSuccess($nested);
+        self::assertSame(1, $nested->json('meta.pagination.total'));
+        $nested->assertJsonPath('data.till_reconciliations.0.public_id', $reconciliationPublicId);
+
+        $standalone = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/till-reconciliations?filter[teller_session_public_id]='.$ctx['session_public_id'].'&filter[till_public_id]='.$ctx['till_public_id'].'&filter[teller_user_public_id]='.$ctx['teller']->public_id.'&filter[business_date]='.now()->toDateString().'&filter[status]=balanced');
+        $this->assertJsonSuccess($standalone);
+        self::assertSame(1, $standalone->json('meta.pagination.total'));
+        $standalone->assertJsonPath('data.till_reconciliations.0.public_id', $reconciliationPublicId);
+
+        $unknownFilter = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/till-reconciliations?filter[session_id]=1');
+        $this->assertJsonError($unknownFilter, 422);
     }
 
     /**
@@ -1656,6 +1800,62 @@ final class Module5CashInfrastructureTest extends TestCase
         ];
     }
 
+    /**
+     * @param  array{agency: array{id:int, code:string, name:string, public_id:string}, manager: User, teller: User, session_public_id: string, till_public_id: string, account_public_id: string, signature_public_id: string}  $ctx
+     */
+    private function createHistoricalTellerSession(array $ctx, string $businessDate, string $status): string
+    {
+        $tillId = DB::table('tills')->where('public_id', $ctx['till_public_id'])->value('id');
+        self::assertIsInt($tillId);
+
+        $publicId = (string) Str::ulid();
+        DB::table('teller_sessions')->insert([
+            'public_id' => $publicId,
+            'till_id' => $tillId,
+            'agency_id' => $ctx['agency']['id'],
+            'teller_user_id' => $ctx['teller']->id,
+            'business_date' => $businessDate,
+            'opened_at' => $businessDate.' 08:00:00',
+            'closed_at' => $businessDate.' 17:00:00',
+            'opening_declaration_minor' => 5000,
+            'closing_declaration_minor' => 5000,
+            'currency' => 'XAF',
+            'status' => $status,
+            'created_at' => $businessDate.' 08:00:00',
+            'updated_at' => $businessDate.' 17:00:00',
+        ]);
+
+        return $publicId;
+    }
+
+    /**
+     * @param  array{agency: array{id:int, code:string, name:string, public_id:string}, manager: User, teller: User, session_public_id: string, till_public_id: string, account_public_id: string, signature_public_id: string}  $ctx
+     */
+    private function createTillReconciliation(array $ctx): string
+    {
+        $sessionId = DB::table('teller_sessions')->where('public_id', $ctx['session_public_id'])->value('id');
+        self::assertIsInt($sessionId);
+
+        $publicId = (string) Str::ulid();
+        DB::table('till_reconciliations')->insert([
+            'public_id' => $publicId,
+            'teller_session_id' => $sessionId,
+            'counted_by_user_id' => $ctx['manager']->id,
+            'counted_at' => now(),
+            'reconciliation_date' => now(),
+            'theoretical_balance_minor' => 5000,
+            'actual_balance_minor' => 5000,
+            'difference_minor' => 0,
+            'currency' => 'XAF',
+            'status' => 'balanced',
+            'notes' => 'Consultation fixture',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $publicId;
+    }
+
     private function postDeposit(User $actor, string $sessionPublicId, string $accountPublicId, int $amount, string $idempotencyKey, ?string $depositorName = null): TestResponse
     {
         $response = $this->withApiHeaders()->actingAsSanctum($actor)
@@ -1687,6 +1887,71 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($response, 201);
 
         return $response;
+    }
+
+    /**
+     * @param  array{agency: array{id:int, code:string, name:string, public_id:string}, manager: User, teller: User, session_public_id: string, till_public_id: string, account_public_id: string, signature_public_id: string}  $ctx
+     */
+    private function createLoanLinkedTellerTransaction(array $ctx): string
+    {
+        $session = DB::table('teller_sessions')->where('public_id', $ctx['session_public_id'])->first(['id', 'agency_id', 'till_id']);
+        $account = DB::table('customer_accounts')->where('public_id', $ctx['account_public_id'])->first(['client_id']);
+        self::assertIsObject($session);
+        self::assertIsObject($account);
+        self::assertIsInt($session->id);
+        self::assertIsInt($session->agency_id);
+        self::assertIsInt($session->till_id);
+        self::assertIsInt($account->client_id);
+
+        $ledger = $this->createLedgerAccount($ctx['agency']['id'], 'FILTER-LOAN-LED', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $productId = DB::table('loan_products')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'ledger_account_id' => $ledger['id'],
+            'code' => 'FILTER-LOAN-PRODUCT',
+            'name' => 'Filter Loan Product',
+            'status' => 'active',
+            'min_amount_minor' => 100000,
+            'max_amount_minor' => 1000000,
+            'min_term_count' => 3,
+            'max_term_count' => 12,
+            'term_unit' => 'month',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $loanPublicId = (string) Str::ulid();
+        $loanId = DB::table('loans')->insertGetId([
+            'public_id' => $loanPublicId,
+            'client_id' => $account->client_id,
+            'agency_id' => $ctx['agency']['id'],
+            'loan_product_id' => $productId,
+            'loan_number' => 'FILTER-LOAN-1',
+            'requested_amount_minor' => 150000,
+            'currency' => 'XAF',
+            'applied_on' => now()->toDateString(),
+            'status' => 'application',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('teller_transactions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'teller_session_id' => $session->id,
+            'agency_id' => $session->agency_id,
+            'transaction_date' => now()->toDateString(),
+            'till_id' => $session->till_id,
+            'transaction_type' => TellerTransaction::TYPE_MANUAL_JOURNAL,
+            'loan_id' => $loanId,
+            'amount_minor' => 150000,
+            'currency' => 'XAF',
+            'status' => TellerTransaction::STATUS_POSTED,
+            'reference' => 'FILTER-LOAN-1',
+            'initiator_type' => TellerTransaction::INITIATOR_SYSTEM,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $loanPublicId;
     }
 
     /**

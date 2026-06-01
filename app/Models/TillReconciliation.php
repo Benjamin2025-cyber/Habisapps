@@ -10,7 +10,24 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $public_id
+ * @property int $teller_session_id
+ * @property int|null $counted_by_user_id
+ * @property Carbon|null $counted_at
+ * @property Carbon|null $reconciliation_date
+ * @property int|null $theoretical_balance_minor
+ * @property int|null $actual_balance_minor
+ * @property int|null $difference_minor
+ * @property string|null $currency
+ * @property string $status
+ * @property string|null $notes
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
 #[Fillable([
     'public_id',
     'teller_session_id',

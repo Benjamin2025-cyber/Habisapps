@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\ReportRunCollection;
 use App\Http\Resources\ReportRunResource;
@@ -36,6 +37,7 @@ final class ReportRunController extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
+        private readonly UserNotificationFeed $notifications,
     ) {}
 
     public function index(Request $request): ReportRunCollection|JsonResponse
@@ -166,8 +168,47 @@ final class ReportRunController extends BaseController
         ]);
 
         $this->securityAudit->record('report_run.generated', actor: $actor, subject: $run, request: $request);
+        $this->notifyReportRunGenerated($run, $definition);
 
         return $this->respondCreated(ReportRunResource::make($run->loadMissing(['reportDefinition', 'agency', 'document'])), 'Report run generated successfully');
+    }
+
+    private function notifyReportRunGenerated(ReportRun $run, ReportDefinition $definition): void
+    {
+        $title = 'Report run generated';
+        $message = 'Report '.$definition->code.' was generated successfully.';
+        $metadata = [
+            'report_definition_public_id' => $definition->public_id,
+            'report_definition_code' => $definition->code,
+            'status' => $run->status,
+        ];
+
+        if ($run->agency_id !== null) {
+            $this->notifications->notifyAgency(
+                agencyId: $run->agency_id,
+                type: 'success',
+                category: 'report_run_generated',
+                title: $title,
+                message: $message,
+                sourceType: ReportRun::class,
+                sourcePublicId: $run->public_id,
+                actionUrl: '/report-runs/'.$run->public_id,
+                metadata: $metadata,
+            );
+
+            return;
+        }
+
+        $this->notifications->notifyPlatform(
+            type: 'success',
+            category: 'report_run_generated',
+            title: $title,
+            message: $message,
+            sourceType: ReportRun::class,
+            sourcePublicId: $run->public_id,
+            actionUrl: '/report-runs/'.$run->public_id,
+            metadata: $metadata,
+        );
     }
 
     /**

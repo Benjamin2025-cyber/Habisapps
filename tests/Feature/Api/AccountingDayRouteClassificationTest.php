@@ -7,6 +7,7 @@ namespace Tests\Feature\Api;
 use App\Http\Middleware\EnforceAccountingDayRegistrationLock;
 use App\Support\AccountingDay\RouteClassification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Tests\TestCase;
 
@@ -76,7 +77,7 @@ final class AccountingDayRouteClassificationTest extends TestCase
 
         foreach ($expectations as $signature => $expected) {
             [$method, $uri] = explode(' ', $signature, 2);
-            $route = $routes->match(\Illuminate\Http\Request::create('/api/'.$uri, $method));
+            $route = $routes->match(Request::create('/api/'.$uri, $method));
             self::assertInstanceOf(Route::class, $route);
             self::assertSame($expected, $route->defaults['accounting_day_classification'] ?? null, $signature.' must be explicitly classified.');
         }

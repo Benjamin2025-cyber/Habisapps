@@ -11,26 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
-#[Fillable([
-    'public_id',
-    'agency_id',
-    'code',
-    'name',
-    'type',
-    'status',
-    'daily_state',
-    'opening_balance_minor',
-    'last_closing_balance_minor',
-    'last_closing_at',
-    'requires_denominations',
-    'nature',
-    'is_central_till',
-    'max_balance_limit_minor',
-    'max_withdrawal_limit_minor',
-    'currency',
-    'assigned_user_id',
-    'ledger_account_id',
-])]
 /**
  * @property int $id
  * @property string $public_id
@@ -52,6 +32,26 @@ use Illuminate\Support\Carbon;
  * @property int|null $assigned_user_id
  * @property int|null $ledger_account_id
  */
+#[Fillable([
+    'public_id',
+    'agency_id',
+    'code',
+    'name',
+    'type',
+    'status',
+    'daily_state',
+    'opening_balance_minor',
+    'last_closing_balance_minor',
+    'last_closing_at',
+    'requires_denominations',
+    'nature',
+    'is_central_till',
+    'max_balance_limit_minor',
+    'max_withdrawal_limit_minor',
+    'currency',
+    'assigned_user_id',
+    'ledger_account_id',
+])]
 final class Till extends Model
 {
     use HasAuditLog;

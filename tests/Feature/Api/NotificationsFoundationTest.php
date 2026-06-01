@@ -10,9 +10,12 @@ use App\Application\Notifications\NotificationConsentManager;
 use App\Application\Notifications\NotificationDeliveryRetryManager;
 use App\Application\Notifications\NotificationOutbox;
 use App\Application\Notifications\NotificationTemplateManager;
+use App\Application\Notifications\UserNotificationFeed;
 use App\Models\LedgerAccount;
 use App\Models\LoanProduct;
+use App\Models\StaffAgencyAssignment;
 use App\Models\User;
+use App\Models\UserNotification;
 use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -80,6 +83,211 @@ final class NotificationsFoundationTest extends TestCase
         self::assertSame(1, DB::table('client_notification_consents')
             ->where('client_id', $client['id'])
             ->count());
+    }
+
+    public function test_notification_feed_scopes_user_agency_and_platform_notifications(): void
+    {
+        $agencyA = $this->createAgency('NTF-A');
+        $agencyB = $this->createAgency('NTF-B');
+        $tellerA = $this->createUserWithRole('teller', $agencyA['id']);
+        $tellerB = $this->createUserWithRole('teller', $agencyB['id']);
+        $loanOfficer = $this->createUserWithRole('loan-officer', $agencyA['id']);
+        $platformAdmin = $this->createUserWithRole('platform-admin');
+        $feed = app(UserNotificationFeed::class);
+
+        $own = $feed->notifyUser(
+            user: $loanOfficer,
+            type: UserNotification::TYPE_INFO,
+            category: 'loan_ready_for_disbursement',
+            title: 'Loan ready',
+            message: 'Loan LN-1 is ready for disbursement.',
+            sourceType: 'loan',
+            sourcePublicId: 'LN-1',
+            agencyId: $agencyA['id'],
+        );
+        $agency = $feed->notifyAgency(
+            agencyId: $agencyA['id'],
+            type: UserNotification::TYPE_SUCCESS,
+            category: 'cash_deposit_posted',
+            title: 'Cash deposit posted',
+            message: 'A cash deposit was posted.',
+            sourceType: 'teller_transaction',
+            sourcePublicId: 'TXN-A',
+        );
+        $feed->notifyAgency(
+            agencyId: $agencyB['id'],
+            type: UserNotification::TYPE_WARNING,
+            category: 'cash_withdrawal_posted',
+            title: 'Cash withdrawal posted',
+            message: 'A cash withdrawal was posted.',
+            sourceType: 'teller_transaction',
+            sourcePublicId: 'TXN-B',
+        );
+        $platform = $feed->notifyPlatform(
+            type: UserNotification::TYPE_ERROR,
+            category: 'report_run_generated',
+            title: 'Platform report generated',
+            message: 'A platform report was generated.',
+            sourceType: 'report_run',
+            sourcePublicId: 'RUN-1',
+        );
+
+        $loanOfficerFeed = $this->withApiHeaders()
+            ->actingAsSanctum($loanOfficer)
+            ->getJson('/api/v1/notifications');
+        $this->assertJsonSuccess($loanOfficerFeed);
+        self::assertSame([$own->public_id], $this->notificationPublicIds($loanOfficerFeed->json('data.notifications')));
+
+        $tellerAFeed = $this->withApiHeaders()
+            ->actingAsSanctum($tellerA)
+            ->getJson('/api/v1/notifications?filter[category]=cash_deposit_posted');
+        $this->assertJsonSuccess($tellerAFeed);
+        $tellerAFeed->assertJsonPath('data.notifications.0.public_id', $agency->public_id);
+        $tellerAFeed->assertJsonPath('data.notifications.0.agency_public_id', $agencyA['public_id']);
+
+        $tellerBFeed = $this->withApiHeaders()
+            ->actingAsSanctum($tellerB)
+            ->getJson('/api/v1/notifications?filter[category]=cash_deposit_posted');
+        $this->assertJsonSuccess($tellerBFeed);
+        self::assertSame([], $tellerBFeed->json('data.notifications'));
+
+        $platformFeed = $this->withApiHeaders()
+            ->actingAsSanctum($platformAdmin)
+            ->getJson('/api/v1/notifications?filter[category]=report_run_generated');
+        $this->assertJsonSuccess($platformFeed);
+        $platformFeed->assertJsonPath('data.notifications.0.public_id', $platform->public_id);
+    }
+
+    public function test_notification_read_state_is_per_user_and_visibility_safe(): void
+    {
+        $agencyA = $this->createAgency('NTF-R-A');
+        $agencyB = $this->createAgency('NTF-R-B');
+        $teller = $this->createUserWithRole('teller', $agencyA['id']);
+        $manager = $this->createUserWithRole('agency-manager', $agencyA['id']);
+        $otherTeller = $this->createUserWithRole('teller', $agencyB['id']);
+
+        $notification = app(UserNotificationFeed::class)->notifyAgency(
+            agencyId: $agencyA['id'],
+            type: UserNotification::TYPE_WARNING,
+            category: 'till_reconciliation_rejected',
+            title: 'Reconciliation rejected',
+            message: 'A till reconciliation requires correction.',
+            sourceType: 'till_reconciliation',
+            sourcePublicId: 'REC-1',
+        );
+
+        $read = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->postJson('/api/v1/notifications/'.$notification->public_id.'/read');
+        $this->assertJsonSuccess($read);
+        self::assertNotNull($read->json('data.notification.read_at'));
+
+        $tellerRead = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->getJson('/api/v1/notifications?filter[read]=true');
+        $this->assertJsonSuccess($tellerRead);
+        self::assertSame([$notification->public_id], $this->notificationPublicIds($tellerRead->json('data.notifications')));
+
+        $managerUnread = $this->withApiHeaders()
+            ->actingAsSanctum($manager)
+            ->getJson('/api/v1/notifications?filter[read]=false');
+        $this->assertJsonSuccess($managerUnread);
+        self::assertSame([$notification->public_id], $this->notificationPublicIds($managerUnread->json('data.notifications')));
+        $managerUnread->assertJsonPath('data.notifications.0.read_at', null);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($otherTeller)
+            ->postJson('/api/v1/notifications/'.$notification->public_id.'/read')
+            ->assertStatus(404);
+    }
+
+    public function test_notification_read_all_and_filters_only_apply_to_visible_rows(): void
+    {
+        $agencyA = $this->createAgency('NTF-RA-A');
+        $agencyB = $this->createAgency('NTF-RA-B');
+        $teller = $this->createUserWithRole('teller', $agencyA['id']);
+        $feed = app(UserNotificationFeed::class);
+
+        $feed->notifyAgency(
+            agencyId: $agencyA['id'],
+            type: UserNotification::TYPE_SUCCESS,
+            category: 'cash_session_opened',
+            title: 'Session opened',
+            message: 'A teller session was opened.',
+            sourceType: 'teller_session',
+            sourcePublicId: 'SES-A',
+        );
+        $feed->notifyAgency(
+            agencyId: $agencyB['id'],
+            type: UserNotification::TYPE_SUCCESS,
+            category: 'cash_session_opened',
+            title: 'Other session opened',
+            message: 'Another agency opened a teller session.',
+            sourceType: 'teller_session',
+            sourcePublicId: 'SES-B',
+        );
+
+        $readAll = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->postJson('/api/v1/notifications/read-all');
+        $this->assertJsonSuccess($readAll);
+        $readAll->assertJsonPath('data.marked_read_count', 1);
+
+        $read = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->getJson('/api/v1/notifications?filter[read]=true&filter[type]=success&search=Session');
+        $this->assertJsonSuccess($read);
+        self::assertCount(1, $read->json('data.notifications'));
+        $read->assertJsonPath('data.notifications.0.category', 'cash_session_opened');
+    }
+
+    public function test_notification_feed_does_not_duplicate_same_source_category_recipient(): void
+    {
+        $agency = $this->createAgency('NTF-IDEM');
+        $feed = app(UserNotificationFeed::class);
+
+        $first = $feed->notifyAgency(
+            agencyId: $agency['id'],
+            type: UserNotification::TYPE_SUCCESS,
+            category: 'cash_transaction_reversed',
+            title: 'Transaction reversed',
+            message: 'A teller transaction was reversed.',
+            sourceType: 'teller_transaction',
+            sourcePublicId: 'TXN-REV-1',
+        );
+        $second = $feed->notifyAgency(
+            agencyId: $agency['id'],
+            type: UserNotification::TYPE_SUCCESS,
+            category: 'cash_transaction_reversed',
+            title: 'Transaction reversed again',
+            message: 'Duplicate producer replay.',
+            sourceType: 'teller_transaction',
+            sourcePublicId: 'TXN-REV-1',
+        );
+
+        self::assertSame($first->public_id, $second->public_id);
+        self::assertSame(1, DB::table('user_notifications')
+            ->where('recipient_type', UserNotification::RECIPIENT_AGENCY)
+            ->where('recipient_id', $agency['id'])
+            ->where('source_type', 'teller_transaction')
+            ->where('source_public_id', 'TXN-REV-1')
+            ->where('category', 'cash_transaction_reversed')
+            ->count());
+    }
+
+    public function test_default_notification_permissions_are_exposed_to_roles(): void
+    {
+        $agency = $this->createAgency('NTF-PERM');
+        $teller = $this->createUserWithRole('teller', $agency['id']);
+        $manager = $this->createUserWithRole('agency-manager', $agency['id']);
+        $platformAdmin = $this->createUserWithRole('platform-admin');
+
+        self::assertTrue($teller->can('notifications.view'));
+        self::assertFalse($teller->can('notifications.manage'));
+        self::assertTrue($manager->can('notifications.view'));
+        self::assertFalse($manager->can('notifications.manage'));
+        self::assertTrue($platformAdmin->can('notifications.view'));
+        self::assertTrue($platformAdmin->can('notifications.manage'));
     }
 
     public function test_consent_is_tracked_per_language(): void
@@ -1074,15 +1282,47 @@ final class NotificationsFoundationTest extends TestCase
         ];
     }
 
-    private function createUserWithRole(string $role): User
+    private function createUserWithRole(string $role, ?int $agencyId = null): User
     {
         $user = User::factory()->createOne([
+            'agency_id' => $agencyId,
             'status' => User::STATUS_ACTIVE,
             'phone_verified_at' => now(),
         ]);
         $user->assignRole($role);
 
+        if ($agencyId !== null) {
+            DB::table('staff_agency_assignments')->insert([
+                'public_id' => (string) Str::ulid(),
+                'user_id' => $user->id,
+                'agency_id' => $agencyId,
+                'role_at_agency' => $role,
+                'starts_on' => now()->subDay()->toDateString(),
+                'ends_on' => null,
+                'is_primary' => true,
+                'status' => StaffAgencyAssignment::STATUS_ACTIVE,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
         return $user;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function notificationPublicIds(mixed $notifications): array
+    {
+        if (! is_array($notifications)) {
+            return [];
+        }
+
+        return collect($notifications)
+            ->pluck('public_id')
+            ->filter(static fn (mixed $publicId): bool => is_string($publicId))
+            ->values()
+            ->all();
     }
 
     /**

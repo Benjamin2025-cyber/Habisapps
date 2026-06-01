@@ -11,20 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
-#[Fillable([
-    'public_id',
-    'till_id',
-    'agency_id',
-    'accounting_day_id',
-    'teller_user_id',
-    'business_date',
-    'opened_at',
-    'closed_at',
-    'opening_declaration_minor',
-    'closing_declaration_minor',
-    'currency',
-    'status',
-])]
 /**
  * @property int $id
  * @property string $public_id
@@ -39,6 +25,20 @@ use Illuminate\Support\Carbon;
  * @property string|null $currency
  * @property string $status
  */
+#[Fillable([
+    'public_id',
+    'till_id',
+    'agency_id',
+    'accounting_day_id',
+    'teller_user_id',
+    'business_date',
+    'opened_at',
+    'closed_at',
+    'opening_declaration_minor',
+    'closing_declaration_minor',
+    'currency',
+    'status',
+])]
 final class TellerSession extends Model
 {
     use HasAuditLog;

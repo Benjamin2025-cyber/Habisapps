@@ -1523,7 +1523,7 @@
                         "required": true,
                         "description": "The accounting day public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1572,7 +1572,7 @@
                         "required": true,
                         "description": "The accounting day public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1632,7 +1632,7 @@
                         "required": true,
                         "description": "The accounting day public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -1685,7 +1685,7 @@
                         "required": true,
                         "description": "The accounting day public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -23890,6 +23890,52 @@
                         "$ref": "#/components/responses/AuthenticationException"
                     }
                 }
+            },
+            "get": {
+                "operationId": "reportDefinition.index",
+                "tags": [
+                    "ReportDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 25
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`ReportDefinitionCollection`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ReportDefinitionCollection"
+                                                }
+                                            },
+                                            "required": [
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
             }
         },
         "/v1/report-runs/{runPublicId}/review": {
@@ -24042,6 +24088,55 @@
                                 }
                             }
                         }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/report-definitions/{reportDefinition}": {
+            "get": {
+                "operationId": "reportDefinition.show",
+                "tags": [
+                    "ReportDefinition"
+                ],
+                "parameters": [
+                    {
+                        "name": "reportDefinition",
+                        "in": "path",
+                        "required": true,
+                        "description": "The report definition public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
                     },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
@@ -24609,6 +24704,8 @@
                                                 "loans.transfers.manage",
                                                 "loans.update",
                                                 "loans.view",
+                                                "notifications.manage",
+                                                "notifications.view",
                                                 "operation.codes.archive",
                                                 "operation.codes.create",
                                                 "operation.codes.update",
@@ -26158,9 +26255,94 @@
                 "tags": [
                     "TellerSession"
                 ],
+                "parameters": [
+                    {
+                        "name": "filter[business_date]",
+                        "in": "query",
+                        "description": "Limit results to an exact business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date_from]",
+                        "in": "query",
+                        "description": "Limit results to sessions on or after this business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date_to]",
+                        "in": "query",
+                        "description": "Limit results to sessions on or before this business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[till_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a till public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[teller_user_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller user public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Limit results to a teller session status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[agency_public_id]",
+                        "in": "query",
+                        "description": "Platform-admin only. Limit results to an agency public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "Allowed values: business_date, -business_date, opened_at, -opened_at, closed_at, -closed_at, status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Broad search over status, business date, currency, agency, till, and teller.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Paginated set of `TellerSessionResource`",
+                        "description": "`TellerSessionCollection`",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -26228,17 +26410,6 @@
                                         "errors",
                                         "meta"
                                     ]
-                                }
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
                                 }
                             }
                         }
@@ -26750,6 +26921,193 @@
                 }
             }
         },
+        "/v1/teller-transactions": {
+            "get": {
+                "operationId": "tellerTransaction.index",
+                "tags": [
+                    "TellerTransaction"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter[teller_session_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller session public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[till_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a till public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[teller_user_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller user public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[transaction_type]",
+                        "in": "query",
+                        "description": "Limit results to a transaction type such as cash_deposit, cash_withdrawal, cash_manual_journal, or cash_reversal.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Limit results to a transaction status such as posted, pending_review, reversed, or cancelled.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[transaction_date]",
+                        "in": "query",
+                        "description": "Limit results to an exact transaction date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[transaction_date_from]",
+                        "in": "query",
+                        "description": "Limit results to transactions on or after this date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[transaction_date_to]",
+                        "in": "query",
+                        "description": "Limit results to transactions on or before this date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[customer_account_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a customer account public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[loan_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a loan public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search reference, event number, operation code, depositor name, and description.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`TellerTransactionCollection`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "teller_transactions": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/TellerTransactionResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "teller_transactions"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "pagination": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "per_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        },
+                                                        "last_page": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_page",
+                                                        "per_page",
+                                                        "total",
+                                                        "last_page"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "pagination"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/v1/teller-transactions/{tellerTransaction}/reverse": {
             "post": {
                 "operationId": "tellerTransaction.reverse",
@@ -27192,7 +27550,7 @@
         },
         "/v1/teller-sessions/{tellerSession}/reconciliations": {
             "get": {
-                "operationId": "tillReconciliation.index",
+                "operationId": "v1.tillReconciliation.index_0",
                 "tags": [
                     "TillReconciliation"
                 ],
@@ -27201,7 +27559,77 @@
                         "name": "tellerSession",
                         "in": "path",
                         "required": true,
-                        "description": "The teller session public id",
+                        "schema": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "filter[teller_session_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller session public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[till_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a till public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[teller_user_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller user public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date]",
+                        "in": "query",
+                        "description": "Limit results to an exact teller-session business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date_from]",
+                        "in": "query",
+                        "description": "Limit results to teller sessions on or after this business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date_to]",
+                        "in": "query",
+                        "description": "Limit results to teller sessions on or before this business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Limit results to a reconciliation status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[agency_public_id]",
+                        "in": "query",
+                        "description": "Platform-admin only. Limit results to reconciliations for an agency public ID.",
                         "schema": {
                             "type": "string"
                         }
@@ -27209,6 +27637,7 @@
                     {
                         "name": "search",
                         "in": "query",
+                        "description": "Search reconciliation status, currency, notes, and counted-by user.",
                         "schema": {
                             "type": "string"
                         }
@@ -27216,9 +27645,9 @@
                     {
                         "name": "per_page",
                         "in": "query",
+                        "description": "Results per page. Capped at 100.",
                         "schema": {
-                            "type": "integer",
-                            "default": 25
+                            "type": "integer"
                         }
                     }
                 ],
@@ -27295,20 +27724,6 @@
                                 }
                             }
                         }
-                    },
-                    "403": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "$ref": "#/components/responses/ModelNotFoundException"
                     },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
@@ -27392,6 +27807,474 @@
                     },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/till-reconciliations": {
+            "get": {
+                "operationId": "v1.tillReconciliation.index_0",
+                "tags": [
+                    "TillReconciliation"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter[teller_session_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller session public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[till_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a till public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[teller_user_public_id]",
+                        "in": "query",
+                        "description": "Limit results to a teller user public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date]",
+                        "in": "query",
+                        "description": "Limit results to an exact teller-session business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date_from]",
+                        "in": "query",
+                        "description": "Limit results to teller sessions on or after this business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[business_date_to]",
+                        "in": "query",
+                        "description": "Limit results to teller sessions on or before this business date in YYYY-MM-DD format.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Limit results to a reconciliation status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[agency_public_id]",
+                        "in": "query",
+                        "description": "Platform-admin only. Limit results to reconciliations for an agency public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search reconciliation status, currency, notes, and counted-by user.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "till_reconciliations": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/TillReconciliationResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "till_reconciliations"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "pagination": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "per_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        },
+                                                        "last_page": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_page",
+                                                        "per_page",
+                                                        "total",
+                                                        "last_page"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "pagination"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/notifications": {
+            "get": {
+                "operationId": "userNotification.index",
+                "tags": [
+                    "UserNotification"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter[read]",
+                        "in": "query",
+                        "description": "Use true for read notifications or false for unread notifications.",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "filter[type]",
+                        "in": "query",
+                        "description": "Notification type: info, success, warning, or error.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[category]",
+                        "in": "query",
+                        "description": "Notification category, for example cash_transaction_posted.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[created_from]",
+                        "in": "query",
+                        "description": "Limit to notifications created at or after this timestamp/date.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[created_to]",
+                        "in": "query",
+                        "description": "Limit to notifications created at or before this timestamp/date.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search title, message, category, and source public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "notifications": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/UserNotificationResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "notifications"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "pagination": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "per_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        },
+                                                        "last_page": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_page",
+                                                        "per_page",
+                                                        "total",
+                                                        "last_page"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "pagination"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/notifications/read-all": {
+            "post": {
+                "operationId": "userNotification.readAll",
+                "tags": [
+                    "UserNotification"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "marked_read_count": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "marked_read_count"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/notifications/{notification}/read": {
+            "post": {
+                "operationId": "userNotification.read",
+                "tags": [
+                    "UserNotification"
+                ],
+                "parameters": [
+                    {
+                        "name": "notification",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "notification": {
+                                                    "$ref": "#/components/schemas/UserNotificationResource"
+                                                }
+                                            },
+                                            "required": [
+                                                "notification"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
                     },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
@@ -28078,10 +28961,13 @@
                         "type": "boolean"
                     },
                     "is_holiday": {
-                        "type": "string"
+                        "type": "boolean"
                     },
                     "holiday_name": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "origin": {
                         "type": "string"
@@ -28117,10 +29003,17 @@
                         ]
                     },
                     "close_summary": {
-                        "type": "string"
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {}
                     },
                     "close_failure_reason": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "reopen_reason": {
                         "type": [
@@ -33267,6 +34160,265 @@
                 ],
                 "title": "ReopenAccountingDayRequest"
             },
+            "ReportDefinitionCollection": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "report_definitions": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/ReportDefinitionResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "report_definitions"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "string"
+                                            },
+                                            "per_page": {
+                                                "type": "string"
+                                            },
+                                            "total": {
+                                                "type": "string"
+                                            },
+                                            "last_page": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "report_definitions": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/ReportDefinitionResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "report_definitions"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            },
+                                            "per_page": {
+                                                "type": "integer",
+                                                "const": 25
+                                            },
+                                            "total": {
+                                                "type": "integer"
+                                            },
+                                            "last_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    }
+                ],
+                "title": "ReportDefinitionCollection"
+            },
+            "ReportDefinitionResource": {
+                "type": "object",
+                "properties": {
+                    "public_id": {
+                        "type": "string"
+                    },
+                    "code": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "report_type": {
+                        "type": "string"
+                    },
+                    "module": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "version": {
+                        "type": "integer"
+                    },
+                    "effective_from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effective_to": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "supported_parameters": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "array",
+                                "prefixItems": [
+                                    {
+                                        "type": "string",
+                                        "const": "agency"
+                                    },
+                                    {
+                                        "type": "string",
+                                        "const": "currency"
+                                    }
+                                ],
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "additionalItems": false
+                            }
+                        ]
+                    },
+                    "requires_agency": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ]
+                    },
+                    "requires_currency": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ]
+                    },
+                    "requires_period": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ]
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "public_id",
+                    "code",
+                    "name",
+                    "report_type",
+                    "module",
+                    "status",
+                    "version",
+                    "effective_from",
+                    "effective_to",
+                    "supported_parameters",
+                    "requires_agency",
+                    "requires_currency",
+                    "requires_period",
+                    "description"
+                ],
+                "title": "ReportDefinitionResource"
+            },
             "ReportRunCollection": {
                 "type": "object",
                 "properties": {
@@ -36755,9 +37907,7 @@
             "TellerSessionResource": {
                 "type": "object",
                 "properties": {
-                    "public_id": {
-                        "type": "string"
-                    },
+                    "public_id": {},
                     "agency_public_id": {
                         "type": [
                             "string",
@@ -36800,32 +37950,70 @@
                             "null"
                         ]
                     },
-                    "opening_declaration_minor": {
+                    "opening_declaration_minor": {},
+                    "closing_declaration_minor": {},
+                    "currency": {},
+                    "status": {},
+                    "summary": {
                         "type": [
-                            "integer",
+                            "object",
                             "null"
+                        ],
+                        "properties": {
+                            "deposits_total_minor": {
+                                "type": "integer"
+                            },
+                            "withdrawals_total_minor": {
+                                "type": "integer"
+                            },
+                            "manual_journals_total_minor": {
+                                "type": "integer"
+                            },
+                            "reversals_total_minor": {
+                                "type": "integer"
+                            },
+                            "transaction_count": {
+                                "type": "integer"
+                            },
+                            "posted_transaction_count": {
+                                "type": "integer"
+                            },
+                            "pending_transaction_count": {
+                                "type": "integer"
+                            },
+                            "expected_cash_balance_minor": {
+                                "type": "integer"
+                            },
+                            "last_transaction_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "deposits_total_minor",
+                            "withdrawals_total_minor",
+                            "manual_journals_total_minor",
+                            "reversals_total_minor",
+                            "transaction_count",
+                            "posted_transaction_count",
+                            "pending_transaction_count",
+                            "expected_cash_balance_minor",
+                            "last_transaction_at"
                         ]
                     },
-                    "closing_declaration_minor": {
-                        "type": [
-                            "integer",
-                            "null"
-                        ]
-                    },
-                    "currency": {
+                    "created_at": {
                         "type": [
                             "string",
                             "null"
                         ]
                     },
-                    "status": {
-                        "type": "string"
-                    },
-                    "created_at": {
-                        "type": "string"
-                    },
                     "updated_at": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 },
                 "required": [
@@ -36841,10 +38029,153 @@
                     "closing_declaration_minor",
                     "currency",
                     "status",
+                    "summary",
                     "created_at",
                     "updated_at"
                 ],
                 "title": "TellerSessionResource"
+            },
+            "TellerTransactionCollection": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "teller_transactions": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/TellerTransactionResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "teller_transactions"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "string"
+                                            },
+                                            "per_page": {
+                                                "type": "string"
+                                            },
+                                            "total": {
+                                                "type": "string"
+                                            },
+                                            "last_page": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "teller_transactions": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/TellerTransactionResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "teller_transactions"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            },
+                                            "per_page": {
+                                                "type": "integer",
+                                                "const": 25
+                                            },
+                                            "total": {
+                                                "type": "integer"
+                                            },
+                                            "last_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    }
+                ],
+                "title": "TellerTransactionCollection"
             },
             "TellerTransactionResource": {
                 "type": "object",
@@ -39090,6 +40421,67 @@
                     }
                 },
                 "title": "UpdateTillRequest"
+            },
+            "UserNotificationResource": {
+                "type": "object",
+                "properties": {
+                    "public_id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "category": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "action_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "agency_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "read_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                },
+                "required": [
+                    "public_id",
+                    "type",
+                    "category",
+                    "title",
+                    "message",
+                    "action_url",
+                    "agency_public_id",
+                    "created_at",
+                    "read_at",
+                    "metadata"
+                ],
+                "title": "UserNotificationResource"
             }
         },
         "responses": {

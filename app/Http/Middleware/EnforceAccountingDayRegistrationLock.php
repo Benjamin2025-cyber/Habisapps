@@ -49,4 +49,3 @@ final class EnforceAccountingDayRegistrationLock
         return $next($request);
     }
 }
-

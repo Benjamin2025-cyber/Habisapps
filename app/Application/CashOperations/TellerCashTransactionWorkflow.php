@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Application\CashOperations;
 
 use App\Application\JournalEntries\CreateJournalEntryReversal;
+use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreCashDepositRequest;
 use App\Http\Requests\StoreCashWithdrawalRequest;
 use App\Http\Resources\JournalEntryResource;
 use App\Http\Resources\TellerTransactionResource;
+use App\Models\AccountingDay;
 use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
 use App\Models\CustomerAccountSignature;
@@ -20,7 +22,6 @@ use App\Models\LedgerAccount;
 use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
-use App\Models\AccountingDay;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
 use App\Support\AccountingDay\AccountingDayGuard;
@@ -42,6 +43,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         private readonly ClientProxyMandateAuthorizer $proxyMandateAuthorizer,
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
         private readonly AccountingDayGuard $accountingDayGuard,
+        private readonly UserNotificationFeed $notifications,
     ) {}
 
     /**
@@ -224,6 +226,22 @@ final class TellerCashTransactionWorkflow extends BaseController
             'initiator_type' => $result->initiator_type,
             'initiator_proxy_id' => $result->initiator_proxy_id,
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $result->agency_id,
+            type: 'success',
+            category: 'cash_deposit_posted',
+            title: 'Cash deposit posted',
+            message: 'A cash deposit of '.$amountMinor.' '.$currency.' was posted.',
+            sourceType: TellerTransaction::class,
+            sourcePublicId: $result->public_id,
+            actionUrl: '/teller-transactions?filter[transaction_type]=cash_deposit',
+            metadata: [
+                'teller_session_public_id' => $tellerSession->public_id,
+                'customer_account_public_id' => $customerAccount->public_id,
+                'amount_minor' => $amountMinor,
+                'currency' => $currency,
+            ],
+        );
 
         return $this->transactionResponse($result, 'Cash deposit posted successfully');
     }
@@ -411,6 +429,22 @@ final class TellerCashTransactionWorkflow extends BaseController
             'customer_account_signature_public_id' => $signatureCheck['signature_public_id'],
             'signature_verification_method' => $signatureCheck['verification_method'],
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $result->agency_id,
+            type: 'warning',
+            category: 'cash_withdrawal_posted',
+            title: 'Cash withdrawal posted',
+            message: 'A cash withdrawal of '.$amountMinor.' '.$currency.' was posted.',
+            sourceType: TellerTransaction::class,
+            sourcePublicId: $result->public_id,
+            actionUrl: '/teller-transactions?filter[transaction_type]=cash_withdrawal',
+            metadata: [
+                'teller_session_public_id' => $tellerSession->public_id,
+                'customer_account_public_id' => $customerAccount->public_id,
+                'amount_minor' => $amountMinor,
+                'currency' => $currency,
+            ],
+        );
 
         return $this->transactionResponse($result, 'Cash withdrawal posted successfully');
     }
@@ -486,6 +520,20 @@ final class TellerCashTransactionWorkflow extends BaseController
             'original_transaction_public_id' => $tellerTransaction->public_id,
             'reversal_journal_entry_public_id' => $reversalJournal->public_id,
         ], request: $request);
+        $this->notifications->notifyAgency(
+            agencyId: $reversal->agency_id,
+            type: 'warning',
+            category: 'cash_transaction_reversed',
+            title: 'Cash transaction reversed',
+            message: 'A teller transaction was reversed.',
+            sourceType: TellerTransaction::class,
+            sourcePublicId: $reversal->public_id,
+            actionUrl: '/teller-transactions?filter[transaction_type]=cash_reversal',
+            metadata: [
+                'original_transaction_public_id' => $tellerTransaction->public_id,
+                'reversal_journal_entry_public_id' => $reversalJournal->public_id,
+            ],
+        );
 
         return $this->transactionResponse($reversal, 'Cash transaction reversed successfully');
     }

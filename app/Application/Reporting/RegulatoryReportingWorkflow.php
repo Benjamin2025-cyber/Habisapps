@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Reporting;
 
+use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
+use App\Models\ReportRun;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
@@ -59,6 +61,7 @@ final class RegulatoryReportingWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly MappingCompletenessGate $gate,
+        private readonly UserNotificationFeed $notifications,
     ) {}
 
     public function storeReportDefinitionVersion(Request $request): JsonResponse
@@ -184,12 +187,52 @@ final class RegulatoryReportingWorkflow extends BaseController
             'report_run_public_id' => $runPublicId,
             'review_status' => $this->rowString($row, 'review_status'),
         ], request: $request);
+        $this->notifyReportRunReviewed($row);
 
         return $this->respondSuccess([
             'public_id' => $this->rowString($row, 'public_id'),
             'review_status' => $this->rowString($row, 'review_status'),
             'reviewed_at' => $this->rowNullableString($row, 'reviewed_at'),
         ], 'Report run review recorded');
+    }
+
+    private function notifyReportRunReviewed(object $row): void
+    {
+        $reviewStatus = $this->rowString($row, 'review_status');
+        $type = $reviewStatus === 'approved' ? 'success' : 'warning';
+        $category = $reviewStatus === 'approved' ? 'report_run_review_approved' : 'report_run_review_rejected';
+        $publicId = $this->rowString($row, 'public_id');
+        $agencyId = $this->rowNullableInt($row, 'agency_id');
+        $metadata = [
+            'review_status' => $reviewStatus,
+        ];
+
+        if ($agencyId !== null) {
+            $this->notifications->notifyAgency(
+                agencyId: $agencyId,
+                type: $type,
+                category: $category,
+                title: 'Report run review '.$reviewStatus,
+                message: 'A report run review was recorded as '.$reviewStatus.'.',
+                sourceType: ReportRun::class,
+                sourcePublicId: $publicId,
+                actionUrl: '/report-runs/'.$publicId,
+                metadata: $metadata,
+            );
+
+            return;
+        }
+
+        $this->notifications->notifyPlatform(
+            type: $type,
+            category: $category,
+            title: 'Report run review '.$reviewStatus,
+            message: 'A report run review was recorded as '.$reviewStatus.'.',
+            sourceType: ReportRun::class,
+            sourcePublicId: $publicId,
+            actionUrl: '/report-runs/'.$publicId,
+            metadata: $metadata,
+        );
     }
 
     public function submitReportRun(Request $request, string $runPublicId): JsonResponse
@@ -339,6 +382,13 @@ final class RegulatoryReportingWorkflow extends BaseController
         $value = ((array) $row)[$key] ?? 0;
 
         return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function rowNullableInt(object $row, string $key): ?int
+    {
+        $value = ((array) $row)[$key] ?? null;
+
+        return is_numeric($value) ? (int) $value : null;
     }
 
     private function nullableString(mixed $value): ?string
