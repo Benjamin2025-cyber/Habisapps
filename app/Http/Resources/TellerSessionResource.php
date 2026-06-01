@@ -24,6 +24,7 @@ final class TellerSessionResource extends JsonResource
         $businessDate = $session->getAttribute('business_date');
         $openedAt = $session->getAttribute('opened_at');
         $closedAt = $session->getAttribute('closed_at');
+        $summary = $session->getAttribute('cash_summary');
 
         return [
             'public_id' => $session->public_id,
@@ -38,6 +39,7 @@ final class TellerSessionResource extends JsonResource
             'closing_declaration_minor' => $session->closing_declaration_minor,
             'currency' => $session->currency,
             'status' => $session->status,
+            'summary' => is_array($summary) ? $summary : null,
             'created_at' => $session->created_at?->toAtomString(),
             'updated_at' => $session->updated_at?->toAtomString(),
         ];

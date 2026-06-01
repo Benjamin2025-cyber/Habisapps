@@ -153,5 +153,6 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::post('teller-sessions/{tellerSession}/manual-journal-entries', [TellerTransactionController::class, 'storeManualJournal']);
     Route::get('teller-sessions/{tellerSession}/reconciliations', [TillReconciliationController::class, 'index']);
     Route::post('teller-sessions/{tellerSession}/reconciliations', [TillReconciliationController::class, 'store']);
+    Route::get('teller-transactions', [TellerTransactionController::class, 'index']);
     Route::post('teller-transactions/{tellerTransaction}/reverse', [TellerTransactionController::class, 'reverse']);
 });

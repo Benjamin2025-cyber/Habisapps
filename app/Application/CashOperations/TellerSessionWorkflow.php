@@ -13,7 +13,6 @@ use App\Models\Agency;
 use App\Models\Denomination;
 use App\Models\StaffAgencyAssignment;
 use App\Models\TellerSession;
-use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\AccountingDay\AccountingDayGuard;
@@ -27,22 +26,11 @@ use Illuminate\Support\Str;
 
 final class TellerSessionWorkflow extends BaseController
 {
-    /**
-     * Exact transaction-type direction map for theoretical balance.
-     * Adding a new teller transaction type? Add it here too — unknown
-     * types fail closed (do not move the till).
-     *
-     * @var array<string, int>
-     */
-    private const TILL_BALANCE_DIRECTION = [
-        TellerTransaction::TYPE_CASH_DEPOSIT => 1,
-        TellerTransaction::TYPE_CASH_WITHDRAWAL => -1,
-    ];
-
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly AccountingDayGuard $accountingDayGuard,
+        private readonly TellerSessionSummary $summary,
     ) {}
 
     public function index(Request $request): TellerSessionCollection|JsonResponse
@@ -84,7 +72,10 @@ final class TellerSessionWorkflow extends BaseController
             });
         }
 
-        return new TellerSessionCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));
+        $paginator = $query->paginate(min(max($request->integer('per_page', 25), 1), 100));
+        $this->summary->attach($paginator->getCollection());
+
+        return new TellerSessionCollection($paginator);
     }
 
     public function store(StoreTellerSessionRequest $request): JsonResponse
@@ -177,8 +168,11 @@ final class TellerSessionWorkflow extends BaseController
             'denomination_counts' => $denominationCounts['lines'],
         ], request: $request);
 
+        $session->loadMissing(['agency', 'accountingDay', 'till', 'teller']);
+        $this->summary->attach([$session]);
+
         return $this->respondCreated(
-            TellerSessionResource::make($session->loadMissing(['agency', 'accountingDay', 'till', 'teller'])),
+            TellerSessionResource::make($session),
             'Teller session opened successfully'
         );
     }
@@ -190,7 +184,10 @@ final class TellerSessionWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(TellerSessionResource::make($tellerSession->loadMissing(['agency', 'accountingDay', 'till', 'teller'])));
+        $tellerSession->loadMissing(['agency', 'accountingDay', 'till', 'teller']);
+        $this->summary->attach([$tellerSession]);
+
+        return $this->respondSuccess(TellerSessionResource::make($tellerSession));
     }
 
     public function close(CloseTellerSessionRequest $request, TellerSession $tellerSession): JsonResponse
@@ -259,8 +256,11 @@ final class TellerSessionWorkflow extends BaseController
             'denomination_counts' => $denominationCounts['lines'],
         ], request: $request);
 
+        $tellerSession->refresh()->loadMissing(['agency', 'accountingDay', 'till', 'teller']);
+        $this->summary->attach([$tellerSession]);
+
         return $this->respondSuccess(
-            TellerSessionResource::make($tellerSession->refresh()->loadMissing(['agency', 'accountingDay', 'till', 'teller'])),
+            TellerSessionResource::make($tellerSession),
             'Teller session closed successfully'
         );
     }
@@ -336,26 +336,7 @@ final class TellerSessionWorkflow extends BaseController
 
     private function theoreticalBalanceMinor(TellerSession $session): int
     {
-        $opening = $session->opening_declaration_minor ?? 0;
-        $transactions = DB::table('teller_transactions')
-            ->where('teller_session_id', $session->id)
-            ->where('status', 'posted')
-            ->get(['transaction_type', 'amount_minor']);
-
-        $movement = 0;
-        foreach ($transactions as $transaction) {
-            $type = is_string($transaction->transaction_type)
-                ? $transaction->transaction_type
-                : '';
-            $amount = is_numeric($transaction->amount_minor)
-                ? (int) $transaction->amount_minor
-                : 0;
-
-            $direction = self::TILL_BALANCE_DIRECTION[$type] ?? 0;
-            $movement += $direction * $amount;
-        }
-
-        return $opening + $movement;
+        return $this->summary->theoreticalBalanceMinor($session);
     }
 
     /**

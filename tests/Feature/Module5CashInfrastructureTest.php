@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\LedgerAccount;
+use App\Models\TellerTransaction;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1403,6 +1404,307 @@ final class Module5CashInfrastructureTest extends TestCase
 
         $this->assertJsonSuccess($create, 201);
         $create->assertJsonPath('data.agency_public_id', $agency['public_id']);
+    }
+
+    // ─── Teller transaction list & session summary (FBI2-024) ──────────────
+
+    public function test_teller_transaction_list_enforces_agency_and_teller_scope(): void
+    {
+        // Agency A: two tellers with their own sessions.
+        $a = $this->openCashSession('SCOPE-A');
+        $teller2 = $this->createUserWithRole('teller', $a['agency']['code'], $a['agency']['name']);
+        $sessionA2 = $this->openSessionForTeller($a['manager'], $a['agency'], 'SCOPE-A2', $teller2);
+
+        $this->postDeposit($a['teller'], $a['session_public_id'], $a['account_public_id'], 10000, 'a1-dep', 'Awa One');
+        $this->postWithdrawal($a['teller'], $a['session_public_id'], $a['account_public_id'], $a['signature_public_id'], 3000, 'a1-wd');
+        $this->postDeposit($teller2, $sessionA2['session_public_id'], $sessionA2['account_public_id'], 4000, 'a2-dep', 'Awa Two');
+
+        // Agency B: an unrelated session/transaction.
+        $b = $this->openCashSession('SCOPE-B');
+        $depB = $this->postDeposit($b['teller'], $b['session_public_id'], $b['account_public_id'], 7000, 'b1-dep', 'Bob B');
+        $bTransactionId = $this->requireStringJsonPath($depB, 'data.teller_transaction.public_id');
+
+        // Agency-manager A sees every agency-A transaction (3) and none from B.
+        $managerView = $this->withApiHeaders()->actingAsSanctum($a['manager'])->getJson('/api/v1/teller-transactions');
+        $this->assertJsonSuccess($managerView);
+        self::assertSame(3, $managerView->json('meta.pagination.total'));
+        self::assertNotContains($bTransactionId, $this->transactionPublicIds($managerView));
+
+        // Teller 1 sees only their own session (deposit + withdrawal = 2).
+        $teller1View = $this->withApiHeaders()->actingAsSanctum($a['teller'])->getJson('/api/v1/teller-transactions');
+        $this->assertJsonSuccess($teller1View);
+        self::assertSame(2, $teller1View->json('meta.pagination.total'));
+
+        // Teller 2 sees only their own session (1).
+        $teller2View = $this->withApiHeaders()->actingAsSanctum($teller2)->getJson('/api/v1/teller-transactions');
+        $this->assertJsonSuccess($teller2View);
+        self::assertSame(1, $teller2View->json('meta.pagination.total'));
+
+        // A teller cannot reach another teller's session even via an explicit filter.
+        $teller1FilteringTeller2 = $this->withApiHeaders()->actingAsSanctum($a['teller'])
+            ->getJson('/api/v1/teller-transactions?filter[teller_session_public_id]='.$sessionA2['session_public_id']);
+        $this->assertJsonSuccess($teller1FilteringTeller2);
+        self::assertSame(0, $teller1FilteringTeller2->json('meta.pagination.total'));
+
+        // Cross-agency manager cannot see or infer agency-A transactions.
+        $managerBView = $this->withApiHeaders()->actingAsSanctum($b['manager'])->getJson('/api/v1/teller-transactions');
+        $this->assertJsonSuccess($managerBView);
+        self::assertSame(1, $managerBView->json('meta.pagination.total'));
+
+        // Platform-admin sees all agencies (3 + 1 = 4).
+        $admin = $this->createUserWithRole('platform-admin');
+        $adminView = $this->withApiHeaders()->actingAsSanctum($admin)->getJson('/api/v1/teller-transactions');
+        $this->assertJsonSuccess($adminView);
+        self::assertSame(4, $adminView->json('meta.pagination.total'));
+    }
+
+    public function test_teller_session_summary_matches_totals_and_close_rules(): void
+    {
+        $ctx = $this->openCashSession('SUMMARY');
+        $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 10000, 'sum-dep');
+        $this->postWithdrawal($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], $ctx['signature_public_id'], 3000, 'sum-wd');
+
+        $show = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id']);
+        $this->assertJsonSuccess($show);
+
+        $show->assertJsonPath('data.summary.deposits_total_minor', 10000);
+        $show->assertJsonPath('data.summary.withdrawals_total_minor', 3000);
+        $show->assertJsonPath('data.summary.manual_journals_total_minor', 0);
+        $show->assertJsonPath('data.summary.reversals_total_minor', 0);
+        $show->assertJsonPath('data.summary.transaction_count', 2);
+        $show->assertJsonPath('data.summary.posted_transaction_count', 2);
+        $show->assertJsonPath('data.summary.pending_transaction_count', 0);
+        // opening 5000 + deposits 10000 - withdrawals 3000.
+        $show->assertJsonPath('data.summary.expected_cash_balance_minor', 12000);
+        self::assertNotNull($show->json('data.summary.last_transaction_at'));
+
+        // Index summary must equal the show summary (no N+1 drift between paths).
+        $index = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])->getJson('/api/v1/teller-sessions');
+        $this->assertJsonSuccess($index);
+        $index->assertJsonPath('data.teller_sessions.0.summary.expected_cash_balance_minor', 12000);
+
+        // The close validation accepts exactly the summary's expected balance,
+        // proving the dashboard summary and close use the same direction rules.
+        $close = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/close', [
+                'closing_declaration_minor' => 12000,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($close);
+        $close->assertJsonPath('data.status', 'closed');
+    }
+
+    public function test_reversed_deposit_is_excluded_from_expected_balance_and_counted_as_reversal(): void
+    {
+        $ctx = $this->openCashSession('REV');
+        $deposit = $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 10000, 'rev-dep');
+        $transactionPublicId = $this->requireStringJsonPath($deposit, 'data.teller_transaction.public_id');
+
+        // The agency manager (with reverse permission) reverses the deposit.
+        $reverse = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->postJson('/api/v1/teller-transactions/'.$transactionPublicId.'/reverse', [
+                'reason' => 'Posted in error',
+            ]);
+        $this->assertJsonSuccess($reverse, 201);
+
+        $show = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id']);
+        $this->assertJsonSuccess($show);
+
+        // Reversed deposit no longer counts toward posted deposits or expected cash.
+        $show->assertJsonPath('data.summary.deposits_total_minor', 0);
+        $show->assertJsonPath('data.summary.reversals_total_minor', 10000);
+        $show->assertJsonPath('data.summary.expected_cash_balance_minor', 5000);
+        $show->assertJsonPath('data.summary.posted_transaction_count', 1);
+        $show->assertJsonPath('data.summary.transaction_count', 2);
+    }
+
+    public function test_teller_transaction_filters_compose_and_reject_unknown_filters(): void
+    {
+        $ctx = $this->openCashSession('FILTER');
+        $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 10000, 'flt-dep', 'Filterable Depositor');
+        $this->postWithdrawal($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], $ctx['signature_public_id'], 2000, 'flt-wd');
+
+        // Filter by transaction type.
+        $deposits = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[transaction_type]='.TellerTransaction::TYPE_CASH_DEPOSIT);
+        $this->assertJsonSuccess($deposits);
+        self::assertSame(1, $deposits->json('meta.pagination.total'));
+        $deposits->assertJsonPath('data.teller_transactions.0.transaction_type', TellerTransaction::TYPE_CASH_DEPOSIT);
+
+        // Filter by status + exact transaction date compose together.
+        $byStatusAndDate = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[status]=posted&filter[transaction_date]='.now()->toDateString());
+        $this->assertJsonSuccess($byStatusAndDate);
+        self::assertSame(2, $byStatusAndDate->json('meta.pagination.total'));
+
+        // Filter by customer account.
+        $byAccount = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[customer_account_public_id]='.$ctx['account_public_id']);
+        $this->assertJsonSuccess($byAccount);
+        self::assertSame(2, $byAccount->json('meta.pagination.total'));
+
+        // A future from-date returns nothing.
+        $future = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[transaction_date_from]='.now()->addDay()->toDateString());
+        $this->assertJsonSuccess($future);
+        self::assertSame(0, $future->json('meta.pagination.total'));
+
+        // Unknown filter keys are rejected rather than silently widening the query.
+        $unknown = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?filter[agency_id]=1');
+        $this->assertJsonError($unknown, 422);
+        $unknown->assertJsonPath('message', 'Unsupported filter parameters.');
+    }
+
+    public function test_teller_transaction_search_matches_reference_and_depositor(): void
+    {
+        $ctx = $this->openCashSession('SEARCH');
+        $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 10000, 'srch-dep', 'Unique Searchterm Name');
+
+        $bySearch = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?search=Searchterm');
+        $this->assertJsonSuccess($bySearch);
+        self::assertSame(1, $bySearch->json('meta.pagination.total'));
+
+        $noMatch = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-transactions?search=zzz-no-such-term');
+        $this->assertJsonSuccess($noMatch);
+        self::assertSame(0, $noMatch->json('meta.pagination.total'));
+    }
+
+    public function test_teller_transaction_list_requires_cash_transactions_view(): void
+    {
+        $ctx = $this->openCashSession('PERM');
+        $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 10000, 'perm-dep');
+
+        // loan-officer has no cash.transactions.view permission.
+        $loanOfficer = $this->createUserWithRole('loan-officer', $ctx['agency']['code'], $ctx['agency']['name']);
+        $denied = $this->withApiHeaders()->actingAsSanctum($loanOfficer)->getJson('/api/v1/teller-transactions');
+        $this->assertJsonError($denied, 403);
+    }
+
+    public function test_teller_remains_denied_on_operational_dashboard(): void
+    {
+        $agency = $this->createAgency('DASH-DENY');
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+
+        $response = $this->withApiHeaders()->actingAsSanctum($teller)->getJson('/api/v1/dashboards/operational');
+        $this->assertJsonError($response, 403);
+    }
+
+    /**
+     * @param  array{id:int, code:string, name:string, public_id:string}  $agency
+     * @return array{session_public_id:string, till_public_id:string, account_public_id:string}
+     */
+    private function openSessionForTeller(User $manager, array $agency, string $code, User $teller): array
+    {
+        $cashLedger = $this->createLedgerAccount($agency['id'], $code.'-TILL-LED', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $depositLedger = $this->createLedgerAccount($agency['id'], $code.'-DEP-LED', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $account = $this->createCustomerAccount($agency['id'], $depositLedger['id'], $code.'-ACC');
+
+        $till = $this->withApiHeaders()->actingAsSanctum($manager)->postJson('/api/v1/tills', [
+            'code' => $code.'-TILL',
+            'name' => $code.' Till',
+            'requires_denominations' => false,
+            'assigned_user_public_id' => $teller->public_id,
+            'ledger_account_public_id' => $cashLedger['public_id'],
+            'max_withdrawal_limit_minor' => 100000,
+        ]);
+        $this->assertJsonSuccess($till, 201);
+        $tillPublicId = $this->requireStringJsonPath($till, 'data.public_id');
+
+        $open = $this->withApiHeaders()->actingAsSanctum($manager)->postJson('/api/v1/teller-sessions', [
+            'till_public_id' => $tillPublicId,
+            'teller_user_public_id' => $teller->public_id,
+            'business_date' => now()->toDateString(),
+            'opening_declaration_minor' => 5000,
+            'currency' => 'XAF',
+        ]);
+        $this->assertJsonSuccess($open, 201);
+
+        return [
+            'session_public_id' => $this->requireStringJsonPath($open, 'data.public_id'),
+            'till_public_id' => $tillPublicId,
+            'account_public_id' => $account['public_id'],
+        ];
+    }
+
+    /**
+     * @return array{agency: array{id:int, code:string, name:string, public_id:string}, manager: User, teller: User, session_public_id: string, till_public_id: string, account_public_id: string, signature_public_id: string}
+     */
+    private function openCashSession(string $code): array
+    {
+        $agency = $this->createAgency($code);
+        $manager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+
+        $session = $this->openSessionForTeller($manager, $agency, $code, $teller);
+        $accountId = DB::table('customer_accounts')->where('public_id', $session['account_public_id'])->value('id');
+        self::assertIsInt($accountId);
+        $signature = $this->createVerifiedAccountSignature($agency['id'], $accountId);
+
+        return [
+            'agency' => $agency,
+            'manager' => $manager,
+            'teller' => $teller,
+            'session_public_id' => $session['session_public_id'],
+            'till_public_id' => $session['till_public_id'],
+            'account_public_id' => $session['account_public_id'],
+            'signature_public_id' => $signature['public_id'],
+        ];
+    }
+
+    private function postDeposit(User $actor, string $sessionPublicId, string $accountPublicId, int $amount, string $idempotencyKey, ?string $depositorName = null): TestResponse
+    {
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $accountPublicId,
+                'amount_minor' => $amount,
+                'currency' => 'XAF',
+                'idempotency_key' => $idempotencyKey,
+                'operation_code' => 'cash_deposit',
+                'depositor_name' => $depositorName ?? 'Counter Depositor',
+                'description' => 'Counter cash deposit',
+            ]);
+        $this->assertJsonSuccess($response, 201);
+
+        return $response;
+    }
+
+    private function postWithdrawal(User $actor, string $sessionPublicId, string $accountPublicId, string $signaturePublicId, int $amount, string $idempotencyKey): TestResponse
+    {
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $accountPublicId,
+                'amount_minor' => $amount,
+                'currency' => 'XAF',
+                'signature_public_id' => $signaturePublicId,
+                'signature_verification_method' => 'visual_match',
+                'idempotency_key' => $idempotencyKey,
+            ]);
+        $this->assertJsonSuccess($response, 201);
+
+        return $response;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function transactionPublicIds(TestResponse $response): array
+    {
+        $rows = $response->json('data.teller_transactions');
+        $ids = [];
+        if (is_array($rows)) {
+            foreach ($rows as $row) {
+                if (is_array($row) && isset($row['public_id']) && is_string($row['public_id'])) {
+                    $ids[] = $row['public_id'];
+                }
+            }
+        }
+
+        return $ids;
     }
 
     private function assertNoCashWorkflowRecords(): void
