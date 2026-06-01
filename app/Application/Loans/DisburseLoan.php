@@ -16,6 +16,7 @@ use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Finance\PhysicalCashAmount;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,6 +24,10 @@ use InvalidArgumentException;
 
 final class DisburseLoan
 {
+    public function __construct(
+        private readonly AccountingDayGuard $accountingDayGuard,
+    ) {}
+
     /**
      * @return array{loan: Loan, disbursement: LoanDisbursement, journal_entry: JournalEntry}
      */
@@ -105,11 +110,13 @@ final class DisburseLoan
             $reference = 'LD-'.$lockedLoan->loan_number;
             $idempotencyKey = 'loan-disbursement:'.$lockedLoan->public_id;
             $postedAt = now();
-            $effectiveBusinessDate = $businessDate ?? $postedAt->toDateString();
+            $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.disburse', $lockedLoan->agency_id, $businessDate);
+            $effectiveBusinessDate = (string) $accountingDay->business_date?->toDateString();
             $journalEntry = JournalEntry::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'reference' => $reference,
                 'business_date' => $effectiveBusinessDate,
+                'accounting_day_id' => $accountingDay->id,
                 'posted_at' => null,
                 'agency_id' => $lockedLoan->agency_id,
                 'source_module' => 'credit_loans',

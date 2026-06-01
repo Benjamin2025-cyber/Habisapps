@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string $public_id
  * @property int $batch_procedure_id
  * @property int|null $agency_id
+ * @property int|null $accounting_day_id
  * @property string $business_date
  * @property string $status
  * @property Carbon|null $started_at
@@ -32,6 +33,7 @@ use Illuminate\Support\Carbon;
     'public_id',
     'batch_procedure_id',
     'agency_id',
+    'accounting_day_id',
     'business_date',
     'status',
     'started_at',
@@ -81,6 +83,12 @@ final class BatchRun extends Model
     public function agency(): BelongsTo
     {
         return $this->belongsTo(Agency::class);
+    }
+
+    /** @return BelongsTo<AccountingDay, $this> */
+    public function accountingDay(): BelongsTo
+    {
+        return $this->belongsTo(AccountingDay::class);
     }
 
     /** @return BelongsTo<User, $this> */

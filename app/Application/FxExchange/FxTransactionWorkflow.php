@@ -10,6 +10,7 @@ use App\Models\JournalLine;
 use App\Models\LedgerAccount;
 use App\Models\Till;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ final class FxTransactionWorkflow extends BaseController
 {
     public function __construct(
         private readonly SecurityAudit $securityAudit,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function storeExchangeTransaction(Request $request, string $tillPublicId): JsonResponse
@@ -50,6 +52,9 @@ final class FxTransactionWorkflow extends BaseController
                 $till = $this->lockTill($tillPublicId);
                 $this->assertExchangeTill($till);
                 $this->assertAuthorization($till->agency_id, (string) $validated['direction']);
+
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'fx.transaction', $till->agency_id);
+                $businessDate = $accountingDay->business_date?->toDateString();
 
                 $foreignCurrency = mb_strtoupper((string) $validated['foreign_currency']);
                 $this->assertActiveCurrency($foreignCurrency);
@@ -105,12 +110,12 @@ final class FxTransactionWorkflow extends BaseController
                     : 'fx-tx:'.$tillPublicId.':'.$transactionNumber;
                 $transactionDate = is_string($validated['transaction_date'] ?? null) && $validated['transaction_date'] !== ''
                     ? $validated['transaction_date']
-                    : now()->toDateString();
+                    : $businessDate;
 
                 $journalEntry = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => $transactionNumber,
-                    'business_date' => $transactionDate,
+                    'business_date' => $businessDate,
                     'posted_at' => null,
                     'agency_id' => $till->agency_id,
                     'source_module' => 'fx',
@@ -119,6 +124,7 @@ final class FxTransactionWorkflow extends BaseController
                     'description' => 'Counter currency exchange '.$direction,
                     'created_by_user_id' => $actor->id,
                     'idempotency_key' => $idempotencyKey,
+                    'accounting_day_id' => $accountingDay->id,
                 ]);
 
                 JournalLine::query()->create([
@@ -238,7 +244,9 @@ final class FxTransactionWorkflow extends BaseController
                 if (! $original instanceof JournalEntry) {
                     throw new InvalidArgumentException('Original journal entry was not found.');
                 }
-                $reversalEntry = $this->createReversingEntry($original, $actor, 'fx-reversal:'.$transactionPublicId);
+
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'fx.reversal', $this->rowInt($tx, 'agency_id'));
+                $reversalEntry = $this->createReversingEntry($original, $actor, 'fx-reversal:'.$transactionPublicId, $accountingDay);
 
                 DB::table('fx_transactions')->where('id', $this->rowInt($tx, 'id'))->update([
                     'status' => 'reversed',
@@ -437,12 +445,12 @@ final class FxTransactionWorkflow extends BaseController
         ])->save();
     }
 
-    private function createReversingEntry(JournalEntry $original, User $actor, string $idempotencyKey): JournalEntry
+    private function createReversingEntry(JournalEntry $original, User $actor, string $idempotencyKey, \App\Models\AccountingDay $accountingDay): JournalEntry
     {
         $reversal = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'REV-'.$original->reference,
-            'business_date' => now()->toDateString(),
+            'business_date' => $accountingDay->business_date?->toDateString(),
             'posted_at' => null,
             'agency_id' => $original->agency_id,
             'source_module' => $original->source_module,
@@ -453,6 +461,7 @@ final class FxTransactionWorkflow extends BaseController
             'reversal_of_journal_entry_id' => $original->id,
             'created_by_user_id' => $actor->id,
             'idempotency_key' => $idempotencyKey,
+            'accounting_day_id' => $accountingDay->id,
         ]);
 
         foreach ($original->lines as $line) {

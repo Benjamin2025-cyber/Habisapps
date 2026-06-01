@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AccountHold;
+use App\Models\AccountingDay;
 use App\Models\Client;
 use App\Models\CustomerAccount;
 use App\Models\CustomerAccountSignature;
@@ -18,9 +19,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
+use Tests\Traits\OpensAccountingDay;
 
 final class Module3AccountingArchitectureTest extends TestCase
 {
+    use OpensAccountingDay;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -1043,6 +1046,8 @@ final class Module3AccountingArchitectureTest extends TestCase
         $maker = $this->createUserWithRole('platform-admin');
         $reviewer = $this->createUserWithRole('platform-admin');
         $agency = $this->createAgency('ACCT-20');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay((int) $agency['id'], '2026-05-01');
 
         $cashLedger = $this->withApiHeaders()
             ->actingAsSanctum($maker)
@@ -1087,6 +1092,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $cashLedgerPublicId, 'debit_minor' => 0, 'credit_minor' => 3000],
         ]);
 
+        $this->ensureOpenAccountingDay((int) $agency['id'], '2026-05-03');
         $draftOnlyEntry = $this->withApiHeaders()
             ->actingAsSanctum($maker)
             ->postJson('/api/v1/journal-entries', [
@@ -1209,6 +1215,30 @@ final class Module3AccountingArchitectureTest extends TestCase
         $statement->assertJsonPath('meta.pagination.total', 1);
         $statement->assertJsonMissing(['id' => 1]);
 
+        $secondAccountingDay = AccountingDay::query()
+            ->where('agency_id', $agency['id'])
+            ->whereDate('business_date', '2026-05-02')
+            ->firstOrFail();
+        $secondAccountingDay->forceFill([
+            'status' => AccountingDay::STATUS_CLOSED,
+            'calendar_closed_at' => now(),
+        ])->save();
+
+        $statementByAccountingDay = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/customer-accounts/'.$customerAccountPublicId.'/statement?currency=XAF&accounting_day_public_id='.$secondAccountingDay->public_id);
+        $this->assertJsonSuccess($statementByAccountingDay);
+        $statementByAccountingDay->assertJsonPath('data.statement.accounting_day_public_id', $secondAccountingDay->public_id);
+        $statementByAccountingDay->assertJsonPath('data.statement.accounting_day_status', AccountingDay::STATUS_CLOSED);
+        $statementByAccountingDay->assertJsonPath('data.statement.accounting_day_final', true);
+        $statementByAccountingDay->assertJsonPath('data.statement.debit_total_minor', 3000);
+        $statementByAccountingDay->assertJsonPath('data.statement.credit_total_minor', 0);
+        $statementByAccountingDay->assertJsonPath('data.statement.closing_balance_minor', 7000);
+        $statementByAccountingDay->assertJsonPath('data.movements.0.accounting_day_public_id', $secondAccountingDay->public_id);
+        $statementByAccountingDay->assertJsonPath('data.movements.0.accounting_day_status', AccountingDay::STATUS_CLOSED);
+        $statementByAccountingDay->assertJsonPath('data.movements.0.accounting_day_final', true);
+        $statementByAccountingDay->assertJsonPath('meta.pagination.total', 1);
+
         $ledgerMovements = $this->withApiHeaders()
             ->actingAsSanctum($reviewer)
             ->getJson('/api/v1/ledger-accounts/'.$cashLedgerPublicId.'/movements?currency=XAF&per_page=1');
@@ -1261,6 +1291,25 @@ final class Module3AccountingArchitectureTest extends TestCase
         $reportRun->assertJsonPath('data.summary.debit_total_minor', 13000);
         $reportRun->assertJsonPath('data.summary.credit_total_minor', 13000);
         $reportRun->assertJsonPath('data.summary.row_count', 2);
+
+        $reportRunByAccountingDay = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $reportDefinition->public_id,
+                'agency_public_id' => $agency['public_id'],
+                'accounting_day_public_id' => $secondAccountingDay->public_id,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($reportRunByAccountingDay, 201);
+        $reportRunByAccountingDay->assertJsonPath('data.parameters.accounting_day_public_id', $secondAccountingDay->public_id);
+        $reportRunByAccountingDay->assertJsonPath('data.period_starts_on', '2026-05-02');
+        $reportRunByAccountingDay->assertJsonPath('data.period_ends_on', '2026-05-02');
+        $reportRunByAccountingDay->assertJsonPath('data.summary.accounting_day_public_id', $secondAccountingDay->public_id);
+        $reportRunByAccountingDay->assertJsonPath('data.summary.accounting_day_status', AccountingDay::STATUS_CLOSED);
+        $reportRunByAccountingDay->assertJsonPath('data.summary.accounting_day_final', true);
+        $reportRunByAccountingDay->assertJsonPath('data.summary.debit_total_minor', 3000);
+        $reportRunByAccountingDay->assertJsonPath('data.summary.credit_total_minor', 3000);
+        $reportRunByAccountingDay->assertJsonPath('data.summary.row_count', 2);
 
         $generalLedgerDefinitionId = DB::table('report_definitions')->insertGetId([
             'public_id' => (string) Str::ulid(),
@@ -1722,6 +1771,9 @@ final class Module3AccountingArchitectureTest extends TestCase
      */
     private function createPostedJournalEntryWithLines(User $maker, User $reviewer, string $agencyPublicId, string $reference, string $businessDate, array $lines): string
     {
+        $agencyId = $this->agencyIdFromPublicId($agencyPublicId);
+        $this->ensureOpenAccountingDay($agencyId, $businessDate);
+
         $entry = $this->withApiHeaders()
             ->actingAsSanctum($maker)
             ->postJson('/api/v1/journal-entries', [

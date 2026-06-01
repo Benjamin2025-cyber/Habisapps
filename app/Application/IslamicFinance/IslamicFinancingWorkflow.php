@@ -8,6 +8,7 @@ use App\Application\JournalEntries\CreateJournalEntryReversal;
 use App\Http\Controllers\BaseController;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,7 @@ final class IslamicFinancingWorkflow extends BaseController
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
         private readonly IslamicSalamGoodsWorkflow $salamGoods,
         private readonly IslamicIstisnaaProjectWorkflow $istisnaaProjects,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function storeFinancing(Request $request): JsonResponse
@@ -1427,10 +1429,17 @@ final class IslamicFinancingWorkflow extends BaseController
                     throw new InvalidArgumentException('Approved Islamic mapping with both debit and credit ledgers is required for collection operation.');
                 }
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.financing', $agencyId);
+                $businessDate = $accountingDay->business_date?->toDateString();
+                if ($businessDate === null) {
+                    throw new InvalidArgumentException('Open accounting day is missing a business date for Murabaha collection posting.');
+                }
+
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'MUR-COL-'.Str::upper(Str::random(10)),
-                    'business_date' => now()->toDateString(),
+                    'business_date' => $businessDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $agencyId,
                     'source_module' => 'islamic_finance',
@@ -1879,10 +1888,17 @@ final class IslamicFinancingWorkflow extends BaseController
 
                     $this->storeMourabahaContractSnapshot($financing, $actor->id);
 
+                    $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.financing', $agencyId);
+                    $businessDate = $accountingDay->business_date?->toDateString();
+                    if ($businessDate === null) {
+                        throw new InvalidArgumentException('Open accounting day is missing a business date for Murabaha financing posting.');
+                    }
+
                     $journalEntry = JournalEntry::query()->create([
                         'public_id' => (string) Str::ulid(),
                         'reference' => 'MURABAHA-'.Str::upper(Str::random(10)),
-                        'business_date' => now()->toDateString(),
+                        'business_date' => $businessDate,
+                        'accounting_day_id' => $accountingDay->id,
                         'posted_at' => null,
                         'agency_id' => $agencyId,
                         'source_module' => 'islamic_finance',
@@ -2803,10 +2819,17 @@ final class IslamicFinancingWorkflow extends BaseController
                     throw new InvalidArgumentException('No eligible installment balance found for adjustment allocation.');
                 }
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.financing', $agencyId);
+                $businessDate = $accountingDay->business_date?->toDateString();
+                if ($businessDate === null) {
+                    throw new InvalidArgumentException('Open accounting day is missing a business date for Murabaha adjustment posting.');
+                }
+
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'MUR-ADJ-'.Str::upper(Str::random(10)),
-                    'business_date' => now()->toDateString(),
+                    'business_date' => $businessDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $agencyId,
                     'source_module' => 'islamic_finance',

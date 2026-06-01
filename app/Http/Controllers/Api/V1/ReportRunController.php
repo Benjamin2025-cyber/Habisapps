@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\ReportRunCollection;
 use App\Http\Resources\ReportRunResource;
+use App\Models\AccountingDay;
 use App\Models\Agency;
 use App\Models\Document;
 use App\Models\JournalEntry;
@@ -78,6 +79,7 @@ final class ReportRunController extends BaseController
             'agency_public_id' => ['nullable', 'string', 'exists:agencies,public_id'],
             'period_starts_on' => ['nullable', 'date'],
             'period_ends_on' => ['nullable', 'date', 'after_or_equal:period_starts_on'],
+            'accounting_day_public_id' => ['sometimes', 'nullable', 'string', 'exists:accounting_days,public_id'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'document_public_id' => ['nullable', 'string', 'exists:documents,public_id'],
             'parameters' => ['nullable', 'array'],
@@ -101,6 +103,17 @@ final class ReportRunController extends BaseController
         $agency = isset($validated['agency_public_id'])
             ? Agency::query()->where('public_id', $validated['agency_public_id'])->first()
             : null;
+        $accountingDay = $this->resolveAccountingDay($validated['accounting_day_public_id'] ?? null);
+        if ($accountingDay instanceof AccountingDay && ! $this->supportsAccountingDayFilter($definition->report_type)) {
+            return $this->respondUnprocessable(errors: [
+                'accounting_day_public_id' => ['Accounting-day filtering is currently supported only for journal-backed reports.'],
+            ]);
+        }
+        if ($accountingDay instanceof AccountingDay && ! $this->accountingDayMatchesAgency($accountingDay, $agency?->id)) {
+            return $this->respondUnprocessable(errors: [
+                'accounting_day_public_id' => ['The selected accounting day is outside the selected report agency scope.'],
+            ]);
+        }
         $document = isset($validated['document_public_id'])
             ? Document::query()->where('public_id', $validated['document_public_id'])->first()
             : null;
@@ -109,10 +122,10 @@ final class ReportRunController extends BaseController
         }
 
         $currency = strtoupper($validated['currency'] ?? 'XAF');
-        $from = $validated['period_starts_on'] ?? null;
-        $to = $validated['period_ends_on'] ?? null;
+        $from = $accountingDay instanceof AccountingDay ? $accountingDay->business_date?->toDateString() : ($validated['period_starts_on'] ?? null);
+        $to = $accountingDay instanceof AccountingDay ? $accountingDay->business_date?->toDateString() : ($validated['period_ends_on'] ?? null);
         if ($definition->report_type === ReportDefinition::TYPE_EMF_TRIAL_BALANCE) {
-            $missingMappings = $this->unmappedLedgerAccounts($agency, $currency, $from, $to);
+            $missingMappings = $this->unmappedLedgerAccounts($agency, $currency, $from, $to, $accountingDay);
             if ($missingMappings !== []) {
                 return $this->respondUnprocessable(errors: [
                     'ledger_accounts' => ['EMF/COBAC report generation requires active mappings for all posted ledger accounts.'],
@@ -123,12 +136,12 @@ final class ReportRunController extends BaseController
 
         try {
             $summary = match ($definition->report_type) {
-                ReportDefinition::TYPE_TRIAL_BALANCE => $this->trialBalanceSummary($agency, $currency, $from, $to),
-                ReportDefinition::TYPE_EMF_TRIAL_BALANCE => $this->emfTrialBalanceSummary($agency, $currency, $from, $to),
+                ReportDefinition::TYPE_TRIAL_BALANCE => $this->trialBalanceSummary($agency, $currency, $from, $to, $accountingDay),
+                ReportDefinition::TYPE_EMF_TRIAL_BALANCE => $this->emfTrialBalanceSummary($agency, $currency, $from, $to, $accountingDay),
                 ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING => $this->creditPortfolioOutstandingSummary($agency, $currency, $from, $to),
                 ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY => $this->creditParDelinquencySummary($agency, $currency, $to ?? now()->toDateString()),
                 ReportDefinition::TYPE_CREDIT_COLLECTION_PERFORMANCE => $this->creditCollectionPerformanceSummary($agency, $currency, $from, $to),
-                default => $this->generalLedgerSummary($agency, $currency, $from, $to),
+                default => $this->generalLedgerSummary($agency, $currency, $from, $to, $accountingDay),
             };
         } catch (FormulaPolicyNotApproved $exception) {
             return $this->respondUnprocessable(errors: ['portfolio_reporting_metrics' => [$exception->getMessage()]]);
@@ -144,7 +157,10 @@ final class ReportRunController extends BaseController
             'generated_at' => now(),
             'generated_by_user_id' => $actor->id,
             'document_id' => $document?->id,
-            'parameters' => array_merge($validated['parameters'] ?? [], ['currency' => $currency]),
+            'parameters' => array_merge($validated['parameters'] ?? [], [
+                'currency' => $currency,
+                'accounting_day_public_id' => $accountingDay?->public_id,
+            ]),
             'summary' => $summary,
             'source_version_snapshot' => $sourceSnapshot,
         ]);
@@ -220,9 +236,9 @@ final class ReportRunController extends BaseController
     /**
      * @return array<string, mixed>
      */
-    private function trialBalanceSummary(?Agency $agency, string $currency, ?string $from, ?string $to): array
+    private function trialBalanceSummary(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
     {
-        $query = $this->postedLineQuery($agency, $currency, $from, $to)
+        $query = $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
             ->selectRaw('ledger_accounts.public_id AS ledger_account_public_id')
             ->selectRaw('ledger_accounts.code AS ledger_account_code')
             ->selectRaw('ledger_accounts.name AS ledger_account_name')
@@ -252,6 +268,7 @@ final class ReportRunController extends BaseController
             'currency' => $currency,
             'from' => $from,
             'to' => $to,
+            ...$this->accountingDayMetadata($accountingDay),
             'row_count' => count($rows),
             'debit_total_minor' => array_sum(array_column($rows, 'debit_total_minor')),
             'credit_total_minor' => array_sum(array_column($rows, 'credit_total_minor')),
@@ -262,9 +279,9 @@ final class ReportRunController extends BaseController
     /**
      * @return array<string, mixed>
      */
-    private function generalLedgerSummary(?Agency $agency, string $currency, ?string $from, ?string $to): array
+    private function generalLedgerSummary(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
     {
-        $totals = $this->postedLineQuery($agency, $currency, $from, $to)
+        $totals = $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
             ->selectRaw('COUNT(*) AS line_count')
             ->selectRaw('COALESCE(SUM(journal_lines.debit_minor), 0) AS debit_total_minor')
             ->selectRaw('COALESCE(SUM(journal_lines.credit_minor), 0) AS credit_total_minor')
@@ -275,6 +292,7 @@ final class ReportRunController extends BaseController
             'currency' => $currency,
             'from' => $from,
             'to' => $to,
+            ...$this->accountingDayMetadata($accountingDay),
             'line_count' => (int) ($totals->line_count ?? 0),
             'debit_total_minor' => (int) ($totals->debit_total_minor ?? 0),
             'credit_total_minor' => (int) ($totals->credit_total_minor ?? 0),
@@ -499,9 +517,9 @@ final class ReportRunController extends BaseController
     /**
      * @return array<string, mixed>
      */
-    private function emfTrialBalanceSummary(?Agency $agency, string $currency, ?string $from, ?string $to): array
+    private function emfTrialBalanceSummary(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
     {
-        $rows = $this->postedLineQuery($agency, $currency, $from, $to)
+        $rows = $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
             ->join('emf_ledger_account_mappings', function ($join): void {
                 $join->on('emf_ledger_account_mappings.ledger_account_id', '=', 'ledger_accounts.id')
                     ->where('emf_ledger_account_mappings.status', '=', 'active');
@@ -532,6 +550,7 @@ final class ReportRunController extends BaseController
             'currency' => $currency,
             'from' => $from,
             'to' => $to,
+            ...$this->accountingDayMetadata($accountingDay),
             'row_count' => count($rows),
             'debit_total_minor' => array_sum(array_column($rows, 'debit_total_minor')),
             'credit_total_minor' => array_sum(array_column($rows, 'credit_total_minor')),
@@ -542,9 +561,9 @@ final class ReportRunController extends BaseController
     /**
      * @return array<int, array{public_id:string, code:string, name:string}>
      */
-    private function unmappedLedgerAccounts(?Agency $agency, string $currency, ?string $from, ?string $to): array
+    private function unmappedLedgerAccounts(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
     {
-        return $this->postedLineQuery($agency, $currency, $from, $to)
+        return $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
             ->leftJoin('emf_ledger_account_mappings', function ($join): void {
                 $join->on('emf_ledger_account_mappings.ledger_account_id', '=', 'ledger_accounts.id')
                     ->where('emf_ledger_account_mappings.status', '=', 'active');
@@ -566,7 +585,7 @@ final class ReportRunController extends BaseController
             ->all();
     }
 
-    private function postedLineQuery(?Agency $agency, string $currency, ?string $from, ?string $to): Builder
+    private function postedLineQuery(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): Builder
     {
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
@@ -583,7 +602,50 @@ final class ReportRunController extends BaseController
         if ($to !== null) {
             $query->whereDate('journal_entries.business_date', '<=', $to);
         }
+        if ($accountingDay instanceof AccountingDay) {
+            $query->where('journal_entries.accounting_day_id', $accountingDay->id);
+        }
 
         return $query;
+    }
+
+    private function resolveAccountingDay(mixed $publicId): ?AccountingDay
+    {
+        if (! is_string($publicId) || $publicId === '') {
+            return null;
+        }
+
+        return AccountingDay::query()->where('public_id', $publicId)->first();
+    }
+
+    private function supportsAccountingDayFilter(string $reportType): bool
+    {
+        return in_array($reportType, [
+            ReportDefinition::TYPE_TRIAL_BALANCE,
+            ReportDefinition::TYPE_GENERAL_LEDGER,
+            ReportDefinition::TYPE_EMF_TRIAL_BALANCE,
+        ], true);
+    }
+
+    private function accountingDayMatchesAgency(AccountingDay $day, ?int $agencyId): bool
+    {
+        if ($day->scope_type === AccountingDay::SCOPE_INSTITUTION) {
+            return $agencyId === null;
+        }
+
+        return $day->agency_id === $agencyId;
+    }
+
+    /**
+     * @return array{accounting_day_public_id:string|null, accounting_day_status:string|null, accounting_day_final:bool|null, accounting_day_business_date:string|null}
+     */
+    private function accountingDayMetadata(?AccountingDay $day): array
+    {
+        return [
+            'accounting_day_public_id' => $day?->public_id,
+            'accounting_day_status' => $day?->status,
+            'accounting_day_final' => $day instanceof AccountingDay ? $day->status === AccountingDay::STATUS_CLOSED : null,
+            'accounting_day_business_date' => $day?->business_date?->toDateString(),
+        ];
     }
 }

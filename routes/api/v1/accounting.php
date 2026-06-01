@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\V1\AccountHoldController;
 use App\Http\Controllers\Api\V1\AccountingBalanceController;
+use App\Http\Controllers\Api\V1\AccountingDayController;
 use App\Http\Controllers\Api\V1\AccountProductController;
 use App\Http\Controllers\Api\V1\CustomerAccountController;
 use App\Http\Controllers\Api\V1\CustomerAccountSignatureController;
@@ -24,7 +25,23 @@ use App\Http\Controllers\Api\V1\TillController;
 use App\Http\Controllers\Api\V1\TillReconciliationController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
+    Route::get('accounting-days', [AccountingDayController::class, 'index']);
+    Route::get('accounting-days/current', [AccountingDayController::class, 'current']);
+    Route::post('accounting-days/open', [AccountingDayController::class, 'open'])
+        ->middleware('throttle:accounting.lifecycle')
+        ->defaults('accounting_day_classification', 'day_lifecycle');
+    Route::get('accounting-days/{accountingDay}', [AccountingDayController::class, 'show']);
+    Route::post('accounting-days/{accountingDay}/start-close', [AccountingDayController::class, 'startClose'])
+        ->middleware('throttle:accounting.lifecycle')
+        ->defaults('accounting_day_classification', 'day_lifecycle');
+    Route::post('accounting-days/{accountingDay}/close', [AccountingDayController::class, 'close'])
+        ->middleware('throttle:accounting.lifecycle')
+        ->defaults('accounting_day_classification', 'day_lifecycle');
+    Route::post('accounting-days/{accountingDay}/reopen', [AccountingDayController::class, 'reopen'])
+        ->middleware('throttle:accounting.lifecycle')
+        ->defaults('accounting_day_classification', 'day_lifecycle');
+
     Route::get('account-products', [AccountProductController::class, 'index']);
     Route::post('account-products', [AccountProductController::class, 'store']);
     Route::get('account-products/{accountProduct}', [AccountProductController::class, 'show']);

@@ -29,7 +29,8 @@ final class UpdateJournalEntryRequest extends FormRequest
     {
         return [
             'reference' => ['sometimes', 'string', 'max:64'],
-            'business_date' => ['sometimes', 'date'],
+            // business_date is intentionally not updatable: it is controlled by the
+            // accounting day the draft was created under (JC-004).
             'source_module' => ['sometimes', 'nullable', 'string', 'max:64'],
             'source_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'source_public_id' => ['sometimes', 'nullable', 'string', 'max:64'],

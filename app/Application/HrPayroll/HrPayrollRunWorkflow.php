@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Application\HrPayroll;
 
 use App\Http\Controllers\BaseController;
+use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +20,10 @@ use InvalidArgumentException;
 
 final class HrPayrollRunWorkflow extends BaseController
 {
+    public function __construct(
+        private readonly AccountingDayGuard $accountingDayGuard,
+    ) {}
+
     public function storePayrollRun(Request $request): JsonResponse
     {
         if (! $this->requirePlatformAdmin($request)) {
@@ -232,6 +238,12 @@ final class HrPayrollRunWorkflow extends BaseController
                     throw new InvalidArgumentException('Payroll run requires an agency for posting.');
                 }
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'hr.payroll', $agencyId);
+                $businessDate = $accountingDay->business_date?->toDateString();
+                if ($businessDate === null) {
+                    throw new InvalidArgumentException('Open accounting day is missing a business date for payroll posting.');
+                }
+
                 $mapping = $this->payrollMapping($agencyId);
                 $gross = $this->rowInt($run, 'gross_amount_minor');
                 $net = $this->rowInt($run, 'net_amount_minor');
@@ -251,7 +263,7 @@ final class HrPayrollRunWorkflow extends BaseController
                     if (! $priorJournal instanceof JournalEntry) {
                         throw new InvalidArgumentException('Correction source payroll journal is missing.');
                     }
-                    $this->createReversingEntry($priorJournal, $actor, 'hr-payroll-correction:'.$runPublicId);
+                    $this->createReversingEntry($priorJournal, $actor, 'hr-payroll-correction:'.$runPublicId, $accountingDay);
                     DB::table('hr_payroll_runs')->where('id', $this->rowInt($prior, 'id'))->update([
                         'status' => 'corrected',
                         'reversal_of_run_id' => $this->rowInt($run, 'id'),
@@ -262,7 +274,8 @@ final class HrPayrollRunWorkflow extends BaseController
                 $journalEntry = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'PAYROLL-'.$this->rowString($run, 'period_key').'-'.Str::upper(Str::random(6)),
-                    'business_date' => $this->rowString($run, 'period_ends_on'),
+                    'business_date' => $businessDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $agencyId,
                     'source_module' => 'hr',
@@ -516,12 +529,13 @@ final class HrPayrollRunWorkflow extends BaseController
         ])->save();
     }
 
-    private function createReversingEntry(JournalEntry $original, User $actor, string $idempotencyKey): JournalEntry
+    private function createReversingEntry(JournalEntry $original, User $actor, string $idempotencyKey, AccountingDay $accountingDay): JournalEntry
     {
         $reversal = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'REV-'.$original->reference,
-            'business_date' => now()->toDateString(),
+            'business_date' => $accountingDay->business_date?->toDateString(),
+            'accounting_day_id' => $accountingDay->id,
             'posted_at' => null,
             'agency_id' => $original->agency_id,
             'source_module' => $original->source_module,

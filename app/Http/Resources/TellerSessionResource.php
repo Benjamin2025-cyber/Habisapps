@@ -28,6 +28,7 @@ final class TellerSessionResource extends JsonResource
         return [
             'public_id' => $session->public_id,
             'agency_public_id' => $session->relationLoaded('agency') ? $session->agency?->public_id : null,
+            'accounting_day_public_id' => $session->relationLoaded('accountingDay') ? $session->accountingDay?->public_id : null,
             'till_public_id' => $session->relationLoaded('till') ? $session->till?->public_id : null,
             'teller_user_public_id' => $session->relationLoaded('teller') ? $session->teller?->public_id : null,
             'business_date' => $businessDate instanceof CarbonInterface ? $businessDate->toDateString() : null,

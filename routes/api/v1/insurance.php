@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Api\V1\InsuranceController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     // Partners & products
     Route::post('insurance-partners', [InsuranceController::class, 'storePartner']);
     Route::post('insurance-products', [InsuranceController::class, 'storeProduct']);

@@ -11,6 +11,7 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ final class InsuranceClaimWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly InsuranceAccountingService $insuranceAccounting,
         private readonly ClientAlertProducer $clientAlerts,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function store(Request $request): JsonResponse
@@ -484,9 +486,16 @@ final class InsuranceClaimWorkflow extends BaseController
                 $currency = $this->rowString($claim, 'currency');
                 [$debitLedgerId, $creditLedgerId] = $this->insuranceClaimSettlementLedgers($agencyId, $currency);
 
-                $businessDate = is_string($validated['business_date'] ?? null) && $validated['business_date'] !== ''
+                $requestedBusinessDate = is_string($validated['business_date'] ?? null) && $validated['business_date'] !== ''
                     ? $validated['business_date']
-                    : ($this->rowNullableString($claim, 'settled_at') ?? now()->toDateString());
+                    : null;
+                $accountingDay = $this->accountingDayGuard->resolveAccountingDay(
+                    $actor,
+                    'insurance.claim_settlement',
+                    $agencyId,
+                    $requestedBusinessDate,
+                );
+                $businessDate = (string) $accountingDay->business_date?->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'insurance-claim-settlement:'.$claimPublicId;
@@ -507,6 +516,7 @@ final class InsuranceClaimWorkflow extends BaseController
                     'created_by_user_id' => $actor->id,
                     'posted_by_user_id' => null,
                     'idempotency_key' => $idempotencyKey,
+                    'accounting_day_id' => $accountingDay->id,
                 ]);
 
                 JournalLine::query()->create([
@@ -603,10 +613,16 @@ final class InsuranceClaimWorkflow extends BaseController
                     throw new InvalidArgumentException('Settlement journal entry not found.');
                 }
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister(
+                    $actor,
+                    'insurance.claim_settlement',
+                    $originalJe->agency_id,
+                );
+
                 $reversalJe = JournalEntry::create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'REV-'.Str::upper(Str::random(10)),
-                    'business_date' => now()->toDateString(),
+                    'business_date' => $accountingDay->business_date?->toDateString(),
                     'agency_id' => $originalJe->agency_id,
                     'source_module' => 'insurance',
                     'source_type' => 'insurance_claim_settlement_reversal',
@@ -614,6 +630,7 @@ final class InsuranceClaimWorkflow extends BaseController
                     'description' => 'Reversal of claim settlement '.$claimPublicId,
                     'status' => JournalEntry::STATUS_DRAFT,
                     'created_by_user_id' => $actor->id,
+                    'accounting_day_id' => $accountingDay->id,
                 ]);
 
                 foreach ($originalJe->lines as $line) {

@@ -25,9 +25,11 @@ Route::post('activate', [AuthController::class, 'activate'])->middleware('thrott
 Route::post('activation/resend', [AuthController::class, 'resendActivationOtp'])->middleware('throttle:auth.activation');
 Route::post('password/otp', [AuthController::class, 'requestPasswordResetOtp'])->middleware('throttle:auth.activation');
 Route::post('password/reset', [AuthController::class, 'resetPassword'])->middleware('throttle:auth.activation');
-Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::post('logout', [AuthController::class, 'logout'])
+    ->middleware(['auth:sanctum', 'accounting.day.registration-lock'])
+    ->defaults('accounting_day_classification', 'system_maintenance');
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     Route::get('me', [AuthController::class, 'me']);
 
     Route::get('agencies', [AgencyController::class, 'index']);

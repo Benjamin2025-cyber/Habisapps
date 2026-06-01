@@ -31,6 +31,7 @@ final class JournalEntryResource extends JsonResource
             'business_date' => $entry->business_date,
             'posted_at' => $entry->posted_at !== null ? Carbon::parse($entry->posted_at)->toAtomString() : null,
             'agency_public_id' => $entry->relationLoaded('agency') ? $entry->agency?->public_id : null,
+            'accounting_day_public_id' => $entry->relationLoaded('accountingDay') ? $entry->accountingDay?->public_id : null,
             'source_module' => $entry->source_module,
             'source_type' => $entry->source_type,
             'source_public_id' => $entry->source_public_id,

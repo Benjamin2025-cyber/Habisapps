@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Agency;
+use App\Models\AccountingDay;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\User;
@@ -31,6 +32,8 @@ final class BatchRunResource extends JsonResource
                 'batch_procedure_code' => null,
                 'agency_public_id' => null,
                 'agency_code' => null,
+                'accounting_day_public_id' => null,
+                'accounting_day_status' => null,
                 'operator_public_id' => null,
                 'status' => null,
                 'parameters' => null,
@@ -45,6 +48,7 @@ final class BatchRunResource extends JsonResource
 
         $procedure = $run->relationLoaded('batchProcedure') ? $run->batchProcedure : null;
         $agency = $run->relationLoaded('agency') ? $run->agency : null;
+        $accountingDay = $run->relationLoaded('accountingDay') ? $run->accountingDay : null;
         $operator = $run->relationLoaded('operator') ? $run->operator : null;
 
         return [
@@ -53,6 +57,8 @@ final class BatchRunResource extends JsonResource
             'batch_procedure_code' => $procedure instanceof BatchProcedure ? $procedure->code : null,
             'agency_public_id' => $agency instanceof Agency ? $agency->public_id : null,
             'agency_code' => $agency instanceof Agency ? $agency->code : null,
+            'accounting_day_public_id' => $accountingDay instanceof AccountingDay ? $accountingDay->public_id : null,
+            'accounting_day_status' => $accountingDay instanceof AccountingDay ? $accountingDay->status : null,
             'business_date' => $run->business_date,
             'status' => $run->status,
             'started_at' => $this->formatDate($run->started_at),

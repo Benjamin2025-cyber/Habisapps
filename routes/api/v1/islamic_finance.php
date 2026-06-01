@@ -18,7 +18,7 @@ use App\Http\Controllers\Api\V1\IslamicStandardController;
 use App\Http\Controllers\Api\V1\IslamicTreatmentController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     // Products and Sharia compliance
     Route::get('islamic-product-families', [IslamicFinanceController::class, 'indexProductFamilies']);
     Route::get('islamic-product-families/{familyCode}', [IslamicFinanceController::class, 'showProductFamily']);

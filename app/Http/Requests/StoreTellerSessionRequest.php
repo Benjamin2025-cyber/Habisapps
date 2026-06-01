@@ -26,7 +26,9 @@ final class StoreTellerSessionRequest extends FormRequest
         return [
             'till_public_id' => ['required', 'string', 'exists:tills,public_id'],
             'teller_user_public_id' => ['sometimes', 'nullable', 'string', 'exists:users,public_id'],
-            'business_date' => ['required', 'date_format:Y-m-d'],
+            // Optional: the open accounting day governs the business date. When
+            // supplied it must equal the open day (enforced by AccountingDayGuard).
+            'business_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'opening_declaration_minor' => ['required', 'integer', 'min:0'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'denomination_counts' => ['sometimes', 'array'],

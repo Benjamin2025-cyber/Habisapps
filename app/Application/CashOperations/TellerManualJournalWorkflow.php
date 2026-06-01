@@ -16,11 +16,14 @@ use App\Models\OperationCode;
 use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
+use App\Models\AccountingDay;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -29,6 +32,7 @@ final class TellerManualJournalWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function storeManualJournal(StoreCashManualJournalRequest $request, TellerSession $tellerSession): JsonResponse
@@ -51,6 +55,8 @@ final class TellerManualJournalWorkflow extends BaseController
         if ($tellerSession->status !== TellerSession::STATUS_OPEN || $till->daily_state !== Till::DAILY_STATE_OPEN) {
             return $this->respondUnprocessable(errors: ['teller_session' => ['Manual cash journals require an open teller session and open till.']]);
         }
+
+        $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.manual_journal', $request);
 
         $currency = $this->normalizedCurrency($request->input('currency', $tellerSession->currency ?? $till->currency));
         if ($currency !== $tellerSession->currency) {
@@ -78,7 +84,7 @@ final class TellerManualJournalWorkflow extends BaseController
             }
         }
 
-        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $currency, $operationCode, $prepared, $idempotencyKey): TellerTransaction {
+        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $currency, $operationCode, $prepared, $idempotencyKey, $accountingDay): TellerTransaction {
             $reference = is_string($request->input('reference')) && $request->input('reference') !== ''
                 ? $request->string('reference')->toString()
                 : 'OD-'.Str::upper(Str::random(10));
@@ -87,6 +93,7 @@ final class TellerManualJournalWorkflow extends BaseController
                 'public_id' => (string) Str::ulid(),
                 'reference' => 'JE-'.$reference,
                 'business_date' => $tellerSession->business_date,
+                'accounting_day_id' => $accountingDay->id,
                 'posted_at' => null,
                 'agency_id' => $tellerSession->agency_id,
                 'source_module' => 'cash_operations',
@@ -117,6 +124,7 @@ final class TellerManualJournalWorkflow extends BaseController
             $transaction = TellerTransaction::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'teller_session_id' => $tellerSession->id,
+                'accounting_day_id' => $accountingDay->id,
                 'agency_id' => $tellerSession->agency_id,
                 'transaction_date' => $tellerSession->business_date,
                 'till_id' => $till->id,
@@ -150,6 +158,19 @@ final class TellerManualJournalWorkflow extends BaseController
         ], request: $request);
 
         return $this->transactionResponse($result, 'Manual cash journal submitted for approval successfully');
+    }
+
+    private function resolveSessionAccountingDay(TellerSession $session, User $actor, string $operation, Request $request): AccountingDay
+    {
+        if ($session->accounting_day_id !== null) {
+            $session->loadMissing('accountingDay');
+            $day = $session->accountingDay;
+            if ($day instanceof AccountingDay) {
+                return $this->accountingDayGuard->assertDayAllowsRegistration($day, $actor, $operation, $request);
+            }
+        }
+
+        return $this->accountingDayGuard->assertCanRegister($actor, $operation, $session->agency_id, $request);
     }
 
     private function canUseSession(User $actor, TellerSession $session): bool

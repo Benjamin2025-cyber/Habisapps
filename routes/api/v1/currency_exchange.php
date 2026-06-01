@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Api\V1\CurrencyExchangeController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     Route::post('fx-authorizations', [CurrencyExchangeController::class, 'storeAuthorization']);
     Route::post('currencies', [CurrencyExchangeController::class, 'storeCurrency']);
     Route::post('exchange-rates', [CurrencyExchangeController::class, 'storeRateDraft']);

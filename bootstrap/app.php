@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\ApiVersion;
+use App\Http\Middleware\EnforceAccountingDayRegistrationLock;
 use App\Http\Middleware\IdempotencyMiddleware;
 use App\Http\Middleware\RemoveServerDisclosureHeaders;
+use App\Support\AccountingDay\AccountingDayException;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -28,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'api.version' => ApiVersion::class,
+            'accounting.day.registration-lock' => EnforceAccountingDayRegistrationLock::class,
             'idempotency' => IdempotencyMiddleware::class,
         ]);
 
@@ -119,6 +122,14 @@ return Application::configure(basePath: dirname(__DIR__))
                 'Rate limit exceeded. Try again in '.$retryAfter.' seconds.',
                 (int) $retryAfter
             );
+        });
+
+        $exceptions->render(function (AccountingDayException $e, Request $request) {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return $e->render($request);
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {

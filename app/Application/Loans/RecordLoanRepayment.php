@@ -17,6 +17,7 @@ use App\Models\LoanScheduleSnapshot;
 use App\Models\OperationAccountMapping;
 use App\Models\OperationCode;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Accounting\AccountingBalanceCalculator;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\FormulaPolicyRegistry;
@@ -39,6 +40,7 @@ final class RecordLoanRepayment
     public function __construct(
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
         private readonly AccountingBalanceCalculator $balanceCalculator,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     /**
@@ -82,7 +84,8 @@ final class RecordLoanRepayment
             }
 
             $postedAt = now();
-            $paidDate = $paidOn ?? $postedAt->toDateString();
+            $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.repay', $lockedLoan->agency_id, $paidOn);
+            $paidDate = (string) $accountingDay->business_date?->toDateString();
             $idempotencyKey = 'loan-repayment:'.hash('sha256', implode('|', [
                 $lockedLoan->public_id,
                 $customerAccount->public_id,
@@ -142,6 +145,7 @@ final class RecordLoanRepayment
                 'public_id' => (string) Str::ulid(),
                 'reference' => $reference,
                 'business_date' => $paidDate,
+                'accounting_day_id' => $accountingDay->id,
                 'posted_at' => null,
                 'agency_id' => $lockedLoan->agency_id,
                 'source_module' => 'credit_loans',

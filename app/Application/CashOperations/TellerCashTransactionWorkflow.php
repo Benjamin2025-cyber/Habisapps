@@ -20,8 +20,10 @@ use App\Models\LedgerAccount;
 use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
+use App\Models\AccountingDay;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Crm\ClientProxyMandateAuthorizer;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
@@ -39,7 +41,27 @@ final class TellerCashTransactionWorkflow extends BaseController
         private readonly AccountingBalanceCalculator $balanceCalculator,
         private readonly ClientProxyMandateAuthorizer $proxyMandateAuthorizer,
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
+
+    /**
+     * Resolve and assert the accounting day governing a teller session.
+     *
+     * Cash transactions inherit their session's accounting day; if the day has
+     * since closed, the write is blocked even though the session row is "open".
+     */
+    private function resolveSessionAccountingDay(TellerSession $session, User $actor, string $operation, Request $request): AccountingDay
+    {
+        if ($session->accounting_day_id !== null) {
+            $session->loadMissing('accountingDay');
+            $day = $session->accountingDay;
+            if ($day instanceof AccountingDay) {
+                return $this->accountingDayGuard->assertDayAllowsRegistration($day, $actor, $operation, $request);
+            }
+        }
+
+        return $this->accountingDayGuard->assertCanRegister($actor, $operation, $session->agency_id, $request);
+    }
 
     public function storeDeposit(StoreCashDepositRequest $request, TellerSession $tellerSession): JsonResponse
     {
@@ -61,6 +83,8 @@ final class TellerCashTransactionWorkflow extends BaseController
         if ($tellerSession->status !== TellerSession::STATUS_OPEN || $till->daily_state !== Till::DAILY_STATE_OPEN) {
             return $this->respondUnprocessable(errors: ['teller_session' => ['Cash deposits require an open teller session and open till.']]);
         }
+
+        $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.deposit', $request);
 
         $customerAccount = CustomerAccount::query()
             ->with(['ledgerAccount'])
@@ -117,13 +141,14 @@ final class TellerCashTransactionWorkflow extends BaseController
             }
         }
 
-        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator): TellerTransaction {
+        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $accountingDay): TellerTransaction {
             $publicId = (string) Str::ulid();
             $reference = 'CD-'.Str::upper(Str::random(10));
 
             $transaction = TellerTransaction::query()->create([
                 'public_id' => $publicId,
                 'teller_session_id' => $tellerSession->id,
+                'accounting_day_id' => $accountingDay->id,
                 'agency_id' => $tellerSession->agency_id,
                 'transaction_date' => $tellerSession->business_date,
                 'till_id' => $till->id,
@@ -148,6 +173,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 'public_id' => (string) Str::ulid(),
                 'reference' => 'JE-'.$reference,
                 'business_date' => $tellerSession->business_date,
+                'accounting_day_id' => $accountingDay->id,
                 'posted_at' => null,
                 'agency_id' => $tellerSession->agency_id,
                 'source_module' => 'cash_operations',
@@ -223,6 +249,8 @@ final class TellerCashTransactionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: ['teller_session' => ['Cash withdrawals require an open teller session and open till.']]);
         }
 
+        $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.withdrawal', $request);
+
         $customerAccount = CustomerAccount::query()
             ->with(['ledgerAccount', 'accountProduct'])
             ->where('public_id', $request->string('customer_account_public_id')->toString())
@@ -287,7 +315,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         }
 
         try {
-            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck): TellerTransaction {
+            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck, $accountingDay): TellerTransaction {
                 DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
                 $lockedAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
                 $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedAccount, $currency)['available_balance_minor'];
@@ -300,6 +328,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 $transaction = TellerTransaction::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'teller_session_id' => $tellerSession->id,
+                    'accounting_day_id' => $accountingDay->id,
                     'agency_id' => $tellerSession->agency_id,
                     'transaction_date' => $tellerSession->business_date,
                     'till_id' => $till->id,
@@ -326,6 +355,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'JE-'.$reference,
                     'business_date' => $tellerSession->business_date,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $tellerSession->agency_id,
                     'source_module' => 'cash_operations',
@@ -421,6 +451,7 @@ final class TellerCashTransactionWorkflow extends BaseController
             $reversal = TellerTransaction::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'teller_session_id' => $locked->teller_session_id,
+                'accounting_day_id' => $reversalJournal->accounting_day_id,
                 'agency_id' => $locked->agency_id,
                 'transaction_date' => $locked->transaction_date,
                 'till_id' => $locked->till_id,

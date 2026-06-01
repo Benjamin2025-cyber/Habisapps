@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Api\V1\RegulatoryReportingController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     Route::post('regulatory-sources', [RegulatoryReportingController::class, 'storeSource']);
     Route::post('regulatory-sources/{sourcePublicId}/emf-accounts', [RegulatoryReportingController::class, 'loadEmfAccounts']);
     Route::post('report-definitions', [RegulatoryReportingController::class, 'storeReportDefinitionVersion']);

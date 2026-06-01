@@ -9,6 +9,7 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -16,6 +17,10 @@ use InvalidArgumentException;
 
 final class InsuranceAccountingService
 {
+    public function __construct(
+        private readonly AccountingDayGuard $accountingDayGuard,
+    ) {}
+
     public function productForPremiumCollection(object $subscription): object
     {
         $product = DB::table('insurance_products')
@@ -164,10 +169,16 @@ final class InsuranceAccountingService
             throw new InvalidArgumentException('Refund operation credit ledger must match the customer account ledger.');
         }
 
+        $accountingDay = $this->accountingDayGuard->assertCanRegister(
+            $actor,
+            'insurance.cancellation',
+            $this->rowInt($subscription, 'agency_id'),
+        );
+
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'IRF-'.Str::upper(Str::random(10)),
-            'business_date' => now()->toDateString(),
+            'business_date' => $accountingDay->business_date?->toDateString(),
             'posted_at' => null,
             'agency_id' => $this->rowInt($subscription, 'agency_id'),
             'source_module' => 'insurance',
@@ -178,6 +189,7 @@ final class InsuranceAccountingService
             'created_by_user_id' => $actor->id,
             'posted_by_user_id' => null,
             'idempotency_key' => 'insurance-cancellation-refund:'.$this->rowString($cancellation, 'public_id'),
+            'accounting_day_id' => $accountingDay->id,
         ]);
 
         JournalLine::query()->create([
@@ -239,10 +251,16 @@ final class InsuranceAccountingService
             throw new InvalidArgumentException('Remittance approval requires a positive insurer payable amount.');
         }
 
+        $accountingDay = $this->accountingDayGuard->assertCanRegister(
+            $actor,
+            'insurance.remittance',
+            $this->rowInt($batch, 'agency_id'),
+        );
+
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'IRM-'.Str::upper(Str::random(10)),
-            'business_date' => now()->toDateString(),
+            'business_date' => $accountingDay->business_date?->toDateString(),
             'posted_at' => null,
             'agency_id' => $this->rowInt($batch, 'agency_id'),
             'source_module' => 'insurance',
@@ -253,6 +271,7 @@ final class InsuranceAccountingService
             'created_by_user_id' => $actor->id,
             'posted_by_user_id' => null,
             'idempotency_key' => 'insurance-remittance:'.$this->rowString($batch, 'public_id'),
+            'accounting_day_id' => $accountingDay->id,
         ]);
 
         foreach ($payableByLedger as $ledgerAccountId => $amountMinor) {

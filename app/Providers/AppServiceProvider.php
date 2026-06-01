@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\AccountingCalendarDay;
+use App\Models\AccountingDay;
 use App\Models\AccountProduct;
 use App\Models\Agency;
 use App\Models\BatchProcedure;
@@ -21,6 +23,8 @@ use App\Models\OperationCode;
 use App\Models\StaffAgencyAssignment;
 use App\Models\Till;
 use App\Models\User;
+use App\Policies\AccountingCalendarDayPolicy;
+use App\Policies\AccountingDayPolicy;
 use App\Policies\AccountProductPolicy;
 use App\Policies\AgencyPolicy;
 use App\Policies\AuditEventPolicy;
@@ -86,6 +90,8 @@ final class AppServiceProvider extends ServiceProvider
         Gate::policy(OperationCode::class, OperationCodePolicy::class);
         Gate::policy(Denomination::class, DenominationPolicy::class);
         Gate::policy(Till::class, TillPolicy::class);
+        Gate::policy(AccountingDay::class, AccountingDayPolicy::class);
+        Gate::policy(AccountingCalendarDay::class, AccountingCalendarDayPolicy::class);
 
         Scramble::ignoreDefaultRoutes();
         FormRequest::failOnUnknownFields();
@@ -164,6 +170,11 @@ final class AppServiceProvider extends ServiceProvider
         RateLimiter::for('reference.reserve', fn (Request $request): Limit => Limit::perMinute(
             $this->integerConfig('security.rate_limits.reference_reserve.max_attempts', 60),
             $this->integerConfig('security.rate_limits.reference_reserve.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
+
+        RateLimiter::for('accounting.lifecycle', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.accounting_lifecycle.max_attempts', 30),
+            $this->integerConfig('security.rate_limits.accounting_lifecycle.decay_minutes', 1),
         )->by($this->rateLimitKey($request)));
     }
 

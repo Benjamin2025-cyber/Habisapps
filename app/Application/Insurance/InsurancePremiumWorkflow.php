@@ -14,6 +14,7 @@ use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +30,7 @@ final class InsurancePremiumWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly AccountingBalanceCalculator $balanceCalculator,
         private readonly InsuranceAccountingService $insuranceAccounting,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function storeAssessment(Request $request, string $subscriptionPublicId): JsonResponse
@@ -185,9 +187,12 @@ final class InsurancePremiumWorkflow extends BaseController
                     throw new InvalidArgumentException('Insurance premium collection exceeds the customer account available balance.');
                 }
 
-                $paidDate = is_string($validated['paid_on'] ?? null) && $validated['paid_on'] !== ''
-                    ? $validated['paid_on']
-                    : now()->toDateString();
+                $accountingDay = $this->accountingDayGuard->assertCanRegister(
+                    $actor,
+                    'insurance.premium',
+                    $this->rowInt($subscription, 'agency_id'),
+                );
+                $businessDate = $accountingDay->business_date?->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'insurance-premium-collection:'.$assessmentPublicId;
@@ -196,7 +201,7 @@ final class InsurancePremiumWorkflow extends BaseController
                 $journalEntry = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => $reference,
-                    'business_date' => $paidDate,
+                    'business_date' => $businessDate,
                     'posted_at' => null,
                     'agency_id' => $this->rowInt($subscription, 'agency_id'),
                     'source_module' => 'insurance',
@@ -209,6 +214,7 @@ final class InsurancePremiumWorkflow extends BaseController
                     'created_by_user_id' => $actor->id,
                     'posted_by_user_id' => null,
                     'idempotency_key' => $idempotencyKey,
+                    'accounting_day_id' => $accountingDay->id,
                 ]);
 
                 JournalLine::query()->create([
@@ -373,9 +379,15 @@ final class InsurancePremiumWorkflow extends BaseController
                     throw new InvalidArgumentException('Till cash ledger account must be active and belong to the subscription agency.');
                 }
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister(
+                    $actor,
+                    'insurance.premium',
+                    $agencyId,
+                );
+                $businessDate = $accountingDay->business_date?->toDateString();
                 $paidDate = is_string($validated['paid_on'] ?? null) && $validated['paid_on'] !== ''
                     ? $validated['paid_on']
-                    : now()->toDateString();
+                    : $businessDate;
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'insurance-premium-cash:'.$assessmentPublicId;
@@ -384,7 +396,7 @@ final class InsurancePremiumWorkflow extends BaseController
                 $journalEntry = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => $reference,
-                    'business_date' => $paidDate,
+                    'business_date' => $businessDate,
                     'posted_at' => null,
                     'agency_id' => $agencyId,
                     'source_module' => 'insurance',
@@ -397,6 +409,7 @@ final class InsurancePremiumWorkflow extends BaseController
                     'created_by_user_id' => $actor->id,
                     'posted_by_user_id' => null,
                     'idempotency_key' => $idempotencyKey,
+                    'accounting_day_id' => $accountingDay->id,
                 ]);
 
                 JournalLine::query()->create([
@@ -536,10 +549,16 @@ final class InsurancePremiumWorkflow extends BaseController
                     ->lockForUpdate()
                     ->first();
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister(
+                    $actor,
+                    'insurance.premium',
+                    $originalJe->agency_id,
+                );
+
                 $reversalJe = JournalEntry::create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'REV-'.Str::upper(Str::random(10)),
-                    'business_date' => now()->toDateString(),
+                    'business_date' => $accountingDay->business_date?->toDateString(),
                     'agency_id' => $originalJe->agency_id,
                     'source_module' => 'insurance',
                     'source_type' => 'insurance_premium_payment_reversal',
@@ -547,6 +566,7 @@ final class InsurancePremiumWorkflow extends BaseController
                     'description' => 'Reversal of premium payment '.$paymentPublicId,
                     'status' => JournalEntry::STATUS_DRAFT,
                     'created_by_user_id' => $actor->id,
+                    'accounting_day_id' => $accountingDay->id,
                 ]);
 
                 foreach ($originalJe->lines as $line) {

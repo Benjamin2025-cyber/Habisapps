@@ -1038,6 +1038,17 @@
                             }
                         }
                     },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
                     "403": {
                         "description": "",
                         "content": {
@@ -1247,6 +1258,17 @@
                             }
                         }
                     },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
                     "403": {
                         "description": "",
                         "content": {
@@ -1257,6 +1279,443 @@
                                 }
                             }
                         }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days": {
+            "get": {
+                "operationId": "accountingDay.index",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated set of `AccountingDayResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/AccountingDayCollection"
+                                        },
+                                        "links": {
+                                            "type": "object",
+                                            "properties": {
+                                                "first": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "last": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "prev": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "next": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "first",
+                                                "last",
+                                                "prev",
+                                                "next"
+                                            ]
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "current_page": {
+                                                    "type": "integer",
+                                                    "minimum": 1
+                                                },
+                                                "from": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null"
+                                                    ],
+                                                    "minimum": 1
+                                                },
+                                                "last_page": {
+                                                    "type": "integer",
+                                                    "minimum": 1
+                                                },
+                                                "links": {
+                                                    "type": "array",
+                                                    "description": "Generated paginator links.",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "url": {
+                                                                "type": [
+                                                                    "string",
+                                                                    "null"
+                                                                ]
+                                                            },
+                                                            "label": {
+                                                                "type": "string"
+                                                            },
+                                                            "active": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "url",
+                                                            "label",
+                                                            "active"
+                                                        ]
+                                                    }
+                                                },
+                                                "path": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ],
+                                                    "description": "Base path for paginator generated URLs."
+                                                },
+                                                "per_page": {
+                                                    "type": "integer",
+                                                    "description": "Number of items shown per page.",
+                                                    "minimum": 0
+                                                },
+                                                "to": {
+                                                    "type": [
+                                                        "integer",
+                                                        "null"
+                                                    ],
+                                                    "description": "Number of the last item in the slice.",
+                                                    "minimum": 1
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "description": "Total number of items being paginated.",
+                                                    "minimum": 0
+                                                }
+                                            },
+                                            "required": [
+                                                "current_page",
+                                                "from",
+                                                "last_page",
+                                                "links",
+                                                "path",
+                                                "per_page",
+                                                "to",
+                                                "total"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data",
+                                        "links",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days/current": {
+            "get": {
+                "operationId": "accountingDay.current",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days/open": {
+            "post": {
+                "operationId": "accountingDay.open",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/OpenAccountingDayRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days/{accountingDay}": {
+            "get": {
+                "operationId": "accountingDay.show",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "parameters": [
+                    {
+                        "name": "accountingDay",
+                        "in": "path",
+                        "required": true,
+                        "description": "The accounting day public id",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days/{accountingDay}/start-close": {
+            "post": {
+                "operationId": "accountingDay.startClose",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "parameters": [
+                    {
+                        "name": "accountingDay",
+                        "in": "path",
+                        "required": true,
+                        "description": "The accounting day public id",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days/{accountingDay}/close": {
+            "post": {
+                "operationId": "accountingDay.close",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "parameters": [
+                    {
+                        "name": "accountingDay",
+                        "in": "path",
+                        "required": true,
+                        "description": "The accounting day public id",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CloseAccountingDayRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/accounting-days/{accountingDay}/reopen": {
+            "post": {
+                "operationId": "accountingDay.reopen",
+                "tags": [
+                    "AccountingDay"
+                ],
+                "parameters": [
+                    {
+                        "name": "accountingDay",
+                        "in": "path",
+                        "required": true,
+                        "description": "The accounting day public id",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReopenAccountingDayRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
                     },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
@@ -2475,6 +2934,17 @@
                         }
                     },
                     "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
                         "description": "",
                         "content": {
                             "application/json": {
@@ -19078,11 +19548,11 @@
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
                     },
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
                     }
                 }
             }
@@ -19175,14 +19645,14 @@
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
                     },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
                     },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
-                    },
-                    "403": {
-                        "$ref": "#/components/responses/AuthorizationException"
                     }
                 }
             },
@@ -23790,6 +24260,12 @@
                                         ],
                                         "format": "date-time"
                                     },
+                                    "accounting_day_public_id": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ]
+                                    },
                                     "currency": {
                                         "type": "string",
                                         "minLength": 3,
@@ -23975,6 +24451,12 @@
                                                 "account.products.update",
                                                 "account.products.view",
                                                 "accounting.audit.view",
+                                                "accounting.calendar.manage",
+                                                "accounting.calendar.view",
+                                                "accounting.days.close",
+                                                "accounting.days.open",
+                                                "accounting.days.reopen",
+                                                "accounting.days.view",
                                                 "agencies.manage",
                                                 "agencies.view",
                                                 "audit.view",
@@ -27426,6 +27908,256 @@
                 ],
                 "title": "AccountingBalanceResource"
             },
+            "AccountingDayCollection": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "accounting_days": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/AccountingDayResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "accounting_days"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "string"
+                                            },
+                                            "per_page": {
+                                                "type": "string"
+                                            },
+                                            "total": {
+                                                "type": "string"
+                                            },
+                                            "last_page": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "accounting_days": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/AccountingDayResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "accounting_days"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            },
+                                            "per_page": {
+                                                "type": "integer",
+                                                "const": 25
+                                            },
+                                            "total": {
+                                                "type": "integer"
+                                            },
+                                            "last_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    }
+                ],
+                "title": "AccountingDayCollection"
+            },
+            "AccountingDayResource": {
+                "type": "object",
+                "properties": {
+                    "public_id": {
+                        "type": "string"
+                    },
+                    "scope": {
+                        "type": "string"
+                    },
+                    "agency_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "business_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "can_register": {
+                        "type": "boolean"
+                    },
+                    "is_holiday": {
+                        "type": "string"
+                    },
+                    "holiday_name": {
+                        "type": "string"
+                    },
+                    "origin": {
+                        "type": "string"
+                    },
+                    "calendar_opened_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "calendar_closed_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "opened_by_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "closed_by_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "reopened_by_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "close_summary": {
+                        "type": "string"
+                    },
+                    "close_failure_reason": {
+                        "type": "string"
+                    },
+                    "reopen_reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "created_at": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "public_id",
+                    "scope",
+                    "agency_public_id",
+                    "business_date",
+                    "status",
+                    "can_register",
+                    "is_holiday",
+                    "holiday_name",
+                    "origin",
+                    "calendar_opened_at",
+                    "calendar_closed_at",
+                    "opened_by_public_id",
+                    "closed_by_public_id",
+                    "reopened_by_public_id",
+                    "close_summary",
+                    "close_failure_reason",
+                    "reopen_reason",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "AccountingDayResource"
+            },
             "ActivateStaffRequest": {
                 "type": "object",
                 "properties": {
@@ -28430,6 +29162,18 @@
                                     "null"
                                 ]
                             },
+                            "accounting_day_public_id": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
+                            "accounting_day_status": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            },
                             "business_date": {
                                 "type": "string"
                             },
@@ -28492,6 +29236,8 @@
                             "batch_procedure_code",
                             "agency_public_id",
                             "agency_code",
+                            "accounting_day_public_id",
+                            "accounting_day_status",
                             "business_date",
                             "status",
                             "started_at",
@@ -28520,6 +29266,12 @@
                                 "type": "null"
                             },
                             "agency_code": {
+                                "type": "null"
+                            },
+                            "accounting_day_public_id": {
+                                "type": "null"
+                            },
+                            "accounting_day_status": {
                                 "type": "null"
                             },
                             "operator_public_id": {
@@ -28556,6 +29308,8 @@
                             "batch_procedure_code",
                             "agency_public_id",
                             "agency_code",
+                            "accounting_day_public_id",
+                            "accounting_day_status",
                             "operator_public_id",
                             "status",
                             "parameters",
@@ -29939,6 +30693,19 @@
                     "updated_at"
                 ],
                 "title": "ClientResource"
+            },
+            "CloseAccountingDayRequest": {
+                "type": "object",
+                "properties": {
+                    "comment": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 2000
+                    }
+                },
+                "title": "CloseAccountingDayRequest"
             },
             "CloseTellerSessionRequest": {
                 "type": "object",
@@ -31356,6 +32123,12 @@
                             "null"
                         ]
                     },
+                    "accounting_day_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "source_module": {
                         "type": [
                             "string",
@@ -31444,6 +32217,7 @@
                     "business_date",
                     "posted_at",
                     "agency_public_id",
+                    "accounting_day_public_id",
                     "source_module",
                     "source_type",
                     "source_public_id",
@@ -32031,6 +32805,32 @@
                 ],
                 "title": "LoginRequest"
             },
+            "OpenAccountingDayRequest": {
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "enum": [
+                            "agency",
+                            "institution"
+                        ]
+                    },
+                    "agency_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "business_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date"
+                    }
+                },
+                "title": "OpenAccountingDayRequest"
+            },
             "OperationAccountMappingCollection": {
                 "anyOf": [
                     {
@@ -32452,6 +33252,20 @@
                     }
                 },
                 "title": "ReleaseAccountHoldRequest"
+            },
+            "ReopenAccountingDayRequest": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "minLength": 10,
+                        "maxLength": 2000
+                    }
+                },
+                "required": [
+                    "reason"
+                ],
+                "title": "ReopenAccountingDayRequest"
             },
             "ReportRunCollection": {
                 "type": "object",
@@ -34616,8 +35430,12 @@
                         "maxLength": 64
                     },
                     "business_date": {
-                        "type": "string",
-                        "format": "date-time"
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date",
+                        "description": "Optional for backward compatibility; if supplied it must equal the\nopen accounting day's business date (enforced by AccountingDayGuard)."
                     },
                     "agency_public_id": {
                         "type": "string"
@@ -34659,7 +35477,6 @@
                 },
                 "required": [
                     "reference",
-                    "business_date",
                     "agency_public_id"
                 ],
                 "title": "StoreJournalEntryRequest"
@@ -35436,8 +36253,12 @@
                         ]
                     },
                     "business_date": {
-                        "type": "string",
-                        "format": "date"
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date",
+                        "description": "Optional: the open accounting day governs the business date. When\nsupplied it must equal the open day (enforced by AccountingDayGuard)."
                     },
                     "opening_declaration_minor": {
                         "type": "integer",
@@ -35466,7 +36287,6 @@
                 },
                 "required": [
                     "till_public_id",
-                    "business_date",
                     "opening_declaration_minor"
                 ],
                 "title": "StoreTellerSessionRequest"
@@ -35944,6 +36764,12 @@
                             "null"
                         ]
                     },
+                    "accounting_day_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "till_public_id": {
                         "type": [
                             "string",
@@ -36005,6 +36831,7 @@
                 "required": [
                     "public_id",
                     "agency_public_id",
+                    "accounting_day_public_id",
                     "till_public_id",
                     "teller_user_public_id",
                     "business_date",
@@ -37366,15 +38193,12 @@
                         "type": "string",
                         "maxLength": 64
                     },
-                    "business_date": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
                     "source_module": {
                         "type": [
                             "string",
                             "null"
                         ],
+                        "description": "business_date is intentionally not updatable: it is controlled by the\naccounting day the draft was created under (JC-004).",
                         "maxLength": 64
                     },
                     "source_type": {

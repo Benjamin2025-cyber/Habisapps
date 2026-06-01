@@ -11,7 +11,7 @@ use App\Http\Controllers\Api\V1\LoanRecoveryController;
 use App\Http\Controllers\Api\V1\LoanTransferController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     Route::get('loan-products', [LoanProductController::class, 'index']);
     Route::post('loan-products', [LoanProductController::class, 'store']);
     Route::get('loan-products/{loanProduct}', [LoanProductController::class, 'show']);

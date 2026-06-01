@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
     'public_id',
     'till_id',
     'agency_id',
+    'accounting_day_id',
     'teller_user_id',
     'business_date',
     'opened_at',
@@ -82,6 +83,12 @@ final class TellerSession extends Model
     public function agency(): BelongsTo
     {
         return $this->belongsTo(Agency::class);
+    }
+
+    /** @return BelongsTo<AccountingDay, $this> */
+    public function accountingDay(): BelongsTo
+    {
+        return $this->belongsTo(AccountingDay::class);
     }
 
     /** @return BelongsTo<User, $this> */

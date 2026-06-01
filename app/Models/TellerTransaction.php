@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'public_id',
     'teller_session_id',
+    'accounting_day_id',
     'agency_id',
     'transaction_date',
     'till_id',
@@ -117,6 +118,12 @@ final class TellerTransaction extends Model
     public function getRouteKeyName(): string
     {
         return 'public_id';
+    }
+
+    /** @return BelongsTo<AccountingDay, $this> */
+    public function accountingDay(): BelongsTo
+    {
+        return $this->belongsTo(AccountingDay::class);
     }
 
     /** @return BelongsTo<TellerSession, $this> */

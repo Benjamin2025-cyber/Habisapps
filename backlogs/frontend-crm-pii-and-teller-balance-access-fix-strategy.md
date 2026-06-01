@@ -393,3 +393,44 @@ Required focused coverage:
 - Teller can fetch same-agency account balances required by withdrawal/deposit pages.
 - Teller cannot access cross-agency accounts, ledger balances, full statements, or full PII by default.
 - Tests and role sync prove the behavior.
+
+## Adversarial Re-Review (2026-06-01)
+
+This section supersedes stale "Current Evidence" statements that described pre-fix behavior. It documents what is now proven in code and what still needs explicit rollout control.
+
+### Proven in code
+
+- Two-tier client visibility is implemented in `ClientResource`:
+  - `crm.clients.identity.view` unlocks operational identity/contact fields.
+  - `crm.pii.view` unlocks full sensitive PII.
+  - Redaction flags are emitted: `identity_redacted`, `sensitive_pii_redacted`, plus transitional `pii_redacted`.
+- Customer account show policy is now same-agency for non-admin users with `customer.accounts.view`.
+- Customer-account current/available balance endpoints require `customer.accounts.balance.view` plus account visibility.
+- Statement endpoint remains stricter (`customer.accounts.statement.view`), so this fix does not silently expose movement history.
+- Default role grants now include operational identity and/or balance permissions for the approved roles.
+
+Verification evidence:
+
+- `php artisan test tests/Feature/Api/Module1AdministrationTest.php --filter=test_operational_roles_receive_identity_and_balance_permissions` passes.
+- `php artisan test tests/Feature/Api/Module2CrmKycTest.php --filter=test_client_visibility_is_two_tier_by_permission` passes.
+- `php artisan test tests/Feature/Module3AccountingArchitectureTest.php --filter=test_operational_account_readers_can_view_accounts_and_balances_within_agency` passes.
+
+### Residual risks and mandatory follow-ups
+
+1. Frontend flag migration risk:
+   If a frontend still keys only on `pii_redacted`, it may continue masking fields even when `identity_redacted=false`.
+   Mandatory action: frontend clients must switch identity rendering to `identity_redacted`; keep `pii_redacted` only as transitional compatibility.
+
+2. Role rollout risk for existing deployments:
+   Seeded defaults are correct, but environments with custom roles or stale role-permission snapshots may not inherit new grants automatically.
+   Mandatory action: run role/permission sync in each environment and verify affected operational roles have expected permissions.
+
+3. Contract drift risk:
+   Response payload now carries additional redaction flags and new permission semantics.
+   Mandatory action: regenerate and publish API contract docs, then have frontend re-validate withdraw/deposit and client search flows.
+
+### Hard decisions (closed)
+
+- This fix is not teller-only; it intentionally covers all operational roles listed in this backlog.
+- Operational identity visibility is separate from full PII and must remain separate.
+- Balance visibility is separate from statement visibility and must remain separate.

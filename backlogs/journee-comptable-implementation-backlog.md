@@ -631,6 +631,14 @@ Acceptance criteria for security reviewer:
 - Backfill does not weaken immutability of posted journals.
 - Exception reports avoid exposing sensitive customer-level details unless authorized.
 
+Operational rollback notes:
+
+- `app:backfill-accounting-days --dry-run` must be run first in staging and production to confirm the number of historical accounting days and row links before writes.
+- The command creates closed `accounting_days` with `origin = migration` and `close_summary_payload.migration.batch_id`; this batch ID is the operator's rollback anchor.
+- If rollback is required before dependent production use, unset `accounting_day_id` only for rows linked to days whose `origin = migration` and whose `close_summary_payload.migration.batch_id` matches the affected batch, then delete only those migrated accounting-day rows.
+- Do not delete accounting days with manual lifecycle audit, non-migration origin, or post-backfill operational writes.
+- Current supported source tables have non-null date requirements or session-derived dates, so a valid unmapped historical row should not exist for journal entries, teller sessions, batch runs, or teller transactions. `--strict` remains mandatory for rollout because it will fail if future nullable source tables produce exceptions.
+
 ### JC-012: Test and verification hardening
 
 Severity: Critical
@@ -684,6 +692,15 @@ Initial high-risk routes to classify first:
 - `routes/api/v1/currency_exchange.php`: FX transaction, reversal, stock movement, reconciliation.
 - `routes/api/v1/islamic_finance.php`: Islamic financing events that create journals or contractual state.
 - `routes/api/v1/auth.php`: batch procedures/runs and admin reference data.
+
+Closed-day write allowlist governance:
+
+- Default rule: authenticated mutating API routes are `registration` and must be blocked unless an accounting day is open.
+- `consultation` is allowed only for read-only routes or explicitly read-only export/status endpoints that do not create domain records, financial events, documents, or audit-significant workflow state.
+- `day_lifecycle` is allowed only for accounting-day open, start-close, close, reopen, and current-day lifecycle endpoints. These writes are not business registration; they are the control plane for the accounting day itself.
+- `system_maintenance` is blocked by default. Any exception must identify the route, payload side effects, actor role, accounting impact, audit event, and the accounting/product approver who accepted the exception.
+- Closed-day exceptions must not include client registration, customer-account registration, document upload, journal entry/line writes, teller sessions/transactions/reconciliations, loan operations, insurance operations, FX operations, HR payroll runs, Islamic finance operations, report-run generation, or any endpoint that creates accounting/reporting state.
+- Any new mutating route must be explicitly classified in route defaults and covered by `AccountingDayRouteClassificationTest`; absence of explicit classification is a defect, not an implicit approval.
 
 ## Full Implementation Sequence
 
@@ -760,3 +777,64 @@ The backlog is implementable with the defaults in `Implementation Decisions`. Ac
 - Historical data is backfilled or exception-reported.
 - Tests cover lifecycle, closed-day lockout, cross-module financial postings, route classification, authorization, audit, idempotency, and race conditions.
 - Security review can verify least privilege, fail-closed behavior, auditability, and database-level protection for critical posting invariants.
+
+## AC Review Findings (2026-06-01)
+
+This review is intentionally adversarial. A green regression suite is evidence that existing assertions pass; it is not proof that every acceptance criterion above is complete.
+
+Verification run during review:
+
+- `php artisan test --parallel --recreate-databases --filter AccountingDayRouteClassificationTest` passes: 2 tests, 13 assertions.
+- `php artisan test --parallel --recreate-databases --filter test_close_control_batch_run_cannot_be_manually_marked_succeeded` passes: 1 test, 8 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users'` passes: 3 tests, 19 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users'` passes: 5 tests, 32 assertions.
+- `php artisan test --parallel --recreate-databases --filter test_accounting_balances_are_derived_from_posted_journal_lines` passes after report-run accounting-day filter coverage: 1 test, 121 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users|test_accounting_balances_are_derived_from_posted_journal_lines'` passes after report-run accounting-day filter coverage: 6 tests, 153 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'test_close_is_blocked_by_open_teller_sessions|test_close_is_blocked_by_pending_cash_transactions|test_close_is_blocked_by_unreconciled_closed_sessions_then_succeeds_after_correction'` passes: 3 tests, 18 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users|test_close_is_blocked_by_open_teller_sessions|test_close_is_blocked_by_pending_cash_transactions|test_close_is_blocked_by_unreconciled_closed_sessions_then_succeeds_after_correction|test_accounting_balances_are_derived_from_posted_journal_lines'` passes: 9 tests, 171 assertions.
+- `php artisan test --parallel --recreate-databases --filter test_representative_registration_routes_across_modules_are_blocked_after_close` passes: 1 test, 40 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|test_representative_registration_routes_across_modules_are_blocked_after_close|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users|test_close_is_blocked_by_open_teller_sessions|test_close_is_blocked_by_pending_cash_transactions|test_close_is_blocked_by_unreconciled_closed_sessions_then_succeeds_after_correction|test_accounting_balances_are_derived_from_posted_journal_lines'` passes: 10 tests, 211 assertions.
+- `php artisan test --parallel --recreate-databases --filter BackfillAccountingDaysCommandTest` passes after joined teller-transaction backfill fix: 4 tests, 23 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|BackfillAccountingDaysCommandTest|test_representative_registration_routes_across_modules_are_blocked_after_close|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users|test_close_is_blocked_by_open_teller_sessions|test_close_is_blocked_by_pending_cash_transactions|test_close_is_blocked_by_unreconciled_closed_sessions_then_succeeds_after_correction|test_accounting_balances_are_derived_from_posted_journal_lines'` passes: 14 tests, 234 assertions.
+- `php artisan test --parallel --recreate-databases --filter AccountingDayDateArchitectureTest` passes after removing wall-clock defaults from FX and insurance teller transaction dates: 1 test, 181 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|AccountingDayDateArchitectureTest|BackfillAccountingDaysCommandTest|test_representative_registration_routes_across_modules_are_blocked_after_close|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users|test_close_is_blocked_by_open_teller_sessions|test_close_is_blocked_by_pending_cash_transactions|test_close_is_blocked_by_unreconciled_closed_sessions_then_succeeds_after_correction|test_accounting_balances_are_derived_from_posted_journal_lines'` passes: 15 tests, 415 assertions.
+- `php artisan test --parallel --recreate-databases --filter test_missing_accounting_day_fails_closed_in_tests_instead_of_auto_opening` passes after removing test-environment auto-open: 1 test, 2 assertions.
+- `php artisan test --parallel --recreate-databases --filter 'AccountingDayRouteClassificationTest|AccountingDayDateArchitectureTest|BackfillAccountingDaysCommandTest|test_missing_accounting_day_fails_closed_in_tests_instead_of_auto_opening|test_representative_registration_routes_across_modules_are_blocked_after_close|test_reused_batch_run_is_linked_to_accounting_day|test_close_control_batch_run_cannot_be_manually_marked_succeeded|test_reopen_reason_is_only_visible_to_reopen_authorized_users|test_close_is_blocked_by_open_teller_sessions|test_close_is_blocked_by_pending_cash_transactions|test_close_is_blocked_by_unreconciled_closed_sessions_then_succeeds_after_correction|test_accounting_balances_are_derived_from_posted_journal_lines'` passes: 16 tests, 417 assertions.
+- `composer test` currently fails after removing hidden test-environment auto-open: 719 tests run, 504 failures. The dominant failure mode is `423 accounting_day_missing`, proving many legacy feature tests still depend on implicit accounting-day setup and must be migrated to explicit `OpensAccountingDay` setup before the implementation can be considered complete.
+- `php artisan scramble:export --path=public/docs/api.json` completed successfully after statement and report-run response-field changes.
+- Full suite gate remains `composer test`. Do not pass `--filter` through `composer test`; focused runs must use the direct `php artisan test --parallel --recreate-databases --filter ...` command.
+
+### Fixed during AC review
+
+- `ACR-JC-009-001` route-classification coverage was vacuous. The test filtered routes starting with `v1/`, but registered routes are `api/v1/...`. The test now checks real authenticated mutating API routes, asserts at least one route was inspected, and verifies accounting-day lock middleware coverage.
+- `ACR-JC-008-001` close-control spoofing was possible through the generic batch-run status endpoint. A linked close-control `BatchRun` can no longer be manually marked `succeeded`; it must be executed through the registered executor path.
+- `ACR-JC-008-003` reusing an existing batch run could return a run whose `accounting_day_id` was still null. Existing runs are now linked to the resolved accounting day or rejected if linked to a different day.
+- `ACR-JC-008-004` close blockers for open teller sessions, pending teller transactions, and unreconciled closed sessions were implemented but not proven. Focused lifecycle tests now prove all three blockers, retry after correction, and duplicate close idempotency after success.
+- `ACR-JC-009-003` representative cross-module closed-day behavior was not proven. A focused test now proves closed-day `423 accounting_day_closed` responses for CRM client registration, document upload, customer accounts, account holds, credit products, insurance claims, FX authorizations, HR employees, Islamic products, and report-run generation.
+- `ACR-JC-010-002` `AccountingDayResource` leaked `reopen_reason` to any accounting-day viewer. The field is now returned only to actors authorized to reopen that day; ordinary same-agency viewers receive `null`.
+- `ACR-JC-010-003` customer-account statements and ledger movements did not support accounting-day filtering/status/finality. Statement/movement endpoints now accept `accounting_day_public_id`, enforce target-account agency scope, return accounting-day status/finality metadata in summaries and movement rows, and have OpenAPI regenerated.
+- `ACR-JC-010-004` journal-backed report-runs did not support accounting-day filtering/status/finality. Trial balance, general ledger, and EMF trial balance report-runs now accept `accounting_day_public_id`, enforce agency scope, filter posted journal lines by `journal_entries.accounting_day_id`, store the selected day in parameters, expose day status/finality in the report summary, and reject accounting-day filters for unsupported non-journal report types.
+- `ACR-JC-011-001` backfill coverage was too narrow and missed a real joined-pagination defect for teller transactions. Focused tests now prove agency-scoped mapping, institution-scope mapping, existing-day reuse, dry-run no-write behavior, strict success for valid rows, migration metadata, teller sessions, batch runs, teller transactions, and session-derived transaction dates. `BackfillAccountingDays` now aliases the joined teller-transaction key for `chunkById`, preventing runtime aborts during transaction backfill.
+- `ACR-JC-012-001` lacked a static guard against direct wall-clock defaults for accounting dates. `AccountingDayDateArchitectureTest` now scans application/controller code for direct `now()->toDateString()`/`Carbon::today()` defaults on `business_date` and `transaction_date`. FX transactions and insurance premium cash transactions now default transaction dates to the resolved accounting day instead of wall-clock today.
+- `ACR-JC-012-002` the test environment auto-opened accounting days even when `security.accounting_day.auto_open_on_missing` was false. `AccountingDayGuard` and `JournalEntryWorkflow` now honor only explicit config opt-in, and a regression test proves missing day setup fails closed without creating a hidden accounting day. The full test-suite migration is not complete: `composer test` still has 504 failures from legacy tests that need explicit accounting-day setup.
+- `ACR-JC-009-002` lacked explicit closed-day write allowlist governance. The backlog now documents the default-block rule, allowed lifecycle/control-plane categories, system-maintenance exception requirements, prohibited closed-day registration writes, and the requirement that any new mutating route be explicitly classified and covered by route-classification tests.
+
+### Remaining AC gaps
+
+| ID | Severity | AC area | Finding | Required closure |
+| --- | --- | --- | --- | --- |
+| `ACR-JC-008-002` | Medium | Close integrity | Tests now cover happy close, blocker failure, missing control procedures, duplicate active-day prevention, manual-success spoof prevention, open teller sessions, pending cash transactions, unreconciled closed sessions, retry after correction, and duplicate close after success. They still do not fully prove write-during-close race protection or concurrent duplicate close behavior under actual simultaneous requests. | Add true concurrent close/write tests or lower-level transaction tests that prove no write can sneak in between close verification and final close. |
+| `ACR-JC-010-001` | Medium | Reporting/API contract | Batch runs, teller sessions, journal resources, customer statements, ledger movements, and journal-backed report-runs now expose accounting-day identity/status/finality where implemented. Dashboard workflows still rely on operational/effective date ranges and do not expose selected accounting-day status/finality. | Add an explicit dashboard product decision: either make dashboards accounting-day selectable where metrics are journal-backed, or document dashboards as operational-date views and expose a clear `accounting_day_context`/finality disclaimer. Add focused tests and regenerate OpenAPI after the decision. |
+| `ACR-JC-012-001` | Critical | Test hardening | Static coverage now prevents direct wall-clock defaults on `business_date` and `transaction_date`, and focused lifecycle tests cover multiple close/blocker/idempotency paths. Concurrency/idempotency coverage across actual simultaneous close/write boundaries remains incomplete. | Add close-boundary idempotency tests and true write-during-close race tests. |
+| `ACR-JC-012-002` | Critical | Test hardening | Hidden auto-open has been removed from the guard, but the broader test suite has not been migrated. Full `composer test` currently fails with 504 `accounting_day_missing`-style failures because many feature tests create registration writes without opening an institution and/or agency accounting day first. | Update affected feature-test setup/helpers to open the required accounting day explicitly, without reintroducing global test auto-open. Re-run `composer test` until green. |
+
+### Accounting-team expected behavior when complete
+
+When all AC gaps above are closed, the accounting team should expect this behavior:
+
+- Each agency has one current accounting day. Operators register business only while that day is open.
+- If someone forgets to close the day, the system continues using the still-open accounting day for registrations until an authorized user starts close; opening the next day should be blocked while an active day already exists. This is intentional fail-safe behavior: the system must not silently invent or auto-close an accounting day.
+- Starting close moves the day to `closing`, blocks normal registrations, runs close controls, and records auditable evidence.
+- Close fails with actionable blockers if journals are unposted, teller sessions/cash are unresolved, mandatory batches fail, or reconciliation is incomplete.
+- Once closed, the day is read-only for normal users. Corrections require an authorized reopen/emergency path or posting to the next open accounting day according to the approved business rule.
+- Reports for closed days are reproducible and visibly marked with accounting-day identity, status, and finality.

@@ -7,6 +7,7 @@ namespace App\Application\IslamicFinance;
 use App\Http\Controllers\BaseController;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,7 @@ final class IslamicTreatmentWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly IslamicApprovalWorkflowService $approvalWorkflow,
         private readonly IslamicTreatmentRoutingService $routing,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function indexPolicies(Request $request): JsonResponse
@@ -349,10 +351,17 @@ final class IslamicTreatmentWorkflow extends BaseController
                     policyPublicId: $this->rowString($policy, 'public_id'),
                 );
 
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.treatment', $agencyId);
+                $businessDate = $accountingDay->business_date?->toDateString();
+                if ($businessDate === null) {
+                    throw new InvalidArgumentException('Open accounting day is missing a business date for Islamic treatment posting.');
+                }
+
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'IFTREAT-'.Str::upper(Str::random(10)),
-                    'business_date' => $this->rowString($event, 'occurred_on'),
+                    'business_date' => $businessDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'agency_id' => $agencyId,
                     'source_module' => 'islamic_finance',
                     'source_type' => 'islamic_treatment_event',

@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
     'business_date',
     'posted_at',
     'agency_id',
+    'accounting_day_id',
     'source_module',
     'source_type',
     'source_public_id',
@@ -101,6 +102,12 @@ final class JournalEntry extends Model
     public function agency(): BelongsTo
     {
         return $this->belongsTo(Agency::class);
+    }
+
+    /** @return BelongsTo<AccountingDay, $this> */
+    public function accountingDay(): BelongsTo
+    {
+        return $this->belongsTo(AccountingDay::class);
     }
 
     /** @return BelongsTo<User, $this> */

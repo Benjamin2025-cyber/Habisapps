@@ -16,6 +16,7 @@ use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -41,6 +42,7 @@ final class TellerSessionWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function index(Request $request): TellerSessionCollection|JsonResponse
@@ -133,13 +135,25 @@ final class TellerSessionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: $denominationCounts['errors']);
         }
 
-        $session = DB::transaction(function () use ($request, $till, $teller, $openingDeclarationMinor, $currency): TellerSession {
+        // The open accounting day for the till's agency governs the session date.
+        $requestedDate = $request->input('business_date');
+        $accountingDay = $this->accountingDayGuard->resolveAccountingDay(
+            $actor,
+            'cash.session.open',
+            $till->agency_id,
+            is_string($requestedDate) ? $requestedDate : null,
+            $request,
+        );
+        $businessDate = (string) $accountingDay->business_date?->toDateString();
+
+        $session = DB::transaction(function () use ($till, $teller, $openingDeclarationMinor, $currency, $businessDate, $accountingDay): TellerSession {
             $session = TellerSession::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'till_id' => $till->id,
                 'agency_id' => $till->agency_id,
+                'accounting_day_id' => $accountingDay->id,
                 'teller_user_id' => $teller->id,
-                'business_date' => $request->string('business_date')->toString(),
+                'business_date' => $businessDate,
                 'opened_at' => now(),
                 'opening_declaration_minor' => $openingDeclarationMinor,
                 'currency' => $currency,
@@ -164,7 +178,7 @@ final class TellerSessionWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            TellerSessionResource::make($session->loadMissing(['agency', 'till', 'teller'])),
+            TellerSessionResource::make($session->loadMissing(['agency', 'accountingDay', 'till', 'teller'])),
             'Teller session opened successfully'
         );
     }
@@ -176,7 +190,7 @@ final class TellerSessionWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(TellerSessionResource::make($tellerSession->loadMissing(['agency', 'till', 'teller'])));
+        return $this->respondSuccess(TellerSessionResource::make($tellerSession->loadMissing(['agency', 'accountingDay', 'till', 'teller'])));
     }
 
     public function close(CloseTellerSessionRequest $request, TellerSession $tellerSession): JsonResponse
@@ -246,7 +260,7 @@ final class TellerSessionWorkflow extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            TellerSessionResource::make($tellerSession->refresh()->loadMissing(['agency', 'till', 'teller'])),
+            TellerSessionResource::make($tellerSession->refresh()->loadMissing(['agency', 'accountingDay', 'till', 'teller'])),
             'Teller session closed successfully'
         );
     }

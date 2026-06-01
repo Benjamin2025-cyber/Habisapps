@@ -16,6 +16,7 @@ use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Accounting\AccountingBalanceCalculator;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\PhysicalCashAmount;
@@ -36,6 +37,7 @@ final class LoanSetupChargeWorkflow extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly AssessLoanSetupCharges $assessLoanSetupCharges,
         private readonly AccountingBalanceCalculator $balanceCalculator,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function assessSetupCharges(Request $request, Loan $loan): JsonResponse
@@ -189,7 +191,8 @@ final class LoanSetupChargeWorkflow extends BaseController
                 $debitContext = $paymentSource === 'teller_cash'
                     ? $this->setupChargeTellerCashDebitContext($loan, $validated, $amountMinor, $currency)
                     : $this->setupChargeCustomerAccountDebitContext($loan, $validated, $amountMinor, $currency);
-                $paidDate = is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : now()->toDateString();
+                $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.setup_charge', $loan->agency_id, is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : null);
+                $paidDate = (string) $accountingDay->business_date?->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'loan-setup-charge:'.$chargePublicId;
@@ -199,6 +202,7 @@ final class LoanSetupChargeWorkflow extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'reference' => $reference,
                     'business_date' => $paidDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $loan->agency_id,
                     'source_module' => 'credit_loans',
@@ -396,7 +400,8 @@ final class LoanSetupChargeWorkflow extends BaseController
                     throw new InvalidArgumentException('Insurance premium collection exceeds the customer account available balance.');
                 }
 
-                $paidDate = is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : now()->toDateString();
+                $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.insurance_premium', $loan->agency_id, is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : null);
+                $paidDate = (string) $accountingDay->business_date?->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'loan-insurance-premium:'.$premiumPublicId;
@@ -407,6 +412,7 @@ final class LoanSetupChargeWorkflow extends BaseController
                     'public_id' => (string) Str::ulid(),
                     'reference' => $reference,
                     'business_date' => $paidDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $loan->agency_id,
                     'source_module' => 'credit_loans',

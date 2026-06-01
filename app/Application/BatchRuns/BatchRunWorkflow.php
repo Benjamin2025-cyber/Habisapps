@@ -7,6 +7,7 @@ namespace App\Application\BatchRuns;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\BatchRunCollection;
 use App\Http\Resources\BatchRunResource;
+use App\Models\AccountingDay;
 use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
@@ -40,7 +41,7 @@ final class BatchRunWorkflow extends BaseController
         $this->authorize('viewAny', BatchRun::class);
 
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $query = BatchRun::query()->with(['batchProcedure', 'agency', 'operator'])->latest();
+        $query = BatchRun::query()->with(['batchProcedure', 'agency', 'accountingDay', 'operator'])->latest();
         $actor = $request->user();
 
         if (! $actor instanceof User) {
@@ -92,6 +93,16 @@ final class BatchRunWorkflow extends BaseController
             $query->where('business_date', '<=', $businessDateTo);
         }
 
+        $accountingDayPublicId = $request->query('accounting_day_public_id');
+        if (is_string($accountingDayPublicId) && $accountingDayPublicId !== '') {
+            $day = AccountingDay::query()->where('public_id', $accountingDayPublicId)->first();
+            if ($day instanceof AccountingDay) {
+                $query->where('accounting_day_id', $day->id);
+            } else {
+                $query->where('id', -1);
+            }
+        }
+
         $agencyCode = $request->query('agency_code');
         if (is_string($agencyCode) && $agencyCode !== '' && $actor->can('batch.runs.manage')) {
             $agency = Agency::query()->where('code', $agencyCode)->first();
@@ -131,6 +142,7 @@ final class BatchRunWorkflow extends BaseController
             'batch_procedure_public_id' => ['required', 'string', 'exists:batch_procedures,public_id'],
             'business_date' => ['required', 'date'],
             'agency_code' => ['nullable', 'string', 'exists:agencies,code'],
+            'accounting_day_public_id' => ['sometimes', 'nullable', 'string', 'exists:accounting_days,public_id'],
             'idempotency_key' => ['nullable', 'string', 'max:128'],
             'summary_payload' => ['nullable', 'array'],
         ])->validate();
@@ -141,6 +153,36 @@ final class BatchRunWorkflow extends BaseController
             $agency = Agency::query()->where('code', $validated['agency_code'])->first();
         }
 
+        $accountingDay = null;
+        if (isset($validated['accounting_day_public_id'])) {
+            $accountingDay = AccountingDay::query()
+                ->where('public_id', $validated['accounting_day_public_id'])
+                ->first();
+            if (! $accountingDay instanceof AccountingDay) {
+                return $this->respondUnprocessable(errors: ['accounting_day_public_id' => ['The selected accounting day is invalid.']]);
+            }
+        } else {
+            $accountingDay = $this->resolveAccountingDayLink($agency?->id, $validated['business_date']);
+        }
+
+        if ($accountingDay instanceof AccountingDay) {
+            if ($accountingDay->business_date?->toDateString() !== $validated['business_date']) {
+                return $this->respondUnprocessable(errors: ['business_date' => ['Business date must match the linked accounting day.']]);
+            }
+            if ($accountingDay->scope_type === AccountingDay::SCOPE_AGENCY && $accountingDay->agency_id !== $agency?->id) {
+                return $this->respondUnprocessable(errors: ['agency_code' => ['Agency must match the linked accounting day scope.']]);
+            }
+            if ($accountingDay->scope_type === AccountingDay::SCOPE_INSTITUTION && $agency !== null) {
+                return $this->respondUnprocessable(errors: ['agency_code' => ['Institution accounting days cannot be linked to agency-scoped batch runs.']]);
+            }
+        }
+
+        if ($this->isCloseControlProcedure($procedure) && ! $accountingDay instanceof AccountingDay) {
+            return $this->respondUnprocessable(errors: [
+                'accounting_day_public_id' => ['Close-control batch runs must be linked to an existing accounting day.'],
+            ]);
+        }
+
         $actorContext = $this->actorContext($request);
         $scopeHash = $this->scopeHash($request, $validated['idempotency_key'] ?? null, $actorContext);
         $fingerprint = $this->fingerprint($request, $validated);
@@ -148,7 +190,7 @@ final class BatchRunWorkflow extends BaseController
         $existing = null;
         if (isset($validated['idempotency_key'])) {
             $existing = BatchRun::query()
-                ->with(['batchProcedure', 'agency', 'operator'])
+                ->with(['batchProcedure', 'agency', 'accountingDay', 'operator'])
                 ->where('scope_hash', $scopeHash)
                 ->first();
 
@@ -178,15 +220,25 @@ final class BatchRunWorkflow extends BaseController
         }
 
         $existingRun = BatchRun::query()
-            ->with(['batchProcedure', 'agency', 'operator'])
+            ->with(['batchProcedure', 'agency', 'accountingDay', 'operator'])
             ->where('batch_procedure_id', $procedure->id)
             ->where('agency_id', $agency?->id)
             ->where('business_date', $validated['business_date'])
             ->first();
 
         if ($existingRun !== null) {
+            if ($accountingDay instanceof AccountingDay) {
+                if ($existingRun->accounting_day_id === null) {
+                    $existingRun->forceFill(['accounting_day_id' => $accountingDay->id])->save();
+                } elseif ($existingRun->accounting_day_id !== $accountingDay->id) {
+                    return $this->respondUnprocessable(errors: [
+                        'accounting_day_public_id' => ['An existing batch run for this scope is linked to a different accounting day.'],
+                    ]);
+                }
+            }
+
             return $this->respondSuccess(
-                BatchRunResource::make($existingRun),
+                BatchRunResource::make($existingRun->refresh()->loadMissing(['batchProcedure', 'agency', 'accountingDay', 'operator'])),
                 'Batch run already exists'
             );
         }
@@ -200,6 +252,7 @@ final class BatchRunWorkflow extends BaseController
             'public_id' => (string) Str::ulid(),
             'batch_procedure_id' => $procedure->id,
             'agency_id' => $agency?->id,
+            'accounting_day_id' => $accountingDay?->id,
             'business_date' => $validated['business_date'],
             'status' => BatchRun::STATUS_PENDING,
             'operator_user_id' => $actor->id,
@@ -208,7 +261,7 @@ final class BatchRunWorkflow extends BaseController
             'idempotency_key' => $validated['idempotency_key'] ?? null,
             'request_fingerprint' => isset($validated['idempotency_key']) ? $fingerprint : null,
             'summary_payload' => $validated['summary_payload'] ?? null,
-        ])->load(['batchProcedure', 'agency', 'operator']);
+        ])->load(['batchProcedure', 'agency', 'accountingDay', 'operator']);
 
         $this->securityAudit->record('batch.run.created', actor: $actor, subject: $run, request: $request);
 
@@ -220,7 +273,7 @@ final class BatchRunWorkflow extends BaseController
         $this->authorize('view', $batchRun);
 
         return $this->respondSuccess(
-            BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'operator']))
+            BatchRunResource::make($batchRun->loadMissing(['batchProcedure', 'agency', 'accountingDay', 'operator']))
         );
     }
 
@@ -255,6 +308,15 @@ final class BatchRunWorkflow extends BaseController
 
         if ($batchRun->status !== $requestedStatus && ! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
             return $this->respondUnprocessable('Invalid batch run status transition.');
+        }
+
+        $batchRun->loadMissing('batchProcedure');
+        if ($requestedStatus === BatchRun::STATUS_SUCCEEDED
+            && $batchRun->accounting_day_id !== null
+            && $batchRun->batchProcedure instanceof BatchProcedure
+            && $this->isCloseControlProcedure($batchRun->batchProcedure)
+        ) {
+            return $this->respondUnprocessable('Close-control batch runs linked to an accounting day must be executed, not manually marked succeeded.');
         }
 
         $updates = [
@@ -434,5 +496,34 @@ final class BatchRunWorkflow extends BaseController
         $sqlState = $exception->errorInfo[0] ?? null;
 
         return $sqlState === '23505';
+    }
+
+    private function resolveAccountingDayLink(?int $agencyId, string $businessDate): ?AccountingDay
+    {
+        $query = AccountingDay::query()->whereDate('business_date', $businessDate);
+
+        if ($agencyId === null) {
+            $query->where('scope_type', AccountingDay::SCOPE_INSTITUTION)
+                ->whereNull('agency_id');
+        } else {
+            $query->where('scope_type', AccountingDay::SCOPE_AGENCY)
+                ->where('agency_id', $agencyId);
+        }
+
+        return $query->latest('id')->first();
+    }
+
+    private function isCloseControlProcedure(BatchProcedure $procedure): bool
+    {
+        $code = strtolower(str_replace('-', '_', $procedure->code));
+
+        return in_array($code, [
+            'accounting_close_verification',
+            'accounting_daily_close',
+            'journal_close_verification',
+            'cash_close_verification',
+            'cash_daily_close',
+            'agency_cash_close',
+        ], true);
     }
 }

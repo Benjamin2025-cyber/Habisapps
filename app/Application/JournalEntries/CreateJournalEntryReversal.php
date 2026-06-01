@@ -4,23 +4,36 @@ declare(strict_types=1);
 
 namespace App\Application\JournalEntries;
 
+use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class CreateJournalEntryReversal
 {
+    public function __construct(
+        private readonly AccountingDayGuard $accountingDayGuard,
+    ) {}
+
     public function execute(User $actor, JournalEntry $journalEntry, bool $postImmediately = false): JournalEntry
     {
-        return DB::transaction(function () use ($actor, $journalEntry, $postImmediately): JournalEntry {
+        // Corrections post to the CURRENT open accounting day as a new event,
+        // never back into the original (possibly closed) day. This throws if no
+        // accounting day is open for the journal's scope.
+        $reversalDay = $this->accountingDayGuard->assertCanRegister($actor, 'journal.reverse', $journalEntry->agency_id);
+        $reversalBusinessDate = $reversalDay->business_date?->toDateString();
+
+        return DB::transaction(function () use ($actor, $journalEntry, $postImmediately, $reversalDay, $reversalBusinessDate): JournalEntry {
             $journalEntry->loadMissing('lines');
 
             $reversal = JournalEntry::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'reference' => $journalEntry->reference.'-REV-'.Str::upper(Str::random(6)),
-                'business_date' => $journalEntry->business_date,
+                'business_date' => $reversalBusinessDate,
+                'accounting_day_id' => $reversalDay->id,
                 'posted_at' => null,
                 'agency_id' => $journalEntry->agency_id,
                 'source_module' => $journalEntry->source_module,

@@ -49,6 +49,8 @@ final class ExecuteCashCloseVerificationBatch
             'finished_at' => now(),
         ])->save();
 
+        $this->syncAccountingDayCloseSummary($batchRun, $summary);
+
         return $batchRun->refresh()->loadMissing(['batchProcedure', 'agency', 'operator']);
     }
 
@@ -112,5 +114,50 @@ final class ExecuteCashCloseVerificationBatch
         $code = is_string($procedure?->code) ? $procedure->code : '';
 
         return strtolower(str_replace('-', '_', $code));
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private function syncAccountingDayCloseSummary(BatchRun $batchRun, array $summary): void
+    {
+        if (! is_int($batchRun->accounting_day_id)) {
+            return;
+        }
+
+        $day = DB::table('accounting_days')
+            ->where('id', $batchRun->accounting_day_id)
+            ->first(['close_summary_payload']);
+
+        $existingSummary = [];
+        if ($day !== null && is_string($day->close_summary_payload) && $day->close_summary_payload !== '') {
+            $decoded = json_decode($day->close_summary_payload, true);
+            if (is_array($decoded)) {
+                $existingSummary = $decoded;
+            }
+        }
+
+        $controls = [];
+        $rawControls = $existingSummary['close_control_batches'] ?? [];
+        if (is_array($rawControls)) {
+            $controls = $rawControls;
+        }
+
+        $code = $this->normalizedProcedureCode($batchRun);
+        $controls[$code] = [
+            'batch_run_public_id' => $batchRun->public_id,
+            'status' => $batchRun->status,
+            'summary_payload' => $summary,
+            'failure_reason' => $batchRun->failure_reason,
+            'finished_at' => $batchRun->finished_at?->toAtomString(),
+        ];
+
+        $existingSummary['close_control_batches'] = $controls;
+        DB::table('accounting_days')
+            ->where('id', $batchRun->accounting_day_id)
+            ->update([
+                'close_summary_payload' => json_encode($existingSummary),
+                'updated_at' => now(),
+            ]);
     }
 }

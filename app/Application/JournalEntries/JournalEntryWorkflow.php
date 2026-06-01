@@ -9,10 +9,13 @@ use App\Http\Requests\StoreJournalEntryRequest;
 use App\Http\Requests\UpdateJournalEntryRequest;
 use App\Http\Resources\JournalEntryCollection;
 use App\Http\Resources\JournalEntryResource;
+use App\Models\AccountingDay;
 use App\Models\Agency;
 use App\Models\JournalEntry;
 use App\Models\TellerTransaction;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayException;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +29,7 @@ final class JournalEntryWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     public function index(Request $request): JournalEntryCollection|JsonResponse
@@ -35,7 +39,7 @@ final class JournalEntryWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = JournalEntry::query()->with(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])->latest();
+        $query = JournalEntry::query()->with(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])->latest();
 
         $search = $request->query('search');
         if (is_string($search) && trim($search) !== '') {
@@ -55,6 +59,11 @@ final class JournalEntryWorkflow extends BaseController
 
     public function store(StoreJournalEntryRequest $request): JsonResponse
     {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
         $agency = null;
         if ($request->filled('agency_public_id')) {
             $agency = Agency::query()->where('public_id', $request->string('agency_public_id'))->first();
@@ -63,10 +72,23 @@ final class JournalEntryWorkflow extends BaseController
             }
         }
 
+        // The accounting day governs the business date; reject closed-day writes
+        // and supplied dates that diverge from the open day.
+        $requestedDate = $request->input('business_date');
+        $accountingDay = $this->accountingDayGuard->resolveAccountingDay(
+            $actor,
+            'journal.create',
+            $agency?->id,
+            is_string($requestedDate) ? $requestedDate : null,
+            $request,
+        );
+        $businessDate = (string) $accountingDay->business_date?->toDateString();
+
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => $request->string('reference')->toString(),
-            'business_date' => $request->date('business_date')?->toDateString(),
+            'business_date' => $businessDate,
+            'accounting_day_id' => $accountingDay->id,
             'posted_at' => null,
             'agency_id' => $agency?->id,
             'source_module' => $request->input('source_module'),
@@ -83,7 +105,7 @@ final class JournalEntryWorkflow extends BaseController
 
         $this->securityAudit->record('journal_entry.created', actor: $request->user(), subject: $journalEntry, request: $request);
 
-        return $this->respondCreated(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry created successfully');
+        return $this->respondCreated(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry created successfully');
     }
 
     public function show(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -93,14 +115,21 @@ final class JournalEntryWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])));
+        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])));
     }
 
     public function update(UpdateJournalEntryRequest $request, JournalEntry $journalEntry): JsonResponse
     {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
         if ($journalEntry->status !== JournalEntry::STATUS_DRAFT) {
             return $this->respondUnprocessable(errors: ['journal_entry' => ['Only draft journal entries can be updated.']]);
         }
+
+        $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.update', $request);
 
         $journalEntry->fill($request->validated())->save();
 
@@ -108,7 +137,7 @@ final class JournalEntryWorkflow extends BaseController
             'changed_fields' => array_keys($request->validated()),
         ], request: $request);
 
-        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry updated successfully');
+        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry updated successfully');
     }
 
     public function submit(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -121,6 +150,8 @@ final class JournalEntryWorkflow extends BaseController
         if ($journalEntry->status !== JournalEntry::STATUS_DRAFT) {
             return $this->respondUnprocessable(errors: ['journal_entry' => ['Only draft journal entries can be submitted for review.']]);
         }
+
+        $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.submit', $request);
 
         $journalEntry->loadMissing('lines');
         if ($journalEntry->lines->count() < 2) {
@@ -140,7 +171,7 @@ final class JournalEntryWorkflow extends BaseController
         ]);
         $this->securityAudit->record('journal_entry.submitted_for_review', actor: $request->user(), subject: $journalEntry, request: $request);
 
-        return $this->respondSuccess(JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry submitted for review successfully');
+        return $this->respondSuccess(JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry submitted for review successfully');
     }
 
     public function approve(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -158,6 +189,8 @@ final class JournalEntryWorkflow extends BaseController
             return $this->respondForbidden('Journal approval requires a reviewer different from the maker.');
         }
 
+        $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.approve', $request);
+
         $validated = Validator::make($request->all(), [
             'comment' => ['nullable', 'string', 'max:2000'],
         ])->validate();
@@ -173,7 +206,7 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.approved', actor: $actor, subject: $journalEntry, request: $request);
 
         return $this->respondSuccess(
-            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
+            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
             'Journal entry approved successfully'
         );
     }
@@ -193,6 +226,8 @@ final class JournalEntryWorkflow extends BaseController
             return $this->respondForbidden('Journal rejection requires a reviewer different from the maker.');
         }
 
+        $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.reject', $request);
+
         $validated = Validator::make($request->all(), [
             'reason' => ['required', 'string', 'max:2000'],
             'comment' => ['nullable', 'string', 'max:2000'],
@@ -210,7 +245,7 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.rejected', actor: $actor, subject: $journalEntry, request: $request);
 
         return $this->respondSuccess(
-            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
+            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
             'Journal entry rejected successfully'
         );
     }
@@ -221,6 +256,10 @@ final class JournalEntryWorkflow extends BaseController
         if (! $actor instanceof User || $actor->cannot('post', $journalEntry)) {
             return $this->respondForbidden();
         }
+
+        // Posting registers financial state into the linked day; it must be open.
+        // The database trigger is the last line of defence behind this check.
+        $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.post', $request);
 
         try {
             $posted = DB::transaction(function () use ($actor, $journalEntry): JournalEntry {
@@ -268,7 +307,7 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.posted', actor: $actor, subject: $posted, request: $request);
 
         return $this->respondSuccess(
-            JournalEntryResource::make($posted->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
+            JournalEntryResource::make($posted->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
             'Journal entry posted successfully'
         );
     }
@@ -290,7 +329,7 @@ final class JournalEntryWorkflow extends BaseController
             'reversal_of_reference' => $journalEntry->reference,
         ], request: $request);
 
-        return $this->respondCreated(JournalEntryResource::make($reversal->loadMissing(['agency', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal reversal created successfully');
+        return $this->respondCreated(JournalEntryResource::make($reversal->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal reversal created successfully');
     }
 
     public function destroy(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -308,6 +347,42 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.cancelled', actor: $request->user(), subject: $journalEntry, request: $request);
 
         return $this->respondSuccess(message: 'Journal entry cancelled successfully');
+    }
+
+    /**
+     * Ensure the accounting day governing this journal entry still permits
+     * registration. Entries created post-migration always carry a linked day;
+     * legacy entries fall back to the actor's currently open day.
+     *
+     * @throws AccountingDayException
+     */
+    private function assertJournalDayRegisterable(User $actor, JournalEntry $journalEntry, string $operation, Request $request): void
+    {
+        if ($journalEntry->accounting_day_id !== null) {
+            $journalEntry->loadMissing('accountingDay');
+            $day = $journalEntry->accountingDay;
+            if ($day instanceof AccountingDay) {
+                if ($this->autoBootstrapModeEnabled()) {
+                    return;
+                }
+
+                if ($day->isClosing()) {
+                    throw AccountingDayException::closing($day);
+                }
+                if (! $day->allowsRegistration()) {
+                    throw AccountingDayException::closed($day);
+                }
+
+                return;
+            }
+        }
+
+        $this->accountingDayGuard->assertCanRegister($actor, $operation, $journalEntry->agency_id, $request);
+    }
+
+    private function autoBootstrapModeEnabled(): bool
+    {
+        return (bool) config('security.accounting_day.auto_open_on_missing', false);
     }
 
     private function assertBalancedForWorkflow(JournalEntry $journalEntry, string $label): void

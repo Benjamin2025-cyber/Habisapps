@@ -65,6 +65,12 @@ return [
             'enforce_maker_checker' => (bool) env('CRM_KYC_ENFORCE_MAKER_CHECKER', true),
         ],
     ],
+    'accounting_day' => [
+        // Transitional safety for legacy test flows while financial suites are
+        // migrated to explicit open-day setup (JC-012). In production this
+        // should stay disabled.
+        'auto_open_on_missing' => (bool) env('ACCOUNTING_DAY_AUTO_OPEN_ON_MISSING', false),
+    ],
     'permissions' => [
         /*
          * When false (default), protected permissions (PII, KYC verification,
@@ -96,6 +102,12 @@ return [
                 'batch.procedures.manage',
                 'batch.runs.view',
                 'batch.runs.manage',
+                'accounting.days.view',
+                'accounting.days.open',
+                'accounting.days.close',
+                'accounting.days.reopen',
+                'accounting.calendar.view',
+                'accounting.calendar.manage',
                 'documents.view',
                 'documents.create',
                 'documents.archive',
@@ -351,6 +363,10 @@ return [
                 'account.holds.view',
                 'journal.entries.view',
                 'journal.lines.view',
+                'accounting.days.view',
+                'accounting.days.open',
+                'accounting.days.close',
+                'accounting.calendar.view',
                 'loan.products.view',
                 'loans.view',
                 'loans.create',
@@ -408,6 +424,8 @@ return [
                 'cash.sessions.view',
                 'cash.transactions.view',
                 'cash.reconciliations.view',
+                'accounting.days.view',
+                'accounting.calendar.view',
             ],
             'teller' => [
                 'system.view-health',
@@ -427,6 +445,7 @@ return [
                 'cash.transactions.manage',
                 'cash.reconciliations.view',
                 'cash.reconciliations.manage',
+                'accounting.days.view',
             ],
             'loan-officer' => [
                 'system.view-health',
@@ -452,10 +471,16 @@ return [
                 'loans.delinquency.manage',
                 'cash.denominations.view',
                 'cash.tills.view',
+                'accounting.days.view',
             ],
             'accountant' => [
                 'system.view-health',
                 'audit.view',
+                'accounting.days.view',
+                'accounting.days.open',
+                'accounting.days.close',
+                'accounting.calendar.view',
+                'accounting.calendar.manage',
                 'agencies.view',
                 'documents.view',
                 'references.reserve',
@@ -547,6 +572,8 @@ return [
                 'crm.proxies.verify',
                 'crm.proxies.reject',
                 'accounting.audit.view',
+                'accounting.days.view',
+                'accounting.calendar.view',
                 'loans.view',
                 'loans.approvals.controle',
                 'cash.denominations.view',
@@ -566,6 +593,8 @@ return [
                 'crm.proxies.view',
                 'crm.reviews.view',
                 'accounting.audit.view',
+                'accounting.days.view',
+                'accounting.calendar.view',
                 'cash.denominations.view',
                 'cash.tills.view',
             ],

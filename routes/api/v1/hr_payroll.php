@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\V1\HrController;
 use App\Http\Controllers\Api\V1\HrPayrollController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function (): void {
+Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     // HR / employee lifecycle
     Route::post('hr-employees', [HrController::class, 'storeEmployee']);
     Route::post('hr-employees/{employeePublicId}/documents', [HrController::class, 'attachEmployeeDocument']);

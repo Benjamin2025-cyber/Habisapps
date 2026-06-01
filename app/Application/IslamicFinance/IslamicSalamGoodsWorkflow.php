@@ -7,6 +7,7 @@ namespace App\Application\IslamicFinance;
 use App\Http\Controllers\BaseController;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
         private readonly IslamicScreeningPolicyService $screening,
         private readonly IslamicInterestGuardPolicy $interestGuard,
         private readonly IslamicMappingValidationService $mappingValidation,
+        private readonly AccountingDayGuard $accountingDayGuard,
     ) {}
 
     private function requirePlatformAdmin(Request $request): bool
@@ -248,10 +250,16 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                 }
 
                 $amount = (int) $validated['amount_minor'];
+                $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.salam', $agencyId);
+                $businessDate = $accountingDay->business_date?->toDateString();
+                if ($businessDate === null) {
+                    throw new InvalidArgumentException('Open accounting day is missing a business date for Salam upfront payment posting.');
+                }
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'SAL-UPF-'.Str::upper(Str::random(10)),
-                    'business_date' => now()->toDateString(),
+                    'business_date' => $businessDate,
+                    'accounting_day_id' => $accountingDay->id,
                     'posted_at' => null,
                     'agency_id' => $agencyId,
                     'source_module' => 'islamic_finance',

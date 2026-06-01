@@ -25,7 +25,9 @@ final class StoreJournalEntryRequest extends FormRequest
     {
         return [
             'reference' => ['required', 'string', 'max:64', 'unique:journal_entries,reference'],
-            'business_date' => ['required', 'date'],
+            // Optional for backward compatibility; if supplied it must equal the
+            // open accounting day's business date (enforced by AccountingDayGuard).
+            'business_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'agency_public_id' => ['required', 'string', 'exists:agencies,public_id'],
             'source_module' => ['nullable', 'string', 'max:64'],
             'source_type' => ['nullable', 'string', 'max:64'],
