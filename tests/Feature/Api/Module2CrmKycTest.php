@@ -739,7 +739,7 @@ final class Module2CrmKycTest extends TestCase
         $forbidden->assertForbidden();
     }
 
-    public function test_client_pii_masking_exposes_pii_redacted_flag(): void
+    public function test_client_visibility_is_two_tier_by_permission(): void
     {
         $agency = $this->createAgency('AG-PIIFLAG');
         $client = Client::query()->create([
@@ -748,28 +748,64 @@ final class Module2CrmKycTest extends TestCase
             'client_reference' => 'CLI-PIIFLAG',
             'first_name' => 'Mariama',
             'last_name' => 'Bello',
+            'father_name' => 'Souleymane Bello',
+            'date_of_birth' => '1990-04-12',
             'phone_number' => '+237699445566',
             'email' => 'mariama.bello@example.test',
+            'address_line_1' => '12 Rue du Marche',
             'status' => Client::STATUS_ACTIVE,
             'kyc_status' => Client::KYC_STATUS_VERIFIED,
         ]);
 
-        // agency-manager has crm.clients.view but not crm.pii.view: data is
-        // masked and pii_redacted=true signals the masking to the frontend.
-        $manager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
-        $masked = $this->withApiHeaders()->actingAsSanctum($manager)
+        // Tier 0 — crm.clients.view only (no identity, no full PII): everything
+        // masked. identity_redacted and sensitive_pii_redacted both signal the
+        // masking to the frontend.
+        $viewOnly = $this->createUserWithRole('staff', $agency['code'], $agency['name']);
+        $viewOnly->givePermissionTo('crm.clients.view');
+        $maskedOnly = $this->withApiHeaders()->actingAsSanctum($viewOnly)
             ->getJson('/api/v1/clients/'.$client->public_id);
-        $this->assertJsonSuccess($masked);
-        $masked->assertJsonPath('data.pii_redacted', true);
-        self::assertNotSame('Mariama', $masked->json('data.first_name'));
+        $this->assertJsonSuccess($maskedOnly);
+        $maskedOnly->assertJsonPath('data.identity_redacted', true);
+        $maskedOnly->assertJsonPath('data.sensitive_pii_redacted', true);
+        $maskedOnly->assertJsonPath('data.pii_redacted', true);
+        self::assertNotSame('Mariama', $maskedOnly->json('data.first_name'));
 
-        // platform-admin has crm.pii.view: full data and pii_redacted=false.
+        // Tier 1 — crm.clients.identity.view (operational): unmasked basic
+        // identity/contact, but sensitive PII still masked/null. teller has
+        // crm.clients.view + crm.clients.identity.view but not crm.pii.view.
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $operational = $this->withApiHeaders()->actingAsSanctum($teller)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $this->assertJsonSuccess($operational);
+        $operational->assertJsonPath('data.first_name', 'Mariama');
+        $operational->assertJsonPath('data.last_name', 'Bello');
+        $operational->assertJsonPath('data.phone_number', '+237699445566');
+        $operational->assertJsonPath('data.email', 'mariama.bello@example.test');
+        $operational->assertJsonPath('data.identity_redacted', false);
+        // Sensitive PII stays hidden without crm.pii.view.
+        $operational->assertJsonPath('data.sensitive_pii_redacted', true);
+        $operational->assertJsonPath('data.pii_redacted', true);
+        $operational->assertJsonPath('data.date_of_birth', null);
+        $operational->assertJsonPath('data.address_line_1', null);
+        self::assertNotSame('Souleymane Bello', $operational->json('data.father_name'));
+
+        // Tier 2 — crm.pii.view (full): everything unmasked, all flags false.
         $admin = $this->createUserWithRole('platform-admin');
         $full = $this->withApiHeaders()->actingAsSanctum($admin)
             ->getJson('/api/v1/clients/'.$client->public_id);
         $this->assertJsonSuccess($full);
-        $full->assertJsonPath('data.pii_redacted', false);
         $full->assertJsonPath('data.first_name', 'Mariama');
+        $full->assertJsonPath('data.father_name', 'Souleymane Bello');
+        $full->assertJsonPath('data.address_line_1', '12 Rue du Marche');
+        $full->assertJsonPath('data.identity_redacted', false);
+        $full->assertJsonPath('data.sensitive_pii_redacted', false);
+        $full->assertJsonPath('data.pii_redacted', false);
+
+        // Cross-agency operational user cannot view the client at all.
+        $foreignTeller = $this->createUserWithRole('teller', 'AG-PIIFLAG-B', 'AG-PIIFLAG-B Agency');
+        $forbidden = $this->withApiHeaders()->actingAsSanctum($foreignTeller)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $forbidden->assertForbidden();
     }
 
     public function test_identity_back_face_evidence_uniqueness_is_enforced(): void

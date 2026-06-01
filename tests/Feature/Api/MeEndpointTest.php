@@ -76,9 +76,17 @@ final class MeEndpointTest extends TestCase
         self::assertIsArray($payload);
         self::assertContains('cash.transactions.manage', $payload);
         self::assertContains('cash.sessions.manage', $payload);
-        // A teller must NOT see loan / CRM / dashboard permissions.
+        // A teller now carries operational client lookup and account/balance
+        // read for the deposit/withdrawal screens (FB-ROLE-001), but only the
+        // operational identity tier — never full PII.
+        self::assertContains('crm.clients.view', $payload);
+        self::assertContains('crm.clients.identity.view', $payload);
+        self::assertContains('customer.accounts.view', $payload);
+        self::assertContains('customer.accounts.balance.view', $payload);
+        // A teller must NOT see loan, full-PII, ledger, or accounting-report scopes.
         self::assertNotContains('loans.view', $payload);
-        self::assertNotContains('crm.clients.view', $payload);
+        self::assertNotContains('crm.pii.view', $payload);
+        self::assertNotContains('ledger.accounts.view', $payload);
         self::assertNotContains('accounting.audit.view', $payload);
     }
 

@@ -47,7 +47,7 @@ final class AccountingBalanceWorkflow extends BaseController
     public function customerAccount(Request $request, CustomerAccount $customerAccount): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || $actor->cannot('view', $customerAccount)) {
+        if (! $actor instanceof User || ! $this->canViewCustomerBalance($actor, $customerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -67,7 +67,7 @@ final class AccountingBalanceWorkflow extends BaseController
     public function customerAccountAvailable(Request $request, CustomerAccount $customerAccount): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || $actor->cannot('view', $customerAccount)) {
+        if (! $actor instanceof User || ! $this->canViewCustomerBalance($actor, $customerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -128,7 +128,7 @@ final class AccountingBalanceWorkflow extends BaseController
     public function customerAccountStatement(Request $request, CustomerAccount $customerAccount): JsonResponse
     {
         $actor = $request->user();
-        if (! $actor instanceof User || $actor->cannot('view', $customerAccount)) {
+        if (! $actor instanceof User || ! $this->canViewCustomerStatement($actor, $customerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -167,6 +167,42 @@ final class AccountingBalanceWorkflow extends BaseController
                 'last_page' => (int) ceil($total / $perPage),
             ],
         ]);
+    }
+
+    /**
+     * Customer-account current/available balance access (FB-BAL-002).
+     *
+     * Requires the narrow operational balance permission plus account
+     * visibility (which enforces same-agency scope through
+     * CustomerAccountPolicy::view). This keeps balance lookups separate from
+     * broad ledger/accounting-report access. Platform admins retain full access.
+     */
+    private function canViewCustomerBalance(User $actor, CustomerAccount $customerAccount): bool
+    {
+        if ($actor->hasRole('platform-admin')) {
+            return true;
+        }
+
+        return $actor->can('customer.accounts.balance.view')
+            && $actor->can('view', $customerAccount);
+    }
+
+    /**
+     * Customer-account statement/movement history access (FB-BAL-002).
+     *
+     * Statements expose full transaction history, which is broader than the
+     * current/available balance needed by front-office screens. They remain
+     * gated by a dedicated statement permission so relaxing account `view` for
+     * operational balance readers does not silently expose movement history.
+     */
+    private function canViewCustomerStatement(User $actor, CustomerAccount $customerAccount): bool
+    {
+        if ($actor->hasRole('platform-admin')) {
+            return true;
+        }
+
+        return $actor->can('customer.accounts.statement.view')
+            && $actor->can('view', $customerAccount);
     }
 
     /**

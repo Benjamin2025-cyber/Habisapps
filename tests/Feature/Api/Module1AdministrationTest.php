@@ -258,7 +258,10 @@ final class Module1AdministrationTest extends TestCase
             ->postJson('/api/v1/staff-users/'.$staff->public_id.'/assignments', [
                 'agency_code' => $agencyB['code'],
                 'role_at_agency' => 'cashier',
-                'starts_on' => '2026-06-01',
+                // Must start strictly after the current primary assignment
+                // (created today by the helper). Use a relative date so the test
+                // is not brittle on the day it happens to run.
+                'starts_on' => now()->addDay()->toDateString(),
                 'is_primary' => true,
                 'transfer_from_assignment_public_id' => $existingAssignment->public_id,
                 'reason' => 'Transfer to new branch',
@@ -648,6 +651,65 @@ final class Module1AdministrationTest extends TestCase
         foreach ($roles as $role) {
             self::assertIsArray($role);
             self::assertArrayHasKey('permissions_version', $role);
+        }
+    }
+
+    public function test_operational_roles_receive_identity_and_balance_permissions(): void
+    {
+        // FB-ROLE-001 / FB-PII-001 / FB-BAL-002: prove the seeded role catalog
+        // grants exactly the narrow new permissions to each operational role,
+        // and withholds them where the frontend fix did not extend access.
+        $rolePermissions = static function (string $role): array {
+            $names = DB::table('roles')
+                ->join('role_has_permissions', 'roles.id', '=', 'role_has_permissions.role_id')
+                ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+                ->where('roles.name', $role)
+                ->pluck('permissions.name')
+                ->all();
+
+            return array_values(array_filter($names, 'is_string'));
+        };
+
+        // crm.clients.identity.view is granted to every client-reading role.
+        foreach (['user-admin', 'agency-manager', 'regional-manager', 'loan-officer', 'accountant', 'teller', 'kyc-officer', 'compliance-officer', 'auditor'] as $role) {
+            self::assertContains('crm.clients.identity.view', $rolePermissions($role), "{$role} should have crm.clients.identity.view");
+        }
+
+        // teller and accountant gain both client read and operational identity.
+        foreach (['teller', 'accountant'] as $role) {
+            self::assertContains('crm.clients.view', $rolePermissions($role), "{$role} should have crm.clients.view");
+            self::assertContains('crm.clients.identity.view', $rolePermissions($role), "{$role} should have crm.clients.identity.view");
+        }
+
+        // customer.accounts.balance.view is granted only to operational account readers.
+        foreach (['user-admin', 'agency-manager', 'teller', 'loan-officer', 'accountant', 'kyc-officer'] as $role) {
+            $perms = $rolePermissions($role);
+            self::assertContains('customer.accounts.view', $perms, "{$role} should have customer.accounts.view");
+            self::assertContains('customer.accounts.balance.view', $perms, "{$role} should have customer.accounts.balance.view");
+        }
+
+        // regional-manager, compliance-officer and auditor do NOT gain account or balance access.
+        foreach (['regional-manager', 'compliance-officer', 'auditor'] as $role) {
+            $perms = $rolePermissions($role);
+            self::assertNotContains('customer.accounts.view', $perms, "{$role} must not gain customer.accounts.view");
+            self::assertNotContains('customer.accounts.balance.view', $perms, "{$role} must not gain customer.accounts.balance.view");
+        }
+
+        // Operational roles must not silently gain full PII, ledger balances, or accounting reports.
+        foreach (['teller', 'loan-officer', 'accountant', 'agency-manager'] as $role) {
+            $perms = $rolePermissions($role);
+            self::assertNotContains('crm.pii.view', $perms, "{$role} must not gain crm.pii.view");
+            self::assertNotContains('accounting.audit.view', $perms, "{$role} must not gain accounting.audit.view");
+        }
+
+        // teller, loan-officer and accountant have no ledger.accounts.view from this fix.
+        foreach (['teller', 'loan-officer', 'accountant'] as $role) {
+            self::assertNotContains('ledger.accounts.view', $rolePermissions($role), "{$role} must not gain ledger.accounts.view");
+        }
+
+        // Statement access is not granted to any operational role.
+        foreach (['teller', 'loan-officer', 'accountant', 'agency-manager', 'kyc-officer', 'user-admin'] as $role) {
+            self::assertNotContains('customer.accounts.statement.view', $rolePermissions($role), "{$role} must not gain customer.accounts.statement.view");
         }
     }
 

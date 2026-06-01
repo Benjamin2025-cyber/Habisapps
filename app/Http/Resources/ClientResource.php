@@ -23,7 +23,13 @@ final class ClientResource extends JsonResource
         /** @var Client $client */
         $client = $this->resource;
 
-        $showPii = $this->canViewPii($request);
+        // Two-tier client visibility (FB-PII-002):
+        // - Operational identity/contact: enough to identify and serve a client
+        //   on front-office screens; granted by crm.clients.identity.view.
+        // - Full sensitive PII: birth/family/address/employment data; gated by
+        //   crm.pii.view only. Full PII implies operational identity.
+        $showFullPii = $this->canViewFullPii($request);
+        $showOperationalIdentity = $showFullPii || $this->canViewOperationalIdentity($request);
 
         return [
             'public_id' => $client->public_id,
@@ -34,35 +40,41 @@ final class ClientResource extends JsonResource
             'sector_public_id' => $client->relationLoaded('sector') ? $client->sector?->public_id : null,
             'sub_sector_public_id' => $client->relationLoaded('subSector') ? $client->subSector?->public_id : null,
             'client_reference' => $client->client_reference,
-            'first_name' => $showPii ? $client->first_name : $this->maskName($client->first_name),
-            'last_name' => $showPii ? $client->last_name : $this->maskName($client->last_name),
-            'middle_name' => $showPii ? $client->middle_name : $this->maskName($client->middle_name),
-            'father_name' => $showPii ? $client->father_name : $this->maskName($client->father_name),
-            'mother_name' => $showPii ? $client->mother_name : $this->maskName($client->mother_name),
-            'date_of_birth' => $showPii ? $this->formatDate($client->date_of_birth) : null,
-            'place_of_birth' => $showPii ? $client->place_of_birth : null,
-            'gender' => $showPii ? $client->gender : null,
-            'phone_number' => $showPii ? $client->phone_number : $this->maskPhone($client->phone_number),
-            'home_phone_number' => $showPii ? $client->home_phone_number : $this->maskPhone($client->home_phone_number),
-            'email' => $showPii ? $client->email : $this->maskEmail($client->email),
-            'address_line_1' => $showPii ? $client->address_line_1 : null,
-            'address_line_2' => $showPii ? $client->address_line_2 : null,
-            'city' => $showPii ? $client->city : null,
-            'region' => $showPii ? $client->region : null,
-            'occupation' => $showPii ? $client->occupation : null,
-            'employer_name' => $showPii ? $client->employer_name : null,
+            'first_name' => $showOperationalIdentity ? $client->first_name : $this->maskName($client->first_name),
+            'last_name' => $showOperationalIdentity ? $client->last_name : $this->maskName($client->last_name),
+            'middle_name' => $showOperationalIdentity ? $client->middle_name : $this->maskName($client->middle_name),
+            'father_name' => $showFullPii ? $client->father_name : $this->maskName($client->father_name),
+            'mother_name' => $showFullPii ? $client->mother_name : $this->maskName($client->mother_name),
+            'date_of_birth' => $showFullPii ? $this->formatDate($client->date_of_birth) : null,
+            'place_of_birth' => $showFullPii ? $client->place_of_birth : null,
+            'gender' => $showFullPii ? $client->gender : null,
+            'phone_number' => $showOperationalIdentity ? $client->phone_number : $this->maskPhone($client->phone_number),
+            'home_phone_number' => $showFullPii ? $client->home_phone_number : $this->maskPhone($client->home_phone_number),
+            'email' => $showOperationalIdentity ? $client->email : $this->maskEmail($client->email),
+            'address_line_1' => $showFullPii ? $client->address_line_1 : null,
+            'address_line_2' => $showFullPii ? $client->address_line_2 : null,
+            'city' => $showFullPii ? $client->city : null,
+            'region' => $showFullPii ? $client->region : null,
+            'occupation' => $showFullPii ? $client->occupation : null,
+            'employer_name' => $showFullPii ? $client->employer_name : null,
             'business_started_on' => $this->formatDate($client->business_started_on),
             'business_activity_started_on' => $this->formatDate($client->business_activity_started_on),
-            'business_address_line_1' => $showPii ? $client->business_address_line_1 : null,
-            'business_address_line_2' => $showPii ? $client->business_address_line_2 : null,
-            'business_city' => $showPii ? $client->business_city : null,
-            'business_region' => $showPii ? $client->business_region : null,
+            'business_address_line_1' => $showFullPii ? $client->business_address_line_1 : null,
+            'business_address_line_2' => $showFullPii ? $client->business_address_line_2 : null,
+            'business_city' => $showFullPii ? $client->business_city : null,
+            'business_region' => $showFullPii ? $client->business_region : null,
             'collection_type' => $client->collection_type,
             'collection_frequency' => $client->collection_frequency,
             'collection_target_amount' => $client->collection_target_amount,
-            // Lets the frontend distinguish masked PII (actor lacks
-            // crm.pii.view) from genuinely missing data (FBI-007).
-            'pii_redacted' => ! $showPii,
+            // Frontend redaction flags (FB-PII-002 / FB-FE-001). These let the
+            // frontend distinguish masked values from genuinely missing data.
+            // - identity_redacted: operational identity/contact is masked.
+            // - sensitive_pii_redacted: full sensitive PII is hidden.
+            // - pii_redacted: transitional alias kept for backward compatibility;
+            //   tracks the full sensitive PII tier (crm.pii.view).
+            'identity_redacted' => ! $showOperationalIdentity,
+            'sensitive_pii_redacted' => ! $showFullPii,
+            'pii_redacted' => ! $showFullPii,
             'status' => $client->status,
             'kyc_status' => $client->kyc_status,
             'onboarded_on' => $this->formatDate($client->onboarded_on),
@@ -86,11 +98,18 @@ final class ClientResource extends JsonResource
         return mb_substr($value, 0, 1).str_repeat('*', max(0, mb_strlen($value) - 1));
     }
 
-    private function canViewPii(Request $request): bool
+    private function canViewFullPii(Request $request): bool
     {
         $user = $request->user();
 
-        return $user instanceof User && $user->hasPermissionTo('crm.pii.view');
+        return $user instanceof User && $user->checkPermissionTo('crm.pii.view');
+    }
+
+    private function canViewOperationalIdentity(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user instanceof User && $user->checkPermissionTo('crm.clients.identity.view');
     }
 
     private function maskPhone(?string $value): ?string

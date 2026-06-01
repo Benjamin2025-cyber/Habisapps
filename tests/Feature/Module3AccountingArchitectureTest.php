@@ -1551,6 +1551,97 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response->assertJsonValidationErrors(['ledger_account_public_id']);
     }
 
+    public function test_operational_account_readers_can_view_accounts_and_balances_within_agency(): void
+    {
+        // FB-BAL-001 / FB-BAL-002: every default role that holds
+        // customer.accounts.balance.view can read same-agency accounts and
+        // current/available balances, without ledger or statement access.
+        $agency = $this->createAgency('ACCT-BAL-ROLE');
+        $clientPublicId = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
+        $accountPublicId = $this->createCustomerAccount($agency['id'], $clientPublicId, 'CA-ROLE-1');
+
+        foreach (['teller', 'agency-manager', 'loan-officer', 'accountant', 'kyc-officer', 'user-admin'] as $role) {
+            $actor = $this->createUserWithRole($role, $agency['code'], $agency['name']);
+
+            // The deposit/withdrawal page lists a client's accounts by public id.
+            $list = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->getJson('/api/v1/customer-accounts?client_public_id='.$clientPublicId);
+            $this->assertJsonSuccess($list);
+            $list->assertJsonPath('data.customer_accounts.0.public_id', $accountPublicId);
+
+            $show = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->getJson('/api/v1/customer-accounts/'.$accountPublicId);
+            $this->assertJsonSuccess($show);
+            $show->assertJsonPath('data.public_id', $accountPublicId);
+
+            $balance = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/balance?currency=XAF');
+            $this->assertJsonSuccess($balance);
+            $balance->assertJsonPath('data.scope', 'customer_account');
+
+            $available = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/available-balance?currency=XAF');
+            $this->assertJsonSuccess($available);
+            $availableData = $available->json('data');
+            self::assertIsArray($availableData);
+            foreach (['currency', 'accounting_balance_minor', 'available_balance_minor', 'minimum_balance_minor', 'active_hold_amount_minor', 'unavailable_amount_minor'] as $field) {
+                self::assertArrayHasKey($field, $availableData, "{$role} available-balance payload must include {$field}");
+            }
+
+            // Statements remain out of scope for operational account readers.
+            $statement = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/statement?currency=XAF');
+            $statement->assertForbidden();
+        }
+    }
+
+    public function test_customer_account_and_balance_access_is_scoped_by_permission_and_agency(): void
+    {
+        $agencyA = $this->createAgency('ACCT-SCOPE-A');
+        $agencyB = $this->createAgency('ACCT-SCOPE-B');
+        $clientPublicId = $this->createClient($agencyA['id'], Client::KYC_STATUS_VERIFIED);
+        $accountPublicId = $this->createCustomerAccount($agencyA['id'], $clientPublicId, 'CA-SCOPE-1');
+
+        // Cross-agency operational reader: denied account read and balances.
+        $foreignTeller = $this->createUserWithRole('teller', $agencyB['code'], $agencyB['name']);
+        $this->withApiHeaders()->actingAsSanctum($foreignTeller)
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId)->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($foreignTeller)
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/balance?currency=XAF')->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($foreignTeller)
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/available-balance?currency=XAF')->assertForbidden();
+
+        // Same-agency reader with account view but WITHOUT balance permission:
+        // can show the account, but balance endpoints stay forbidden.
+        $accountOnly = $this->createUserWithRole('staff', $agencyA['code'], $agencyA['name']);
+        $accountOnly->givePermissionTo('customer.accounts.view');
+        $this->assertJsonSuccess(
+            $this->withApiHeaders()->actingAsSanctum($accountOnly)
+                ->getJson('/api/v1/customer-accounts/'.$accountPublicId)
+        );
+        $this->withApiHeaders()->actingAsSanctum($accountOnly)
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/balance?currency=XAF')->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($accountOnly)
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/available-balance?currency=XAF')->assertForbidden();
+
+        // Operational reader cannot fetch ledger-account balances (no ledger.accounts.view).
+        $admin = $this->createUserWithRole('platform-admin');
+        $ledger = $this->withApiHeaders()->actingAsSanctum($admin)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyA['public_id'],
+                'code' => '7001',
+                'name' => 'Scope Cash Ledger',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $this->assertJsonSuccess($ledger, 201);
+        $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
+
+        $teller = $this->createUserWithRole('teller', $agencyA['code'], $agencyA['name']);
+        $this->withApiHeaders()->actingAsSanctum($teller)
+            ->getJson('/api/v1/ledger-accounts/'.$ledgerPublicId.'/balance?currency=XAF')->assertForbidden();
+    }
+
     private function createUserWithRole(string $role, ?string $agencyCode = null, ?string $agencyName = null): User
     {
         $agency = null;
