@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property array<string, mixed>|null $definition
+ */
 #[Fillable(['public_id', 'code', 'name', 'report_type', 'module', 'status', 'definition'])]
 final class ReportDefinition extends Model
 {

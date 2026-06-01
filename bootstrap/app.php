@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
@@ -93,6 +94,18 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return ApiResponse::notFound($e->getMessage() ?: 'Resource not found');
+        });
+
+        $exceptions->render(function (MethodNotAllowedHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return ApiResponse::error(
+                $e->getMessage() ?: 'The requested method is not allowed for this resource.',
+                null,
+                Response::HTTP_METHOD_NOT_ALLOWED
+            );
         });
 
         $exceptions->render(function (AuthenticationException $e, Request $request) {

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature\Api;
 
 use App\Application\Reporting\MappingCompletenessGate;
+use App\Models\AccountingDay;
 use App\Models\LedgerAccount;
 use App\Models\ReportDefinition;
 use App\Models\ReportRun;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\StandardReportDefinitionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -26,6 +28,11 @@ final class RegulatoryReportingTest extends TestCase
         parent::setUp();
 
         $this->seed(RolesAndPermissionsSeeder::class);
+
+        // Regulatory POST routes run under the accounting-day registration lock,
+        // so an open institution day is a precondition for registering sources,
+        // report-definition versions, and report-run review/submission.
+        $this->openAccountingDay();
     }
 
     public function test_regulatory_source_can_be_registered_with_checksum(): void
@@ -399,12 +406,14 @@ final class RegulatoryReportingTest extends TestCase
         $definitionPublicId = $this->requireStringJsonPath($created, 'data.public_id');
         $created->assertJsonPath('data.version', 1);
 
-        // No PATCH/PUT route exists for report definitions — attempting to patch returns 404.
+        // The report-definition resource is read-only: the catalog exposes GET
+        // (index/show) but no mutating verb, so PATCH is rejected as
+        // method-not-allowed (405).
         $patch = $this->withApiHeaders()->actingAsSanctum($actor)
             ->patchJson('/api/v1/report-definitions/'.$definitionPublicId, [
                 'name' => 'Mutated Name',
             ]);
-        $patch->assertStatus(404);
+        $patch->assertStatus(405);
 
         // The original version 1 record in the database is untouched.
         $this->assertDatabaseHas('report_definitions', [
@@ -639,5 +648,547 @@ final class RegulatoryReportingTest extends TestCase
         self::assertIsString($value);
 
         return $value;
+    }
+
+    // ─── Report definition catalog (FBI2-028) ───────────────────────────
+
+    private function seedReportDefinitions(): void
+    {
+        $this->seed(StandardReportDefinitionSeeder::class);
+    }
+
+    /**
+     * @return array{id:int, public_id:string}
+     */
+    private function insertDefinition(User $actor, string $code, string $type = 'trial_balance', string $status = 'active'): array
+    {
+        $publicId = (string) Str::ulid();
+        $id = DB::table('report_definitions')->insertGetId([
+            'public_id' => $publicId,
+            'code' => $code,
+            'version' => 1,
+            'name' => 'Test '.$code,
+            'report_type' => $type,
+            'module' => 'test',
+            'status' => $status,
+            'definition' => json_encode([
+                'lines' => [
+                    ['source' => 'ledger_balance', 'fields' => ['ledger_account_code', 'debit_total_minor', 'credit_total_minor']],
+                ],
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [
+            'id' => $id,
+            'public_id' => $publicId,
+        ];
+    }
+
+    private function openAccountingDay(): void
+    {
+        AccountingDay::query()->create([
+            'scope_type' => AccountingDay::SCOPE_INSTITUTION,
+            'business_date' => now()->toDateString(),
+            'calendar_opened_at' => now(),
+            'status' => AccountingDay::STATUS_OPEN,
+            'is_holiday' => false,
+            'origin' => AccountingDay::ORIGIN_MANUAL,
+            'write_lock_version' => 0,
+        ]);
+    }
+
+    public function test_standard_report_definitions_are_seeded(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+
+        $this->assertJsonSuccess($response);
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+        self::assertCount(6, $definitions);
+
+        $codes = [];
+        foreach ($definitions as $d) {
+            /** @var array<string, mixed> $d */
+            $codes[] = is_string($d['code'] ?? null) ? $d['code'] : '';
+        }
+        sort($codes);
+        self::assertSame([
+            'credit_collection_performance',
+            'credit_par_delinquency',
+            'credit_portfolio_outstanding',
+            'emf_trial_balance',
+            'general_ledger',
+            'trial_balance',
+        ], $codes);
+
+        foreach ($definitions as $definition) {
+            /** @var array<string, mixed> $definition */
+            self::assertSame('active', $definition['status']);
+        }
+    }
+
+    public function test_seeder_is_idempotent(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $first = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($first);
+        $firstCount = count((array) $first->json('data.report_definitions'));
+
+        $this->seed(StandardReportDefinitionSeeder::class);
+
+        $second = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($second);
+        $secondCount = count((array) $second->json('data.report_definitions'));
+
+        self::assertSame($firstCount, $secondCount, 'Seeding twice must not create duplicates.');
+    }
+
+    public function test_seeder_does_not_change_public_id_on_re_run(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $firstResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($firstResponse);
+
+        $firstPublicIds = [];
+        $firstDefinitions = $firstResponse->json('data.report_definitions');
+        self::assertIsArray($firstDefinitions);
+        foreach ($firstDefinitions as $def) {
+            /** @var array{code: string, public_id: string} $def */
+            $firstPublicIds[$def['code']] = $def['public_id'];
+        }
+
+        $this->seed(StandardReportDefinitionSeeder::class);
+
+        $secondResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($secondResponse);
+
+        $secondDefinitions = $secondResponse->json('data.report_definitions');
+        self::assertIsArray($secondDefinitions);
+        foreach ($secondDefinitions as $def) {
+            /** @var array{code: string, public_id: string} $def */
+            $code = $def['code'];
+            self::assertSame(
+                $firstPublicIds[$code] ?? null,
+                $def['public_id'],
+                "Public ID for {$code} changed after re-seed."
+            );
+        }
+    }
+
+    public function test_index_returns_active_by_default(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+        $this->insertDefinition($actor, 'INACTIVE-DEF', 'trial_balance', 'inactive');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+
+        $this->assertJsonSuccess($response);
+
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+
+        foreach ($definitions as $definition) {
+            /** @var array<string, mixed> $definition */
+            self::assertSame('active', $definition['status'], 'Only active definitions should be returned by default.');
+        }
+    }
+
+    public function test_index_includes_inactive_for_platform_admin(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+        $this->insertDefinition($actor, 'INACTIVE-DEF', 'trial_balance', 'inactive');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?include_inactive=true');
+
+        $this->assertJsonSuccess($response);
+
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+
+        $statuses = [];
+        foreach ($definitions as $definition) {
+            /** @var array{status: string} $definition */
+            $statuses[] = $definition['status'];
+        }
+        self::assertContains('inactive', $statuses, 'Platform admin should see inactive definitions with include_inactive=true.');
+    }
+
+    public function test_index_include_inactive_blocked_for_non_platform(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('compliance-officer');
+        $this->insertDefinition($actor, 'INACTIVE-DEF', 'trial_balance', 'inactive');
+
+        $defaultResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+
+        $flaggedResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?include_inactive=true');
+
+        $this->assertJsonSuccess($defaultResponse);
+        $this->assertJsonSuccess($flaggedResponse);
+
+        $defaultDefinitions = $defaultResponse->json('data.report_definitions');
+        $flaggedDefinitions = $flaggedResponse->json('data.report_definitions');
+        self::assertIsArray($defaultDefinitions);
+        self::assertIsArray($flaggedDefinitions);
+        $defaultCount = count($defaultDefinitions);
+        $flaggedCount = count($flaggedDefinitions);
+
+        self::assertSame($defaultCount, $flaggedCount, 'Non-platform admin must not see additional definitions with include_inactive=true.');
+    }
+
+    public function test_index_requires_accounting_audit_view(): void
+    {
+        $this->seedReportDefinitions();
+        $teller = $this->createUserWithRole('teller');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($teller)
+            ->getJson('/api/v1/report-definitions');
+
+        $this->assertJsonError($response, 403);
+    }
+
+    public function test_index_unknown_filter_returns_422(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?filter[xyz]=abc');
+
+        $this->assertJsonError($response, 422);
+        $response->assertJsonPath('message', 'Unsupported filter parameters.');
+    }
+
+    public function test_index_filters_by_report_type(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?filter[report_type]=trial_balance');
+
+        $this->assertJsonSuccess($response);
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+
+        foreach ($definitions as $definition) {
+            /** @var array<string, mixed> $definition */
+            self::assertSame('trial_balance', $definition['report_type']);
+        }
+    }
+
+    public function test_index_filters_by_module(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?filter[module]=credit');
+
+        $this->assertJsonSuccess($response);
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+
+        foreach ($definitions as $definition) {
+            /** @var array<string, mixed> $definition */
+            self::assertSame('credit', $definition['module']);
+        }
+    }
+
+    public function test_index_search(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?search=trial');
+
+        $this->assertJsonSuccess($response);
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+        self::assertGreaterThan(0, count($definitions));
+    }
+
+    public function test_index_pagination(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?per_page=2');
+
+        $this->assertJsonSuccess($response);
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+        self::assertCount(2, $definitions);
+
+        $meta = $response->json('meta.pagination');
+        self::assertIsArray($meta);
+        self::assertArrayHasKey('current_page', $meta);
+        self::assertArrayHasKey('per_page', $meta);
+        self::assertArrayHasKey('total', $meta);
+        self::assertArrayHasKey('last_page', $meta);
+        self::assertSame(2, $meta['per_page']);
+    }
+
+    public function test_index_per_page_capped(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?per_page=200');
+
+        $this->assertJsonSuccess($response);
+        $meta = $response->json('meta.pagination');
+        self::assertIsArray($meta);
+        self::assertSame(100, $meta['per_page'], 'per_page must be capped at 100.');
+    }
+
+    public function test_show_returns_single_definition(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $indexResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($indexResponse);
+        $firstPublicId = $this->requireStringJsonPath($indexResponse, 'data.report_definitions.0.public_id');
+
+        $showResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions/'.$firstPublicId);
+
+        $this->assertJsonSuccess($showResponse);
+        $showResponse->assertJsonPath('data.public_id', $firstPublicId);
+        $showResponse->assertJsonPath('data.status', 'active');
+    }
+
+    public function test_show_requires_accounting_audit_view(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+        $teller = $this->createUserWithRole('teller');
+
+        $indexResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($indexResponse);
+        $firstPublicId = $this->requireStringJsonPath($indexResponse, 'data.report_definitions.0.public_id');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($teller)
+            ->getJson('/api/v1/report-definitions/'.$firstPublicId);
+
+        $this->assertJsonError($response, 403);
+    }
+
+    public function test_index_agency_scope_enforces_agency_context(): void
+    {
+        $this->seedReportDefinitions();
+
+        // A user with accounting.audit.view but WITHOUT institution scope
+        // and WITHOUT an agency assignment should be rejected.
+        $user = $this->createUserWithRole('teller');
+        $user->givePermissionTo('accounting.audit.view');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($user)
+            ->getJson('/api/v1/report-definitions');
+
+        $this->assertJsonError($response, 403);
+    }
+
+    public function test_index_agency_scope_allows_institution_scope_without_agency(): void
+    {
+        $this->seedReportDefinitions();
+
+        // Compliance-officer has accounting.audit.view + crm.scope.institution.read
+        // without a primary agency assignment → should pass.
+        $actor = $this->createUserWithRole('compliance-officer');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+
+        $this->assertJsonSuccess($response);
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+        self::assertGreaterThan(0, count($definitions));
+    }
+
+    public function test_generation_from_catalog_definition(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Discover a definition from the catalog. Pick the trial-balance
+        // definition explicitly so generation has no extra prerequisites
+        // (credit reports need an approved formula policy, EMF needs a source).
+        $catalog = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?filter[report_type]=trial_balance');
+        $this->assertJsonSuccess($catalog);
+        $definitionPublicId = $catalog->json('data.report_definitions.0.public_id');
+        self::assertIsString($definitionPublicId);
+
+        // Use it to generate a report run.
+        $runResponse = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+            ]);
+        $this->assertJsonSuccess($runResponse, 201);
+        $runResponse->assertJsonPath('data.report_definition_public_id', $definitionPublicId);
+    }
+
+    public function test_report_definition_resource_fields(): void
+    {
+        $this->seedReportDefinitions();
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($response);
+
+        $definition = $response->json('data.report_definitions.0');
+        self::assertIsArray($definition);
+
+        // Assert all required fields are present.
+        self::assertArrayHasKey('public_id', $definition);
+        self::assertArrayHasKey('code', $definition);
+        self::assertArrayHasKey('name', $definition);
+        self::assertArrayHasKey('report_type', $definition);
+        self::assertArrayHasKey('module', $definition);
+        self::assertArrayHasKey('status', $definition);
+        self::assertArrayHasKey('version', $definition);
+        self::assertArrayHasKey('effective_from', $definition);
+        self::assertArrayHasKey('effective_to', $definition);
+        self::assertArrayHasKey('supported_parameters', $definition);
+        self::assertArrayHasKey('requires_agency', $definition);
+        self::assertArrayHasKey('requires_currency', $definition);
+        self::assertArrayHasKey('requires_period', $definition);
+        self::assertArrayHasKey('description', $definition);
+
+        self::assertIsString($definition['public_id']);
+        self::assertIsInt($definition['version']);
+        self::assertIsArray($definition['supported_parameters']);
+        self::assertIsBool($definition['requires_agency']);
+    }
+
+    public function test_index_returns_only_latest_active_version_per_code(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Two active versions of the same code (versions are immutable and a
+        // new version stays active alongside its predecessor).
+        $v1PublicId = (string) Str::ulid();
+        $v2PublicId = (string) Str::ulid();
+        DB::table('report_definitions')->insert([
+            [
+                'public_id' => $v1PublicId,
+                'code' => 'VERSIONED-DEF',
+                'version' => 1,
+                'name' => 'Versioned Definition v1',
+                'report_type' => 'trial_balance',
+                'module' => 'reporting',
+                'status' => 'active',
+                'definition' => null,
+                'created_at' => now()->subMinute(),
+                'updated_at' => now()->subMinute(),
+            ],
+            [
+                'public_id' => $v2PublicId,
+                'code' => 'VERSIONED-DEF',
+                'version' => 2,
+                'name' => 'Versioned Definition v2',
+                'report_type' => 'trial_balance',
+                'module' => 'reporting',
+                'status' => 'active',
+                'definition' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?filter[module]=reporting');
+        $this->assertJsonSuccess($response);
+
+        $definitions = $response->json('data.report_definitions');
+        self::assertIsArray($definitions);
+
+        /** @var array<int, array<string, mixed>> $definitions */
+        $matching = array_values(array_filter(
+            $definitions,
+            static fn (array $d): bool => $d['code'] === 'VERSIONED-DEF',
+        ));
+
+        // The active default must collapse the code to a single latest version.
+        self::assertCount(1, $matching, 'Catalog must not return duplicate versions of the same code.');
+        self::assertSame(2, $matching[0]['version']);
+        self::assertSame($v2PublicId, $matching[0]['public_id']);
+    }
+
+    public function test_index_latest_active_version_skips_inactive_newer_version(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // v2 is inactive (deprecated); v1 remains the latest *active* version.
+        $v1PublicId = (string) Str::ulid();
+        DB::table('report_definitions')->insert([
+            [
+                'public_id' => $v1PublicId,
+                'code' => 'DEPRECATED-NEWER',
+                'version' => 1,
+                'name' => 'Active v1',
+                'report_type' => 'trial_balance',
+                'module' => 'reporting',
+                'status' => 'active',
+                'definition' => null,
+                'created_at' => now()->subMinute(),
+                'updated_at' => now()->subMinute(),
+            ],
+            [
+                'public_id' => (string) Str::ulid(),
+                'code' => 'DEPRECATED-NEWER',
+                'version' => 2,
+                'name' => 'Inactive v2',
+                'report_type' => 'trial_balance',
+                'module' => 'reporting',
+                'status' => 'inactive',
+                'definition' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/report-definitions?filter[module]=reporting');
+        $this->assertJsonSuccess($response);
+
+        /** @var array<int, array<string, mixed>> $definitions */
+        $definitions = $response->json('data.report_definitions');
+        $matching = array_values(array_filter(
+            $definitions,
+            static fn (array $d): bool => $d['code'] === 'DEPRECATED-NEWER',
+        ));
+
+        self::assertCount(1, $matching, 'Only the latest active version should be returned.');
+        self::assertSame(1, $matching[0]['version']);
+        self::assertSame($v1PublicId, $matching[0]['public_id']);
     }
 }

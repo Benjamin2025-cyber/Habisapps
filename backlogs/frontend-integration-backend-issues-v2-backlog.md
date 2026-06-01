@@ -375,7 +375,7 @@ Regression tests:
 - End-to-end API test executes the teller dashboard fetch sequence as a default teller.
 - Test proves removing any required narrow permission produces a clear 403 on the specific endpoint, not masked data or a 500.
 
-### FBI2-028: Report Definition Catalog And Standard Seeds
+### FBI2-028: Report Definition Catalog And Standard Seeds(completed)
 
 Source issue: `#28 Rapports`.
 
