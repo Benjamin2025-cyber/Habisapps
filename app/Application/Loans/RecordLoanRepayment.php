@@ -85,7 +85,7 @@ final class RecordLoanRepayment
 
             $postedAt = now();
             $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.repay', $lockedLoan->agency_id, $paidOn);
-            $paidDate = (string) $accountingDay->business_date?->toDateString();
+            $paidDate = $accountingDay->business_date->toDateString();
             $idempotencyKey = 'loan-repayment:'.hash('sha256', implode('|', [
                 $lockedLoan->public_id,
                 $customerAccount->public_id,

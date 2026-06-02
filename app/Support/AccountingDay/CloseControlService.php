@@ -32,7 +32,7 @@ final class CloseControlService
 
     public function evaluate(AccountingDay $day): CloseReadinessResult
     {
-        $businessDate = $day->business_date?->toDateString();
+        $businessDate = $day->business_date->toDateString();
         $blockers = [];
 
         $unpostedJournals = $this->countUnpostedJournals($day, $businessDate);
@@ -74,20 +74,20 @@ final class CloseControlService
         return new CloseReadinessResult($blockers === [], $blockers, $summary);
     }
 
-    private function countUnpostedJournals(AccountingDay $day, ?string $businessDate): int
+    private function countUnpostedJournals(AccountingDay $day, string $businessDate): int
     {
         $query = JournalEntry::query()
-            ->whereIn('status', self::UNPOSTED_JOURNAL_STATUSES)
             ->where('business_date', $businessDate);
+        $query->getQuery()->whereIn('status', self::UNPOSTED_JOURNAL_STATUSES);
 
         if ($day->scope_type === AccountingDay::SCOPE_AGENCY) {
             $query->where('agency_id', $day->agency_id);
         }
 
-        return $query->count();
+        return $query->getQuery()->count();
     }
 
-    private function countOpenTellerSessions(AccountingDay $day, ?string $businessDate): int
+    private function countOpenTellerSessions(AccountingDay $day, string $businessDate): int
     {
         $query = TellerSession::query()
             ->where('status', TellerSession::STATUS_OPEN)
@@ -97,10 +97,10 @@ final class CloseControlService
             $query->where('agency_id', $day->agency_id);
         }
 
-        return $query->count();
+        return $query->getQuery()->count();
     }
 
-    private function countPendingTellerTransactions(AccountingDay $day, ?string $businessDate): int
+    private function countPendingTellerTransactions(AccountingDay $day, string $businessDate): int
     {
         $query = DB::table('teller_transactions')
             ->join('teller_sessions', 'teller_transactions.teller_session_id', '=', 'teller_sessions.id')

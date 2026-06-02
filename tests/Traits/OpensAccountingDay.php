@@ -56,18 +56,18 @@ trait OpensAccountingDay
     {
         $businessDate ??= now()->toDateString();
 
-        $active = AccountingDay::query()
+        $activeQuery = AccountingDay::query()
             ->where('scope_type', AccountingDay::SCOPE_AGENCY)
-            ->where('agency_id', $agencyId)
-            ->whereIn('status', [
-                AccountingDay::STATUS_OPEN,
-                AccountingDay::STATUS_REOPENED,
-                AccountingDay::STATUS_CLOSING,
-            ])
-            ->first();
+            ->where('agency_id', $agencyId);
+        $activeQuery->getQuery()->whereIn('status', [
+            AccountingDay::STATUS_OPEN,
+            AccountingDay::STATUS_REOPENED,
+            AccountingDay::STATUS_CLOSING,
+        ]);
+        $active = $activeQuery->first();
 
         if ($active instanceof AccountingDay) {
-            if ($active->business_date?->toDateString() === $businessDate) {
+            if ($active->business_date->toDateString() === $businessDate) {
                 return $active;
             }
 

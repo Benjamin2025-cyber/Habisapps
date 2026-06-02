@@ -1430,10 +1430,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 }
 
                 $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.financing', $agencyId);
-                $businessDate = $accountingDay->business_date?->toDateString();
-                if ($businessDate === null) {
-                    throw new InvalidArgumentException('Open accounting day is missing a business date for Murabaha collection posting.');
-                }
+                $businessDate = $accountingDay->business_date->toDateString();
 
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
@@ -1889,10 +1886,7 @@ final class IslamicFinancingWorkflow extends BaseController
                     $this->storeMourabahaContractSnapshot($financing, $actor->id);
 
                     $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.financing', $agencyId);
-                    $businessDate = $accountingDay->business_date?->toDateString();
-                    if ($businessDate === null) {
-                        throw new InvalidArgumentException('Open accounting day is missing a business date for Murabaha financing posting.');
-                    }
+                    $businessDate = $accountingDay->business_date->toDateString();
 
                     $journalEntry = JournalEntry::query()->create([
                         'public_id' => (string) Str::ulid(),
@@ -2820,10 +2814,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 }
 
                 $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.financing', $agencyId);
-                $businessDate = $accountingDay->business_date?->toDateString();
-                if ($businessDate === null) {
-                    throw new InvalidArgumentException('Open accounting day is missing a business date for Murabaha adjustment posting.');
-                }
+                $businessDate = $accountingDay->business_date->toDateString();
 
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),

@@ -17,7 +17,7 @@ final class AccountingDayRouteClassificationTest extends TestCase
 
     public function test_all_authenticated_mutating_routes_resolve_to_a_valid_classification(): void
     {
-        $routes = app('router')->getRoutes();
+        $routes = app('router')->getRoutes()->getRoutes();
         $invalid = [];
         $missingLock = [];
         $checked = 0;

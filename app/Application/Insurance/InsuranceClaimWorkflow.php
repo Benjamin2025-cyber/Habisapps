@@ -495,7 +495,7 @@ final class InsuranceClaimWorkflow extends BaseController
                     $agencyId,
                     $requestedBusinessDate,
                 );
-                $businessDate = (string) $accountingDay->business_date?->toDateString();
+                $businessDate = $accountingDay->business_date->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'insurance-claim-settlement:'.$claimPublicId;
@@ -622,7 +622,7 @@ final class InsuranceClaimWorkflow extends BaseController
                 $reversalJe = JournalEntry::create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'REV-'.Str::upper(Str::random(10)),
-                    'business_date' => $accountingDay->business_date?->toDateString(),
+                    'business_date' => $accountingDay->business_date->toDateString(),
                     'agency_id' => $originalJe->agency_id,
                     'source_module' => 'insurance',
                     'source_type' => 'insurance_claim_settlement_reversal',

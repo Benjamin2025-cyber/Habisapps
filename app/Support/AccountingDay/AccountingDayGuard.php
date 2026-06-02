@@ -111,14 +111,8 @@ final class AccountingDayGuard
     public function resolveBusinessDate(User $actor, string $operation, ?int $agencyId = null, ?string $requestedDate = null, ?Request $request = null): string
     {
         $day = $this->resolveAccountingDay($actor, $operation, $agencyId, $requestedDate, $request);
-        $businessDate = $day->business_date?->toDateString();
 
-        if ($businessDate === null) {
-            // Fail closed: an active day must always carry a business date.
-            throw AccountingDayException::missing($agencyId);
-        }
-
-        return $businessDate;
+        return $day->business_date->toDateString();
     }
 
     /**
@@ -132,11 +126,7 @@ final class AccountingDayGuard
     public function resolveAccountingDay(User $actor, string $operation, ?int $agencyId = null, ?string $requestedDate = null, ?Request $request = null): AccountingDay
     {
         $day = $this->assertCanRegister($actor, $operation, $agencyId, $request);
-        $businessDate = $day->business_date?->toDateString();
-
-        if ($businessDate === null) {
-            throw AccountingDayException::missing($agencyId);
-        }
+        $businessDate = $day->business_date->toDateString();
 
         if ($requestedDate !== null && $requestedDate !== '' && $requestedDate !== $businessDate) {
             if ($this->autoOpenOnMissingEnabled()) {
@@ -203,18 +193,19 @@ final class AccountingDayGuard
 
     private function findActiveDay(string $scopeType, ?int $agencyId): ?AccountingDay
     {
-        $query = AccountingDay::query()
-            ->where('scope_type', $scopeType)
-            ->whereIn('status', [
-                AccountingDay::STATUS_OPEN,
-                AccountingDay::STATUS_REOPENED,
-                AccountingDay::STATUS_CLOSING,
-            ]);
+        $query = AccountingDay::query()->where('scope_type', $scopeType);
+        $query->getQuery()->whereIn('status', [
+            AccountingDay::STATUS_OPEN,
+            AccountingDay::STATUS_REOPENED,
+            AccountingDay::STATUS_CLOSING,
+        ]);
 
         $this->applyScope($query, $scopeType, $agencyId);
 
         // A partial unique index guarantees at most one active day per scope.
-        return $query->orderByDesc('business_date')->first();
+        $query->getQuery()->orderByDesc('business_date');
+
+        return $query->first();
     }
 
     private function findLatestClosedDay(string $scopeType, ?int $agencyId): ?AccountingDay
@@ -225,7 +216,9 @@ final class AccountingDayGuard
 
         $this->applyScope($query, $scopeType, $agencyId);
 
-        return $query->orderByDesc('business_date')->first();
+        $query->getQuery()->orderByDesc('business_date');
+
+        return $query->first();
     }
 
     /**
@@ -236,7 +229,7 @@ final class AccountingDayGuard
         if ($scopeType === AccountingDay::SCOPE_AGENCY) {
             $query->where('agency_id', $agencyId);
         } else {
-            $query->whereNull('agency_id');
+            $query->getQuery()->whereNull('agency_id');
         }
     }
 
@@ -269,17 +262,13 @@ final class AccountingDayGuard
         }
 
         $businessDate = $requestedDate ?? now()->toDateString();
-        $existing = AccountingDay::query()
-            ->where('scope_type', $scopeType)
-            ->when(
-                $scopeType === AccountingDay::SCOPE_AGENCY,
-                fn ($query) => $query->where('agency_id', $agencyId),
-                fn ($query) => $query->whereNull('agency_id'),
-            )
+        $existingQuery = AccountingDay::query()->where('scope_type', $scopeType);
+        $this->applyScope($existingQuery, $scopeType, $agencyId);
+        $existingQuery->getQuery()
             ->whereDate('business_date', $businessDate)
             ->whereIn('status', [AccountingDay::STATUS_OPEN, AccountingDay::STATUS_REOPENED, AccountingDay::STATUS_CLOSING])
-            ->latest('id')
-            ->first();
+            ->orderByDesc('id');
+        $existing = $existingQuery->first();
 
         if ($existing instanceof AccountingDay) {
             return $existing;
@@ -301,17 +290,13 @@ final class AccountingDayGuard
 
     private function reconcileAutoManagedDay(AccountingDay $day, string $requestedDate, User $actor): AccountingDay
     {
-        $target = AccountingDay::query()
-            ->where('scope_type', $day->scope_type)
-            ->when(
-                $day->scope_type === AccountingDay::SCOPE_AGENCY,
-                fn ($query) => $query->where('agency_id', $day->agency_id),
-                fn ($query) => $query->whereNull('agency_id'),
-            )
+        $targetQuery = AccountingDay::query()->where('scope_type', $day->scope_type);
+        $this->applyScope($targetQuery, $day->scope_type, $day->agency_id);
+        $targetQuery->getQuery()
             ->whereDate('business_date', $requestedDate)
             ->whereIn('status', [AccountingDay::STATUS_OPEN, AccountingDay::STATUS_REOPENED])
-            ->latest('id')
-            ->first();
+            ->orderByDesc('id');
+        $target = $targetQuery->first();
 
         if ($target instanceof AccountingDay) {
             return $target;

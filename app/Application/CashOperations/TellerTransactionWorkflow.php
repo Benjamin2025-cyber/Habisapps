@@ -53,6 +53,7 @@ final class TellerTransactionWorkflow extends BaseController
             'initiatorProxy',
             'customerAccountSignature',
             'signatureCheckedBy',
+            'tenders',
         ])->latest();
 
         $scopeError = $this->applyAgencyScope($query, $actor);

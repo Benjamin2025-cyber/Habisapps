@@ -178,7 +178,7 @@ final class InsuranceAccountingService
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'IRF-'.Str::upper(Str::random(10)),
-            'business_date' => $accountingDay->business_date?->toDateString(),
+            'business_date' => $accountingDay->business_date->toDateString(),
             'posted_at' => null,
             'agency_id' => $this->rowInt($subscription, 'agency_id'),
             'source_module' => 'insurance',
@@ -260,7 +260,7 @@ final class InsuranceAccountingService
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'IRM-'.Str::upper(Str::random(10)),
-            'business_date' => $accountingDay->business_date?->toDateString(),
+            'business_date' => $accountingDay->business_date->toDateString(),
             'posted_at' => null,
             'agency_id' => $this->rowInt($batch, 'agency_id'),
             'source_module' => 'insurance',

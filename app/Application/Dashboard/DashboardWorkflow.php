@@ -491,7 +491,7 @@ final class DashboardWorkflow extends BaseController
             $movement = $this->numericValue(DB::table('teller_transactions')
                 ->where('teller_session_id', $session->id)
                 ->where('status', 'posted')
-                ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'cash_deposit' THEN amount_minor WHEN transaction_type = 'cash_withdrawal' THEN -amount_minor ELSE 0 END), 0) AS movement")
+                ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'cash_deposit' THEN COALESCE(cash_amount_minor, amount_minor) WHEN transaction_type = 'cash_withdrawal' THEN -COALESCE(cash_amount_minor, amount_minor) ELSE 0 END), 0) AS movement")
                 ->value('movement'));
 
             $expectedClose = $opening + $movement;

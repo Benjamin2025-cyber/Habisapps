@@ -42,8 +42,8 @@ final class BackfillAccountingDays extends Command
 
     public function handle(): int
     {
-        $dryRun = (bool) $this->option('dry-run');
-        $strict = (bool) $this->option('strict');
+        $dryRun = $this->option('dry-run');
+        $strict = $this->option('strict');
         $this->batchId = (string) Str::ulid();
 
         $this->info('Starting accounting-day historical backfill...');
@@ -79,11 +79,11 @@ final class BackfillAccountingDays extends Command
                 ['table', 'id', 'reason', 'agency_id', 'business_date'],
                 array_map(
                     static fn (array $row): array => [
-                        (string) ($row['table'] ?? ''),
-                        (string) ($row['id'] ?? ''),
-                        (string) ($row['reason'] ?? ''),
-                        (string) ($row['agency_id'] ?? ''),
-                        (string) ($row['business_date'] ?? ''),
+                        self::displayValue($row['table'] ?? null),
+                        self::displayValue($row['id'] ?? null),
+                        self::displayValue($row['reason'] ?? null),
+                        self::displayValue($row['agency_id'] ?? null),
+                        self::displayValue($row['business_date'] ?? null),
                     ],
                     $preview,
                 )
@@ -169,7 +169,7 @@ final class BackfillAccountingDays extends Command
         return array_values($keys);
     }
 
-    private function resolveOrCreateDay(string $scopeType, ?int $agencyId, string $businessDate, bool $dryRun): ?int
+    private function resolveOrCreateDay(string $scopeType, ?int $agencyId, string $businessDate, bool $dryRun): int
     {
         $cacheKey = $scopeType.'|'.($agencyId === null ? 'null' : (string) $agencyId).'|'.$businessDate;
         if (array_key_exists($cacheKey, $this->dayCache)) {
@@ -227,7 +227,7 @@ final class BackfillAccountingDays extends Command
 
         $this->counts['days_created']++;
 
-        return $this->dayCache[$cacheKey] = is_int($id) ? $id : (int) $id;
+        return $this->dayCache[$cacheKey] = $id;
     }
 
     private function backfillJournalEntries(bool $dryRun): void
@@ -311,17 +311,20 @@ final class BackfillAccountingDays extends Command
         string $counterKey,
         ?string $overrideDate = null,
     ): void {
-        $agencyId = property_exists($row, 'agency_id') && is_numeric($row->agency_id) ? (int) $row->agency_id : null;
+        $values = get_object_vars($row);
+        $rowId = $values['id'] ?? null;
+        $agencyValue = $values['agency_id'] ?? null;
+        $agencyId = is_numeric($agencyValue) ? (int) $agencyValue : null;
         $businessDate = $overrideDate;
         if ($businessDate === null && $dateColumn !== null) {
-            $value = $row->{$dateColumn} ?? null;
+            $value = $values[$dateColumn] ?? null;
             $businessDate = is_string($value) ? $value : null;
         }
 
         if (! is_string($businessDate) || trim($businessDate) === '') {
             $this->exceptions[] = [
                 'table' => $table,
-                'id' => $row->id ?? null,
+                'id' => $rowId,
                 'reason' => 'missing_business_date',
                 'agency_id' => $agencyId,
                 'business_date' => null,
@@ -337,19 +340,34 @@ final class BackfillAccountingDays extends Command
             $dryRun
         );
 
-        if (! is_int($dayId) || $dayId <= 0) {
+        if ($dayId <= 0) {
             $this->counts[$counterKey]++;
 
             return;
         }
 
         if (! $dryRun) {
-            DB::table($table)->where('id', $row->id)->update([
+            DB::table($table)->where('id', $rowId)->update([
                 'accounting_day_id' => $dayId,
                 'updated_at' => now(),
             ]);
         }
 
         $this->counts[$counterKey]++;
+    }
+
+    private static function displayValue(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        $encoded = json_encode($value);
+
+        return is_string($encoded) ? $encoded : '';
     }
 }

@@ -352,10 +352,7 @@ final class IslamicTreatmentWorkflow extends BaseController
                 );
 
                 $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.treatment', $agencyId);
-                $businessDate = $accountingDay->business_date?->toDateString();
-                if ($businessDate === null) {
-                    throw new InvalidArgumentException('Open accounting day is missing a business date for Islamic treatment posting.');
-                }
+                $businessDate = $accountingDay->business_date->toDateString();
 
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),

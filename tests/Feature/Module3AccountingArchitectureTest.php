@@ -1047,7 +1047,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         $reviewer = $this->createUserWithRole('platform-admin');
         $agency = $this->createAgency('ACCT-20');
         $this->openInstitutionAccountingDay('2026-05-01');
-        $this->ensureOpenAccountingDay((int) $agency['id'], '2026-05-01');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
 
         $cashLedger = $this->withApiHeaders()
             ->actingAsSanctum($maker)
@@ -1092,7 +1092,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $cashLedgerPublicId, 'debit_minor' => 0, 'credit_minor' => 3000],
         ]);
 
-        $this->ensureOpenAccountingDay((int) $agency['id'], '2026-05-03');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-03');
         $draftOnlyEntry = $this->withApiHeaders()
             ->actingAsSanctum($maker)
             ->postJson('/api/v1/journal-entries', [
@@ -1215,10 +1215,9 @@ final class Module3AccountingArchitectureTest extends TestCase
         $statement->assertJsonPath('meta.pagination.total', 1);
         $statement->assertJsonMissing(['id' => 1]);
 
-        $secondAccountingDay = AccountingDay::query()
-            ->where('agency_id', $agency['id'])
-            ->whereDate('business_date', '2026-05-02')
-            ->firstOrFail();
+        $secondAccountingDayQuery = AccountingDay::query()->where('agency_id', $agency['id']);
+        $secondAccountingDayQuery->getQuery()->whereDate('business_date', '2026-05-02');
+        $secondAccountingDay = $secondAccountingDayQuery->firstOrFail();
         $secondAccountingDay->forceFill([
             'status' => AccountingDay::STATUS_CLOSED,
             'calendar_closed_at' => now(),

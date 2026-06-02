@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'public_id',
@@ -31,6 +32,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'offset_ledger_account_id',
     'operation_code_id',
     'operation_code',
+    'payment_method',
+    'cash_amount_minor',
+    'cheque_amount_minor',
+    'transfer_amount_minor',
+    'channel',
+    'external_reference',
+    'fee_policy_key',
+    'fees_applied',
+    'fee_amount_minor',
+    'notify_customer',
+    'notification_channels',
+    'notification_status',
     'depositor_name',
     'depositor_address',
     'initiator_type',
@@ -107,6 +120,32 @@ final class TellerTransaction extends Model
 
     public const string SIGNATURE_METHOD_EXCEPTION_OVERRIDE = 'exception_override';
 
+    public const string PAYMENT_CASH = 'cash';
+
+    public const string PAYMENT_CHEQUE = 'cheque';
+
+    public const string PAYMENT_TRANSFER = 'transfer';
+
+    public const string PAYMENT_MIXED = 'mixed';
+
+    public const string NOTIFICATION_NOT_REQUESTED = 'not_requested';
+
+    public const string NOTIFICATION_QUEUED = 'queued';
+
+    public const string NOTIFICATION_FAILED = 'failed';
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'fees_applied' => 'boolean',
+            'notify_customer' => 'boolean',
+            'notification_channels' => 'array',
+        ];
+    }
+
     /**
      * @return array<int, string>
      */
@@ -166,5 +205,11 @@ final class TellerTransaction extends Model
     public function signatureCheckedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'signature_checked_by_user_id');
+    }
+
+    /** @return HasMany<TellerTransactionTender, $this> */
+    public function tenders(): HasMany
+    {
+        return $this->hasMany(TellerTransactionTender::class);
     }
 }

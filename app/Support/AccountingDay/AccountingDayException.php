@@ -55,7 +55,7 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_CLOSED,
-            'The accounting day '.$day->business_date?->toDateString().' is closed. You may consult data but registration rights are blocked.',
+            'The accounting day '.$day->business_date->toDateString().' is closed. You may consult data but registration rights are blocked.',
             Response::HTTP_LOCKED,
             self::dayContext($day),
         );
@@ -65,7 +65,7 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_CLOSING,
-            'The accounting day '.$day->business_date?->toDateString().' is closing. Registrations are blocked while end-of-day controls run.',
+            'The accounting day '.$day->business_date->toDateString().' is closing. Registrations are blocked while end-of-day controls run.',
             Response::HTTP_LOCKED,
             self::dayContext($day),
         );
@@ -75,7 +75,7 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_MISMATCH,
-            'The supplied business date '.$requestedDate.' does not match the open accounting day '.$day->business_date?->toDateString().'.',
+            'The supplied business date '.$requestedDate.' does not match the open accounting day '.$day->business_date->toDateString().'.',
             Response::HTTP_UNPROCESSABLE_ENTITY,
             self::dayContext($day) + ['requested_business_date' => $requestedDate],
         );
@@ -86,11 +86,11 @@ final class AccountingDayException extends RuntimeException
      */
     private static function dayContext(AccountingDay $day): array
     {
-        return array_filter([
+        return [
             'accounting_day_public_id' => $day->public_id,
-            'business_date' => $day->business_date?->toDateString(),
+            'business_date' => $day->business_date->toDateString(),
             'status' => $day->status,
-        ], static fn (mixed $v): bool => $v !== null);
+        ];
     }
 
     public function render(Request $request): ?JsonResponse

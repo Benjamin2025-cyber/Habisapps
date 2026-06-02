@@ -237,7 +237,9 @@ final class NotificationsFoundationTest extends TestCase
             ->actingAsSanctum($teller)
             ->getJson('/api/v1/notifications?filter[read]=true&filter[type]=success&search=Session');
         $this->assertJsonSuccess($read);
-        self::assertCount(1, $read->json('data.notifications'));
+        $notifications = $read->json('data.notifications');
+        self::assertIsArray($notifications);
+        self::assertCount(1, $notifications);
         $read->assertJsonPath('data.notifications.0.category', 'cash_session_opened');
     }
 

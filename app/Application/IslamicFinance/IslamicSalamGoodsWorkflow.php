@@ -251,10 +251,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
 
                 $amount = (int) $validated['amount_minor'];
                 $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'islamic.salam', $agencyId);
-                $businessDate = $accountingDay->business_date?->toDateString();
-                if ($businessDate === null) {
-                    throw new InvalidArgumentException('Open accounting day is missing a business date for Salam upfront payment posting.');
-                }
+                $businessDate = $accountingDay->business_date->toDateString();
                 $journal = JournalEntry::query()->create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'SAL-UPF-'.Str::upper(Str::random(10)),

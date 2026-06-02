@@ -12,28 +12,39 @@ use App\Http\Requests\StoreCashWithdrawalRequest;
 use App\Http\Resources\JournalEntryResource;
 use App\Http\Resources\TellerTransactionResource;
 use App\Models\AccountingDay;
+use App\Models\Client;
 use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
 use App\Models\CustomerAccountSignature;
+use App\Models\Denomination;
 use App\Models\Document;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
 use App\Models\TellerSession;
 use App\Models\TellerTransaction;
+use App\Models\TellerTransactionTender;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\Accounting\AgencyLedgerMappingResolver;
 use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Crm\ClientProxyMandateAuthorizer;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
+/**
+ * @phpstan-type DenominationLine array{denomination_public_id: string, count: int, amount_minor: int}
+ * @phpstan-type TenderComponent array{method: string, amount_minor: int, debit_ledger_account_id: int|null, credit_ledger_account_id: int|null, ledger_mapping_evidence: array<string, mixed>, denomination_counts: array<int, DenominationLine>|null}
+ * @phpstan-type TenderContract array{ok: true, payment_method: string, cash_amount_minor: int, cheque_amount_minor: int, transfer_amount_minor: int, channel: string, external_reference: string|null, fee_policy_key: string|null, notify_customer: bool, notification_channels: array<int, string>, cheque_number: mixed, cheque_bank_name: mixed, cheque_issue_date: mixed, tenders: array<int, TenderComponent>, fingerprint: string}
+ */
 final class TellerCashTransactionWorkflow extends BaseController
 {
     public function __construct(
@@ -44,6 +55,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly UserNotificationFeed $notifications,
+        private readonly AgencyLedgerMappingResolver $mappingResolver,
     ) {}
 
     /**
@@ -89,7 +101,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.deposit', $request);
 
         $customerAccount = CustomerAccount::query()
-            ->with(['ledgerAccount'])
+            ->with(['ledgerAccount', 'client'])
             ->where('public_id', $request->string('customer_account_public_id')->toString())
             ->first();
         if (! $customerAccount instanceof CustomerAccount) {
@@ -122,28 +134,41 @@ final class TellerCashTransactionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: ['amount_minor' => [PhysicalCashAmount::validationMessage($currency)]]);
         }
 
+        try {
+            $tender = $this->resolveTenderContract($request, $tellerSession, $till, $amountMinor, $currency, TellerTransaction::TYPE_CASH_DEPOSIT);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['operation_account_mapping' => [$exception->getMessage()]]);
+        }
+        if ($tender['ok'] !== true) {
+            return $this->respondUnprocessable(errors: $tender['errors']);
+        }
+
         $initiator = $this->resolveInitiator($request, $customerAccount, TellerTransaction::TYPE_CASH_DEPOSIT, $amountMinor, $currency);
-        if ($initiator['ok'] === false) {
+        if ($initiator['ok'] !== true) {
             return $this->respondUnprocessable(errors: $initiator['errors']);
         }
 
         if ($till->max_balance_limit_minor !== null
-            && $this->postedTillBalanceMinor($tellerSession) + $amountMinor > $till->max_balance_limit_minor) {
+            && $this->postedTillBalanceMinor($tellerSession) + $tender['cash_amount_minor'] > $till->max_balance_limit_minor) {
             return $this->respondUnprocessable(errors: ['amount_minor' => ['Deposit would push till balance above its maximum balance limit.']]);
         }
 
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines'])
+                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines', 'tenders'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
+                if (! $this->idempotentTenderMatches($existing, $tender)) {
+                    return $this->respondUnprocessable(errors: ['idempotency_key' => ['Idempotency-Key has already been used for a different tender breakdown.']]);
+                }
+
                 return $this->transactionResponse($existing, 'Cash deposit already posted successfully');
             }
         }
 
-        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $accountingDay): TellerTransaction {
+        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $accountingDay, $tender): TellerTransaction {
             $publicId = (string) Str::ulid();
             $reference = 'CD-'.Str::upper(Str::random(10));
 
@@ -164,6 +189,18 @@ final class TellerCashTransactionWorkflow extends BaseController
                 'event_number' => $reference,
                 'idempotency_key' => $idempotencyKey,
                 'operation_code' => $request->input('operation_code', 'cash_deposit'),
+                'payment_method' => $tender['payment_method'],
+                'cash_amount_minor' => $tender['cash_amount_minor'],
+                'cheque_amount_minor' => $tender['cheque_amount_minor'],
+                'transfer_amount_minor' => $tender['transfer_amount_minor'],
+                'channel' => $tender['channel'],
+                'external_reference' => $tender['external_reference'],
+                'fee_policy_key' => $tender['fee_policy_key'],
+                'fees_applied' => false,
+                'fee_amount_minor' => 0,
+                'notify_customer' => $tender['notify_customer'],
+                'notification_channels' => $tender['notification_channels'],
+                'notification_status' => TellerTransaction::NOTIFICATION_NOT_REQUESTED,
                 'depositor_name' => $request->input('depositor_name'),
                 'depositor_address' => $request->input('depositor_address'),
                 'initiator_type' => $initiator['initiator_type'],
@@ -188,17 +225,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 'idempotency_key' => $idempotencyKey,
             ]);
 
-            JournalLine::query()->create([
-                'public_id' => (string) Str::ulid(),
-                'agency_id' => $tellerSession->agency_id,
-                'journal_entry_id' => $journalEntry->id,
-                'ledger_account_id' => $tillLedger->id,
-                'customer_account_id' => null,
-                'debit_minor' => $amountMinor,
-                'credit_minor' => 0,
-                'currency' => $currency,
-                'line_memo' => 'Cash received into till',
-            ]);
+            $this->createDepositTenderDebits($transaction, $journalEntry, $tender, $tillLedger, $tellerSession->agency_id, $currency);
 
             JournalLine::query()->create([
                 'public_id' => (string) Str::ulid(),
@@ -214,6 +241,7 @@ final class TellerCashTransactionWorkflow extends BaseController
 
             $transaction->update(['journal_entry_id' => $journalEntry->id]);
             $this->postSystemJournal($journalEntry, $actor);
+            $this->queueCustomerNotificationIfRequested($transaction->refresh(), $customerAccount, $tender, 'cash_deposit_posted');
 
             return $transaction->refresh();
         });
@@ -239,6 +267,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 'teller_session_public_id' => $tellerSession->public_id,
                 'customer_account_public_id' => $customerAccount->public_id,
                 'amount_minor' => $amountMinor,
+                'cash_amount_minor' => $tender['cash_amount_minor'],
                 'currency' => $currency,
             ],
         );
@@ -270,7 +299,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.withdrawal', $request);
 
         $customerAccount = CustomerAccount::query()
-            ->with(['ledgerAccount', 'accountProduct'])
+            ->with(['ledgerAccount', 'accountProduct', 'client'])
             ->where('public_id', $request->string('customer_account_public_id')->toString())
             ->first();
         if (! $customerAccount instanceof CustomerAccount) {
@@ -303,11 +332,20 @@ final class TellerCashTransactionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: ['amount_minor' => [PhysicalCashAmount::validationMessage($currency)]]);
         }
 
-        if ($till->max_withdrawal_limit_minor !== null && $amountMinor > $till->max_withdrawal_limit_minor) {
+        try {
+            $tender = $this->resolveTenderContract($request, $tellerSession, $till, $amountMinor, $currency, TellerTransaction::TYPE_CASH_WITHDRAWAL);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['operation_account_mapping' => [$exception->getMessage()]]);
+        }
+        if ($tender['ok'] !== true) {
+            return $this->respondUnprocessable(errors: $tender['errors']);
+        }
+
+        if ($till->max_withdrawal_limit_minor !== null && $tender['cash_amount_minor'] > $till->max_withdrawal_limit_minor) {
             return $this->respondUnprocessable(errors: ['amount_minor' => ['Withdrawal amount exceeds the till maximum withdrawal limit.']]);
         }
 
-        if ($amountMinor > $this->postedTillBalanceMinor($tellerSession)) {
+        if ($tender['cash_amount_minor'] > $this->postedTillBalanceMinor($tellerSession)) {
             return $this->respondUnprocessable(errors: ['amount_minor' => ['Withdrawal amount exceeds the posted till cash balance.']]);
         }
 
@@ -324,21 +362,25 @@ final class TellerCashTransactionWorkflow extends BaseController
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines'])
+                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines', 'tenders'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
+                if (! $this->idempotentTenderMatches($existing, $tender)) {
+                    return $this->respondUnprocessable(errors: ['idempotency_key' => ['Idempotency-Key has already been used for a different tender breakdown.']]);
+                }
+
                 return $this->transactionResponse($existing, 'Cash withdrawal already posted successfully');
             }
         }
 
         try {
-            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck, $accountingDay): TellerTransaction {
+            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck, $accountingDay, $tender): TellerTransaction {
                 DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
                 $lockedAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
                 $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedAccount, $currency)['available_balance_minor'];
                 if ($amountMinor > $availableBalance) {
-                    throw new \DomainException('Withdrawal amount exceeds the customer account available balance.');
+                    throw new DomainException('Withdrawal amount exceeds the customer account available balance.');
                 }
 
                 $reference = 'CW-'.Str::upper(Str::random(10));
@@ -360,6 +402,18 @@ final class TellerCashTransactionWorkflow extends BaseController
                     'event_number' => $reference,
                     'idempotency_key' => $idempotencyKey,
                     'operation_code' => $request->input('operation_code', 'cash_withdrawal'),
+                    'payment_method' => $tender['payment_method'],
+                    'cash_amount_minor' => $tender['cash_amount_minor'],
+                    'cheque_amount_minor' => $tender['cheque_amount_minor'],
+                    'transfer_amount_minor' => $tender['transfer_amount_minor'],
+                    'channel' => $tender['channel'],
+                    'external_reference' => $tender['external_reference'],
+                    'fee_policy_key' => $tender['fee_policy_key'],
+                    'fees_applied' => false,
+                    'fee_amount_minor' => 0,
+                    'notify_customer' => $tender['notify_customer'],
+                    'notification_channels' => $tender['notification_channels'],
+                    'notification_status' => TellerTransaction::NOTIFICATION_NOT_REQUESTED,
                     'initiator_type' => $initiator['initiator_type'],
                     'initiator_proxy_id' => $initiator['proxy_id'],
                     'customer_account_signature_id' => $signatureCheck['signature_id'],
@@ -398,25 +452,18 @@ final class TellerCashTransactionWorkflow extends BaseController
                     'line_memo' => 'Cash withdrawn from customer account',
                 ]);
 
-                JournalLine::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'agency_id' => $tellerSession->agency_id,
-                    'journal_entry_id' => $journalEntry->id,
-                    'ledger_account_id' => $tillLedger->id,
-                    'customer_account_id' => null,
-                    'debit_minor' => 0,
-                    'credit_minor' => $amountMinor,
-                    'currency' => $currency,
-                    'line_memo' => 'Cash paid out from till',
-                ]);
+                $this->createWithdrawalTenderCredits($transaction, $journalEntry, $tender, $tillLedger, $tellerSession->agency_id, $currency);
 
                 $transaction->update(['journal_entry_id' => $journalEntry->id]);
                 $this->postSystemJournal($journalEntry, $actor);
+                $this->queueCustomerNotificationIfRequested($transaction->refresh(), $customerAccount, $tender, 'cash_withdrawal_posted');
 
                 return $transaction->refresh();
             });
-        } catch (\DomainException $exception) {
+        } catch (DomainException $exception) {
             return $this->respondUnprocessable(errors: ['amount_minor' => [$exception->getMessage()]]);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['operation_account_mapping' => [$exception->getMessage()]]);
         }
 
         $this->securityAudit->record('cash.withdrawal.posted', actor: $actor, subject: $result, properties: [
@@ -442,6 +489,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 'teller_session_public_id' => $tellerSession->public_id,
                 'customer_account_public_id' => $customerAccount->public_id,
                 'amount_minor' => $amountMinor,
+                'cash_amount_minor' => $tender['cash_amount_minor'],
                 'currency' => $currency,
             ],
         );
@@ -536,6 +584,362 @@ final class TellerCashTransactionWorkflow extends BaseController
         );
 
         return $this->transactionResponse($reversal, 'Cash transaction reversed successfully');
+    }
+
+    /**
+     * @return TenderContract|array{ok: false, errors: array<string, array<int, string>>}
+     */
+    private function resolveTenderContract(
+        Request $request,
+        TellerSession $session,
+        Till $till,
+        int $amountMinor,
+        string $currency,
+        string $transactionType,
+    ): array {
+        $paymentMethod = $request->input('payment_method');
+        $paymentMethod = is_string($paymentMethod) && $paymentMethod !== '' ? $paymentMethod : TellerTransaction::PAYMENT_CASH;
+
+        $cashAmount = $request->has('cash_amount_minor') ? $request->integer('cash_amount_minor') : 0;
+        $chequeAmount = $request->has('cheque_amount_minor') ? $request->integer('cheque_amount_minor') : 0;
+        $transferAmount = $request->has('transfer_amount_minor') ? $request->integer('transfer_amount_minor') : 0;
+
+        if ($paymentMethod === TellerTransaction::PAYMENT_CASH && ! $request->has('cash_amount_minor')) {
+            $cashAmount = $amountMinor;
+        }
+        if ($paymentMethod === TellerTransaction::PAYMENT_CHEQUE && ! $request->has('cheque_amount_minor')) {
+            $chequeAmount = $amountMinor;
+        }
+        if ($paymentMethod === TellerTransaction::PAYMENT_TRANSFER && ! $request->has('transfer_amount_minor')) {
+            $transferAmount = $amountMinor;
+        }
+
+        $errors = [];
+        if ($paymentMethod === TellerTransaction::PAYMENT_CASH && ($cashAmount !== $amountMinor || $chequeAmount !== 0 || $transferAmount !== 0)) {
+            $errors['payment_method'][] = 'Cash payments must have cash_amount_minor equal to amount_minor and no non-cash components.';
+        }
+        if ($paymentMethod === TellerTransaction::PAYMENT_CHEQUE && ($chequeAmount !== $amountMinor || $cashAmount !== 0 || $transferAmount !== 0)) {
+            $errors['payment_method'][] = 'Cheque payments must have cheque_amount_minor equal to amount_minor and no other components.';
+        }
+        if ($paymentMethod === TellerTransaction::PAYMENT_TRANSFER && ($transferAmount !== $amountMinor || $cashAmount !== 0 || $chequeAmount !== 0)) {
+            $errors['payment_method'][] = 'Transfer payments must have transfer_amount_minor equal to amount_minor and no other components.';
+        }
+        if ($paymentMethod === TellerTransaction::PAYMENT_MIXED) {
+            $positiveComponents = (int) ($cashAmount > 0) + (int) ($chequeAmount > 0) + (int) ($transferAmount > 0);
+            if ($positiveComponents < 2 || $cashAmount + $chequeAmount + $transferAmount !== $amountMinor) {
+                $errors['payment_method'][] = 'Mixed payments require at least two positive components whose total equals amount_minor.';
+            }
+        }
+
+        if ($chequeAmount > 0) {
+            foreach (['cheque_number', 'cheque_bank_name', 'cheque_issue_date'] as $key) {
+                $value = $request->input($key);
+                if (! is_string($value) || $value === '') {
+                    $errors[$key][] = 'Cheque metadata is required when a cheque component is present.';
+                }
+            }
+        }
+
+        if ($transferAmount > 0) {
+            $externalReference = $request->input('external_reference');
+            if (! is_string($externalReference) || $externalReference === '') {
+                $errors['external_reference'][] = 'External reference is required when a transfer component is present.';
+            }
+        }
+
+        $denominationCounts = $this->validatedDenominationCounts(
+            $request->input('denomination_counts'),
+            $currency,
+            $cashAmount,
+            $till->requires_denominations && $cashAmount > 0,
+        );
+        if ($denominationCounts['errors'] !== []) {
+            $errors = array_merge($errors, $denominationCounts['errors']);
+        }
+
+        $channel = $request->input('channel');
+        $externalReference = $request->input('external_reference');
+        $feePolicyKey = $request->input('fee_policy_key');
+        $notificationChannels = $request->input('notification_channels', []);
+        $notificationChannels = is_array($notificationChannels) ? array_values(array_unique(array_filter($notificationChannels, 'is_string'))) : [];
+
+        if ($errors !== []) {
+            return ['ok' => false, 'errors' => $errors];
+        }
+
+        $tenders = [];
+        if ($cashAmount > 0) {
+            $tenders[] = [
+                'method' => TellerTransactionTender::METHOD_CASH,
+                'amount_minor' => $cashAmount,
+                'debit_ledger_account_id' => $transactionType === TellerTransaction::TYPE_CASH_DEPOSIT ? $till->ledger_account_id : null,
+                'credit_ledger_account_id' => $transactionType === TellerTransaction::TYPE_CASH_WITHDRAWAL ? $till->ledger_account_id : null,
+                'ledger_mapping_evidence' => ['source' => 'till_ledger'],
+                'denomination_counts' => $denominationCounts['lines'],
+            ];
+        }
+
+        foreach ([TellerTransactionTender::METHOD_CHEQUE => $chequeAmount, TellerTransactionTender::METHOD_TRANSFER => $transferAmount] as $method => $componentAmount) {
+            if ($componentAmount <= 0) {
+                continue;
+            }
+
+            $operationCode = $transactionType === TellerTransaction::TYPE_CASH_DEPOSIT
+                ? 'cash_deposit_'.$method
+                : 'cash_withdrawal_'.$method;
+            $ledgerId = $transactionType === TellerTransaction::TYPE_CASH_DEPOSIT
+                ? $this->mappingResolver->debitLedgerId($operationCode, 'cash', $session->agency_id, $currency)
+                : $this->mappingResolver->creditLedgerId($operationCode, 'cash', $session->agency_id, $currency);
+
+            $tenders[] = [
+                'method' => $method,
+                'amount_minor' => $componentAmount,
+                'debit_ledger_account_id' => $transactionType === TellerTransaction::TYPE_CASH_DEPOSIT ? $ledgerId : null,
+                'credit_ledger_account_id' => $transactionType === TellerTransaction::TYPE_CASH_WITHDRAWAL ? $ledgerId : null,
+                'ledger_mapping_evidence' => [
+                    'source' => 'operation_account_mapping',
+                    'operation_code' => $operationCode,
+                    'module' => 'cash',
+                    'leg' => $transactionType === TellerTransaction::TYPE_CASH_DEPOSIT ? AgencyLedgerMappingResolver::LEG_DEBIT : AgencyLedgerMappingResolver::LEG_CREDIT,
+                ],
+                'denomination_counts' => null,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'payment_method' => $paymentMethod,
+            'cash_amount_minor' => $cashAmount,
+            'cheque_amount_minor' => $chequeAmount,
+            'transfer_amount_minor' => $transferAmount,
+            'channel' => is_string($channel) && $channel !== '' ? $channel : 'branch_counter',
+            'external_reference' => is_string($externalReference) && $externalReference !== '' ? $externalReference : null,
+            'fee_policy_key' => is_string($feePolicyKey) && $feePolicyKey !== '' ? $feePolicyKey : null,
+            'notify_customer' => $request->boolean('notify_customer'),
+            'notification_channels' => $notificationChannels,
+            'cheque_number' => $request->input('cheque_number'),
+            'cheque_bank_name' => $request->input('cheque_bank_name'),
+            'cheque_issue_date' => $request->input('cheque_issue_date'),
+            'tenders' => $tenders,
+            'fingerprint' => $this->tenderFingerprint($paymentMethod, $cashAmount, $chequeAmount, $transferAmount, is_string($channel) ? $channel : 'branch_counter', is_string($externalReference) ? $externalReference : null, is_string($feePolicyKey) ? $feePolicyKey : null),
+        ];
+    }
+
+    /**
+     * @param  TenderContract  $tender
+     */
+    private function createDepositTenderDebits(TellerTransaction $transaction, JournalEntry $journalEntry, array $tender, LedgerAccount $tillLedger, int $agencyId, string $currency): void
+    {
+        foreach ($tender['tenders'] as $component) {
+            $ledgerId = $component['method'] === TellerTransactionTender::METHOD_CASH ? $tillLedger->id : $component['debit_ledger_account_id'];
+            if (! is_int($ledgerId)) {
+                throw new InvalidArgumentException('Tender debit ledger could not be resolved.');
+            }
+
+            JournalLine::query()->create([
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $agencyId,
+                'journal_entry_id' => $journalEntry->id,
+                'ledger_account_id' => $ledgerId,
+                'customer_account_id' => null,
+                'debit_minor' => $component['amount_minor'],
+                'credit_minor' => 0,
+                'currency' => $currency,
+                'line_memo' => ucfirst($component['method']).' received',
+            ]);
+
+            $this->createTenderRow($transaction, $component, $tender, $currency);
+        }
+    }
+
+    /**
+     * @param  TenderContract  $tender
+     */
+    private function createWithdrawalTenderCredits(TellerTransaction $transaction, JournalEntry $journalEntry, array $tender, LedgerAccount $tillLedger, int $agencyId, string $currency): void
+    {
+        foreach ($tender['tenders'] as $component) {
+            $ledgerId = $component['method'] === TellerTransactionTender::METHOD_CASH ? $tillLedger->id : $component['credit_ledger_account_id'];
+            if (! is_int($ledgerId)) {
+                throw new InvalidArgumentException('Tender credit ledger could not be resolved.');
+            }
+
+            JournalLine::query()->create([
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $agencyId,
+                'journal_entry_id' => $journalEntry->id,
+                'ledger_account_id' => $ledgerId,
+                'customer_account_id' => null,
+                'debit_minor' => 0,
+                'credit_minor' => $component['amount_minor'],
+                'currency' => $currency,
+                'line_memo' => ucfirst($component['method']).' paid out',
+            ]);
+
+            $this->createTenderRow($transaction, $component, $tender, $currency);
+        }
+    }
+
+    /**
+     * @param  TenderComponent  $component
+     * @param  TenderContract  $contract
+     */
+    private function createTenderRow(TellerTransaction $transaction, array $component, array $contract, string $currency): void
+    {
+        TellerTransactionTender::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'teller_transaction_id' => $transaction->id,
+            'method' => $component['method'],
+            'amount_minor' => $component['amount_minor'],
+            'currency' => $currency,
+            'status' => TellerTransactionTender::STATUS_POSTED,
+            'channel' => $contract['channel'],
+            'external_reference' => $contract['external_reference'],
+            'cheque_number' => $component['method'] === TellerTransactionTender::METHOD_CHEQUE ? $contract['cheque_number'] : null,
+            'cheque_bank_name' => $component['method'] === TellerTransactionTender::METHOD_CHEQUE ? $contract['cheque_bank_name'] : null,
+            'cheque_issue_date' => $component['method'] === TellerTransactionTender::METHOD_CHEQUE ? $contract['cheque_issue_date'] : null,
+            'debit_ledger_account_id' => $component['debit_ledger_account_id'],
+            'credit_ledger_account_id' => $component['credit_ledger_account_id'],
+            'ledger_mapping_evidence' => $component['ledger_mapping_evidence'],
+            'denomination_counts' => $component['denomination_counts'],
+        ]);
+    }
+
+    /**
+     * @return array{errors: array<string, array<int, string>>, lines: array<int, array{denomination_public_id: string, count: int, amount_minor: int}>}
+     */
+    private function validatedDenominationCounts(mixed $rawCounts, string $currency, int $expectedTotalMinor, bool $required): array
+    {
+        if (! is_array($rawCounts)) {
+            return $required
+                ? ['errors' => ['denomination_counts' => ['Denomination counts are required for the cash component.']], 'lines' => []]
+                : ['errors' => [], 'lines' => []];
+        }
+
+        $seen = [];
+        $total = 0;
+        $lines = [];
+        foreach ($rawCounts as $index => $line) {
+            if (! is_array($line)) {
+                return ['errors' => ['denomination_counts.'.$index => ['Each denomination count must be an object.']], 'lines' => []];
+            }
+
+            $publicId = $line['denomination_public_id'] ?? null;
+            $count = $line['count'] ?? null;
+            if (! is_string($publicId) || ! is_int($count)) {
+                return ['errors' => ['denomination_counts.'.$index => ['Each denomination count must include a denomination and integer count.']], 'lines' => []];
+            }
+
+            if (array_key_exists($publicId, $seen)) {
+                return ['errors' => ['denomination_counts' => ['Duplicate denominations are not allowed.']], 'lines' => []];
+            }
+            $seen[$publicId] = true;
+
+            $denomination = Denomination::query()->where('public_id', $publicId)->first();
+            if (! $denomination instanceof Denomination || $denomination->status !== Denomination::STATUS_ACTIVE || $denomination->currency !== $currency) {
+                return ['errors' => ['denomination_counts.'.$index.'.denomination_public_id' => ['The selected denomination must be active and match the transaction currency.']], 'lines' => []];
+            }
+
+            $amountMinor = $denomination->value_minor * $count;
+            $total += $amountMinor;
+            $lines[] = [
+                'denomination_public_id' => $publicId,
+                'count' => $count,
+                'amount_minor' => $amountMinor,
+            ];
+        }
+
+        if ($total !== $expectedTotalMinor) {
+            return ['errors' => ['denomination_counts' => ['Denomination counts must equal cash_amount_minor.']], 'lines' => []];
+        }
+
+        return ['errors' => [], 'lines' => $lines];
+    }
+
+    /**
+     * @param  TenderContract  $tender
+     */
+    private function idempotentTenderMatches(TellerTransaction $existing, array $tender): bool
+    {
+        return $this->tenderFingerprint(
+            $existing->payment_method ?? TellerTransaction::PAYMENT_CASH,
+            $existing->cash_amount_minor,
+            $existing->cheque_amount_minor,
+            $existing->transfer_amount_minor,
+            is_string($existing->channel) && $existing->channel !== '' ? $existing->channel : 'branch_counter',
+            $existing->external_reference,
+            $existing->fee_policy_key,
+        ) === $tender['fingerprint'];
+    }
+
+    private function tenderFingerprint(string $paymentMethod, int $cashAmount, int $chequeAmount, int $transferAmount, string $channel, ?string $externalReference, ?string $feePolicyKey): string
+    {
+        return hash('sha256', json_encode([
+            'payment_method' => $paymentMethod,
+            'cash_amount_minor' => $cashAmount,
+            'cheque_amount_minor' => $chequeAmount,
+            'transfer_amount_minor' => $transferAmount,
+            'channel' => $channel,
+            'external_reference' => $externalReference,
+            'fee_policy_key' => $feePolicyKey,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * @param  TenderContract  $tender
+     */
+    private function queueCustomerNotificationIfRequested(TellerTransaction $transaction, CustomerAccount $account, array $tender, string $category): void
+    {
+        if ($tender['notify_customer'] !== true) {
+            return;
+        }
+
+        $client = $account->client;
+        if (! $client instanceof Client) {
+            $transaction->forceFill(['notification_status' => TellerTransaction::NOTIFICATION_FAILED])->save();
+
+            return;
+        }
+
+        $channels = $tender['notification_channels'] !== [] ? $tender['notification_channels'] : ['sms'];
+        $queued = false;
+        foreach ($channels as $channel) {
+            if ($channel === '') {
+                continue;
+            }
+
+            $destination = $channel === 'email' ? $client->email : $client->phone_number;
+            if (! is_string($destination) || $destination === '') {
+                continue;
+            }
+
+            DB::table('notification_deliveries')->insertOrIgnore([
+                'public_id' => (string) Str::ulid(),
+                'notification_template_id' => null,
+                'recipient_type' => Client::class,
+                'recipient_id' => $client->id,
+                'channel' => $channel,
+                'category' => $category,
+                'idempotency_key' => 'cash-'.$transaction->public_id.'-'.$channel,
+                'destination' => $destination,
+                'subject' => 'Cash transaction posted',
+                'body' => 'A cash transaction of '.$transaction->amount_minor.' '.$transaction->currency.' was posted.',
+                'status' => 'pending',
+                'retry_count' => 0,
+                'max_attempts' => 3,
+                'scheduled_at' => now(),
+                'metadata' => json_encode([
+                    'teller_transaction_public_id' => $transaction->public_id,
+                    'customer_account_public_id' => $account->public_id,
+                ], JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $queued = true;
+        }
+
+        $transaction->forceFill([
+            'notification_status' => $queued ? TellerTransaction::NOTIFICATION_QUEUED : TellerTransaction::NOTIFICATION_FAILED,
+        ])->save();
     }
 
     /**
@@ -702,12 +1106,14 @@ final class TellerCashTransactionWorkflow extends BaseController
         $transactions = DB::table('teller_transactions')
             ->where('teller_session_id', $session->id)
             ->where('status', TellerTransaction::STATUS_POSTED)
-            ->get(['transaction_type', 'amount_minor']);
+            ->get(['transaction_type', 'amount_minor', 'cash_amount_minor']);
 
         $movement = 0;
         foreach ($transactions as $transaction) {
             $type = is_string($transaction->transaction_type) ? $transaction->transaction_type : '';
-            $amount = is_numeric($transaction->amount_minor) ? (int) $transaction->amount_minor : 0;
+            $amount = is_numeric($transaction->cash_amount_minor ?? null)
+                ? (int) $transaction->cash_amount_minor
+                : (is_numeric($transaction->amount_minor) ? (int) $transaction->amount_minor : 0);
 
             if ($type === TellerTransaction::TYPE_CASH_DEPOSIT) {
                 $movement += $amount;
@@ -723,7 +1129,7 @@ final class TellerCashTransactionWorkflow extends BaseController
 
     private function transactionResponse(TellerTransaction $transaction, string $message): JsonResponse
     {
-        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
+        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount', 'tenders']);
         $journalEntry = $transaction->journalEntry;
 
         return $this->respondCreated([

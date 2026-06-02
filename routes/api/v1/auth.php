@@ -110,6 +110,7 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::post('reference-numbers', [ReferenceNumberController::class, 'store'])->middleware('throttle:reference.reserve');
 
     Route::get('reference/identity-document-types', [ReferenceCatalogController::class, 'identityDocumentTypes']);
+    Route::get('reference/cash-transaction-options', [ReferenceCatalogController::class, 'cashTransactionOptions']);
     Route::get('formula-policies', [ReferenceCatalogController::class, 'formulaPolicies']);
 
     Route::get('audit-events', [AuditEventController::class, 'index'])->middleware('throttle:audit.browse');

@@ -82,7 +82,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-DUP');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
 
-        $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
 
         $second = $this->actingAsSanctum($accountant)->postJson('/api/v1/accounting-days/open', [
             'business_date' => '2026-06-02',
@@ -91,7 +91,7 @@ final class AccountingDayLifecycleTest extends TestCase
         // Idempotent: the already-open day is returned rather than a duplicate.
         $this->assertJsonSuccess($second, 200);
         $second->assertJsonPath('data.business_date', '2026-06-01');
-        self::assertSame(1, AccountingDay::query()->where('agency_id', $agency['id'])->count());
+        self::assertSame(1, AccountingDay::query()->where('agency_id', $agency['id'])->getQuery()->count());
     }
 
     public function test_missing_accounting_day_fails_closed_in_tests_instead_of_auto_opening(): void
@@ -102,19 +102,19 @@ final class AccountingDayLifecycleTest extends TestCase
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
 
         try {
-            app(AccountingDayGuard::class)->assertCanRegister($accountant, 'test.registration', (int) $agency['id']);
+            app(AccountingDayGuard::class)->assertCanRegister($accountant, 'test.registration', $agency['id']);
             self::fail('Missing accounting day should fail closed.');
         } catch (AccountingDayException $exception) {
             self::assertSame(AccountingDayException::CODE_MISSING, $exception->errorCode);
         }
 
-        self::assertSame(0, AccountingDay::query()->where('agency_id', $agency['id'])->count());
+        self::assertSame(0, AccountingDay::query()->where('agency_id', $agency['id'])->getQuery()->count());
     }
 
     public function test_database_rejects_two_open_days_per_agency(): void
     {
         $agency = $this->createAgency('AD-RACE');
-        $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
 
         $this->expectException(QueryException::class);
 
@@ -134,7 +134,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-BLOCK');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
 
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
 
         DB::table('journal_entries')->insert([
             'public_id' => (string) Str::ulid(),
@@ -161,7 +161,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-PERM');
         $agencyManager = $this->createUserWithRole('agency-manager', $agency['code']);
 
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $this->closeAccountingDay($day);
 
         $reopen = $this->actingAsSanctum($agencyManager)->postJson("/api/v1/accounting-days/{$day->public_id}/reopen", [
@@ -176,7 +176,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-REASON');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
         $admin = $this->createUserWithRole('platform-admin', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $this->closeAccountingDay($day);
 
         $reason = 'Sensitive internal correction approval details.';
@@ -196,7 +196,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-CUR');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
 
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $this->closeAccountingDay($day);
 
         $current = $this->actingAsSanctum($accountant)->getJson('/api/v1/accounting-days/current');
@@ -209,7 +209,7 @@ final class AccountingDayLifecycleTest extends TestCase
     {
         $agency = $this->createAgency('AD-BATCH-LINK');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
 
         $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
         $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
@@ -236,7 +236,7 @@ final class AccountingDayLifecycleTest extends TestCase
     {
         $agency = $this->createAgency('AD-BATCH-MISS');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
 
         $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
         $this->assertJsonSuccess($startClose, 200);
@@ -252,8 +252,8 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-OPEN-SESSION');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
         $teller = $this->createUserWithRole('teller', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
-        $tillId = $this->createTill((int) $agency['id']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $tillId = $this->createTill($agency['id']);
         $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
         $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
 
@@ -272,11 +272,11 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-PENDING-CASH');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
         $teller = $this->createUserWithRole('teller', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
-        $tillId = $this->createTill((int) $agency['id']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $tillId = $this->createTill($agency['id']);
         $sessionId = $this->createTellerSession($day, $tillId, $teller->id, 'closed');
         $this->createBalancedReconciliation($sessionId, $teller->id);
-        $this->createTellerTransaction($day, $sessionId, $tillId, (int) $agency['id'], 'pending_review');
+        $this->createTellerTransaction($day, $sessionId, $tillId, $agency['id'], 'pending_review');
         $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
         $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
         $this->setAccountingDayClosing($day);
@@ -293,8 +293,8 @@ final class AccountingDayLifecycleTest extends TestCase
         $agency = $this->createAgency('AD-RETRY-CLOSE');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
         $teller = $this->createUserWithRole('teller', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
-        $tillId = $this->createTill((int) $agency['id']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $tillId = $this->createTill($agency['id']);
         $sessionId = $this->createTellerSession($day, $tillId, $teller->id, 'closed');
         $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
         $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
@@ -320,7 +320,7 @@ final class AccountingDayLifecycleTest extends TestCase
     {
         $agency = $this->createAgency('AD-SPOOF');
         $admin = $this->createUserWithRole('platform-admin', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $procedurePublicId = $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
 
         $createRun = $this->actingAsSanctum($admin)->postJson('/api/v1/batch-runs', [
@@ -355,7 +355,7 @@ final class AccountingDayLifecycleTest extends TestCase
     {
         $agency = $this->createAgency('AD-BATCH-REUSE');
         $admin = $this->createUserWithRole('platform-admin', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $procedurePublicId = $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
         $procedureId = DB::table('batch_procedures')->where('public_id', $procedurePublicId)->value('id');
 
@@ -392,7 +392,7 @@ final class AccountingDayLifecycleTest extends TestCase
     {
         $agency = $this->createAgency('AD-LOCK');
         $teller = $this->createUserWithRole('teller', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $this->closeAccountingDay($day);
 
         $response = $this->actingAsSanctum($teller)
@@ -406,7 +406,7 @@ final class AccountingDayLifecycleTest extends TestCase
     {
         $agency = $this->createAgency('AD-MODULE-LOCK');
         $actor = $this->createUserWithRole('agency-manager', $agency['code']);
-        $day = $this->openAccountingDayForAgency((int) $agency['id'], '2026-06-01');
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
         $this->closeAccountingDay($day);
 
         $routes = [
@@ -427,10 +427,13 @@ final class AccountingDayLifecycleTest extends TestCase
 
             $this->assertJsonError($response, 423);
             $response->assertJsonPath('errors.code', 'accounting_day_closed');
-            $response->assertJsonPath('errors.accounting_day_public_id', $day->public_id, $label.' must expose the closed accounting-day context.');
+            $response->assertJsonPath('errors.accounting_day_public_id', $day->public_id);
         }
     }
 
+    /**
+     * @return array{id:int, code:string, public_id:string}
+     */
     private function createAgency(string $code): array
     {
         $id = DB::table('agencies')->insertGetId([
@@ -443,6 +446,7 @@ final class AccountingDayLifecycleTest extends TestCase
         ]);
 
         $publicId = DB::table('agencies')->where('id', $id)->value('public_id');
+        self::assertIsString($publicId);
 
         return ['id' => $id, 'code' => $code, 'public_id' => $publicId];
     }
@@ -450,13 +454,21 @@ final class AccountingDayLifecycleTest extends TestCase
     private function createUserWithRole(string $role, string $agencyCode): User
     {
         $agency = DB::table('agencies')->where('code', $agencyCode)->first(['id', 'code', 'name']);
+        self::assertIsObject($agency);
+        $agencyValues = get_object_vars($agency);
+        self::assertIsInt($agencyValues['id'] ?? null);
+        self::assertIsString($agencyValues['code'] ?? null);
+        self::assertIsString($agencyValues['name'] ?? null);
+        $agencyId = $agencyValues['id'];
+        $agencyCodeValue = $agencyValues['code'];
+        $agencyName = $agencyValues['name'];
 
         $user = User::factory()->createOne([
             'status' => User::STATUS_ACTIVE,
             'phone_verified_at' => now(),
-            'agency_id' => $agency->id,
-            'agency_code' => $agency->code,
-            'agency_name' => $agency->name,
+            'agency_id' => $agencyId,
+            'agency_code' => $agencyCodeValue,
+            'agency_name' => $agencyName,
         ]);
 
         $user->assignRole($role);
@@ -464,7 +476,7 @@ final class AccountingDayLifecycleTest extends TestCase
         DB::table('staff_agency_assignments')->insert([
             'public_id' => (string) Str::ulid(),
             'user_id' => $user->id,
-            'agency_id' => $agency->id,
+            'agency_id' => $agencyId,
             'role_at_agency' => $role,
             'starts_on' => now()->toDateString(),
             'is_primary' => true,
@@ -516,7 +528,7 @@ final class AccountingDayLifecycleTest extends TestCase
             'agency_id' => $day->agency_id,
             'accounting_day_id' => $day->id,
             'teller_user_id' => $tellerUserId,
-            'business_date' => $day->business_date?->toDateString(),
+            'business_date' => $day->business_date->toDateString(),
             'opened_at' => now(),
             'closed_at' => $status === 'closed' ? now() : null,
             'opening_declaration_minor' => 0,
@@ -535,7 +547,7 @@ final class AccountingDayLifecycleTest extends TestCase
             'teller_session_id' => $sessionId,
             'accounting_day_id' => $day->id,
             'agency_id' => $agencyId,
-            'transaction_date' => $day->business_date?->toDateString(),
+            'transaction_date' => $day->business_date->toDateString(),
             'till_id' => $tillId,
             'transaction_type' => 'cash_deposit',
             'amount_minor' => 1000,

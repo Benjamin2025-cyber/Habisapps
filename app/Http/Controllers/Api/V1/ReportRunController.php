@@ -124,8 +124,8 @@ final class ReportRunController extends BaseController
         }
 
         $currency = strtoupper($validated['currency'] ?? 'XAF');
-        $from = $accountingDay instanceof AccountingDay ? $accountingDay->business_date?->toDateString() : ($validated['period_starts_on'] ?? null);
-        $to = $accountingDay instanceof AccountingDay ? $accountingDay->business_date?->toDateString() : ($validated['period_ends_on'] ?? null);
+        $from = $accountingDay instanceof AccountingDay ? $accountingDay->business_date->toDateString() : ($validated['period_starts_on'] ?? null);
+        $to = $accountingDay instanceof AccountingDay ? $accountingDay->business_date->toDateString() : ($validated['period_ends_on'] ?? null);
         if ($definition->report_type === ReportDefinition::TYPE_EMF_TRIAL_BALANCE) {
             $missingMappings = $this->unmappedLedgerAccounts($agency, $currency, $from, $to, $accountingDay);
             if ($missingMappings !== []) {

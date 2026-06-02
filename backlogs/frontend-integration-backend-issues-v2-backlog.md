@@ -85,7 +85,7 @@ These are implementation defaults, not open questions:
 
 ## V2 Backlog
 
-### FBI2-024: Teller Transaction List And Cashier Session Summary
+### FBI2-024: Teller Transaction List And Cashier Session Summary(completed)
 
 Source issue: `#24 Analytics caissier (teller)`.
 
@@ -153,7 +153,7 @@ Regression tests:
 - Feature test proves teller continues to receive 403 on `/dashboards/operational`; teller dashboard data must come from teller-scoped endpoints.
 - Feature test proves the close-session theoretical balance and session summary expected balance use the same transaction-direction rules.
 
-### FBI2-025: Complete Deposit/Withdrawal Payload Contract
+### FBI2-025: Complete Deposit/Withdrawal Payload Contract(completed)
 
 Source issue: `#25 Versement/Retrait caisse`.
 
@@ -243,7 +243,7 @@ Regression tests:
 - Tests prove idempotency catches mismatched replay payloads.
 - Test proves the cash options catalog and request validation cannot drift for payment methods.
 
-### FBI2-026: Authenticated Notification Feed
+### FBI2-026: Authenticated Notification Feed(completed)
 
 Source issue: `#26 Notifications / alertes`.
 
@@ -442,7 +442,7 @@ Regression tests:
 - Feature test proves report generation works using a definition discovered from the catalog.
 - Test proves no stale or duplicate report definition versions are returned as the active default.
 
-### FBI2-029: Filterable Teller Session And Reconciliation Consultation
+### FBI2-029: Filterable Teller Session And Reconciliation Consultation(completed)
 
 Source issue: `#29 Consultation caisse / Sessions de caisse`.
 

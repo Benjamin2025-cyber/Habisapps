@@ -239,10 +239,7 @@ final class HrPayrollRunWorkflow extends BaseController
                 }
 
                 $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'hr.payroll', $agencyId);
-                $businessDate = $accountingDay->business_date?->toDateString();
-                if ($businessDate === null) {
-                    throw new InvalidArgumentException('Open accounting day is missing a business date for payroll posting.');
-                }
+                $businessDate = $accountingDay->business_date->toDateString();
 
                 $mapping = $this->payrollMapping($agencyId);
                 $gross = $this->rowInt($run, 'gross_amount_minor');
@@ -534,7 +531,7 @@ final class HrPayrollRunWorkflow extends BaseController
         $reversal = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'REV-'.$original->reference,
-            'business_date' => $accountingDay->business_date?->toDateString(),
+            'business_date' => $accountingDay->business_date->toDateString(),
             'accounting_day_id' => $accountingDay->id,
             'posted_at' => null,
             'agency_id' => $original->agency_id,

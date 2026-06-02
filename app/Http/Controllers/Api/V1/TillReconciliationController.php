@@ -131,6 +131,20 @@ final class TillReconciliationController extends BaseController
         }
 
         if ($this->hasPendingTransactions($tellerSession->id)) {
+            $this->notifications->notifyAgency(
+                agencyId: $tellerSession->agency_id,
+                type: 'warning',
+                category: 'till_reconciliation_pending',
+                title: 'Till reconciliation pending',
+                message: 'A till reconciliation is pending because teller transactions still need review.',
+                sourceType: TellerSession::class,
+                sourcePublicId: $tellerSession->public_id,
+                actionUrl: '/teller-sessions/'.$tellerSession->public_id.'/reconciliations',
+                metadata: [
+                    'teller_session_public_id' => $tellerSession->public_id,
+                ],
+            );
+
             return $this->respondUnprocessable(errors: ['transactions' => ['Pending teller transactions must be posted or cancelled before reconciliation.']]);
         }
 
@@ -148,6 +162,24 @@ final class TillReconciliationController extends BaseController
         $theoreticalBalanceMinor = $this->theoreticalBalanceMinor($tellerSession, $till);
         $differenceMinor = $actualBalanceMinor - $theoreticalBalanceMinor;
         if ($differenceMinor !== 0) {
+            $this->notifications->notifyAgency(
+                agencyId: $tellerSession->agency_id,
+                type: 'error',
+                category: 'till_reconciliation_rejected',
+                title: 'Till reconciliation rejected',
+                message: 'A till reconciliation was rejected because the cash difference was not zero.',
+                sourceType: TellerSession::class,
+                sourcePublicId: $tellerSession->public_id,
+                actionUrl: '/teller-sessions/'.$tellerSession->public_id.'/reconciliations',
+                metadata: [
+                    'teller_session_public_id' => $tellerSession->public_id,
+                    'actual_balance_minor' => $actualBalanceMinor,
+                    'theoretical_balance_minor' => $theoreticalBalanceMinor,
+                    'difference_minor' => $differenceMinor,
+                    'currency' => $currency,
+                ],
+            );
+
             return $this->respondUnprocessable(errors: ['difference_minor' => ['Reconciliation difference must be zero before it can be recorded.']]);
         }
 

@@ -31,6 +31,8 @@ return [
             'api/v1/activate',
             'api/v1/activation/resend',
             'api/v1/batch-runs',
+            'api/v1/teller-sessions/*/deposits',
+            'api/v1/teller-sessions/*/withdrawals',
         ],
     ],
     'otp' => [

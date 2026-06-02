@@ -253,6 +253,9 @@ final class AccountingBalanceWorkflow extends BaseController
         return $validated;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function ledgerStatementSummary(LedgerAccount $ledgerAccount, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
     {
         $openingDate = $from ?? $accountingDay?->business_date?->toDateString();
@@ -287,7 +290,7 @@ final class AccountingBalanceWorkflow extends BaseController
         $opening = $openingDate !== null
             ? $this->calculator->forCustomerAccount($customerAccount, $currency, to: Carbon::parse($openingDate)->subDay()->toDateString())['balance_minor']
             : 0;
-        $normalBalanceSide = $customerAccount->ledgerAccount?->normal_balance_side ?? LedgerAccount::NORMAL_BALANCE_CREDIT;
+        $normalBalanceSide = $customerAccount->ledgerAccount->normal_balance_side ?? LedgerAccount::NORMAL_BALANCE_CREDIT;
         $period = $accountingDay instanceof AccountingDay
             ? $this->periodTotals($this->customerMovementQuery($customerAccount, $currency, $from, $to, $accountingDay), $normalBalanceSide)
             : $this->calculator->forCustomerAccount($customerAccount, $currency, $from, $to);

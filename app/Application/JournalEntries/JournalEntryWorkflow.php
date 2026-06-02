@@ -82,7 +82,7 @@ final class JournalEntryWorkflow extends BaseController
             is_string($requestedDate) ? $requestedDate : null,
             $request,
         );
-        $businessDate = (string) $accountingDay->business_date?->toDateString();
+        $businessDate = $accountingDay->business_date->toDateString();
 
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),

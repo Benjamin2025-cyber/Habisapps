@@ -218,7 +218,7 @@ final class AccountingDayWorkflow extends BaseController
         $this->securityAudit->record('accounting_day.close_started', actor: $actor, subject: $accountingDay, properties: [
             'scope_type' => $accountingDay->scope_type,
             'agency_id_scope' => $accountingDay->agency_id,
-            'business_date' => $accountingDay->business_date?->toDateString(),
+            'business_date' => $accountingDay->business_date->toDateString(),
             'previous_status' => $previousStatus,
             'new_status' => AccountingDay::STATUS_CLOSING,
         ], request: $request);
@@ -255,8 +255,9 @@ final class AccountingDayWorkflow extends BaseController
 
         try {
             $result = DB::transaction(function () use ($accountingDay, $actor, $batchSummary, $batchBlocked): array {
-                /** @var AccountingDay $locked */
-                $locked = AccountingDay::query()->whereKey($accountingDay->id)->lockForUpdate()->firstOrFail();
+                $query = AccountingDay::query()->whereKey($accountingDay->id);
+                $query->getQuery()->lockForUpdate();
+                $locked = $query->firstOrFail();
 
                 if ($locked->status === AccountingDay::STATUS_CLOSED) {
                     return ['day' => $locked, 'readiness' => null];
@@ -272,7 +273,7 @@ final class AccountingDayWorkflow extends BaseController
 
                 if (! $readiness->isReady() || $batchBlocked) {
                     $blockers = array_map(
-                        static fn (array $blocker): string => (string) $blocker['control'],
+                        static fn (array $blocker): string => $blocker['control'],
                         $readiness->blockers,
                     );
                     if ($batchBlocked) {
@@ -306,8 +307,8 @@ final class AccountingDayWorkflow extends BaseController
 
         if ($readiness !== null && ! $readiness->isReady()) {
             $this->securityAudit->record('accounting_day.close_failed', actor: $actor, subject: $day, properties: [
-                'business_date' => $day->business_date?->toDateString(),
-                'blockers' => array_map(static fn (array $b): string => (string) $b['control'], $readiness->blockers),
+                'business_date' => $day->business_date->toDateString(),
+                'blockers' => array_map(static fn (array $b): string => $b['control'], $readiness->blockers),
             ], request: $request);
 
             return $this->respondUnprocessable('Accounting day cannot be closed while controls are failing.', [
@@ -318,7 +319,7 @@ final class AccountingDayWorkflow extends BaseController
 
         if ($batchBlocked) {
             $this->securityAudit->record('accounting_day.close_failed', actor: $actor, subject: $day, properties: [
-                'business_date' => $day->business_date?->toDateString(),
+                'business_date' => $day->business_date->toDateString(),
                 'blockers' => $batchSummary['failed_controls'],
             ], request: $request);
 
@@ -331,7 +332,7 @@ final class AccountingDayWorkflow extends BaseController
         $this->securityAudit->record('accounting_day.closed', actor: $actor, subject: $day, properties: [
             'scope_type' => $day->scope_type,
             'agency_id_scope' => $day->agency_id,
-            'business_date' => $day->business_date?->toDateString(),
+            'business_date' => $day->business_date->toDateString(),
             'previous_status' => AccountingDay::STATUS_CLOSING,
             'new_status' => AccountingDay::STATUS_CLOSED,
         ], request: $request);
@@ -361,7 +362,7 @@ final class AccountingDayWorkflow extends BaseController
         if ($active instanceof AccountingDay) {
             return $this->respondUnprocessable('Another accounting day is already active for this scope; close it before reopening a prior day.', [
                 'code' => 'accounting_day_active_exists',
-                'active_business_date' => $active->business_date?->toDateString(),
+                'active_business_date' => $active->business_date->toDateString(),
             ]);
         }
 
@@ -380,7 +381,7 @@ final class AccountingDayWorkflow extends BaseController
         $this->securityAudit->record('accounting_day.reopened', actor: $actor, subject: $accountingDay, properties: [
             'scope_type' => $accountingDay->scope_type,
             'agency_id_scope' => $accountingDay->agency_id,
-            'business_date' => $accountingDay->business_date?->toDateString(),
+            'business_date' => $accountingDay->business_date->toDateString(),
             'previous_status' => AccountingDay::STATUS_CLOSED,
             'new_status' => AccountingDay::STATUS_REOPENED,
             'reason' => $reason,
@@ -423,10 +424,10 @@ final class AccountingDayWorkflow extends BaseController
         $primaryRunId = null;
 
         foreach ($controlCodes as $index => $code) {
-            $procedure = BatchProcedure::query()
-                ->whereRaw('LOWER(REPLACE(code, ?, ?)) = ?', ['-', '_', $code])
-                ->where('status', BatchProcedure::STATUS_ACTIVE)
-                ->first();
+            $procedureQuery = BatchProcedure::query()
+                ->where('status', BatchProcedure::STATUS_ACTIVE);
+            $procedureQuery->getQuery()->whereRaw('LOWER(REPLACE(code, ?, ?)) = ?', ['-', '_', $code]);
+            $procedure = $procedureQuery->first();
 
             if (! $procedure instanceof BatchProcedure) {
                 $controls[] = [
@@ -441,11 +442,11 @@ final class AccountingDayWorkflow extends BaseController
 
             $run = BatchRun::query()
                 ->where('batch_procedure_id', $procedure->id)
-                ->where('business_date', $day->business_date?->toDateString())
+                ->where('business_date', $day->business_date->toDateString())
                 ->when(
                     $day->scope_type === AccountingDay::SCOPE_AGENCY,
                     fn ($query) => $query->where('agency_id', $day->agency_id),
-                    fn ($query) => $query->whereNull('agency_id'),
+                    fn ($query) => $query->getQuery()->whereNull('agency_id'),
                 )
                 ->latest('id')
                 ->first();
@@ -456,7 +457,7 @@ final class AccountingDayWorkflow extends BaseController
                     'batch_procedure_id' => $procedure->id,
                     'agency_id' => $day->scope_type === AccountingDay::SCOPE_AGENCY ? $day->agency_id : null,
                     'accounting_day_id' => $day->id,
-                    'business_date' => $day->business_date?->toDateString(),
+                    'business_date' => $day->business_date->toDateString(),
                     'status' => BatchRun::STATUS_PENDING,
                     'operator_user_id' => $actor->id,
                     'summary_payload' => [
@@ -551,7 +552,7 @@ final class AccountingDayWorkflow extends BaseController
 
         // Derive the next accounting date from the latest day and the calendar.
         $latest = $this->findLatestDay($scopeType, $agencyId);
-        $candidate = $latest instanceof AccountingDay && $latest->business_date instanceof Carbon
+        $candidate = $latest instanceof AccountingDay
             ? $latest->business_date->copy()->addDay()
             : Carbon::today();
 
@@ -559,14 +560,14 @@ final class AccountingDayWorkflow extends BaseController
         for ($i = 0; $i < 31; $i++) {
             $calendar = $this->calendarForDate($scopeType, $agencyId, $candidate->toDateString());
             if ($calendar instanceof AccountingCalendarDay) {
-                if ($calendar->is_business_day && $calendar->business_date instanceof Carbon) {
-                    return $calendar->business_date->toDateString();
+                if ($calendar->is_business_day) {
+                    return $calendar->business_date !== null
+                        ? Carbon::parse($calendar->business_date)->toDateString()
+                        : $candidate->toDateString();
                 }
-                if (! $calendar->is_business_day) {
-                    $candidate->addDay();
+                $candidate->addDay();
 
-                    continue;
-                }
+                continue;
             }
 
             return $candidate->toDateString();
@@ -592,7 +593,7 @@ final class AccountingDayWorkflow extends BaseController
             ->where('calendar_date', $date);
         $scopeType === AccountingDay::SCOPE_AGENCY
             ? $query->where('agency_id', $agencyId)
-            : $query->whereNull('agency_id');
+            : $query->getQuery()->whereNull('agency_id');
 
         $agencyCalendar = $query->first();
         if ($agencyCalendar instanceof AccountingCalendarDay) {
@@ -601,11 +602,12 @@ final class AccountingDayWorkflow extends BaseController
 
         // Institution default fallback for agency scope.
         if ($scopeType === AccountingDay::SCOPE_AGENCY) {
-            return AccountingCalendarDay::query()
+            $institutionQuery = AccountingCalendarDay::query()
                 ->where('scope_type', AccountingCalendarDay::SCOPE_INSTITUTION)
-                ->whereNull('agency_id')
-                ->where('calendar_date', $date)
-                ->first();
+                ->where('calendar_date', $date);
+            $institutionQuery->getQuery()->whereNull('agency_id');
+
+            return $institutionQuery->first();
         }
 
         return null;
@@ -613,19 +615,24 @@ final class AccountingDayWorkflow extends BaseController
 
     private function findActiveDay(string $scopeType, ?int $agencyId): ?AccountingDay
     {
-        return $this->scopedQuery($scopeType, $agencyId)
+        $query = $this->scopedQuery($scopeType, $agencyId);
+        $query->getQuery()
             ->whereIn('status', [
                 AccountingDay::STATUS_OPEN,
                 AccountingDay::STATUS_REOPENED,
                 AccountingDay::STATUS_CLOSING,
             ])
-            ->orderByDesc('business_date')
-            ->first();
+            ->orderByDesc('business_date');
+
+        return $query->first();
     }
 
     private function findLatestDay(string $scopeType, ?int $agencyId): ?AccountingDay
     {
-        return $this->scopedQuery($scopeType, $agencyId)->orderByDesc('business_date')->first();
+        $query = $this->scopedQuery($scopeType, $agencyId);
+        $query->getQuery()->orderByDesc('business_date');
+
+        return $query->first();
     }
 
     private function findDayByDate(string $scopeType, ?int $agencyId, string $businessDate): ?AccountingDay
@@ -641,7 +648,7 @@ final class AccountingDayWorkflow extends BaseController
         $query = AccountingDay::query()->where('scope_type', $scopeType);
         $scopeType === AccountingDay::SCOPE_AGENCY
             ? $query->where('agency_id', $agencyId)
-            : $query->whereNull('agency_id');
+            : $query->getQuery()->whereNull('agency_id');
 
         return $query;
     }

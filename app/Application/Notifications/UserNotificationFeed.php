@@ -40,7 +40,7 @@ final class UserNotificationFeed
         ?int $agencyId = null,
         ?string $actionUrl = null,
         array $metadata = [],
-    ): object {
+    ): UserNotification {
         return $this->create(
             recipientType: UserNotification::RECIPIENT_USER,
             recipientId: $user->id,
@@ -69,7 +69,7 @@ final class UserNotificationFeed
         string $sourcePublicId,
         ?string $actionUrl = null,
         array $metadata = [],
-    ): object {
+    ): UserNotification {
         return $this->create(
             recipientType: UserNotification::RECIPIENT_AGENCY,
             recipientId: $agencyId,
@@ -97,7 +97,7 @@ final class UserNotificationFeed
         string $sourcePublicId,
         ?string $actionUrl = null,
         array $metadata = [],
-    ): object {
+    ): UserNotification {
         return $this->create(
             recipientType: UserNotification::RECIPIENT_PLATFORM,
             recipientId: null,
@@ -216,7 +216,7 @@ final class UserNotificationFeed
         ?int $agencyId,
         ?string $actionUrl,
         array $metadata,
-    ): object {
+    ): UserNotification {
         if (! in_array($type, self::TYPES, true)) {
             throw new InvalidArgumentException('Unsupported notification type.');
         }
@@ -241,21 +241,17 @@ final class UserNotificationFeed
             'updated_at' => now(),
         ]);
 
-        $row = DB::table('user_notifications')
+        $query = UserNotification::query()
             ->where('recipient_type', $recipientType)
-            ->when(
-                $recipientId === null,
-                static fn (Builder $builder) => $builder->whereNull('recipient_id'),
-                static fn (Builder $builder) => $builder->where('recipient_id', $recipientId),
-            )
             ->where('source_type', $sourceType)
             ->where('source_public_id', $sourcePublicId)
-            ->where('category', $category)
-            ->first();
-        if (! is_object($row)) {
-            throw new InvalidArgumentException('Notification feed row could not be reloaded.');
+            ->where('category', $category);
+        if ($recipientId === null) {
+            $query->getQuery()->whereNull('recipient_id');
+        } else {
+            $query->where('recipient_id', $recipientId);
         }
 
-        return $row;
+        return $query->firstOrFail();
     }
 }

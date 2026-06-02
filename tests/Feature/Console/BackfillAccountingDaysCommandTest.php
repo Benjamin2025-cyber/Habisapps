@@ -8,6 +8,7 @@ use App\Models\AccountingDay;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\PendingCommand;
 use Tests\TestCase;
 
 final class BackfillAccountingDaysCommandTest extends TestCase
@@ -82,14 +83,16 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->artisan('app:backfill-accounting-days')
-            ->assertExitCode(0);
+        $command = $this->artisan('app:backfill-accounting-days');
+        self::assertInstanceOf(PendingCommand::class, $command);
+        $command->assertExitCode(0);
+        $command->run();
 
-        $day = AccountingDay::query()
+        $dayQuery = AccountingDay::query()
             ->where('scope_type', AccountingDay::SCOPE_AGENCY)
-            ->where('agency_id', $agencyId)
-            ->whereDate('business_date', '2026-05-28')
-            ->first();
+            ->where('agency_id', $agencyId);
+        $dayQuery->getQuery()->whereDate('business_date', '2026-05-28');
+        $day = $dayQuery->first();
 
         self::assertInstanceOf(AccountingDay::class, $day);
         self::assertSame($existingDay->id, $day->id);
@@ -121,14 +124,16 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->artisan('app:backfill-accounting-days')
-            ->assertExitCode(0);
+        $command = $this->artisan('app:backfill-accounting-days');
+        self::assertInstanceOf(PendingCommand::class, $command);
+        $command->assertExitCode(0);
+        $command->run();
 
-        $day = AccountingDay::query()
-            ->where('scope_type', AccountingDay::SCOPE_INSTITUTION)
+        $dayQuery = AccountingDay::query()->where('scope_type', AccountingDay::SCOPE_INSTITUTION);
+        $dayQuery->getQuery()
             ->whereNull('agency_id')
-            ->whereDate('business_date', '2026-05-29')
-            ->first();
+            ->whereDate('business_date', '2026-05-29');
+        $day = $dayQuery->first();
 
         self::assertInstanceOf(AccountingDay::class, $day);
         self::assertSame(AccountingDay::STATUS_CLOSED, $day->status);
@@ -137,9 +142,11 @@ final class BackfillAccountingDaysCommandTest extends TestCase
 
         $summary = $day->close_summary_payload;
         self::assertIsArray($summary);
-        self::assertSame('historical_backfill', $summary['migration']['source'] ?? null);
-        self::assertIsString($summary['migration']['batch_id'] ?? null);
-        self::assertNotSame('', $summary['migration']['batch_id'] ?? '');
+        $migration = $summary['migration'] ?? null;
+        self::assertIsArray($migration);
+        self::assertSame('historical_backfill', $migration['source'] ?? null);
+        self::assertIsString($migration['batch_id'] ?? null);
+        self::assertNotSame('', $migration['batch_id']);
     }
 
     public function test_backfill_dry_run_reports_work_without_creating_days_or_linking_rows(): void
@@ -156,14 +163,16 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->artisan('app:backfill-accounting-days', ['--dry-run' => true])
+        $command = $this->artisan('app:backfill-accounting-days', ['--dry-run' => true]);
+        self::assertInstanceOf(PendingCommand::class, $command);
+        $command
             ->expectsOutputToContain('DRY-RUN MODE')
             ->assertExitCode(0);
+        $command->run();
 
-        self::assertFalse(AccountingDay::query()
-            ->where('agency_id', $agencyId)
-            ->whereDate('business_date', '2026-05-30')
-            ->exists());
+        $dayQuery = AccountingDay::query()->where('agency_id', $agencyId);
+        $dayQuery->getQuery()->whereDate('business_date', '2026-05-30');
+        self::assertFalse($dayQuery->getQuery()->exists());
         self::assertNull(DB::table('journal_entries')->where('id', $journalId)->value('accounting_day_id'));
     }
 
@@ -181,8 +190,10 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->artisan('app:backfill-accounting-days', ['--strict' => true])
-            ->assertExitCode(0);
+        $command = $this->artisan('app:backfill-accounting-days', ['--strict' => true]);
+        self::assertInstanceOf(PendingCommand::class, $command);
+        $command->assertExitCode(0);
+        $command->run();
     }
 
     private function createAgency(string $code): int
@@ -196,7 +207,7 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return is_int($id) ? $id : (int) $id;
+        return $id;
     }
 
     private function createUser(string $email): int
@@ -212,7 +223,7 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return is_int($id) ? $id : (int) $id;
+        return $id;
     }
 
     private function createTill(int $agencyId): int
@@ -229,7 +240,7 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return is_int($id) ? $id : (int) $id;
+        return $id;
     }
 
     private function createBatchProcedure(string $code): int
@@ -243,6 +254,6 @@ final class BackfillAccountingDaysCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return is_int($id) ? $id : (int) $id;
+        return $id;
     }
 }

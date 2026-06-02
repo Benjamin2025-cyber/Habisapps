@@ -192,7 +192,7 @@ final class InsurancePremiumWorkflow extends BaseController
                     'insurance.premium',
                     $this->rowInt($subscription, 'agency_id'),
                 );
-                $businessDate = $accountingDay->business_date?->toDateString();
+                $businessDate = $accountingDay->business_date->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'insurance-premium-collection:'.$assessmentPublicId;
@@ -384,7 +384,7 @@ final class InsurancePremiumWorkflow extends BaseController
                     'insurance.premium',
                     $agencyId,
                 );
-                $businessDate = $accountingDay->business_date?->toDateString();
+                $businessDate = $accountingDay->business_date->toDateString();
                 $paidDate = is_string($validated['paid_on'] ?? null) && $validated['paid_on'] !== ''
                     ? $validated['paid_on']
                     : $businessDate;
@@ -558,7 +558,7 @@ final class InsurancePremiumWorkflow extends BaseController
                 $reversalJe = JournalEntry::create([
                     'public_id' => (string) Str::ulid(),
                     'reference' => 'REV-'.Str::upper(Str::random(10)),
-                    'business_date' => $accountingDay->business_date?->toDateString(),
+                    'business_date' => $accountingDay->business_date->toDateString(),
                     'agency_id' => $originalJe->agency_id,
                     'source_module' => 'insurance',
                     'source_type' => 'insurance_premium_payment_reversal',

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\BaseController;
+use App\Models\TellerSession;
 use App\Support\Crm\IdentityDocumentTypeCatalog;
 use App\Support\Finance\FormulaPolicyCatalog;
 use Illuminate\Http\JsonResponse;
@@ -59,6 +60,45 @@ final class ReferenceCatalogController extends BaseController
         return $this->respondSuccess([
             'formula_policies' => $pagination['items'],
         ], 'Formula policies catalog', ['pagination' => $pagination['pagination']]);
+    }
+
+    /**
+     * Cash transaction tender options for teller deposit/withdrawal screens.
+     *
+     * @authenticated
+     */
+    public function cashTransactionOptions(Request $request): JsonResponse
+    {
+        $sessionPublicId = $request->query('teller_session_public_id');
+        $requiresDenominations = false;
+        if (is_string($sessionPublicId) && $sessionPublicId !== '') {
+            $session = TellerSession::query()
+                ->with('till')
+                ->where('public_id', $sessionPublicId)
+                ->first();
+            $requiresDenominations = $session instanceof TellerSession && $session->till !== null
+                ? $session->till->requires_denominations
+                : false;
+        }
+
+        return $this->respondSuccess([
+            'payment_methods' => ['cash', 'cheque', 'transfer', 'mixed'],
+            'channels' => ['branch_counter', 'mobile_money', 'bank_transfer', 'clearing_house', 'internal_transfer'],
+            'required_fields_by_payment_method' => [
+                'cash' => ['cash_amount_minor'],
+                'cheque' => ['cheque_amount_minor', 'cheque_number', 'cheque_bank_name', 'cheque_issue_date'],
+                'transfer' => ['transfer_amount_minor', 'external_reference'],
+                'mixed' => ['at_least_two_component_amounts', 'cheque_metadata_when_cheque_component_present'],
+            ],
+            'notification_channels' => ['sms', 'email', 'push'],
+            'denomination_counts_required' => $requiresDenominations,
+            'fee_policy_keys' => [],
+            'fees' => [
+                'server_authoritative' => true,
+                'manual_fee_amount_allowed' => false,
+                'default_fee_amount_minor' => 0,
+            ],
+        ], 'Cash transaction options catalog');
     }
 
     private function searchTerm(Request $request): ?string

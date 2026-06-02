@@ -23869,6 +23869,40 @@
                 }
             }
         },
+        "/v1/reference/cash-transaction-options": {
+            "get": {
+                "operationId": "referenceCatalog.cashTransactionOptions",
+                "summary": "Cash transaction tender options for teller deposit/withdrawal screens",
+                "tags": [
+                    "ReferenceCatalog"
+                ],
+                "parameters": [
+                    {
+                        "name": "teller_session_public_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/v1/formula-policies": {
             "get": {
                 "operationId": "referenceCatalog.formulaPolicies",
@@ -35876,6 +35910,93 @@
                         "minLength": 3,
                         "maxLength": 3
                     },
+                    "payment_method": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "cash",
+                            "cheque",
+                            "transfer",
+                            "mixed"
+                        ]
+                    },
+                    "cash_amount_minor": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "cheque_amount_minor": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "transfer_amount_minor": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "cheque_number": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 64
+                    },
+                    "cheque_bank_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "cheque_issue_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "external_reference": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "channel": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "branch_counter",
+                            "mobile_money",
+                            "bank_transfer",
+                            "clearing_house",
+                            "internal_transfer"
+                        ]
+                    },
+                    "fee_policy_key": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 64
+                    },
+                    "fee_amount_minor": {
+                        "type": "string"
+                    },
+                    "notify_customer": {
+                        "type": "boolean"
+                    },
                     "operation_code": {
                         "type": [
                             "string",
@@ -35928,6 +36049,38 @@
                             "null"
                         ],
                         "maxLength": 128
+                    },
+                    "notification_channels": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "sms",
+                                "email",
+                                "push"
+                            ]
+                        }
+                    },
+                    "denomination_counts": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "denomination_public_id": {
+                                    "type": "string"
+                                },
+                                "count": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            }
+                        }
                     }
                 },
                 "required": [
@@ -36033,6 +36186,93 @@
                         "minLength": 3,
                         "maxLength": 3
                     },
+                    "payment_method": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "cash",
+                            "cheque",
+                            "transfer",
+                            "mixed"
+                        ]
+                    },
+                    "cash_amount_minor": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "cheque_amount_minor": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "transfer_amount_minor": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "minimum": 0
+                    },
+                    "cheque_number": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 64
+                    },
+                    "cheque_bank_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "cheque_issue_date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "external_reference": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "channel": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "branch_counter",
+                            "mobile_money",
+                            "bank_transfer",
+                            "clearing_house",
+                            "internal_transfer"
+                        ]
+                    },
+                    "fee_policy_key": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 64
+                    },
+                    "fee_amount_minor": {
+                        "type": "string"
+                    },
+                    "notify_customer": {
+                        "type": "boolean"
+                    },
                     "operation_code": {
                         "type": [
                             "string",
@@ -36083,6 +36323,38 @@
                             "null"
                         ],
                         "maxLength": 128
+                    },
+                    "notification_channels": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "sms",
+                                "email",
+                                "push"
+                            ]
+                        }
+                    },
+                    "denomination_counts": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "denomination_public_id": {
+                                    "type": "string"
+                                },
+                                "count": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            }
+                        }
                     }
                 },
                 "required": [
@@ -38494,6 +38766,110 @@
                             "null"
                         ]
                     },
+                    "payment_method": {
+                        "type": "string"
+                    },
+                    "cash_amount_minor": {
+                        "type": "integer"
+                    },
+                    "cheque_amount_minor": {
+                        "type": "integer"
+                    },
+                    "transfer_amount_minor": {
+                        "type": "integer"
+                    },
+                    "channel": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "external_reference": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "fee_policy_key": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "fees_applied": {
+                        "type": "boolean"
+                    },
+                    "fee_amount_minor": {
+                        "type": "integer"
+                    },
+                    "notify_customer": {
+                        "type": "boolean"
+                    },
+                    "notification_channels": {
+                        "type": "array",
+                        "items": {}
+                    },
+                    "notification_status": {
+                        "type": "string"
+                    },
+                    "tenders": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "public_id": {
+                                    "type": "string"
+                                },
+                                "method": {
+                                    "type": "string"
+                                },
+                                "amount_minor": {
+                                    "type": "string"
+                                },
+                                "currency": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                },
+                                "channel": {
+                                    "type": "string"
+                                },
+                                "external_reference": {
+                                    "type": "string"
+                                },
+                                "cheque_number": {
+                                    "type": "string"
+                                },
+                                "cheque_bank_name": {
+                                    "type": "string"
+                                },
+                                "cheque_issue_date": {
+                                    "type": "string"
+                                },
+                                "ledger_mapping_evidence": {
+                                    "type": "string"
+                                },
+                                "denomination_counts": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "public_id",
+                                "method",
+                                "amount_minor",
+                                "currency",
+                                "status",
+                                "channel",
+                                "external_reference",
+                                "cheque_number",
+                                "cheque_bank_name",
+                                "cheque_issue_date",
+                                "ledger_mapping_evidence",
+                                "denomination_counts"
+                            ]
+                        }
+                    },
                     "depositor_name": {
                         "type": [
                             "string",
@@ -38566,6 +38942,19 @@
                     "reference",
                     "event_number",
                     "operation_code",
+                    "payment_method",
+                    "cash_amount_minor",
+                    "cheque_amount_minor",
+                    "transfer_amount_minor",
+                    "channel",
+                    "external_reference",
+                    "fee_policy_key",
+                    "fees_applied",
+                    "fee_amount_minor",
+                    "notify_customer",
+                    "notification_channels",
+                    "notification_status",
+                    "tenders",
                     "depositor_name",
                     "depositor_address",
                     "initiator_type",

@@ -23,7 +23,7 @@ final class CreateJournalEntryReversal
         // never back into the original (possibly closed) day. This throws if no
         // accounting day is open for the journal's scope.
         $reversalDay = $this->accountingDayGuard->assertCanRegister($actor, 'journal.reverse', $journalEntry->agency_id);
-        $reversalBusinessDate = $reversalDay->business_date?->toDateString();
+        $reversalBusinessDate = $reversalDay->business_date->toDateString();
 
         return DB::transaction(function () use ($actor, $journalEntry, $postImmediately, $reversalDay, $reversalBusinessDate): JournalEntry {
             $journalEntry->loadMissing('lines');

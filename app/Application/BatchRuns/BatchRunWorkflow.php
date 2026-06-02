@@ -166,7 +166,7 @@ final class BatchRunWorkflow extends BaseController
         }
 
         if ($accountingDay instanceof AccountingDay) {
-            if ($accountingDay->business_date?->toDateString() !== $validated['business_date']) {
+            if ($accountingDay->business_date->toDateString() !== $validated['business_date']) {
                 return $this->respondUnprocessable(errors: ['business_date' => ['Business date must match the linked accounting day.']]);
             }
             if ($accountingDay->scope_type === AccountingDay::SCOPE_AGENCY && $accountingDay->agency_id !== $agency?->id) {
@@ -500,11 +500,12 @@ final class BatchRunWorkflow extends BaseController
 
     private function resolveAccountingDayLink(?int $agencyId, string $businessDate): ?AccountingDay
     {
-        $query = AccountingDay::query()->whereDate('business_date', $businessDate);
+        $query = AccountingDay::query();
+        $query->getQuery()->whereDate('business_date', $businessDate);
 
         if ($agencyId === null) {
-            $query->where('scope_type', AccountingDay::SCOPE_INSTITUTION)
-                ->whereNull('agency_id');
+            $query->where('scope_type', AccountingDay::SCOPE_INSTITUTION);
+            $query->getQuery()->whereNull('agency_id');
         } else {
             $query->where('scope_type', AccountingDay::SCOPE_AGENCY)
                 ->where('agency_id', $agencyId);

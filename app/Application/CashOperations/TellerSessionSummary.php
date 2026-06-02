@@ -43,12 +43,14 @@ final class TellerSessionSummary
         $rows = DB::table('teller_transactions')
             ->where('teller_session_id', $session->id)
             ->where('status', TellerTransaction::STATUS_POSTED)
-            ->get(['transaction_type', 'amount_minor']);
+            ->get(['transaction_type', 'amount_minor', 'cash_amount_minor']);
 
         $movement = 0;
         foreach ($rows as $row) {
             $type = is_string($row->transaction_type) ? $row->transaction_type : '';
-            $amount = is_numeric($row->amount_minor) ? (int) $row->amount_minor : 0;
+            $amount = is_numeric($row->cash_amount_minor ?? null)
+                ? (int) $row->cash_amount_minor
+                : (is_numeric($row->amount_minor) ? (int) $row->amount_minor : 0);
             $movement += (self::TILL_BALANCE_DIRECTION[$type] ?? 0) * $amount;
         }
 
@@ -107,8 +109,8 @@ final class TellerSessionSummary
             ->groupBy('teller_session_id')
             ->get([
                 'teller_session_id',
-                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$deposit}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS deposits_total"),
-                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$withdrawal}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS withdrawals_total"),
+                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$deposit}' AND status = '{$posted}' THEN COALESCE(cash_amount_minor, amount_minor) ELSE 0 END), 0) AS deposits_total"),
+                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$withdrawal}' AND status = '{$posted}' THEN COALESCE(cash_amount_minor, amount_minor) ELSE 0 END), 0) AS withdrawals_total"),
                 DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$manual}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS manual_journals_total"),
                 DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$reversal}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS reversals_total"),
                 DB::raw('COUNT(*) AS transaction_count'),

@@ -581,6 +581,12 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $pending->assertStatus(422);
         $pending->assertJsonValidationErrors(['transactions']);
+        $this->assertDatabaseHas('user_notifications', [
+            'recipient_type' => 'agency',
+            'recipient_id' => $agency['id'],
+            'category' => 'till_reconciliation_pending',
+            'source_public_id' => $sessionPublicId,
+        ]);
 
         DB::table('teller_transactions')->where('reference', 'PENDING-RECON-1')->update(['status' => 'cancelled']);
 
@@ -593,6 +599,12 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $difference->assertStatus(422);
         $difference->assertJsonValidationErrors(['difference_minor']);
+        $this->assertDatabaseHas('user_notifications', [
+            'recipient_type' => 'agency',
+            'recipient_id' => $agency['id'],
+            'category' => 'till_reconciliation_rejected',
+            'source_public_id' => $sessionPublicId,
+        ]);
 
         $reconciliation = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('recon-success')->plainTextToken])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/reconciliations', [
@@ -616,6 +628,12 @@ final class Module5CashInfrastructureTest extends TestCase
             'theoretical_balance_minor' => 1500,
             'difference_minor' => 0,
             'currency' => 'XAF',
+        ]);
+        $this->assertDatabaseHas('user_notifications', [
+            'recipient_type' => 'agency',
+            'recipient_id' => $agency['id'],
+            'category' => 'till_reconciliation_accepted',
+            'source_public_id' => $reconciliationPublicId,
         ]);
         $this->assertDatabaseCount('till_reconciliation_lines', 2);
 
@@ -1738,6 +1756,233 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonError($unknownFilter, 422);
     }
 
+    // ─── Deposit / withdrawal tender payload contract (FBI2-025) ──────────
+
+    public function test_cash_transaction_options_catalog_matches_validation_contract(): void
+    {
+        $ctx = $this->openCashSession('TENDER-OPT');
+
+        $options = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->getJson('/api/v1/reference/cash-transaction-options?teller_session_public_id='.$ctx['session_public_id']);
+        $this->assertJsonSuccess($options);
+        self::assertSame(['cash', 'cheque', 'transfer', 'mixed'], $options->json('data.payment_methods'));
+        $chequeFields = $options->json('data.required_fields_by_payment_method.cheque');
+        $notificationChannels = $options->json('data.notification_channels');
+        self::assertIsArray($chequeFields);
+        self::assertIsArray($notificationChannels);
+        self::assertContains('cheque_number', $chequeFields);
+        self::assertContains('sms', $notificationChannels);
+
+        $invalid = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 1000,
+                'currency' => 'XAF',
+                'payment_method' => 'card',
+            ]);
+        $invalid->assertStatus(422);
+        $invalid->assertJsonValidationErrors(['payment_method']);
+    }
+
+    public function test_cash_tender_validates_denominations_and_rejects_frontend_fee_override(): void
+    {
+        $ctx = $this->openCashSession('TENDER-CASH');
+        $note500 = $this->createDenomination('TENDER-CASH-500', 500);
+
+        $bad = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 1000,
+                'currency' => 'XAF',
+                'payment_method' => 'cash',
+                'cash_amount_minor' => 1000,
+                'denomination_counts' => [
+                    ['denomination_public_id' => $note500['public_id'], 'count' => 1],
+                ],
+            ]);
+        $bad->assertStatus(422);
+        $bad->assertJsonValidationErrors(['denomination_counts']);
+
+        $feeOverride = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 1000,
+                'currency' => 'XAF',
+                'fee_amount_minor' => 999,
+            ]);
+        $feeOverride->assertStatus(422);
+        $feeOverride->assertJsonValidationErrors(['fee_amount_minor']);
+
+        $ok = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 1000,
+                'currency' => 'XAF',
+                'payment_method' => 'cash',
+                'cash_amount_minor' => 1000,
+                'denomination_counts' => [
+                    ['denomination_public_id' => $note500['public_id'], 'count' => 2],
+                ],
+            ]);
+        $this->assertJsonSuccess($ok, 201);
+        $ok->assertJsonPath('data.teller_transaction.payment_method', 'cash');
+        $ok->assertJsonPath('data.teller_transaction.fees_applied', false);
+        $ok->assertJsonPath('data.teller_transaction.fee_amount_minor', 0);
+        $ok->assertJsonPath('data.teller_transaction.tenders.0.method', 'cash');
+    }
+
+    public function test_cheque_transfer_and_mixed_deposits_persist_tenders_without_moving_till_cash(): void
+    {
+        $ctx = $this->openCashSession('TENDER-DEP');
+        $this->configureCashTenderMappings($ctx['agency']['id']);
+
+        $missingChequeMetadata = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'payment_method' => 'cheque',
+            ]);
+        $missingChequeMetadata->assertStatus(422);
+        $missingChequeMetadata->assertJsonValidationErrors(['cheque_number', 'cheque_bank_name', 'cheque_issue_date']);
+
+        $cheque = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'payment_method' => 'cheque',
+                'cheque_number' => 'CHQ-100',
+                'cheque_bank_name' => 'Bank A',
+                'cheque_issue_date' => now()->toDateString(),
+                'notify_customer' => true,
+                'notification_channels' => ['sms'],
+            ]);
+        $this->assertJsonSuccess($cheque, 201);
+        $cheque->assertJsonPath('data.teller_transaction.cash_amount_minor', 0);
+        $cheque->assertJsonPath('data.teller_transaction.cheque_amount_minor', 2000);
+        $cheque->assertJsonPath('data.teller_transaction.notification_status', 'queued');
+        $chequePublicId = $this->requireStringJsonPath($cheque, 'data.teller_transaction.public_id');
+        $this->assertDatabaseHas('teller_transaction_tenders', [
+            'method' => 'cheque',
+            'amount_minor' => 2000,
+            'cheque_number' => 'CHQ-100',
+        ]);
+        $this->assertDatabaseHas('notification_deliveries', [
+            'category' => 'cash_deposit_posted',
+            'idempotency_key' => 'cash-'.$chequePublicId.'-sms',
+        ]);
+
+        $transfer = $this->withApiHeaders(['Idempotency-Key' => 'wd-transfer-1'])->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 3000,
+                'currency' => 'XAF',
+                'payment_method' => 'transfer',
+                'external_reference' => 'TRF-DEP-1',
+                'channel' => 'bank_transfer',
+            ]);
+        $this->assertJsonSuccess($transfer, 201);
+        $transfer->assertJsonPath('data.teller_transaction.transfer_amount_minor', 3000);
+
+        $mixed = $this->withApiHeaders(['Idempotency-Key' => 'wd-mixed-1'])->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/deposits', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 5000,
+                'currency' => 'XAF',
+                'payment_method' => 'mixed',
+                'cash_amount_minor' => 1000,
+                'transfer_amount_minor' => 4000,
+                'external_reference' => 'TRF-MIX-1',
+                'channel' => 'internal_transfer',
+            ]);
+        $this->assertJsonSuccess($mixed, 201);
+        $mixed->assertJsonPath('data.teller_transaction.payment_method', 'mixed');
+        $mixedDepositTenders = $mixed->json('data.teller_transaction.tenders');
+        self::assertIsArray($mixedDepositTenders);
+        self::assertCount(2, $mixedDepositTenders);
+
+        $session = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id']);
+        $this->assertJsonSuccess($session);
+        $session->assertJsonPath('data.summary.expected_cash_balance_minor', 6000);
+    }
+
+    public function test_cheque_transfer_and_mixed_withdrawals_persist_tenders_and_idempotency_contract(): void
+    {
+        $ctx = $this->openCashSession('TENDER-WD');
+        $this->configureCashTenderMappings($ctx['agency']['id']);
+
+        $deposit = $this->postDeposit($ctx['teller'], $ctx['session_public_id'], $ctx['account_public_id'], 12000, 'tender-wd-fund');
+        $this->assertJsonSuccess($deposit, 201);
+
+        $cheque = $this->withApiHeaders(['Idempotency-Key' => 'wd-cheque-1'])->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/withdrawals', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'payment_method' => 'cheque',
+                'cheque_number' => 'CHQ-WD-1',
+                'cheque_bank_name' => 'Bank B',
+                'cheque_issue_date' => now()->toDateString(),
+                'signature_public_id' => $ctx['signature_public_id'],
+                'signature_verification_method' => 'visual_match',
+            ]);
+        $this->assertJsonSuccess($cheque, 201);
+        $cheque->assertJsonPath('data.teller_transaction.cash_amount_minor', 0);
+
+        $replay = $this->withApiHeaders(['Idempotency-Key' => 'wd-cheque-1'])->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/withdrawals', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 2000,
+                'currency' => 'XAF',
+                'payment_method' => 'transfer',
+                'transfer_amount_minor' => 2000,
+                'external_reference' => 'TRF-WD-REPLAY',
+                'signature_public_id' => $ctx['signature_public_id'],
+                'signature_verification_method' => 'visual_match',
+            ]);
+        $replay->assertStatus(422);
+        $replay->assertJsonValidationErrors(['idempotency_key']);
+
+        $transfer = $this->withApiHeaders(['Idempotency-Key' => 'wd-transfer-1'])->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/withdrawals', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 3000,
+                'currency' => 'XAF',
+                'payment_method' => 'transfer',
+                'external_reference' => 'TRF-WD-1',
+                'channel' => 'bank_transfer',
+                'signature_public_id' => $ctx['signature_public_id'],
+                'signature_verification_method' => 'visual_match',
+            ]);
+        $this->assertJsonSuccess($transfer, 201);
+        $transfer->assertJsonPath('data.teller_transaction.transfer_amount_minor', 3000);
+
+        $mixed = $this->withApiHeaders(['Idempotency-Key' => 'wd-mixed-1'])->actingAsSanctum($ctx['teller'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/withdrawals', [
+                'customer_account_public_id' => $ctx['account_public_id'],
+                'amount_minor' => 4000,
+                'currency' => 'XAF',
+                'payment_method' => 'mixed',
+                'cash_amount_minor' => 1000,
+                'transfer_amount_minor' => 3000,
+                'external_reference' => 'TRF-WD-MIX',
+                'signature_public_id' => $ctx['signature_public_id'],
+                'signature_verification_method' => 'visual_match',
+            ]);
+        $this->assertJsonSuccess($mixed, 201);
+        $mixedWithdrawalTenders = $mixed->json('data.teller_transaction.tenders');
+        self::assertIsArray($mixedWithdrawalTenders);
+        self::assertCount(2, $mixedWithdrawalTenders);
+
+        $session = $this->withApiHeaders()->actingAsSanctum($ctx['teller'])
+            ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id']);
+        $this->assertJsonSuccess($session);
+        $session->assertJsonPath('data.summary.expected_cash_balance_minor', 16000);
+        self::assertSame(5, DB::table('teller_transaction_tenders')->count());
+    }
+
     /**
      * @param  array{id:int, code:string, name:string, public_id:string}  $agency
      * @return array{session_public_id:string, till_public_id:string, account_public_id:string}
@@ -2126,6 +2371,37 @@ final class Module5CashInfrastructureTest extends TestCase
         ];
     }
 
+    private function configureCashTenderMappings(int $agencyId): void
+    {
+        foreach ([
+            'cash_deposit_cheque' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'cash_deposit_transfer' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'cash_withdrawal_cheque' => LedgerAccount::ACCOUNT_CLASS_LIABILITY,
+            'cash_withdrawal_transfer' => LedgerAccount::ACCOUNT_CLASS_LIABILITY,
+        ] as $operationCode => $accountClass) {
+            $operation = $this->createOperationCode($operationCode, 'cash');
+            $ledger = $this->createLedgerAccount($agencyId, strtoupper(str_replace('_', '-', $operationCode)), $accountClass);
+
+            DB::table('operation_account_mappings')->insert([
+                'public_id' => (string) Str::ulid(),
+                'operation_code_id' => $operation['id'],
+                'agency_id' => $agencyId,
+                'debit_ledger_account_id' => str_starts_with($operationCode, 'cash_deposit') ? $ledger['id'] : null,
+                'credit_ledger_account_id' => str_starts_with($operationCode, 'cash_withdrawal') ? $ledger['id'] : null,
+                'currency' => 'XAF',
+                'effective_from' => now()->subDay()->toDateString(),
+                'effective_to' => null,
+                'status' => 'active',
+                'approval_status' => 'approved',
+                'sharia_approval_required' => false,
+                'sharia_approval_status' => 'not_required',
+                'rules' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
     /**
      * @return array{id:int, public_id:string}
      */
@@ -2162,6 +2438,8 @@ final class Module5CashInfrastructureTest extends TestCase
             'client_reference' => 'CL-'.$accountNumber,
             'first_name' => 'Cash',
             'last_name' => 'Depositor',
+            'phone_number' => '+237650000000',
+            'email' => 'cash-'.$accountNumber.'@example.test',
             'status' => 'active',
             'kyc_status' => 'verified',
             'onboarded_on' => now()->toDateString(),
