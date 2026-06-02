@@ -23077,11 +23077,142 @@
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
                     },
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/operation-account-mappings/readiness": {
+            "get": {
+                "operationId": "operationAccountMapping.readiness",
+                "summary": "FBI2-031 \u2014 report whether the agency/currency has usable approved mappings\nfor each loan posting operation, categorising blockers (missing, inactive,\nunapproved, expired, cross_agency, overlapping) so the UI can warn before a\nuser reaches disbursement",
+                "tags": [
+                    "OperationAccountMapping"
+                ],
+                "parameters": [
+                    {
+                        "name": "agency_public_id",
+                        "in": "query",
+                        "description": "Agency to check. Non-platform users may only check their current agency; defaults to it.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "description": "ISO currency to check (default XAF).",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "agency_public_id": {
+                                                    "type": "string"
+                                                },
+                                                "currency": {
+                                                    "type": "string"
+                                                },
+                                                "ready": {
+                                                    "type": "boolean"
+                                                },
+                                                "operations": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "operation_code": {
+                                                                "type": "string"
+                                                            },
+                                                            "leg": {
+                                                                "type": "string"
+                                                            },
+                                                            "status": {
+                                                                "type": "string"
+                                                            },
+                                                            "resolvable": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "operation_code",
+                                                            "leg",
+                                                            "status",
+                                                            "resolvable"
+                                                        ]
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "agency_public_id",
+                                                "currency",
+                                                "ready",
+                                                "operations"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "null"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
                     }
                 }
             }
@@ -23233,17 +23364,17 @@
                             }
                         }
                     },
-                    "404": {
-                        "$ref": "#/components/responses/ModelNotFoundException"
-                    },
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    },
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
                     },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
                     }
                 }
             },
@@ -33938,6 +34069,12 @@
                             "null"
                         ]
                     },
+                    "agency_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "debit_ledger_account_public_id": {
                         "type": [
                             "string",
@@ -33956,8 +34093,29 @@
                             "null"
                         ]
                     },
+                    "effective_from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "effective_to": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "status": {
                         "type": "string"
+                    },
+                    "approval_status": {
+                        "type": "string"
+                    },
+                    "approved_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "rules": {
                         "type": [
@@ -33976,10 +34134,15 @@
                 "required": [
                     "public_id",
                     "operation_code_public_id",
+                    "agency_public_id",
                     "debit_ledger_account_public_id",
                     "credit_ledger_account_public_id",
                     "currency",
+                    "effective_from",
+                    "effective_to",
                     "status",
+                    "approval_status",
+                    "approved_at",
                     "rules",
                     "created_at",
                     "updated_at"
@@ -37282,6 +37445,12 @@
                     "operation_code_public_id": {
                         "type": "string"
                     },
+                    "agency_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "debit_ledger_account_public_id": {
                         "type": [
                             "string",
@@ -37302,6 +37471,20 @@
                         "minLength": 3,
                         "maxLength": 3
                     },
+                    "effective_from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "effective_to": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
                     "status": {
                         "type": [
                             "string",
@@ -37310,6 +37493,17 @@
                         "enum": [
                             "active",
                             "inactive"
+                        ]
+                    },
+                    "approval_status": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "draft",
+                            "submitted",
+                            "approved"
                         ]
                     },
                     "rules": {
@@ -40158,11 +40352,64 @@
             "UpdateOperationAccountMappingRequest": {
                 "type": "object",
                 "properties": {
+                    "agency_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "debit_ledger_account_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "credit_ledger_account_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "currency": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "minLength": 3,
+                        "maxLength": 3
+                    },
+                    "effective_from": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "effective_to": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
                     "status": {
                         "type": "string",
                         "enum": [
                             "active",
                             "inactive",
+                            "archived"
+                        ]
+                    },
+                    "approval_status": {
+                        "type": "string",
+                        "enum": [
+                            "draft",
+                            "submitted",
+                            "approved",
+                            "rejected",
+                            "suspended",
+                            "revoked",
+                            "expired",
                             "archived"
                         ]
                     },

@@ -119,6 +119,12 @@ final class OperationAccountMapping extends Model
         return $this->belongsTo(OperationCode::class);
     }
 
+    /** @return BelongsTo<Agency, $this> */
+    public function agency(): BelongsTo
+    {
+        return $this->belongsTo(Agency::class);
+    }
+
     /** @return BelongsTo<LedgerAccount, $this> */
     public function debitLedgerAccount(): BelongsTo
     {

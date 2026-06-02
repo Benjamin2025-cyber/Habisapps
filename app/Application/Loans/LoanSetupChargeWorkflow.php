@@ -18,6 +18,7 @@ use App\Models\TellerTransaction;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\Accounting\AgencyLedgerMappingResolver;
 use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\PhysicalCashAmount;
@@ -41,6 +42,7 @@ final class LoanSetupChargeWorkflow extends BaseController
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly UserNotificationFeed $notifications,
         private readonly LoanSetupState $setupState,
+        private readonly AgencyLedgerMappingResolver $mappingResolver,
     ) {}
 
     /**
@@ -815,55 +817,14 @@ final class LoanSetupChargeWorkflow extends BaseController
             default => throw new InvalidArgumentException('Unsupported setup charge type: '.$chargeType.'.'),
         };
 
-        $mapping = DB::table('operation_account_mappings')
-            ->join('operation_codes', 'operation_codes.id', '=', 'operation_account_mappings.operation_code_id')
-            ->join('ledger_accounts', 'ledger_accounts.id', '=', 'operation_account_mappings.credit_ledger_account_id')
-            ->where('operation_codes.code', $operationCode)
-            ->where('operation_codes.module', 'loan')
-            ->where('operation_codes.status', 'active')
-            ->where('operation_account_mappings.status', 'active')
-            ->where(function ($query) use ($currency): void {
-                $query->whereNull('operation_account_mappings.currency')
-                    ->orWhere('operation_account_mappings.currency', $currency);
-            })
-            ->where('ledger_accounts.agency_id', $agencyId)
-            ->where('ledger_accounts.status', LedgerAccount::STATUS_ACTIVE)
-            ->orderByRaw('operation_account_mappings.currency IS NULL')
-            ->first(['operation_account_mappings.credit_ledger_account_id']);
-
-        $ledgerAccountId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
-        if (! is_int($ledgerAccountId)) {
-            throw new InvalidArgumentException('Active credit ledger mapping is required for '.$operationCode.'.');
-        }
-
-        return $ledgerAccountId;
+        // FBI2-031: resolve through the shared resolver so setup-charge collection
+        // applies the same agency/currency/approval/effective rules as disbursement.
+        return $this->mappingResolver->creditLedgerId($operationCode, 'loan', $agencyId, $currency);
     }
 
     private function insurancePremiumCreditLedgerId(int $agencyId, string $currency): int
     {
-        $operationCode = 'loan_insurance_premium';
-        $mapping = DB::table('operation_account_mappings')
-            ->join('operation_codes', 'operation_codes.id', '=', 'operation_account_mappings.operation_code_id')
-            ->join('ledger_accounts', 'ledger_accounts.id', '=', 'operation_account_mappings.credit_ledger_account_id')
-            ->where('operation_codes.code', $operationCode)
-            ->where('operation_codes.module', 'loan')
-            ->where('operation_codes.status', 'active')
-            ->where('operation_account_mappings.status', 'active')
-            ->where(function ($query) use ($currency): void {
-                $query->whereNull('operation_account_mappings.currency')
-                    ->orWhere('operation_account_mappings.currency', $currency);
-            })
-            ->where('ledger_accounts.agency_id', $agencyId)
-            ->where('ledger_accounts.status', LedgerAccount::STATUS_ACTIVE)
-            ->orderByRaw('operation_account_mappings.currency IS NULL')
-            ->first(['operation_account_mappings.credit_ledger_account_id']);
-
-        $ledgerAccountId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
-        if (! is_int($ledgerAccountId)) {
-            throw new InvalidArgumentException('Active credit ledger mapping is required for '.$operationCode.'.');
-        }
-
-        return $ledgerAccountId;
+        return $this->mappingResolver->creditLedgerId('loan_insurance_premium', 'loan', $agencyId, $currency);
     }
 
     /**

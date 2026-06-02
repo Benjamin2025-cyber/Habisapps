@@ -28,7 +28,14 @@ final class UpdateOperationAccountMappingRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'agency_public_id' => ['sometimes', 'nullable', 'string', 'exists:agencies,public_id'],
+            'debit_ledger_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
+            'credit_ledger_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
+            'currency' => ['sometimes', 'nullable', 'string', 'size:3'],
+            'effective_from' => ['sometimes', 'nullable', 'date'],
+            'effective_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:effective_from'],
             'status' => ['sometimes', Rule::in([OperationAccountMapping::STATUS_ACTIVE, OperationAccountMapping::STATUS_INACTIVE, OperationAccountMapping::STATUS_ARCHIVED])],
+            'approval_status' => ['sometimes', Rule::in(OperationAccountMapping::APPROVAL_STATUSES)],
             'rules' => ['sometimes', 'nullable', 'array'],
             'rules.*' => ['nullable'],
         ];

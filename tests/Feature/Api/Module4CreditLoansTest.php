@@ -2963,6 +2963,7 @@ final class Module4CreditLoansTest extends TestCase
                 'credit_ledger_account_id' => $ledgerId,
                 'currency' => $currency,
                 'status' => 'active',
+                'approval_status' => 'approved',
                 'rules' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -3006,6 +3007,7 @@ final class Module4CreditLoansTest extends TestCase
             'credit_ledger_account_id' => $ledgerId,
             'currency' => $currency,
             'status' => 'active',
+            'approval_status' => 'approved',
             'rules' => null,
             'created_at' => now(),
             'updated_at' => now(),
@@ -3712,5 +3714,334 @@ final class Module4CreditLoansTest extends TestCase
             'is_primary' => true,
             'status' => StaffAgencyAssignment::STATUS_ACTIVE,
         ]);
+    }
+
+    public function test_global_loan_product_disburses_across_agencies_via_agency_specific_principal_mappings(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('MAPDA');
+        $agencyB = $this->createAgency('MAPDB');
+        $clientA = $this->createClientRecord($agencyA, 'verified');
+        $clientB = $this->createClientRecord($agencyB, 'verified');
+
+        // A single global product (product ledger lives in agency A) used by both agencies.
+        $product = $this->createLoanProduct($agencyA);
+
+        // Agency A: an approved principal mapping pointing at a dedicated A ledger
+        // (distinct from the product ledger) proves the mapping is preferred.
+        $principalLedgerA = $this->createLedgerAccount($agencyA);
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyA, $principalLedgerA['id'], null);
+        $loanA = $this->makeApprovedLoan($agencyA, $clientA['id'], $product);
+        $disburseA = $this->disburse($actor, $loanA->public_id);
+        $this->assertJsonSuccess($disburseA);
+        $disburseA->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+        $this->assertDatabaseHas('journal_lines', [
+            'loan_id' => $loanA->id,
+            'ledger_account_id' => $principalLedgerA['id'],
+            'debit_minor' => 200000,
+        ]);
+
+        // Agency B: same global product, no B mapping yet — product ledger is in A,
+        // so disbursement is rejected with a precise missing-mapping error.
+        $loanB = $this->makeApprovedLoan($agencyB, $clientB['id'], $product);
+        $missing = $this->disburse($actor, $loanB->public_id);
+        $missing->assertStatus(422)->assertJsonValidationErrors(['disbursement']);
+        self::assertStringContainsString('loan principal disbursement ledger mapping', $this->stringJson($missing, 'errors.disbursement.0'));
+
+        // Configure B's agency-specific principal mapping → disburses into B's ledger.
+        $principalLedgerB = $this->createLedgerAccount($agencyB);
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyB, $principalLedgerB['id'], null);
+        $disburseB = $this->disburse($actor, $loanB->public_id);
+        $this->assertJsonSuccess($disburseB);
+        $disburseB->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+        $this->assertDatabaseHas('journal_lines', [
+            'loan_id' => $loanB->id,
+            'ledger_account_id' => $principalLedgerB['id'],
+            'debit_minor' => 200000,
+        ]);
+    }
+
+    public function test_disbursement_surfaces_precise_errors_for_unusable_principal_mappings(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Unapproved mapping → 422 "not approved".
+        $agency1 = $this->createAgency('MAPU1');
+        $client1 = $this->createClientRecord($agency1, 'verified');
+        $product1 = $this->createLoanProduct($agency1);
+        $ledger1 = $this->createLedgerAccount($agency1);
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency1, $ledger1['id'], null, ['approval_status' => 'draft']);
+        $loan1 = $this->makeApprovedLoan($agency1, $client1['id'], $product1);
+        $r1 = $this->disburse($actor, $loan1->public_id);
+        $r1->assertStatus(422)->assertJsonValidationErrors(['disbursement']);
+        self::assertStringContainsString('not approved', $this->stringJson($r1, 'errors.disbursement.0'));
+
+        // Expired effective window → 422 "outside its effective date window".
+        $agency2 = $this->createAgency('MAPU2');
+        $client2 = $this->createClientRecord($agency2, 'verified');
+        $product2 = $this->createLoanProduct($agency2);
+        $ledger2 = $this->createLedgerAccount($agency2);
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency2, $ledger2['id'], null, ['effective_from' => '2020-01-01', 'effective_to' => '2020-12-31']);
+        $loan2 = $this->makeApprovedLoan($agency2, $client2['id'], $product2);
+        $r2 = $this->disburse($actor, $loan2->public_id);
+        $r2->assertStatus(422);
+        self::assertStringContainsString('effective date window', $this->stringJson($r2, 'errors.disbursement.0'));
+
+        // Mapping pointing at a cross-agency ledger → 422 "cross-agency".
+        $agency3 = $this->createAgency('MAPU3');
+        $otherAgency = $this->createAgency('MAPU3X');
+        $client3 = $this->createClientRecord($agency3, 'verified');
+        $product3 = $this->createLoanProduct($agency3);
+        $crossLedger = $this->createLedgerAccount($otherAgency);
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency3, $crossLedger['id'], null);
+        $loan3 = $this->makeApprovedLoan($agency3, $client3['id'], $product3);
+        $r3 = $this->disburse($actor, $loan3->public_id);
+        $r3->assertStatus(422);
+        self::assertStringContainsString('cross-agency', $this->stringJson($r3, 'errors.disbursement.0'));
+    }
+
+    public function test_setup_charge_collection_requires_approved_mapping_like_disbursement(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('MAPSC');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'rules' => ['setup_charges' => ['dossier_fee_rate' => '3.000000']],
+        ]);
+        $loan = Loan::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $client['id'],
+            'agency_id' => $agencyId,
+            'loan_product_id' => $product->id,
+            'loan_number' => 'LN-'.Str::ulid(),
+            'requested_amount_minor' => 200000,
+            'currency' => 'XAF',
+            'applied_on' => now()->toDateString(),
+            'status' => Loan::STATUS_APPLICATION,
+        ]);
+
+        $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
+
+        // A draft (unapproved) credit mapping must be rejected by collection, the
+        // same approval gate disbursement enforces.
+        $feeLedger = $this->createRevenueLedger($agencyId, 'SC-FEE');
+        $this->createOperationMapping('loan_setup_dossier_fee', 'loan', $agencyId, null, $feeLedger, ['approval_status' => 'draft']);
+
+        $collectionLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SC-COLLECT');
+        $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedgerId);
+        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 6000);
+
+        $chargePublicId = DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->where('charge_type', 'dossier_fee')->value('public_id');
+        self::assertIsString($chargePublicId);
+
+        $collect = $this->collectFromAccount($actor, $loan->public_id, $chargePublicId, $collectionAccount['public_id'], 'collect-draft-fee');
+        $collect->assertStatus(422);
+        self::assertStringContainsString('not approved', $this->stringJson($collect, 'errors.setup_charge_collection.0'));
+    }
+
+    public function test_operation_account_mapping_api_configures_agency_mappings_and_rejects_overlap(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('MAPAPI');
+        $debit = $this->createLedgerAccount($agency);
+        $credit = $this->createLedgerAccount($agency);
+        $operationCode = $this->createOperationCodeRecord('loan_principal_disbursement', 'loan');
+        $agencyPublicId = $this->agencyPublicId($agency);
+
+        $create = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/operation-account-mappings', [
+                'operation_code_public_id' => $operationCode['public_id'],
+                'agency_public_id' => $agencyPublicId,
+                'debit_ledger_account_public_id' => $debit['public_id'],
+                'credit_ledger_account_public_id' => $credit['public_id'],
+                'currency' => 'XAF',
+                'effective_from' => '2026-01-01',
+                'approval_status' => 'approved',
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.agency_public_id', $agencyPublicId);
+        $create->assertJsonPath('data.approval_status', 'approved');
+        $create->assertJsonPath('data.effective_from', '2026-01-01');
+        $firstPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        // A second active, approved mapping for the same scope and overlapping
+        // window is rejected.
+        $overlap = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/operation-account-mappings', [
+                'operation_code_public_id' => $operationCode['public_id'],
+                'agency_public_id' => $agencyPublicId,
+                'debit_ledger_account_public_id' => $debit['public_id'],
+                'credit_ledger_account_public_id' => $credit['public_id'],
+                'currency' => 'XAF',
+                'effective_from' => '2026-06-01',
+                'approval_status' => 'approved',
+            ]);
+        $overlap->assertStatus(422)->assertJsonValidationErrors(['effective_from']);
+
+        // Suspending the first frees the scope for a new approved mapping.
+        $suspend = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/operation-account-mappings/'.$firstPublicId, ['approval_status' => 'suspended']);
+        $this->assertJsonSuccess($suspend);
+        $suspend->assertJsonPath('data.approval_status', 'suspended');
+
+        $second = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/operation-account-mappings', [
+                'operation_code_public_id' => $operationCode['public_id'],
+                'agency_public_id' => $agencyPublicId,
+                'debit_ledger_account_public_id' => $debit['public_id'],
+                'credit_ledger_account_public_id' => $credit['public_id'],
+                'currency' => 'XAF',
+                'effective_from' => '2026-06-01',
+                'approval_status' => 'approved',
+            ]);
+        $this->assertJsonSuccess($second, 201);
+    }
+
+    public function test_operation_account_mapping_readiness_reports_blockers_per_operation(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('MAPRDY');
+        $agencyPublicId = $this->agencyPublicId($agency);
+        $url = '/api/v1/operation-account-mappings/readiness?agency_public_id='.$agencyPublicId.'&currency=XAF';
+
+        // No mappings configured: every operation is missing and not ready.
+        $empty = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
+        $this->assertJsonSuccess($empty);
+        $empty->assertJsonPath('data.ready', false);
+        self::assertSame('missing', $this->readinessStatus($empty, 'loan_principal_disbursement'));
+        self::assertSame('missing', $this->readinessStatus($empty, 'loan_insurance_premium'));
+
+        // Configure approved mappings for every loan posting operation.
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
+        foreach (['loan_setup_dossier_fee', 'loan_setup_tax', 'loan_setup_guarantee_deposit', 'loan_insurance_premium'] as $code) {
+            $this->createOperationMapping($code, 'loan', $agency, null, $this->createLedgerAccount($agency)['id']);
+        }
+
+        $ready = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
+        $ready->assertJsonPath('data.ready', true);
+        self::assertSame('ready', $this->readinessStatus($ready, 'loan_principal_disbursement'));
+
+        // Make the insurance mapping unapproved → reported as unapproved, not ready.
+        DB::table('operation_account_mappings as m')
+            ->join('operation_codes as oc', 'oc.id', '=', 'm.operation_code_id')
+            ->where('oc.code', 'loan_insurance_premium')
+            ->where('m.agency_id', $agency)
+            ->update(['m.approval_status' => 'draft']);
+        $unapproved = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
+        $unapproved->assertJsonPath('data.ready', false);
+        self::assertSame('unapproved', $this->readinessStatus($unapproved, 'loan_insurance_premium'));
+
+        // A duplicate approved principal mapping is reported as overlapping.
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
+        $overlapping = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
+        self::assertSame('overlapping', $this->readinessStatus($overlapping, 'loan_principal_disbursement'));
+    }
+
+    private function makeApprovedLoan(int $agencyId, int $clientId, LoanProduct $product, int $principalMinor = 200000): Loan
+    {
+        $loan = Loan::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $clientId,
+            'agency_id' => $agencyId,
+            'loan_product_id' => $product->id,
+            'loan_number' => 'LN-'.Str::ulid(),
+            'requested_amount_minor' => $principalMinor,
+            'currency' => 'XAF',
+            'applied_on' => now()->toDateString(),
+            'status' => Loan::STATUS_APPLICATION,
+        ]);
+
+        $transferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $clientId, $transferLedger['id']);
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => $principalMinor,
+            'approved_on' => '2026-05-13',
+            'transfer_account_id' => $transferAccount['id'],
+        ])->save();
+
+        return $loan;
+    }
+
+    /**
+     * @param  array<string, mixed>  $opts
+     */
+    private function createOperationMapping(string $code, string $module, ?int $agencyId, ?int $debitLedgerId, ?int $creditLedgerId, array $opts = []): string
+    {
+        $operationCode = $this->createOperationCodeRecord($code, $module);
+        $publicId = (string) Str::ulid();
+        DB::table('operation_account_mappings')->insert([
+            'public_id' => $publicId,
+            'operation_code_id' => $operationCode['id'],
+            'agency_id' => $agencyId,
+            'debit_ledger_account_id' => $debitLedgerId,
+            'credit_ledger_account_id' => $creditLedgerId,
+            'currency' => $opts['currency'] ?? 'XAF',
+            'effective_from' => $opts['effective_from'] ?? null,
+            'effective_to' => $opts['effective_to'] ?? null,
+            'status' => $opts['status'] ?? 'active',
+            'approval_status' => $opts['approval_status'] ?? 'approved',
+            'rules' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $publicId;
+    }
+
+    /**
+     * @return array{id:int, public_id:string}
+     */
+    private function createOperationCodeRecord(string $code, string $module): array
+    {
+        $existing = DB::table('operation_codes')->where('code', $code)->first(['id', 'public_id']);
+        if (is_object($existing) && is_int($existing->id) && is_string($existing->public_id)) {
+            return ['id' => $existing->id, 'public_id' => $existing->public_id];
+        }
+
+        $publicId = (string) Str::ulid();
+        $id = DB::table('operation_codes')->insertGetId([
+            'public_id' => $publicId,
+            'code' => $code,
+            'label' => str_replace('_', ' ', $code),
+            'module' => $module,
+            'operation_type' => 'posting',
+            'direction' => 'debit_credit',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return ['id' => $id, 'public_id' => $publicId];
+    }
+
+    private function agencyPublicId(int $agencyId): string
+    {
+        $publicId = DB::table('agencies')->where('id', $agencyId)->value('public_id');
+        self::assertIsString($publicId);
+
+        return $publicId;
+    }
+
+    private function readinessStatus(TestResponse $response, string $operationCode): string
+    {
+        $operations = $response->json('data.operations');
+        self::assertIsArray($operations);
+        foreach ($operations as $operation) {
+            if (is_array($operation) && ($operation['operation_code'] ?? null) === $operationCode) {
+                self::assertIsString($operation['status']);
+
+                return $operation['status'];
+            }
+        }
+
+        self::fail('Operation '.$operationCode.' missing from readiness response.');
+    }
+
+    private function stringJson(TestResponse $response, string $path): string
+    {
+        $value = $response->json($path);
+
+        return is_string($value) ? $value : '';
     }
 }

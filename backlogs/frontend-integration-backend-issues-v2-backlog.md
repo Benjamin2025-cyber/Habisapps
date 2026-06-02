@@ -560,7 +560,7 @@ Regression tests:
 - Test proves cross-agency users cannot inspect setup charges.
 - Test proves repeated assessment is idempotent and preserves existing collected/waived state.
 
-### FBI2-031: Agency-Scoped Ledger Mapping For Global Loan Products
+### FBI2-031: Agency-Scoped Ledger Mapping For Global Loan Products(completed)
 
 Source issue: `#31 Produit de prêt GLOBAL vs comptes comptables PAR AGENCE`.
 

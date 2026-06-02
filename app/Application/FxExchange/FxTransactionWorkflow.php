@@ -8,9 +8,9 @@ use App\Http\Controllers\BaseController;
 use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
-use App\Models\LedgerAccount;
 use App\Models\Till;
 use App\Models\User;
+use App\Support\Accounting\AgencyLedgerMappingResolver;
 use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +26,7 @@ final class FxTransactionWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly AccountingDayGuard $accountingDayGuard,
+        private readonly AgencyLedgerMappingResolver $mappingResolver,
     ) {}
 
     public function storeExchangeTransaction(Request $request, string $tillPublicId): JsonResponse
@@ -55,7 +56,7 @@ final class FxTransactionWorkflow extends BaseController
                 $this->assertAuthorization($till->agency_id, (string) $validated['direction']);
 
                 $accountingDay = $this->accountingDayGuard->assertCanRegister($actor, 'fx.transaction', $till->agency_id);
-                $businessDate = $accountingDay->business_date?->toDateString();
+                $businessDate = $accountingDay->business_date->toDateString();
 
                 $foreignCurrency = mb_strtoupper((string) $validated['foreign_currency']);
                 $this->assertActiveCurrency($foreignCurrency);
@@ -395,36 +396,11 @@ final class FxTransactionWorkflow extends BaseController
     private function resolveExchangeMapping(int $agencyId, string $direction): array
     {
         $code = $direction === 'buy_foreign_currency' ? 'fx_buy_foreign_currency' : 'fx_sell_foreign_currency';
-        $mapping = DB::table('operation_account_mappings as map')
-            ->join('operation_codes as op', 'op.id', '=', 'map.operation_code_id')
-            ->where('op.code', $code)
-            ->where('op.module', 'fx')
-            ->where('op.status', 'active')
-            ->where('map.status', 'active')
-            ->whereIn('map.currency', ['XAF', null])
-            ->first(['map.debit_ledger_account_id', 'map.credit_ledger_account_id']);
-        if (! is_object($mapping)
-            || ! is_numeric($mapping->debit_ledger_account_id)
-            || ! is_numeric($mapping->credit_ledger_account_id)) {
-            throw new InvalidArgumentException('Active operation mapping with both legs is required for '.$code.'.');
-        }
 
-        $debit = (int) $mapping->debit_ledger_account_id;
-        $credit = (int) $mapping->credit_ledger_account_id;
-        $this->assertLedgerActiveForAgency($debit, $agencyId);
-        $this->assertLedgerActiveForAgency($credit, $agencyId);
-
-        return [$debit, $credit];
-    }
-
-    private function assertLedgerActiveForAgency(int $ledgerAccountId, int $agencyId): void
-    {
-        $ledger = LedgerAccount::query()->whereKey($ledgerAccountId)->first();
-        if (! $ledger instanceof LedgerAccount
-            || $ledger->status !== LedgerAccount::STATUS_ACTIVE
-            || $ledger->agency_id !== $agencyId) {
-            throw new InvalidArgumentException('FX mapping ledger account must be active and belong to the till agency.');
-        }
+        // FBI2-031: FX postings resolve through the shared agency-scoped resolver
+        // (settlement leg in the local currency) so the same approval/effective
+        // rules apply as for loan postings.
+        return $this->mappingResolver->bothLegs($code, 'fx', $agencyId, 'XAF');
     }
 
     private function postSystemJournal(JournalEntry $journalEntry, User $actor): void
@@ -451,7 +427,7 @@ final class FxTransactionWorkflow extends BaseController
         $reversal = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),
             'reference' => 'REV-'.$original->reference,
-            'business_date' => $accountingDay->business_date?->toDateString(),
+            'business_date' => $accountingDay->business_date->toDateString(),
             'posted_at' => null,
             'agency_id' => $original->agency_id,
             'source_module' => $original->source_module,

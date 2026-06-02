@@ -709,6 +709,7 @@ final class CurrencyExchangeTest extends TestCase
                 'credit_ledger_account_id' => $credit['id'],
                 'currency' => 'XAF',
                 'status' => 'active',
+                'approval_status' => 'approved',
                 'rules' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
