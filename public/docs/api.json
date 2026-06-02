@@ -20886,6 +20886,7 @@
         "/v1/loans/{loan}": {
             "get": {
                 "operationId": "loan.show",
+                "summary": "Show a loan. Pass include_setup_charges=true to embed the reloadable\nsetup-charge / insurance-premium readiness state under `setup_charges`,\nusing the same serializer as GET /loans/{loan}/setup-charges (FBI2-030)",
                 "tags": [
                     "Loan"
                 ],
@@ -20897,6 +20898,14 @@
                         "description": "The loan public id",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    {
+                        "name": "include_setup_charges",
+                        "in": "query",
+                        "description": "Embed the setup-charge/insurance-premium readiness state under data.setup_charges.",
+                        "schema": {
+                            "type": "boolean"
                         }
                     }
                 ],
@@ -21026,6 +21035,57 @@
                     },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/loans/{loan}/setup-charges": {
+            "get": {
+                "operationId": "loan.setupCharges",
+                "description": "Returns readiness status, assessed charges (with collectable /\nblocking_disbursement / waiver_decision flags), insurance premiums and\ntheir payments, and the required next actions before disbursement. Shares\nthe readiness rules enforced by loan disbursement.",
+                "summary": "Reloadable loan setup-charge and insurance-premium state (FBI2-030)",
+                "tags": [
+                    "Loan"
+                ],
+                "parameters": [
+                    {
+                        "name": "loan",
+                        "in": "path",
+                        "required": true,
+                        "description": "The loan public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
                     },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"

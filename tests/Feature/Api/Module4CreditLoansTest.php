@@ -3367,4 +3367,350 @@ final class Module4CreditLoansTest extends TestCase
             'status' => Loan::STATUS_APPLICATION,
         ]);
     }
+
+    public function test_loan_setup_charge_state_reflects_lifecycle_and_shares_disbursement_readiness(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR06S');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $insuranceProductPublicId = $this->createInsuranceProduct();
+        $product = $this->createLoanProduct($agencyId, [
+            'interest_rate' => '10.000000',
+            'tax_rate' => '19.250000',
+            'insurance_rate' => '2.000000',
+            'guarantee_deposit_type' => 'percentage',
+            'guarantee_deposit_value' => '10.000000',
+            'rules' => [
+                'setup_charges' => [
+                    'dossier_fee_rate' => '3.000000',
+                    'tax_base' => 'principal_plus_interest',
+                    'guarantee_deposit_collection_method' => 'cash',
+                ],
+                'insurance' => [
+                    'full_module_enabled' => true,
+                    'insurance_product_public_id' => $insuranceProductPublicId,
+                ],
+            ],
+        ]);
+
+        $loan = Loan::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $client['id'],
+            'agency_id' => $agencyId,
+            'loan_product_id' => $product->id,
+            'loan_number' => 'LN-'.Str::ulid(),
+            'requested_amount_minor' => 200000,
+            'currency' => 'XAF',
+            'applied_on' => now()->toDateString(),
+            'status' => Loan::STATUS_APPLICATION,
+        ]);
+
+        // Before assessment: explicit not_assessed readiness and required next action.
+        $before = $this->getSetupState($actor, $loan->public_id);
+        $this->assertJsonSuccess($before);
+        $before->assertJsonPath('data.readiness_status', 'not_assessed');
+        $before->assertJsonPath('data.ready_for_disbursement', false);
+        $before->assertJsonPath('data.required_next_actions.0.action', 'assess_setup_charges');
+        self::assertSame([], $before->json('data.setup_charges'));
+        self::assertSame([], $before->json('data.insurance_premiums'));
+
+        // Assess, and prove repeated assessment is idempotent (no duplicate rows).
+        $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
+        $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
+        self::assertSame(3, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(1, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
+
+        // After assessment: all assessed charges/premiums visible and blocking.
+        $assessed = $this->getSetupState($actor, $loan->public_id);
+        $assessed->assertJsonPath('data.readiness_status', 'collection_pending');
+        $assessed->assertJsonPath('data.ready_for_disbursement', false);
+        $charges = $assessed->json('data.setup_charges');
+        self::assertIsArray($charges);
+        self::assertCount(3, $charges);
+        foreach ($charges as $charge) {
+            self::assertIsArray($charge);
+            self::assertSame('assessed', $charge['status']);
+            self::assertTrue($charge['collectable']);
+            self::assertTrue($charge['blocking_disbursement']);
+            self::assertNull($charge['paid_at']);
+            self::assertNull($charge['journal_entry_public_id']);
+        }
+        $assessed->assertJsonPath('data.insurance_premiums.0.blocking_disbursement', true);
+        // Lock the documented field contract so fields cannot silently disappear.
+        $assessed->assertJsonStructure([
+            'data' => [
+                'loan_public_id',
+                'loan_status',
+                'currency',
+                'readiness_status',
+                'ready_for_disbursement',
+                'required_next_actions',
+                'setup_charges' => [[
+                    'public_id', 'charge_type', 'assessed_amount_minor', 'currency', 'status',
+                    'paid_at', 'journal_entry_public_id', 'waiver_decision', 'collectable', 'blocking_disbursement',
+                ]],
+                'insurance_premiums' => [[
+                    'public_id', 'premium_amount_minor', 'currency', 'status', 'payments', 'blocking_disbursement',
+                ]],
+            ],
+        ]);
+
+        // Wire ledgers/mappings/accounts/session and approve the loan.
+        $feeIncomeLedgerId = $this->createRevenueLedger($agencyId, 'SETUP-FEE');
+        $taxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-TAX');
+        $guaranteeLiabilityLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-GUAR');
+        $insurancePremiumLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-INS');
+        $this->createSetupChargeMappings([
+            'dossier_fee' => $feeIncomeLedgerId,
+            'dossier_fee_tax' => $taxPayableLedgerId,
+            'guarantee_deposit' => $guaranteeLiabilityLedgerId,
+        ], 'XAF');
+        $this->createInsurancePremiumMapping($insurancePremiumLedgerId, 'XAF');
+        $collectionLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-COLLECT');
+        $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedgerId);
+        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 52350);
+        $cashLedger = $this->createLedgerAccount($agencyId);
+        $session = $this->createOpenTellerSession($agencyId, $cashLedger['id'], 500000);
+        $transferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 200000,
+            'approved_on' => '2026-05-13',
+            'transfer_account_id' => $transferAccount['id'],
+        ])->save();
+
+        // Disbursement is rejected while GET reports not-ready (shared readiness).
+        $this->getSetupState($actor, $loan->public_id)->assertJsonPath('data.ready_for_disbursement', false);
+        $this->disburse($actor, $loan->public_id)->assertStatus(422)->assertJsonValidationErrors(['disbursement']);
+
+        $chargePublicIds = DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->pluck('public_id', 'charge_type');
+        $feeChargePublicId = $chargePublicIds->get('dossier_fee');
+        $taxChargePublicId = $chargePublicIds->get('dossier_fee_tax');
+        $guaranteeChargePublicId = $chargePublicIds->get('guarantee_deposit');
+        self::assertIsString($feeChargePublicId);
+        self::assertIsString($taxChargePublicId);
+        self::assertIsString($guaranteeChargePublicId);
+
+        // Collect one charge: it becomes paid while the others remain blocking.
+        $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $feeChargePublicId, $collectionAccount['public_id'], 'collect-dossier_fee'));
+        $afterOne = $this->getSetupState($actor, $loan->public_id);
+        $afterOne->assertJsonPath('data.readiness_status', 'collection_pending');
+        $afterOne->assertJsonPath('data.ready_for_disbursement', false);
+        $paidCharge = $this->chargeByType($afterOne->json('data.setup_charges'), 'dossier_fee');
+        self::assertSame('paid', $paidCharge['status']);
+        self::assertFalse($paidCharge['blocking_disbursement']);
+        self::assertFalse($paidCharge['collectable']);
+        self::assertNotNull($paidCharge['paid_at']);
+        self::assertIsString($paidCharge['journal_entry_public_id']);
+        self::assertTrue($this->chargeByType($afterOne->json('data.setup_charges'), 'dossier_fee_tax')['blocking_disbursement']);
+
+        // Collect the rest: tax from account, guarantee from cash, then the insurance premium.
+        $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $taxChargePublicId, $collectionAccount['public_id'], 'collect-dossier_fee_tax'));
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/'.$guaranteeChargePublicId.'/collect', [
+                'payment_source' => 'teller_cash',
+                'teller_session_public_id' => $session['public_id'],
+                'paid_on' => '2026-05-13',
+                'idempotency_key' => 'collect-guarantee_deposit',
+            ]));
+
+        $premiumAssessment = DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->first(['public_id']);
+        self::assertIsObject($premiumAssessment);
+        self::assertIsString($premiumAssessment->public_id);
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/insurance-premiums/'.$premiumAssessment->public_id.'/collect', [
+                'customer_account_public_id' => $collectionAccount['public_id'],
+                'paid_on' => '2026-05-13',
+                'idempotency_key' => 'collect-insurance-premium',
+            ]));
+
+        // After all collected: ready_for_disbursement true and premium payment visible.
+        $ready = $this->getSetupState($actor, $loan->public_id);
+        $ready->assertJsonPath('data.readiness_status', 'ready');
+        $ready->assertJsonPath('data.ready_for_disbursement', true);
+        $ready->assertJsonPath('data.required_next_actions.0.action', 'disburse_loan');
+        $ready->assertJsonPath('data.insurance_premiums.0.blocking_disbursement', false);
+        $premiumPayments = $ready->json('data.insurance_premiums.0.payments');
+        self::assertIsArray($premiumPayments);
+        self::assertNotEmpty($premiumPayments);
+        self::assertIsArray($premiumPayments[0]);
+        self::assertIsString($premiumPayments[0]['journal_entry_public_id']);
+
+        // include_setup_charges on GET /loans/{loan} reuses the same serializer.
+        $loanShow = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$loan->public_id.'?include_setup_charges=true');
+        $this->assertJsonSuccess($loanShow);
+        $loanShow->assertJsonPath('data.setup_charges.readiness_status', 'ready');
+        $loanShow->assertJsonPath('data.setup_charges.ready_for_disbursement', true);
+        // Default loan show omits the projection.
+        self::assertNull($this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/loans/'.$loan->public_id)->json('data.setup_charges'));
+
+        // Disbursement now succeeds (shared readiness with the GET endpoint).
+        $disburse = $this->disburse($actor, $loan->public_id);
+        $this->assertJsonSuccess($disburse);
+        $disburse->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+    }
+
+    public function test_loan_setup_charge_state_surfaces_direction_waiver_and_counts_it_ready(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR06W');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'interest_rate' => '10.000000',
+            'rules' => [
+                'setup_charges' => [
+                    'dossier_fee_rate' => '3.000000',
+                ],
+            ],
+        ]);
+        $loan = Loan::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $client['id'],
+            'agency_id' => $agencyId,
+            'loan_product_id' => $product->id,
+            'loan_number' => 'LN-'.Str::ulid(),
+            'requested_amount_minor' => 200000,
+            'currency' => 'XAF',
+            'applied_on' => now()->toDateString(),
+            'status' => Loan::STATUS_APPLICATION,
+        ]);
+
+        $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
+        self::assertSame(1, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
+
+        $charge = DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->first(['public_id']);
+        self::assertIsObject($charge);
+        self::assertIsString($charge->public_id);
+
+        // The single dossier fee is blocking until a direction decision waives it.
+        $this->getSetupState($actor, $loan->public_id)->assertJsonPath('data.ready_for_disbursement', false);
+
+        $decision = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/'.$charge->public_id.'/direction-decision', [
+                'decision' => 'waive',
+                'comments' => 'Waived by direction for a relationship client.',
+            ]);
+        $this->assertJsonSuccess($decision);
+
+        $state = $this->getSetupState($actor, $loan->public_id);
+        $waived = $this->chargeByType($state->json('data.setup_charges'), 'dossier_fee');
+        self::assertSame('waived_by_direction', $waived['status']);
+        self::assertFalse($waived['blocking_disbursement']);
+        self::assertFalse($waived['collectable']);
+        self::assertIsArray($waived['waiver_decision']);
+        self::assertSame('waive', $waived['waiver_decision']['decision']);
+        // The waiver is counted by the readiness calculation.
+        $state->assertJsonPath('data.readiness_status', 'ready');
+        $state->assertJsonPath('data.ready_for_disbursement', true);
+
+        // Re-running assessment is idempotent and preserves the waived state.
+        $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
+        self::assertSame(1, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        $reloaded = $this->getSetupState($actor, $loan->public_id);
+        $reloaded->assertJsonPath('data.ready_for_disbursement', true);
+        self::assertSame('waived_by_direction', $this->chargeByType($reloaded->json('data.setup_charges'), 'dossier_fee')['status']);
+    }
+
+    public function test_loan_setup_charge_state_matches_loan_view_scope_and_permissions(): void
+    {
+        $owner = $this->createUserWithRole('platform-admin');
+        $loanAgencyId = $this->createAgency('CR06X');
+        $client = $this->createClientRecord($loanAgencyId, 'verified');
+        $product = $this->createLoanProduct($loanAgencyId, [
+            'rules' => ['setup_charges' => ['dossier_fee_rate' => '3.000000']],
+        ]);
+        $loan = Loan::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'client_id' => $client['id'],
+            'agency_id' => $loanAgencyId,
+            'loan_product_id' => $product->id,
+            'loan_number' => 'LN-'.Str::ulid(),
+            'requested_amount_minor' => 200000,
+            'currency' => 'XAF',
+            'applied_on' => now()->toDateString(),
+            'status' => Loan::STATUS_APPLICATION,
+        ]);
+        $this->assertJsonSuccess($this->assessSetupCharges($owner, $loan->public_id));
+
+        // Positive control: a loan officer scoped to the loan agency CAN inspect
+        // setup charges, so the cross-agency 403 below is attributable to scope,
+        // not an unrelated failure that would make the assertion vacuous.
+        $sameAgencyOfficer = $this->createUserWithRole('loan-officer');
+        $this->assignUserToAgency($sameAgencyOfficer, $loanAgencyId, 'loan-officer');
+        $this->assertJsonSuccess($this->getSetupState($sameAgencyOfficer, $loan->public_id));
+
+        // A loan officer scoped to a different agency cannot inspect setup charges.
+        $otherAgencyId = $this->createAgency('CR06Y');
+        $crossAgencyOfficer = $this->createUserWithRole('loan-officer');
+        $this->assignUserToAgency($crossAgencyOfficer, $otherAgencyId, 'loan-officer');
+        $this->getSetupState($crossAgencyOfficer, $loan->public_id)->assertForbidden();
+
+        // A user lacking loans.view (teller) is denied even inside the loan agency.
+        $teller = $this->createUserWithRole('teller');
+        $this->assignUserToAgency($teller, $loanAgencyId, 'teller');
+        $this->getSetupState($teller, $loan->public_id)->assertForbidden();
+    }
+
+    private function getSetupState(User $actor, string $loanPublicId): TestResponse
+    {
+        return $this->withApiHeaders()->actingAsSanctum($actor)
+            ->getJson('/api/v1/loans/'.$loanPublicId.'/setup-charges');
+    }
+
+    private function assessSetupCharges(User $actor, string $loanPublicId): TestResponse
+    {
+        return $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loanPublicId.'/setup-charges/assess');
+    }
+
+    private function collectFromAccount(User $actor, string $loanPublicId, string $chargePublicId, string $accountPublicId, string $idempotencyKey): TestResponse
+    {
+        return $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loanPublicId.'/setup-charges/'.$chargePublicId.'/collect', [
+                'customer_account_public_id' => $accountPublicId,
+                'paid_on' => '2026-05-13',
+                'idempotency_key' => $idempotencyKey,
+            ]);
+    }
+
+    private function disburse(User $actor, string $loanPublicId): TestResponse
+    {
+        return $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loanPublicId.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'business_date' => '2026-05-13',
+            ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function chargeByType(mixed $charges, string $type): array
+    {
+        self::assertIsArray($charges);
+        foreach ($charges as $charge) {
+            if (is_array($charge) && ($charge['charge_type'] ?? null) === $type) {
+                return $charge;
+            }
+        }
+
+        self::fail('Charge type '.$type.' is not present in the setup state.');
+    }
+
+    private function assignUserToAgency(User $user, int $agencyId, string $roleAtAgency): void
+    {
+        DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
+            'user_id' => $user->id,
+            'agency_id' => $agencyId,
+            'role_at_agency' => $roleAtAgency,
+            'starts_on' => now()->toDateString(),
+            'ends_on' => null,
+            'is_primary' => true,
+            'status' => StaffAgencyAssignment::STATUS_ACTIVE,
+        ]);
+    }
 }

@@ -26,6 +26,7 @@ final class DisburseLoan
 {
     public function __construct(
         private readonly AccountingDayGuard $accountingDayGuard,
+        private readonly LoanSetupState $setupState,
     ) {}
 
     /**
@@ -111,7 +112,7 @@ final class DisburseLoan
             $idempotencyKey = 'loan-disbursement:'.$lockedLoan->public_id;
             $postedAt = now();
             $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.disburse', $lockedLoan->agency_id, $businessDate);
-            $effectiveBusinessDate = (string) $accountingDay->business_date?->toDateString();
+            $effectiveBusinessDate = $accountingDay->business_date->toDateString();
             $journalEntry = JournalEntry::query()->create([
                 'public_id' => (string) Str::ulid(),
                 'reference' => $reference,
@@ -385,83 +386,8 @@ final class DisburseLoan
 
     private function ensureSetupSatisfied(Loan $loan, LoanProduct $product): void
     {
-        $rules = is_array($product->getAttribute('rules')) ? $product->getAttribute('rules') : [];
-        $requiresCharges = $product->fee_amount_minor !== null
-            || $product->tax_rate !== null
-            || $product->insurance_rate !== null
-            || $product->guarantee_deposit_value !== null
-            || is_array($rules['setup_charges'] ?? null);
-
-        if (! $requiresCharges) {
-            return;
-        }
-
-        $chargeAssessments = DB::table('loan_charge_assessments')
-            ->where('loan_id', $loan->id)
-            ->whereIn('charge_type', ['dossier_fee', 'dossier_fee_tax', 'guarantee_deposit'])
-            ->where('assessed_amount_minor', '>', 0)
-            ->get(['id', 'charge_type', 'status', 'paid_at']);
-        $insuranceAssessments = DB::table('insurance_premium_assessments')
-            ->where('loan_id', $loan->id)
-            ->where('premium_amount_minor', '>', 0)
-            ->get(['id', 'status']);
-
-        if ($chargeAssessments->isEmpty() && $insuranceAssessments->isEmpty()) {
-            throw new InvalidArgumentException('Setup charges must be assessed before disbursement.');
-        }
-
-        $unpaidCharges = $chargeAssessments
-            ->filter(fn (object $assessment): bool => ! $this->loanChargeIsCollected($assessment))
-            ->map(fn (object $assessment): string => $this->chargeType($assessment))
-            ->values()
-            ->all();
-        if ($unpaidCharges !== []) {
-            throw new InvalidArgumentException('Setup charges must be collected before disbursement: '.implode(', ', $unpaidCharges).'.');
-        }
-
-        $unpaidInsuranceCount = $insuranceAssessments
-            ->filter(fn (object $assessment): bool => ! $this->insurancePremiumIsCollected($assessment))
-            ->count();
-        if ($unpaidInsuranceCount > 0) {
-            throw new InvalidArgumentException('Loan insurance premium must be collected before disbursement.');
-        }
-    }
-
-    private function loanChargeIsCollected(object $assessment): bool
-    {
-        $data = (array) $assessment;
-        $status = $data['status'] ?? null;
-        $paidAt = $data['paid_at'] ?? null;
-
-        return $status === 'waived_by_direction'
-            || (in_array($status, ['paid', 'collected', 'posted'], true) && $paidAt !== null);
-    }
-
-    private function chargeType(object $assessment): string
-    {
-        $data = (array) $assessment;
-        $type = $data['charge_type'] ?? 'unknown';
-
-        return is_string($type) && $type !== '' ? $type : 'unknown';
-    }
-
-    private function insurancePremiumIsCollected(object $assessment): bool
-    {
-        $data = (array) $assessment;
-        $status = $data['status'] ?? null;
-        $assessmentId = $data['id'] ?? null;
-
-        if (in_array($status, ['paid', 'collected', 'posted'], true)) {
-            return true;
-        }
-
-        if (! is_int($assessmentId)) {
-            return false;
-        }
-
-        return DB::table('insurance_premium_payments')
-            ->where('insurance_premium_assessment_id', $assessmentId)
-            ->whereIn('status', ['posted', 'paid', 'collected'])
-            ->exists();
+        // Single-sourced through LoanSetupState so disbursement enforcement and
+        // the GET /loans/{loan}/setup-charges read model cannot drift (FBI2-030).
+        $this->setupState->assertReadyForDisbursement($loan, $product);
     }
 }

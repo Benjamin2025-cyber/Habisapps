@@ -51,6 +51,11 @@ final class LoanWorkflowControllerAdapter
         return $this->setupCharge->assessSetupCharges($request, $loan);
     }
 
+    public function showSetupCharges(Request $request, Loan $loan): JsonResponse
+    {
+        return $this->setupCharge->showSetupState($request, $loan);
+    }
+
     public function decideSetupChargeException(Request $request, Loan $loan, string $chargePublicId): JsonResponse
     {
         return $this->setupCharge->decideSetupChargeException($request, $loan, $chargePublicId);

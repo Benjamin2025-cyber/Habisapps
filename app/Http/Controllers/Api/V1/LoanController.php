@@ -10,6 +10,7 @@ use App\Http\Requests\StoreLoanRequest;
 use App\Http\Requests\UpdateLoanLinkedAccountsRequest;
 use App\Http\Requests\UpdateLoanRequest;
 use App\Models\Loan;
+use Dedoc\Scramble\Attributes\QueryParameter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,9 +30,28 @@ final class LoanController extends BaseController
         return $this->loan->store($request);
     }
 
+    /**
+     * Show a loan. Pass include_setup_charges=true to embed the reloadable
+     * setup-charge / insurance-premium readiness state under `setup_charges`,
+     * using the same serializer as GET /loans/{loan}/setup-charges (FBI2-030).
+     */
+    #[QueryParameter('include_setup_charges', 'Embed the setup-charge/insurance-premium readiness state under data.setup_charges.', type: 'boolean')]
     public function show(Request $request, Loan $loan): JsonResponse
     {
         return $this->loan->show($request, $loan);
+    }
+
+    /**
+     * Reloadable loan setup-charge and insurance-premium state (FBI2-030).
+     *
+     * Returns readiness status, assessed charges (with collectable /
+     * blocking_disbursement / waiver_decision flags), insurance premiums and
+     * their payments, and the required next actions before disbursement. Shares
+     * the readiness rules enforced by loan disbursement.
+     */
+    public function setupCharges(Request $request, Loan $loan): JsonResponse
+    {
+        return $this->loan->showSetupCharges($request, $loan);
     }
 
     public function update(UpdateLoanRequest $request, Loan $loan): JsonResponse

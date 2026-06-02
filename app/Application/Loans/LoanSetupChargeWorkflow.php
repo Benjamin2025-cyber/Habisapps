@@ -40,7 +40,27 @@ final class LoanSetupChargeWorkflow extends BaseController
         private readonly AccountingBalanceCalculator $balanceCalculator,
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly UserNotificationFeed $notifications,
+        private readonly LoanSetupState $setupState,
     ) {}
+
+    /**
+     * FBI2-030 — reloadable setup-charge / insurance-premium read model. Uses
+     * the same readiness rules and serializer as disbursement enforcement, so
+     * the frontend can reload setup state independently of the assess mutation.
+     */
+    public function showSetupState(Request $request, Loan $loan): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('view', $loan)) {
+            return $this->respondForbidden();
+        }
+
+        if (! $this->canAccessLoanAgency($actor, $loan)) {
+            return $this->respondForbidden('Loan is outside your agency scope.');
+        }
+
+        return $this->respondSuccess($this->setupState->forLoan($loan));
+    }
 
     public function assessSetupCharges(Request $request, Loan $loan): JsonResponse
     {
@@ -205,7 +225,7 @@ final class LoanSetupChargeWorkflow extends BaseController
                     ? $this->setupChargeTellerCashDebitContext($loan, $validated, $amountMinor, $currency)
                     : $this->setupChargeCustomerAccountDebitContext($loan, $validated, $amountMinor, $currency);
                 $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.setup_charge', $loan->agency_id, is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : null);
-                $paidDate = (string) $accountingDay->business_date?->toDateString();
+                $paidDate = $accountingDay->business_date->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'loan-setup-charge:'.$chargePublicId;
@@ -429,7 +449,7 @@ final class LoanSetupChargeWorkflow extends BaseController
                 }
 
                 $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.insurance_premium', $loan->agency_id, is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : null);
-                $paidDate = (string) $accountingDay->business_date?->toDateString();
+                $paidDate = $accountingDay->business_date->toDateString();
                 $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
                     ? $validated['idempotency_key']
                     : 'loan-insurance-premium:'.$premiumPublicId;

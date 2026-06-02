@@ -30,6 +30,7 @@ final class LoanCrudWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly LoanProductFormulaPolicySnapshotter $formulaPolicySnapshotter,
+        private readonly LoanSetupState $setupState,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -155,7 +156,14 @@ final class LoanCrudWorkflow extends BaseController
             return $this->respondForbidden('Loan is outside your agency scope.');
         }
 
-        return $this->respondSuccess(LoanResource::make($loan->loadMissing($this->relations())));
+        $loan->loadMissing($this->relations());
+        if ($request->boolean('include_setup_charges')) {
+            // Reuse the LoanSetupState serializer (FBI2-030) so this projection
+            // matches GET /loans/{loan}/setup-charges exactly.
+            $loan->setAttribute('setup_charges_state', $this->setupState->forLoan($loan));
+        }
+
+        return $this->respondSuccess(LoanResource::make($loan));
     }
 
     public function update(UpdateLoanRequest $request, Loan $loan): JsonResponse

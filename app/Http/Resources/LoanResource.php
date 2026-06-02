@@ -71,7 +71,10 @@ final class LoanResource extends JsonResource
             ];
         }
 
+        $setupChargesState = $loan->getAttribute('setup_charges_state');
+
         return [
+            ...(is_array($setupChargesState) ? ['setup_charges' => $setupChargesState] : []),
             'public_id' => $loan->public_id,
             'loan_number' => $loan->loan_number,
             'status' => $loan->status,

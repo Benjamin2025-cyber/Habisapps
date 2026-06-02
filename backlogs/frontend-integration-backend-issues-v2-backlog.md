@@ -495,7 +495,7 @@ Regression tests:
 - Tests prove cross-agency filter attempts do not leak row existence.
 - Tests prove standalone and nested reconciliation lists agree for the same session.
 
-### FBI2-030: Reloadable Loan Setup Charge And Insurance Premium State
+### FBI2-030: Reloadable Loan Setup Charge And Insurance Premium State(completed)
 
 Source issue: `#30 Décaissement prêt — frais de dossier`.
 
