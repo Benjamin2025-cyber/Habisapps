@@ -1,6 +1,5 @@
 parameters:
     level: 9
-    disableMigrationScan: true
     paths:
         - app
         - routes
