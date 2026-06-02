@@ -325,7 +325,7 @@ Regression tests:
 - Tests prove a user without `notifications.view` can read their own notifications but cannot read agency-wide notifications not targeted to them.
 - Tests prove event producers do not create duplicate unread feed rows for the same source event.
 
-### FBI2-027: Replace Teller Dashboard Demo Dependencies With Backend Contracts
+### FBI2-027: Replace Teller Dashboard Demo Dependencies With Backend Contracts(completed)
 
 Source issue: `#27 Dashboard caissier sections maquettées`.
 
