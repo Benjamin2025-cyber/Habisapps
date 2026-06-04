@@ -431,6 +431,23 @@ final class AccountingDayLifecycleTest extends TestCase
         }
     }
 
+    public function test_read_only_routes_remain_available_in_consultation_mode(): void
+    {
+        config(['security.accounting_day.auto_open_on_missing' => false]);
+
+        $agency = $this->createAgency('AD-READ-OK');
+        $actor = $this->createUserWithRole('agency-manager', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $this->closeAccountingDay($day);
+
+        // A GET route carrying the registration-lock middleware is a non-mutating
+        // consultation and must stay available once the day is closed.
+        $response = $this->actingAsSanctum($actor)->getJson('/api/v1/notifications');
+
+        // assertJsonSuccess requires HTTP 200, proving the lock did not block it.
+        $this->assertJsonSuccess($response);
+    }
+
     /**
      * @return array{id:int, code:string, public_id:string}
      */

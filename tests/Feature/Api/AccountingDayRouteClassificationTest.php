@@ -46,6 +46,7 @@ final class AccountingDayRouteClassificationTest extends TestCase
                     RouteClassification::REGISTRATION,
                     RouteClassification::DAY_LIFECYCLE,
                     RouteClassification::SYSTEM_MAINTENANCE,
+                    RouteClassification::ADMINISTRATION,
                 ], true)) {
                     $invalid[] = $method.' '.$uri.' => '.$classification;
                 }
@@ -73,6 +74,18 @@ final class AccountingDayRouteClassificationTest extends TestCase
             'POST v1/accounting-days/{accountingDay}/close' => RouteClassification::DAY_LIFECYCLE,
             'POST v1/accounting-days/{accountingDay}/reopen' => RouteClassification::DAY_LIFECYCLE,
             'POST v1/logout' => RouteClassification::SYSTEM_MAINTENANCE,
+            // Identity & access administration is allowlisted out of the lock.
+            'POST v1/staff-users' => RouteClassification::ADMINISTRATION,
+            'PATCH v1/staff-users/{staffUser}' => RouteClassification::ADMINISTRATION,
+            'PATCH v1/staff-users/{staffUser}/status' => RouteClassification::ADMINISTRATION,
+            'PUT v1/staff-users/{staffUser}/roles' => RouteClassification::ADMINISTRATION,
+            'POST v1/staff-users/{staffUser}/assignments' => RouteClassification::ADMINISTRATION,
+            'PUT v1/roles/{role}/permissions' => RouteClassification::ADMINISTRATION,
+            'POST v1/roles/{role}/permissions/{permission}' => RouteClassification::ADMINISTRATION,
+            'DELETE v1/roles/{role}/permissions/{permission}' => RouteClassification::ADMINISTRATION,
+            // User self-service notification read-state is allowlisted out of the lock.
+            'POST v1/notifications/read-all' => RouteClassification::ADMINISTRATION,
+            'POST v1/notifications/{notification}/read' => RouteClassification::ADMINISTRATION,
         ];
 
         foreach ($expectations as $signature => $expected) {
@@ -80,6 +93,47 @@ final class AccountingDayRouteClassificationTest extends TestCase
             $route = $routes->match(Request::create('/api/'.$uri, $method));
             self::assertInstanceOf(Route::class, $route);
             self::assertSame($expected, $route->defaults['accounting_day_classification'] ?? null, $signature.' must be explicitly classified.');
+        }
+    }
+
+    public function test_non_mutating_methods_are_always_consultation_and_never_gated(): void
+    {
+        $classifier = new RouteClassification;
+
+        // Read methods short-circuit to consultation regardless of any route
+        // default, so a non-mutating route can never reach the registration lock.
+        foreach (['GET', 'HEAD', 'OPTIONS'] as $method) {
+            self::assertSame(
+                RouteClassification::CONSULTATION,
+                $classifier->classify(Request::create('/api/v1/anything', $method)),
+                $method.' must classify as consultation.'
+            );
+
+            // Even if a read route somehow carried a registration default, the
+            // method must still win: the lock only ever gates state mutations.
+            $route = (new Route([$method], 'anything', []))
+                ->defaults('accounting_day_classification', RouteClassification::REGISTRATION);
+            $request = Request::create('/api/v1/anything', $method);
+            $request->setRouteResolver(static fn (): Route => $route);
+
+            self::assertSame(
+                RouteClassification::CONSULTATION,
+                $classifier->classify($request),
+                $method.' must remain consultation even with a registration default.'
+            );
+        }
+    }
+
+    public function test_mutating_methods_default_to_the_locked_registration_classification(): void
+    {
+        $classifier = new RouteClassification;
+
+        foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
+            self::assertSame(
+                RouteClassification::REGISTRATION,
+                $classifier->classify(Request::create('/api/v1/anything', $method)),
+                $method.' without an explicit classification must default to registration (gated).'
+            );
         }
     }
 }

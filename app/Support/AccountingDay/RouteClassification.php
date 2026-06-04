@@ -16,6 +16,20 @@ final class RouteClassification
 
     public const string SYSTEM_MAINTENANCE = 'system_maintenance';
 
+    /**
+     * Non-financial administration and user self-service writes that carry no
+     * accounting_day_id and have no accounting-integrity stake, so they are
+     * allowlisted out of the registration lock rather than treated as financial
+     * registrations. Covers:
+     *  - Identity & access administration: staff users, agency assignments,
+     *    role permissions.
+     *  - User self-service read-state: marking one's own notifications read.
+     *
+     * It does NOT cover customer-facing record creation (e.g. notification
+     * consents tied to a client), which remains a registration write.
+     */
+    public const string ADMINISTRATION = 'administration';
+
     public const string UNCLASSIFIED = 'unclassified';
 
     /**
@@ -39,7 +53,8 @@ final class RouteClassification
         return match ($classification) {
             self::REGISTRATION,
             self::DAY_LIFECYCLE,
-            self::SYSTEM_MAINTENANCE => $classification,
+            self::SYSTEM_MAINTENANCE,
+            self::ADMINISTRATION => $classification,
             default => self::UNCLASSIFIED,
         };
     }

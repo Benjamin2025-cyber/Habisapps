@@ -39,7 +39,7 @@ final class EnforceAccountingDayRegistrationLock
             );
         }
 
-        if (in_array($classification, [RouteClassification::CONSULTATION, RouteClassification::DAY_LIFECYCLE, RouteClassification::SYSTEM_MAINTENANCE], true)) {
+        if (in_array($classification, [RouteClassification::CONSULTATION, RouteClassification::DAY_LIFECYCLE, RouteClassification::SYSTEM_MAINTENANCE, RouteClassification::ADMINISTRATION], true)) {
             return $next($request);
         }
 

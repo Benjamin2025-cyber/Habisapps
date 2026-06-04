@@ -11,6 +11,7 @@ use App\Application\Notifications\NotificationDeliveryRetryManager;
 use App\Application\Notifications\NotificationOutbox;
 use App\Application\Notifications\NotificationTemplateManager;
 use App\Application\Notifications\UserNotificationFeed;
+use App\Models\AccountingDay;
 use App\Models\LedgerAccount;
 use App\Models\LoanProduct;
 use App\Models\StaffAgencyAssignment;
@@ -199,6 +200,50 @@ final class NotificationsFoundationTest extends TestCase
             ->actingAsSanctum($otherTeller)
             ->postJson('/api/v1/notifications/'.$notification->public_id.'/read')
             ->assertStatus(404);
+    }
+
+    public function test_marking_notifications_read_is_not_blocked_when_the_accounting_day_is_closed(): void
+    {
+        // Consultation-only mode (day closed, auto-open disabled): a user may
+        // still mark their own notifications read. These routes are allowlisted
+        // out of the registration lock; a closed agency day would otherwise
+        // block any registration write.
+        config(['security.accounting_day.auto_open_on_missing' => false]);
+
+        $agency = $this->createAgency('NTF-LOCK');
+        $teller = $this->createUserWithRole('teller', $agency['id']);
+
+        AccountingDay::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'scope_type' => AccountingDay::SCOPE_AGENCY,
+            'agency_id' => $agency['id'],
+            'business_date' => '2026-06-01',
+            'status' => AccountingDay::STATUS_CLOSED,
+            'calendar_opened_at' => now(),
+            'calendar_closed_at' => now(),
+            'origin' => AccountingDay::ORIGIN_MANUAL,
+        ]);
+
+        $notification = app(UserNotificationFeed::class)->notifyAgency(
+            agencyId: $agency['id'],
+            type: UserNotification::TYPE_INFO,
+            category: 'cash_session_opened',
+            title: 'Session opened',
+            message: 'A teller session was opened.',
+            sourceType: 'teller_session',
+            sourcePublicId: 'SES-LOCK',
+        );
+
+        $read = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->postJson('/api/v1/notifications/'.$notification->public_id.'/read');
+        $this->assertJsonSuccess($read);
+        self::assertNotNull($read->json('data.notification.read_at'));
+
+        $readAll = $this->withApiHeaders()
+            ->actingAsSanctum($teller)
+            ->postJson('/api/v1/notifications/read-all');
+        $this->assertJsonSuccess($readAll);
     }
 
     public function test_notification_read_all_and_filters_only_apply_to_visible_rows(): void

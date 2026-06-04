@@ -418,6 +418,38 @@ final class StaffUserManagementTest extends TestCase
         ]);
     }
 
+    public function test_staff_user_creation_is_not_blocked_by_the_accounting_day_lock(): void
+    {
+        // Identity & access administration must remain available even when the
+        // institution has no open accounting day and auto-open is disabled
+        // (production behaviour). The route is allowlisted out of the lock.
+        config(['security.accounting_day.auto_open_on_missing' => false]);
+
+        $this->createAgency('NLK');
+        $admin = $this->createUserWithRole('platform-admin');
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$admin->createToken('test-token')->plainTextToken])
+            ->postJson('/api/v1/staff-users', [
+                'name' => 'Branch Cashier',
+                'phone_number' => '+237699200099',
+                'email' => 'no-lock@example.com',
+                'matricule' => 'STF-099',
+                'job_title' => 'Cashier',
+                'agency_code' => 'NLK',
+                'agency_name' => 'No Lock',
+            ]);
+
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonPath('data.phone_number', '+237699200099');
+
+        // The lock never ran: no accounting day was consulted or auto-opened.
+        self::assertSame(0, DB::table('accounting_days')->count());
+        $this->assertDatabaseMissing('activity_log', [
+            'event' => 'accounting_day.registration_blocked',
+        ]);
+    }
+
     private function createUserWithRole(string $role, ?int $agencyId = null): User
     {
         $user = User::factory()->createOne([

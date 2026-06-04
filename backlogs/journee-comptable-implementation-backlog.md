@@ -203,7 +203,7 @@ By default, block when the accounting day is not open:
 - Insurance premium collection/reversal, claim settlement, remittance approval, policy cancellation accounting.
 - FX transaction, reversal, stock movement, cash reconciliation.
 - Batch execution when the procedure creates or mutates financial/operational state.
-- CRM/KYC and staff/admin writes if the stakeholder's "tout droits d'enregistrement" is interpreted literally across the system.
+- CRM/KYC writes and product/reference configuration, treated as registration because they create or mutate customer-facing or operational state (e.g. KYC document upload, notification consents tied to a client).
 
 Allowed while closed by default:
 
@@ -213,10 +213,15 @@ Allowed while closed by default:
 - Operational dashboards if they do not create records.
 - Accounting-day opening for the next authorized day.
 - Emergency admin-only reopen with dual control.
+- Identity & access administration: staff-user create/update/status/role and agency-assignment writes, and role-permission grant/revoke/replace. These carry no `accounting_day_id` and have no accounting-integrity stake.
+- User self-service read-state: marking one's own notifications read (`notifications/read-all`, `notifications/{notification}/read`), which is part of consulting data.
 
 Implementation policy:
 
-- Non-financial setup writes, such as reference data, permissions, product configuration, KYC document upload, notification templates, and staff profile edits, are blocked by the same day lock unless explicitly allowlisted. This follows the stakeholder phrase that all registration rights are blocked across the system.
+- The registration lock is a fail-closed default: any authenticated mutating route is treated as `registration` unless it carries an explicit `accounting_day_classification` route default. The valid classifications are `registration` (locked), `consultation`/`day_lifecycle`/`system_maintenance` (exempt lifecycle/maintenance), and `administration` (exempt non-financial administration and user self-service — see `App\Support\AccountingDay\RouteClassification`).
+- Decision (FBI accounting-day allowlist): identity & access administration and user self-service read-state are classified `administration` and allowlisted out of the lock, rather than blocked under a literal reading of "tout droits d'enregistrement." Rationale: these writes record no financial or operational event, carry no `accounting_day_id`, and gating them on an open accounting day blocks routine user administration and consultation-mode UX with no accounting-integrity benefit. Authorization (`can()`/policies) still governs these routes independently of the lock.
+- Other non-financial setup writes that DO create customer-facing or operational records — KYC document upload, notification consents, product/reference configuration — remain blocked by the day lock unless a future decision explicitly allowlists them.
+- `tests/Feature/Api/AccountingDayRouteClassificationTest.php` enforces that every authenticated mutating route resolves to a valid classification and carries the lock middleware, so new routes cannot silently bypass or mis-classify the lock.
 
 ## Implementation Backlog
 
