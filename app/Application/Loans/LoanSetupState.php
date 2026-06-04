@@ -11,8 +11,7 @@ use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
- * FBI2-030 — single source of truth for loan setup-charge / insurance-premium
- * readiness.
+ * FBI2-030 — single source of truth for loan setup-charge readiness.
  *
  * Both the read endpoint (GET /loans/{loan}/setup-charges and the
  * include_setup_charges projection on GET /loans/{loan}) and
@@ -36,7 +35,7 @@ final class LoanSetupState
     private const array COLLECTED_STATUSES = ['paid', 'collected', 'posted'];
 
     /**
-     * Serialize the full setup-charge / insurance-premium state for the UI.
+     * Serialize the full setup-charge state for the UI.
      *
      * @return array<string, mixed>
      */
@@ -55,7 +54,7 @@ final class LoanSetupState
             'setup_required' => $evaluation['setup_required'],
             'required_next_actions' => $evaluation['next_actions'],
             'setup_charges' => $evaluation['charges'],
-            'insurance_premiums' => $evaluation['premiums'],
+            'loan_assurance' => $evaluation['loan_assurance'],
         ];
     }
 
@@ -81,9 +80,6 @@ final class LoanSetupState
             );
         }
 
-        if ($evaluation['blocking_premium_count'] > 0) {
-            throw new InvalidArgumentException('Loan insurance premium must be collected before disbursement.');
-        }
     }
 
     public function requiresSetup(LoanProduct $product): bool
@@ -102,12 +98,11 @@ final class LoanSetupState
      *     setup_required: bool,
      *     missing_assessment: bool,
      *     blocking_charge_types: array<int, string>,
-     *     blocking_premium_count: int,
      *     readiness_status: string,
      *     ready_for_disbursement: bool,
      *     next_actions: array<int, array<string, mixed>>,
      *     charges: array<int, array<string, mixed>>,
-     *     premiums: array<int, array<string, mixed>>,
+     *     loan_assurance: array<string, mixed>,
      * }
      */
     private function evaluate(Loan $loan, ?LoanProduct $product): array
@@ -115,8 +110,6 @@ final class LoanSetupState
         $setupRequired = $product instanceof LoanProduct && $this->requiresSetup($product);
 
         $chargeRows = $this->chargeRows($loan);
-        $premiumRows = $this->premiumRows($loan);
-        $paymentsByAssessment = $this->paymentsByAssessment($premiumRows);
 
         $charges = [];
         $blockingChargeTypes = [];
@@ -147,50 +140,27 @@ final class LoanSetupState
             ];
         }
 
-        $premiums = [];
-        $blockingPremiumCount = 0;
-        foreach ($premiumRows as $row) {
-            $premiumAmount = $this->intValue($this->field($row, 'premium_amount_minor'));
-            $status = $this->stringValue($this->field($row, 'status'));
-            $assessmentId = $this->intValue($this->field($row, 'id'));
-            /** @var array<int, \stdClass> $payments */
-            $payments = $paymentsByAssessment->get($assessmentId, new Collection)->all();
-            $collected = $this->premiumCollected($status, $payments);
-            $blocking = $premiumAmount > 0 && ! $collected;
-            if ($blocking) {
-                $blockingPremiumCount++;
-            }
-
-            $premiums[] = [
-                'public_id' => $this->stringValue($this->field($row, 'public_id')),
-                'base_amount_minor' => $this->nullableInt($this->field($row, 'base_amount_minor')),
-                'rate' => $this->nullableString($this->field($row, 'rate')),
-                'premium_amount_minor' => $premiumAmount,
-                'currency' => $this->stringValue($this->field($row, 'currency')),
-                'due_on' => $this->nullableString($this->field($row, 'due_on')),
-                'status' => $status,
-                'blocking_disbursement' => $blocking,
-                'payments' => array_map(fn (object $payment): array => $this->paymentPayload($payment), $payments),
-                'metadata' => $this->metadata($this->field($row, 'metadata')),
-            ];
-        }
-
         $hasAssessedCharges = $chargeRows->contains(fn (object $row): bool => $this->intValue($this->field($row, 'assessed_amount_minor')) > 0);
-        $hasAssessedPremiums = $premiumRows->contains(fn (object $row): bool => $this->intValue($this->field($row, 'premium_amount_minor')) > 0);
-        $missingAssessment = $setupRequired && ! $hasAssessedCharges && ! $hasAssessedPremiums;
+        $loanAssuranceAmount = $loan->insurance_amount_minor ?? 0;
+        $missingAssessment = $setupRequired && ! $hasAssessedCharges && $loanAssuranceAmount <= 0;
 
-        [$status, $ready] = $this->resolveStatus($setupRequired, $missingAssessment, $blockingChargeTypes, $blockingPremiumCount);
+        [$status, $ready] = $this->resolveStatus($setupRequired, $missingAssessment, $blockingChargeTypes);
 
         return [
             'setup_required' => $setupRequired,
             'missing_assessment' => $missingAssessment,
             'blocking_charge_types' => $blockingChargeTypes,
-            'blocking_premium_count' => $blockingPremiumCount,
             'readiness_status' => $status,
             'ready_for_disbursement' => $ready,
-            'next_actions' => $this->nextActions($status, $charges, $premiums),
+            'next_actions' => $this->nextActions($status, $charges),
             'charges' => $charges,
-            'premiums' => $premiums,
+            'loan_assurance' => [
+                'amount_minor' => $loanAssuranceAmount,
+                'rate' => $product instanceof LoanProduct ? $this->nullableString($product->insurance_rate) : null,
+                'currency' => $loan->currency,
+                'blocking_disbursement' => false,
+                'managed_as_premium' => false,
+            ],
         ];
     }
 
@@ -198,7 +168,7 @@ final class LoanSetupState
      * @param  array<int, string>  $blockingChargeTypes
      * @return array{0: string, 1: bool}
      */
-    private function resolveStatus(bool $setupRequired, bool $missingAssessment, array $blockingChargeTypes, int $blockingPremiumCount): array
+    private function resolveStatus(bool $setupRequired, bool $missingAssessment, array $blockingChargeTypes): array
     {
         if (! $setupRequired) {
             return [self::STATUS_NO_SETUP_REQUIRED, true];
@@ -208,7 +178,7 @@ final class LoanSetupState
             return [self::STATUS_NOT_ASSESSED, false];
         }
 
-        if ($blockingChargeTypes !== [] || $blockingPremiumCount > 0) {
+        if ($blockingChargeTypes !== []) {
             return [self::STATUS_COLLECTION_PENDING, false];
         }
 
@@ -217,10 +187,9 @@ final class LoanSetupState
 
     /**
      * @param  array<int, array<string, mixed>>  $charges
-     * @param  array<int, array<string, mixed>>  $premiums
      * @return array<int, array<string, mixed>>
      */
-    private function nextActions(string $status, array $charges, array $premiums): array
+    private function nextActions(string $status, array $charges): array
     {
         if ($status === self::STATUS_NO_SETUP_REQUIRED) {
             return [];
@@ -229,14 +198,14 @@ final class LoanSetupState
         if ($status === self::STATUS_NOT_ASSESSED) {
             return [[
                 'action' => 'assess_setup_charges',
-                'description' => 'Assess loan setup charges and insurance premiums before disbursement.',
+                'description' => 'Assess loan setup charges before disbursement.',
             ]];
         }
 
         if ($status === self::STATUS_READY) {
             return [[
                 'action' => 'disburse_loan',
-                'description' => 'All setup charges and insurance premiums are collected or waived; the loan can be disbursed.',
+                'description' => 'All setup charges are collected or waived; the loan can be disbursed.',
             ]];
         }
 
@@ -248,15 +217,6 @@ final class LoanSetupState
                     'charge_public_id' => $charge['public_id'] ?? null,
                     'charge_type' => $charge['charge_type'] ?? null,
                     'description' => 'Collect or waive the assessed setup charge before disbursement.',
-                ];
-            }
-        }
-        foreach ($premiums as $premium) {
-            if (($premium['blocking_disbursement'] ?? false) === true) {
-                $actions[] = [
-                    'action' => 'collect_insurance_premium',
-                    'premium_public_id' => $premium['public_id'] ?? null,
-                    'description' => 'Collect the assessed insurance premium before disbursement.',
                 ];
             }
         }
@@ -288,101 +248,10 @@ final class LoanSetupState
             ]);
     }
 
-    /**
-     * @return Collection<int, \stdClass>
-     */
-    private function premiumRows(Loan $loan): Collection
-    {
-        return DB::table('insurance_premium_assessments')
-            ->where('loan_id', $loan->id)
-            ->orderBy('id')
-            ->get([
-                'id',
-                'public_id',
-                'base_amount_minor',
-                'rate',
-                'premium_amount_minor',
-                'currency',
-                'due_on',
-                'status',
-                'metadata',
-            ]);
-    }
-
-    /**
-     * @param  Collection<int, \stdClass>  $premiumRows
-     * @return Collection<int|string, Collection<int, \stdClass>>
-     */
-    private function paymentsByAssessment(Collection $premiumRows): Collection
-    {
-        $assessmentIds = $premiumRows
-            ->map(fn (object $row): int => $this->intValue($this->field($row, 'id')))
-            ->filter(fn (int $id): bool => $id > 0)
-            ->values()
-            ->all();
-
-        if ($assessmentIds === []) {
-            /** @var Collection<int|string, Collection<int, \stdClass>> $empty */
-            $empty = new Collection;
-
-            return $empty;
-        }
-
-        return DB::table('insurance_premium_payments as ipp')
-            ->leftJoin('journal_entries as je', 'je.id', '=', 'ipp.journal_entry_id')
-            ->whereIn('ipp.insurance_premium_assessment_id', $assessmentIds)
-            ->orderBy('ipp.id')
-            ->get([
-                'ipp.insurance_premium_assessment_id',
-                'ipp.public_id',
-                'ipp.amount_minor',
-                'ipp.currency',
-                'ipp.payment_method',
-                'ipp.paid_at',
-                'ipp.status',
-                'je.public_id as journal_entry_public_id',
-            ])
-            ->groupBy(fn (object $payment): int => $this->intValue($this->field($payment, 'insurance_premium_assessment_id')));
-    }
-
     private function chargeCollected(string $status, ?string $paidAt): bool
     {
         return $status === 'waived_by_direction'
             || (in_array($status, self::COLLECTED_STATUSES, true) && $paidAt !== null);
-    }
-
-    /**
-     * @param  array<int, object>  $payments
-     */
-    private function premiumCollected(string $status, array $payments): bool
-    {
-        if (in_array($status, self::COLLECTED_STATUSES, true)) {
-            return true;
-        }
-
-        foreach ($payments as $payment) {
-            if (in_array($this->stringValue($this->field($payment, 'status')), self::COLLECTED_STATUSES, true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function paymentPayload(object $payment): array
-    {
-        return [
-            'public_id' => $this->stringValue($this->field($payment, 'public_id')),
-            'amount_minor' => $this->intValue($this->field($payment, 'amount_minor')),
-            'currency' => $this->stringValue($this->field($payment, 'currency')),
-            'payment_method' => $this->nullableString($this->field($payment, 'payment_method')),
-            'paid_at' => $this->nullableString($this->field($payment, 'paid_at')),
-            'status' => $this->stringValue($this->field($payment, 'status')),
-            'journal_entry_public_id' => $this->nullableString($this->field($payment, 'journal_entry_public_id')),
-        ];
     }
 
     /**

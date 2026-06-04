@@ -66,11 +66,6 @@ final class LoanWorkflowControllerAdapter
         return $this->setupCharge->collectSetupCharge($request, $loan, $chargePublicId);
     }
 
-    public function collectInsurancePremium(Request $request, Loan $loan, string $premiumPublicId): JsonResponse
-    {
-        return $this->setupCharge->collectInsurancePremium($request, $loan, $premiumPublicId);
-    }
-
     public function listApprovals(Request $request, Loan $loan): JsonResponse
     {
         return $this->approval->listApprovals($request, $loan);

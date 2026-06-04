@@ -54,17 +54,17 @@ This backlog does not reopen `#1` to `#23`. It adds the required v2 work and reg
 - Setup-charge mutation routes exist:
   - `POST /loans/{loan}/setup-charges/assess`
   - `POST /loans/{loan}/setup-charges/{chargePublicId}/collect`
-  - `POST /loans/{loan}/insurance-premiums/{premiumPublicId}/collect`
+  - Loan-scoped insurance premium collection is not part of the v1 loan workflow.
   - `POST /loans/{loan}/setup-charges/{chargePublicId}/direction-decision`
-- There is no `GET /loans/{loan}/setup-charges` or equivalent read endpoint to reload assessed charges and insurance premiums after navigation.
-- `LoanSetupChargeWorkflow::assessSetupCharges()` returns charges and insurance premium assessment only as the mutation response.
-- `DisburseLoan::ensureSetupSatisfied()` requires setup charges and insurance premiums to be assessed and collected before disbursement, so the missing read endpoint blocks a reliable frontend disbursement flow.
+- There is no `GET /loans/{loan}/setup-charges` or equivalent read endpoint to reload assessed setup charges after navigation.
+- `LoanSetupChargeWorkflow::assessSetupCharges()` returns charges and the calculated non-premium loan assurance amount in the mutation response.
+- `DisburseLoan::ensureSetupSatisfied()` requires setup charges to be assessed and collected before disbursement, so the missing read endpoint blocks a reliable frontend disbursement flow.
 
 ### Ledger mapping evidence
 
 - `operation_account_mappings` exists and later migrations added `agency_id`, effective dates, and approval fields.
 - The generic `OperationAccountMappingController::store()` does not set `agency_id`, and update does not allow changing ledger accounts or scope fields.
-- `LoanSetupChargeWorkflow` already resolves setup-charge and insurance-premium revenue ledgers through `operation_account_mappings` by operation code and by ledger account agency.
+- `LoanSetupChargeWorkflow` resolves setup-charge revenue/liability ledgers through `operation_account_mappings` by operation code and by ledger account agency.
 - `DisburseLoan` still reads `LoanProduct::ledger_account_id` directly and requires that ledger to belong to the loan agency.
 - A global loan product with one `ledger_account_id` therefore cannot disburse loans in multiple agencies.
 
@@ -78,7 +78,7 @@ These are implementation defaults, not open questions:
 - Own-user notifications require authentication only. Agency-wide notification administration requires a separate `notifications.view` permission and current-agency scope.
 - Default `teller` and `agency-manager` roles receive `notifications.view` for current-agency operational alerts. This permission must not expose platform-wide notifications.
 - Report generation must be driven by a listable active report-definition catalog.
-- Loan setup charges and insurance premiums must be reloadable independently of the assess mutation response.
+- Loan setup charges must be reloadable independently of the assess mutation response.
 - Global loan products must not carry agency-specific ledger accounts as their only posting source. Posting workflows must resolve agency-specific ledgers through approved operation-account mappings.
 - Do not grant broad ledger/report permissions to teller just to satisfy dashboard needs. Expose teller-scoped data through cash permissions.
 - Do not add frontend-only workarounds as the backend fix.
@@ -295,7 +295,7 @@ Implementation:
   - report run generated
   - report run review approved/rejected
   - loan setup charges assessed
-  - loan setup charge or insurance premium collected
+  - loan setup charge collected
   - loan ready for disbursement
 - Support filters:
   - `filter[read]`
@@ -505,8 +505,8 @@ Current contradiction:
 
 - Assume the frontend can guide disbursement through assess, collect charges, collect insurance, then disburse.
 - Mutation endpoints exist for assess/collect.
-- The only readback of assessed charges/premiums is the immediate assess response.
-- `DisburseLoan::ensureSetupSatisfied()` blocks disbursement until charges/premiums are assessed and collected.
+- The only readback of assessed setup charges is the immediate assess response.
+- `DisburseLoan::ensureSetupSatisfied()` blocks disbursement until required setup charges are assessed and collected.
 - Therefore after refresh/navigation the frontend cannot reliably know what remains to collect before disbursement.
 
 Implementation:
@@ -516,8 +516,7 @@ Implementation:
   - loan public ID and status
   - setup readiness status
   - charge assessments
-  - insurance premium assessments linked to the loan
-  - collected payments
+  - collected setup-charge payments
   - direction waiver decisions
   - required next actions
 - Include every charge field required for the UI:
@@ -531,13 +530,12 @@ Implementation:
   - `waiver_decision`
   - `collectable`
   - `blocking_disbursement`
-- Include insurance premium fields:
-  - `public_id`
-  - `premium_amount_minor`
+- Include loan assurance fields when calculated:
+  - `amount_minor`
+  - `rate`
   - `currency`
-  - `status`
-  - `payments`
-  - `blocking_disbursement`
+  - `managed_as_premium=false`
+  - `blocking_disbursement=false`
 - Add `include_setup_charges=true` on `GET /loans/{loan}` and make it reuse the same serializer as `GET /loans/{loan}/setup-charges`.
 - Keep assess idempotent and safe to call repeatedly, but the frontend must not need to reassess just to read state.
 - Add a single readiness service used by both the GET endpoint and `DisburseLoan::ensureSetupSatisfied()`. Do not duplicate readiness rules in controller/resource code.
@@ -545,13 +543,13 @@ Implementation:
 Acceptance criteria:
 
 - Before assessment, setup-state GET returns explicit `not_assessed` readiness and required next action.
-- After assessment, GET returns all assessed charges and insurance premiums.
+- After assessment, GET returns all assessed setup charges. Loan assurance, if calculated, is reported as a non-blocking loan field and not as a premium collection task.
 - After collecting one charge, GET reflects that charge as paid while other charges remain blocking.
 - Direction waiver decisions are visible and included in readiness calculation.
-- After all required charges/premiums are collected or waived, GET returns `ready_for_disbursement=true`.
+- After all required setup charges are collected or waived, GET returns `ready_for_disbursement=true`.
 - Disbursement uses the same readiness calculation as the GET endpoint, so UI readiness and backend enforcement cannot drift.
 - Agency scoping and loan permissions match `GET /loans/{loan}`.
-- Re-running setup-charge assessment does not duplicate existing assessed charges or insurance premium assessments.
+- Re-running setup-charge assessment does not duplicate existing assessed charges or create insurance premium assessments.
 
 Regression tests:
 
@@ -585,7 +583,7 @@ Implementation:
   - `loan_setup_dossier_fee`
   - `loan_setup_tax`
   - `loan_setup_guarantee_deposit`
-  - `loan_insurance_premium`
+  - `loan_insurance_premium` is not required for the v1 loan workflow.
   - repayment/recovery operation codes already used by loan workflows.
 - Require mapping lookup to include:
   - operation code
@@ -604,14 +602,14 @@ Implementation:
 - Enforce uniqueness or conflict detection for active approved mappings by operation code, agency, currency, and effective window.
 - Keep product-level ledger fields only as legacy/default metadata. New posting code must prefer agency operation mappings.
 - Add `GET /api/v1/operation-account-mappings/readiness` so frontend can show which agencies/products cannot disburse before the user reaches final disbursement.
-- The mapping resolver must be a shared service used by loan disbursement, setup-charge collection, insurance-premium collection, teller non-cash tenders, and FX workflows that already depend on operation mappings.
+- The mapping resolver must be a shared service used by loan disbursement, setup-charge collection, teller non-cash tenders, insurance module premium collection, and FX workflows that already depend on operation mappings.
 
 Acceptance criteria:
 
 - A global loan product can disburse loans in agency A and agency B using different agency-specific loan principal ledgers.
 - Disbursement fails with a clear 422 when the required agency/currency mapping is missing, inactive, unapproved, expired, or points to a cross-agency/inactive ledger.
 - Existing single-agency products continue to work when a valid mapping exists.
-- Setup charge and insurance premium collection use the same mapping resolver rules as disbursement.
+- Setup-charge collection uses the same mapping resolver rules as disbursement.
 - Teller cash loan disbursement uses agency-specific cash/till and loan principal ledgers without cross-agency leakage.
 - Mapping create/update APIs can configure agency-specific mappings without raw DB edits.
 - Mapping readiness endpoint reports missing, inactive, unapproved, expired, cross-agency, and overlapping mappings separately.

@@ -34,7 +34,7 @@ The implementation is structurally broad, but several current behaviors are not 
 - [x] FIN-ADV-006: Loan repayment idempotency now returns the existing posted repayment on replay.
 - [x] FIN-ADV-007: J+5 arrears penalty boundary is implemented and covered for due date, J+4, J+5, and same-month repeat.
 - [x] FIN-ADV-008: Penalty accounting policy is documented as cash-basis recognition on collection, with no journal posted merely for normal assessment.
-- [x] FIN-ADV-009: Borrower insurance premium collection is implemented, disbursement recognizes posted premiums, and insurance partner/product/subscription/claim lifecycle APIs are covered. Claim settlement accounting remains intentionally unposted until an accounting policy is approved.
+- [x] FIN-ADV-009: The borrower-insurance premium assumption has been removed from v1 loans; insurance partner/product/subscription/claim lifecycle APIs remain separate bancassurance/future-module behavior. Claim settlement accounting remains intentionally policy-gated.
 
 ## Critical Findings
 
@@ -50,7 +50,7 @@ Evidence:
 
 Financial risk:
 - Staff or tests can make disbursement depend on a status flag instead of an auditable cash/accounting event.
-- Dossier fee income, VAT/tax payable, guarantee restricted liability, and insurance premium payable/receivable can be missing from the general ledger.
+- Dossier fee income, VAT/tax payable, and guarantee restricted liability can be missing from the general ledger.
 - Guarantee deposit money can be marked as collected without actually increasing a restricted customer guarantee liability.
 
 Required remediation:
@@ -91,7 +91,7 @@ Financial risk:
 
 Required remediation:
 - For the approved standard microfinance product, generated installment lines must include principal and flat interest only, plus recurring charges only if a future product rule explicitly marks them as financed or periodic.
-- Keep upfront assessed values in `loan_charge_assessments` and `insurance_premium_assessments`; do not spread them into ordinary schedule lines.
+- Keep upfront assessed loan setup values in `loan_charge_assessments`; do not spread them into ordinary schedule lines. V1 loan assurance is not written to `insurance_premium_assessments`.
 - If the schema keeps `fees_minor`, `insurance_minor`, and `tax_minor` columns, document them as optional financed/periodic charge components, defaulting to zero for the approved upfront-charge policy.
 - Update repayment allocation to skip zero upfront charge components in standard schedules.
 
@@ -114,7 +114,7 @@ Evidence:
 - Repayment allocations separately know whether money went to principal, interest, fees, insurance, tax, or penalty, but the journal entry ignores those components.
 
 Financial risk:
-- Principal recovery, interest income, penalty income, fee income, tax payable, and insurance premium settlements cannot be reconciled from the ledger.
+- Principal recovery, interest income, penalty income, fee income, and tax payable cannot be reconciled from the ledger.
 - The loan asset account can be credited with interest and penalties, understating income and distorting portfolio balances.
 - Audit evidence disagrees with operational repayment allocations.
 
@@ -282,13 +282,13 @@ Financial risk:
 
 Required remediation:
 - Separate "borrower insurance setup integration" from "full insurance module complete" in the audit.
-- Borrower insurance premium payment posting is implemented through `POST /api/v1/loans/{loan}/insurance-premiums/{premiumPublicId}/collect` with `insurance_premium_payments` and accounting journal records.
+- The prior borrower-insurance premium posting assumption has been removed from v1 loans. `insurance_premium_payments` belongs to standalone/future bancassurance workflows, not loan setup.
 - Product/subscription/claim lifecycle APIs are implemented for full bancassurance operations.
 - Claim settlement accounting must remain a separate approved accounting policy; the claim decision API updates operational status and does not invent ledger entries.
 
 Acceptance criteria:
-- Borrower insurance premium can be paid and posted.
-- Disbursement recognizes the posted premium payment.
+- V1 loan setup does not create or require borrower insurance premium payment.
+- Disbursement readiness is independent of future bancassurance premium payment records.
 - Full insurance module claims have API/test coverage for filing and decision lifecycle.
 
 Verification:

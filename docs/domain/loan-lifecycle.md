@@ -77,17 +77,17 @@ Implemented setup assessment behavior:
 - Dossier fees, setup tax, and guarantee deposit are stored in `loan_charge_assessments`.
 - The normal dossier fee rule is 3% of granted principal, assessed at setup approval/credit committee validation, collected separately before disbursement, and non-refundable after setup approval.
 - Exceptional dossier-fee cases such as cancellation during setup, waiver, refund, reversal, or recalculation require Direction manual decision. Do not automate these edge cases with formulas.
-- Full-module loan insurance creates `insurance_subscriptions` and `insurance_premium_assessments`.
-- `POST /api/v1/loans/{loan}/insurance-premiums/{premiumPublicId}/collect` posts the borrower insurance premium from an active same-client customer account, writes `insurance_premium_payments`, and marks the premium assessment paid.
+- V1 loan setup does not create insurance subscriptions, premium assessments, or premium payments. Those belong to the future bancassurance module.
+- A configured loan product `insurance_rate` is retained only as a loan-level assurance calculation stored on the loan; it is not a premium workflow and does not create a collection step.
 - Product `rules.setup_charges.dossier_fee_rate` configures the dossier fee rate.
 - Product `rules.setup_charges.tax_base` configures the setup tax base; the stakeholder-approved default is `principal_plus_interest`, meaning granted principal plus total flat interest. Legacy supported values are `dossier_fee` and `principal`.
-- Product `rules.insurance.full_module_enabled` plus `rules.insurance.insurance_product_public_id` links loan insurance to an active insurance product.
+- Product `rules.insurance.full_module_enabled` and `rules.insurance.insurance_product_public_id` are not part of the v1 loan workflow. A future bancassurance integration must define its own UI/API contract before those concepts are reintroduced.
 - Guarantee deposit is 10% of granted principal by product rate, collected in cash before disbursement by default, held as restricted guarantee money, released only after full settlement, and never used to settle unpaid loans.
 - Loan insurance is 2% of granted principal by product rate, assessed upfront, and non-refundable on early closure.
 - `POST /api/v1/loans/{loan}/setup-charges/{chargePublicId}/collect` posts non-insurance setup-charge collection before disbursement, either from an active same-client customer account or from an open teller cash session with an active till.
 - Setup-charge collection uses active `loan` operation account mappings for `loan_setup_dossier_fee`, `loan_setup_tax`, and `loan_setup_guarantee_deposit`; missing mappings fail closed before posting.
 - Teller-cash setup-charge collection creates a linked teller transaction and debits the till cash ledger directly.
-- Borrower insurance premium collection uses the active `loan_insurance_premium` operation account mapping; missing mapping fails closed before posting.
+- Loan setup-charge collection uses active loan operation account mappings for dossier fee, setup tax, and guarantee deposit. There is no v1 `loan_insurance_premium` posting requirement.
 - Full insurance operations expose `POST /api/v1/insurance-partners`, `POST /api/v1/insurance-products`, `POST /api/v1/insurance-subscriptions`, `POST /api/v1/insurance-claims`, and `POST /api/v1/insurance-claims/{claimPublicId}/decision`.
 - Insurance claim decisions currently manage the operational claim lifecycle (`pending`, `approved`, `rejected`, `settled`). Claim settlement accounting remains a separate policy decision and is not silently posted.
 

@@ -13,7 +13,6 @@ This module is no longer purely future scope, but it is not complete. The codeba
 - insurance premium payments;
 - insurance claims;
 - insurance claim documents table;
-- loan-linked borrower insurance premium assessment and collection;
 - standalone premium assessment and collection;
 - teller-cash premium collection;
 - claim evidence attachment;
@@ -22,7 +21,7 @@ This module is no longer purely future scope, but it is not complete. The codeba
 - insurance report endpoints;
 - basic insurance API routes for partner, product, subscription, claim creation, claim evidence, claim decisions, premium collection, settlement posting, and reports.
 
-The remaining work is required for complete bancassurance delivery, not optional hardening. The module should not be treated as complete until the product catalog, recurring premiums, renewals, endorsements, cancellations, refunds, reversals, insurer remittances/commissions, complete claim lifecycle, report exports, permissions, audit, and rollout controls are implemented and tested.
+The remaining work is required for complete bancassurance delivery, not optional hardening. The module should not be treated as complete until the product catalog, recurring premiums, renewals, endorsements, cancellations, refunds, reversals, insurer remittances/commissions, complete claim lifecycle, report exports, permissions, audit, rollout controls, and any explicit loan integration are implemented and tested.
 
 ## Stakeholder Intent
 
@@ -52,7 +51,7 @@ The requested module menu is:
 
 ## Boundary
 
-Loan insurance already exists as a loan setup charge concept and can now link to the insurance subscription/premium tables. Full bancassurance remains broader than borrower loan insurance:
+Loan assurance in v1 credit/loans is not bancassurance. It may exist only as a loan formula field such as `insurance_rate` / `insurance_amount_minor`; it does not create insurance subscription or premium records. Full bancassurance remains a separate insurance domain:
 
 - it has insurer partners;
 - standalone subscriptions not necessarily tied to loans;
@@ -69,7 +68,7 @@ Implemented or expected entities:
 - `insurance_products`: implemented for product code, type, covered risks, partner, premium rule fields, currency, status, and rules.
 - `insurance_product_coverages`: implemented for structured product coverages.
 - `insurance_subscriptions`: implemented for client, optional loan, product, coverage period, insured amount, currency, and status.
-- `insurance_premium_assessments`: implemented for subscription, optional loan, due date, amount, rate, currency, journal entry, and status.
+- `insurance_premium_assessments`: implemented for subscription, due date, amount, rate, currency, journal entry, and status. The schema can reference a loan, but v1 loan setup does not populate that link.
 - `insurance_premium_payments`: implemented for assessment, customer account/teller transaction, journal entry, amount, currency, and status.
 - `insurance_claims`: implemented for subscription, incident date, claim type, claimed amount, status, indemnified amount, settlement date, and journal entry.
 - `insurance_claim_documents`: implemented for claim evidence linked to `documents`.
@@ -92,7 +91,7 @@ Acceptance criteria:
 Acceptance criteria:
 
 - Subscription must link to an active client.
-- Loan-linked borrower insurance must link to the loan and snapshot loan principal at subscription time.
+- Future loan-linked borrower insurance, if approved, must link to the loan and snapshot loan principal at subscription time. This is not part of the v1 loan workflow.
 - Standalone subscriptions must define coverage start/end and insured amount.
 - Subscription activation requires premium assessment or waived-premium decision.
 
@@ -107,7 +106,6 @@ Acceptance criteria:
 
 Current status:
 
-- Loan-linked borrower insurance premium collection from a customer account is implemented through the loan API.
 - Standalone subscription premium assessment and customer-account collection are implemented.
 - Teller-cash collection for standalone insurance premiums is implemented for `XAF`.
 
@@ -176,4 +174,4 @@ Minimum reports:
 8. Complete claim lifecycle with required evidence controls and coverage-date validation.
 9. Add final report export formats with checksums and source versions.
 10. Add module-specific permissions, audit gates, and product readiness controls.
-11. Keep borrower loan insurance linked to the module without duplicating premiums.
+11. Define an explicit future borrower-insurance integration contract before linking loans to bancassurance premium workflows.

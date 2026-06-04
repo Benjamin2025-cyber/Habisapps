@@ -46,9 +46,9 @@ final class LoanSetupChargeWorkflow extends BaseController
     ) {}
 
     /**
-     * FBI2-030 — reloadable setup-charge / insurance-premium read model. Uses
-     * the same readiness rules and serializer as disbursement enforcement, so
-     * the frontend can reload setup state independently of the assess mutation.
+     * FBI2-030 — reloadable setup-charge read model. Uses the same readiness
+     * rules and serializer as disbursement enforcement, so the frontend can
+     * reload setup state independently of the assess mutation.
      */
     public function showSetupState(Request $request, Loan $loan): JsonResponse
     {
@@ -99,7 +99,10 @@ final class LoanSetupChargeWorkflow extends BaseController
         return $this->respondSuccess([
             'loan' => LoanResource::make($this->loanResult($result)->loadMissing($this->relations())),
             'charges' => $result['charges'],
-            'insurance_premium_assessment' => $result['insurance_premium_assessment'],
+            'loan_assurance' => [
+                'amount_minor' => $result['insurance_amount_minor'] ?? null,
+                'managed_as_premium' => false,
+            ],
         ], 'Loan setup charges assessed successfully');
     }
 
@@ -368,229 +371,14 @@ final class LoanSetupChargeWorkflow extends BaseController
         ], 'Setup charge collected successfully');
     }
 
-    public function collectInsurancePremium(Request $request, Loan $loan, string $premiumPublicId): JsonResponse
-    {
-        $actor = $request->user();
-        if (! $actor instanceof User || $actor->cannot('update', $loan)) {
-            return $this->respondForbidden();
-        }
-
-        if (! $this->canAccessLoanAgency($actor, $loan)) {
-            return $this->respondForbidden('Loan is outside your agency scope.');
-        }
-
-        $validated = Validator::make($request->all(), [
-            'customer_account_public_id' => ['required', 'string', 'exists:customer_accounts,public_id'],
-            'paid_on' => ['sometimes', 'nullable', 'date'],
-            'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:128'],
-            'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
-        ])->validate();
-
-        try {
-            $result = DB::transaction(function () use ($actor, $loan, $premiumPublicId, $validated): array {
-                $assessment = DB::table('insurance_premium_assessments')
-                    ->where('loan_id', $loan->id)
-                    ->where('public_id', $premiumPublicId)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! is_object($assessment)) {
-                    throw new InvalidArgumentException('The selected insurance premium is invalid for this loan.');
-                }
-
-                $existingPayment = DB::table('insurance_premium_payments')
-                    ->where('insurance_premium_assessment_id', $this->chargeInt($assessment, 'id'))
-                    ->whereIn('status', ['posted', 'paid', 'collected'])
-                    ->orderByDesc('id')
-                    ->first();
-                $existingJournalId = $this->chargeNullableInt($assessment, 'journal_entry_id');
-                if (is_object($existingPayment) && $existingJournalId !== null) {
-                    $existingJournal = JournalEntry::query()->with(['lines.ledgerAccount', 'lines.customerAccount'])->whereKey($existingJournalId)->first();
-                    if (! $existingJournal instanceof JournalEntry) {
-                        throw new InvalidArgumentException('Collected insurance premium is missing its journal entry.');
-                    }
-
-                    return [
-                        'assessment' => $assessment,
-                        'payment' => $existingPayment,
-                        'journal_entry' => $existingJournal,
-                    ];
-                }
-
-                if ($this->chargeString($assessment, 'status') !== 'assessed') {
-                    throw new InvalidArgumentException('Only assessed insurance premiums can be collected.');
-                }
-
-                $amountMinor = $this->chargeInt($assessment, 'premium_amount_minor');
-                if ($amountMinor <= 0) {
-                    throw new InvalidArgumentException('Insurance premium amount must be positive before collection.');
-                }
-
-                $currency = $this->chargeString($assessment, 'currency');
-                $customerAccount = CustomerAccount::query()
-                    ->with(['ledgerAccount'])
-                    ->where('public_id', $this->stringValue($validated['customer_account_public_id'] ?? null, ''))
-                    ->first();
-                if (! $customerAccount instanceof CustomerAccount
-                    || $customerAccount->status !== CustomerAccount::STATUS_ACTIVE
-                    || $customerAccount->client_id !== $loan->client_id
-                    || $customerAccount->agency_id !== $loan->agency_id
-                    || $customerAccount->currency !== $currency
-                    || $customerAccount->ledger_account_id === null) {
-                    throw new InvalidArgumentException('Collection account must be active and belong to the loan client, agency, and currency.');
-                }
-
-                $customerLedger = $customerAccount->ledgerAccount;
-                if (! $customerLedger instanceof LedgerAccount || $customerLedger->status !== LedgerAccount::STATUS_ACTIVE || $customerLedger->agency_id !== $loan->agency_id) {
-                    throw new InvalidArgumentException('Collection account ledger must be active and belong to the loan agency.');
-                }
-
-                $availableBalance = $this->balanceCalculator->availableForCustomerAccount($customerAccount, $currency)['available_balance_minor'];
-                if ($amountMinor > $availableBalance) {
-                    throw new InvalidArgumentException('Insurance premium collection exceeds the customer account available balance.');
-                }
-
-                $accountingDay = $this->accountingDayGuard->resolveAccountingDay($actor, 'loan.insurance_premium', $loan->agency_id, is_string($validated['paid_on'] ?? null) ? $validated['paid_on'] : null);
-                $paidDate = $accountingDay->business_date->toDateString();
-                $idempotencyKey = is_string($validated['idempotency_key'] ?? null) && $validated['idempotency_key'] !== ''
-                    ? $validated['idempotency_key']
-                    : 'loan-insurance-premium:'.$premiumPublicId;
-                $reference = 'LIP-'.$loan->loan_number.'-'.Str::upper(Str::random(8));
-                $creditLedgerId = $this->insurancePremiumCreditLedgerId($loan->agency_id, $currency);
-
-                $journalEntry = JournalEntry::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'reference' => $reference,
-                    'business_date' => $paidDate,
-                    'accounting_day_id' => $accountingDay->id,
-                    'posted_at' => null,
-                    'agency_id' => $loan->agency_id,
-                    'source_module' => 'credit_loans',
-                    'source_type' => 'loan_insurance_premium_payment',
-                    'source_public_id' => $premiumPublicId,
-                    'status' => JournalEntry::STATUS_DRAFT,
-                    'description' => is_string($validated['notes'] ?? null) ? $validated['notes'] : 'Loan insurance premium collection '.$loan->loan_number,
-                    'created_by_user_id' => $actor->id,
-                    'posted_by_user_id' => null,
-                    'idempotency_key' => $idempotencyKey,
-                ]);
-
-                JournalLine::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'agency_id' => $loan->agency_id,
-                    'journal_entry_id' => $journalEntry->id,
-                    'ledger_account_id' => $customerLedger->id,
-                    'customer_account_id' => $customerAccount->id,
-                    'loan_id' => $loan->id,
-                    'debit_minor' => $amountMinor,
-                    'credit_minor' => 0,
-                    'currency' => $currency,
-                    'line_memo' => 'Loan insurance premium debited from customer account',
-                ]);
-
-                JournalLine::query()->create([
-                    'public_id' => (string) Str::ulid(),
-                    'agency_id' => $loan->agency_id,
-                    'journal_entry_id' => $journalEntry->id,
-                    'ledger_account_id' => $creditLedgerId,
-                    'customer_account_id' => null,
-                    'loan_id' => $loan->id,
-                    'debit_minor' => 0,
-                    'credit_minor' => $amountMinor,
-                    'currency' => $currency,
-                    'line_memo' => 'Loan insurance premium collected',
-                ]);
-
-                $this->postSystemJournal($journalEntry, $actor);
-
-                $paymentId = DB::table('insurance_premium_payments')->insertGetId([
-                    'public_id' => (string) Str::ulid(),
-                    'insurance_premium_assessment_id' => $this->chargeInt($assessment, 'id'),
-                    'customer_account_id' => $customerAccount->id,
-                    'teller_transaction_id' => null,
-                    'journal_entry_id' => $journalEntry->id,
-                    'amount_minor' => $amountMinor,
-                    'currency' => $currency,
-                    'payment_method' => 'customer_account',
-                    'paid_at' => now(),
-                    'status' => 'posted',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-                $metadata = $this->chargeMetadata($assessment);
-                $metadata['collection'] = [
-                    'method' => 'customer_account',
-                    'customer_account_public_id' => $customerAccount->public_id,
-                    'collected_by_user_public_id' => $actor->public_id,
-                    'collected_at' => now()->toISOString(),
-                    'journal_entry_public_id' => $journalEntry->public_id,
-                ];
-
-                DB::table('insurance_premium_assessments')
-                    ->where('id', $this->chargeInt($assessment, 'id'))
-                    ->update([
-                        'status' => 'paid',
-                        'journal_entry_id' => $journalEntry->id,
-                        'metadata' => json_encode($metadata, JSON_THROW_ON_ERROR),
-                        'updated_at' => now(),
-                    ]);
-
-                $updatedAssessment = DB::table('insurance_premium_assessments')->where('id', $this->chargeInt($assessment, 'id'))->first();
-                $payment = DB::table('insurance_premium_payments')->where('id', $paymentId)->first();
-                if (! is_object($updatedAssessment) || ! is_object($payment)) {
-                    throw new InvalidArgumentException('Collected insurance premium could not be reloaded.');
-                }
-
-                return [
-                    'assessment' => $updatedAssessment,
-                    'payment' => $payment,
-                    'journal_entry' => $journalEntry->refresh()->loadMissing(['lines.ledgerAccount', 'lines.customerAccount']),
-                ];
-            });
-        } catch (InvalidArgumentException $exception) {
-            return $this->respondUnprocessable(errors: ['insurance_premium_collection' => [$exception->getMessage()]]);
-        }
-
-        $this->securityAudit->record('loan.insurance_premium.collected', actor: $actor, subject: $loan, properties: [
-            'premium_public_id' => $premiumPublicId,
-            'journal_entry_public_id' => $result['journal_entry']->public_id,
-        ], request: $request);
-        $this->notifications->notifyAgency(
-            agencyId: $loan->agency_id,
-            type: 'success',
-            category: 'loan_insurance_premium_collected',
-            title: 'Loan insurance premium collected',
-            message: 'An insurance premium was collected for loan '.$loan->loan_number.'.',
-            sourceType: 'insurance_premium_assessment',
-            sourcePublicId: $premiumPublicId,
-            actionUrl: '/loans/'.$loan->public_id.'/setup-charges',
-            metadata: [
-                'loan_public_id' => $loan->public_id,
-                'journal_entry_public_id' => $result['journal_entry']->public_id,
-            ],
-        );
-        $this->notifyLoanReadyForDisbursementIfReady($loan);
-
-        return $this->respondSuccess([
-            'insurance_premium_assessment' => $this->insurancePremiumPayload($result['assessment']),
-            'insurance_premium_payment' => $this->insurancePremiumPaymentPayload($result['payment']),
-            'journal_entry' => JournalEntryResource::make($result['journal_entry']),
-        ], 'Insurance premium collected successfully');
-    }
-
     private function notifyLoanReadyForDisbursementIfReady(Loan $loan): void
     {
         $blockingCharges = DB::table('loan_charge_assessments')
             ->where('loan_id', $loan->id)
             ->whereNotIn('status', ['paid', 'waived_by_direction'])
             ->exists();
-        $blockingPremiums = DB::table('insurance_premium_assessments')
-            ->where('loan_id', $loan->id)
-            ->whereNotIn('status', ['paid'])
-            ->exists();
 
-        if ($blockingCharges || $blockingPremiums) {
+        if ($blockingCharges) {
             return;
         }
 
@@ -776,38 +564,6 @@ final class LoanSetupChargeWorkflow extends BaseController
         return $opening + $movement;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function insurancePremiumPayload(object $assessment): array
-    {
-        return [
-            'public_id' => $this->chargeString($assessment, 'public_id'),
-            'base_amount_minor' => $this->chargeNullableInt($assessment, 'base_amount_minor'),
-            'rate' => $this->chargeNullableString($assessment, 'rate'),
-            'premium_amount_minor' => $this->chargeInt($assessment, 'premium_amount_minor'),
-            'currency' => $this->chargeString($assessment, 'currency'),
-            'due_on' => $this->chargeNullableString($assessment, 'due_on'),
-            'status' => $this->chargeString($assessment, 'status'),
-            'metadata' => $this->chargeMetadata($assessment),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function insurancePremiumPaymentPayload(object $payment): array
-    {
-        return [
-            'public_id' => $this->chargeString($payment, 'public_id'),
-            'amount_minor' => $this->chargeInt($payment, 'amount_minor'),
-            'currency' => $this->chargeString($payment, 'currency'),
-            'payment_method' => $this->chargeNullableString($payment, 'payment_method'),
-            'paid_at' => $this->chargeNullableString($payment, 'paid_at'),
-            'status' => $this->chargeString($payment, 'status'),
-        ];
-    }
-
     private function setupChargeCreditLedgerId(string $chargeType, int $agencyId, string $currency): int
     {
         $operationCode = match ($chargeType) {
@@ -820,11 +576,6 @@ final class LoanSetupChargeWorkflow extends BaseController
         // FBI2-031: resolve through the shared resolver so setup-charge collection
         // applies the same agency/currency/approval/effective rules as disbursement.
         return $this->mappingResolver->creditLedgerId($operationCode, 'loan', $agencyId, $currency);
-    }
-
-    private function insurancePremiumCreditLedgerId(int $agencyId, string $currency): int
-    {
-        return $this->mappingResolver->creditLedgerId('loan_insurance_premium', 'loan', $agencyId, $currency);
     }
 
     /**

@@ -90,6 +90,12 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($list);
         $list->assertJsonPath('data.loan_products.0.public_id', $productPublicId);
 
+        $search = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/loan-products?search=SME');
+        $this->assertJsonSuccess($search);
+        $search->assertJsonPath('data.loan_products.0.public_id', $productPublicId);
+
         $archive = $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->deleteJson('/api/v1/loan-products/'.$productPublicId);
@@ -695,12 +701,11 @@ final class Module4CreditLoansTest extends TestCase
         $forbiddenSchedule->assertForbidden();
     }
 
-    public function test_setup_charge_assessment_creates_non_insurance_charges_and_insurance_premium(): void
+    public function test_setup_charge_assessment_keeps_loan_assurance_out_of_bancassurance_premium_workflow(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR06');
         $client = $this->createClientRecord($agencyId, 'verified');
-        $insuranceProductPublicId = $this->createInsuranceProduct();
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
             'tax_rate' => '19.250000',
@@ -712,10 +717,6 @@ final class Module4CreditLoansTest extends TestCase
                     'dossier_fee_rate' => '3.000000',
                     'tax_base' => 'principal_plus_interest',
                     'guarantee_deposit_collection_method' => 'cash',
-                ],
-                'insurance' => [
-                    'full_module_enabled' => true,
-                    'insurance_product_public_id' => $insuranceProductPublicId,
                 ],
             ],
         ]);
@@ -750,36 +751,33 @@ final class Module4CreditLoansTest extends TestCase
         $assess->assertJsonPath('data.charges.2.charge_type', 'guarantee_deposit');
         $assess->assertJsonPath('data.charges.2.assessed_amount_minor', 20000);
         $assess->assertJsonPath('data.charges.2.metadata.cannot_settle_unpaid_loans', true);
-        $assess->assertJsonPath('data.insurance_premium_assessment.premium_amount_minor', 4000);
-        $assess->assertJsonPath('data.insurance_premium_assessment.metadata.non_refundable_on_early_closure', true);
+        $assess->assertJsonPath('data.loan_assurance.amount_minor', 4000);
+        $assess->assertJsonPath('data.loan_assurance.managed_as_premium', false);
+        self::assertNull($assess->json('data.insurance_premium_assessment'));
 
         $this->assertDatabaseHas('loan_charge_assessments', [
             'loan_id' => $loan->id,
             'charge_type' => 'dossier_fee',
             'assessed_amount_minor' => 6000,
         ]);
-        $this->assertDatabaseHas('insurance_premium_assessments', [
-            'loan_id' => $loan->id,
-            'premium_amount_minor' => 4000,
-        ]);
+        $this->assertDatabaseMissing('insurance_subscriptions', ['loan_id' => $loan->id]);
+        $this->assertDatabaseMissing('insurance_premium_assessments', ['loan_id' => $loan->id]);
 
         $repeat = $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/assess');
         $this->assertJsonSuccess($repeat);
         self::assertSame(3, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
-        self::assertSame(1, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
         $feeIncomeLedgerId = $this->createRevenueLedger($agencyId, 'SETUP-FEE');
         $taxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-TAX');
         $guaranteeLiabilityLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-GUAR');
-        $insurancePremiumLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-INS');
         $this->createSetupChargeMappings([
             'dossier_fee' => $feeIncomeLedgerId,
             'dossier_fee_tax' => $taxPayableLedgerId,
             'guarantee_deposit' => $guaranteeLiabilityLedgerId,
         ], 'XAF');
-        $this->createInsurancePremiumMapping($insurancePremiumLedgerId, 'XAF');
         $collectionLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-COLLECT');
         $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedgerId);
         $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 52350);
@@ -880,34 +878,6 @@ final class Module4CreditLoansTest extends TestCase
             ]);
         $this->assertJsonSuccess($feeReplay);
         self::assertSame(1, DB::table('journal_entries')->where('idempotency_key', 'collect-dossier_fee')->count());
-
-        $premiumAssessment = DB::table('insurance_premium_assessments')
-            ->where('loan_id', $loan->id)
-            ->first(['public_id']);
-        self::assertIsObject($premiumAssessment);
-        self::assertIsString($premiumAssessment->public_id);
-
-        $premiumCollection = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
-            ->postJson('/api/v1/loans/'.$loan->public_id.'/insurance-premiums/'.$premiumAssessment->public_id.'/collect', [
-                'customer_account_public_id' => $collectionAccount['public_id'],
-                'paid_on' => '2026-05-13',
-                'idempotency_key' => 'collect-insurance-premium',
-            ]);
-        $this->assertJsonSuccess($premiumCollection);
-        $premiumCollection->assertJsonPath('data.insurance_premium_assessment.status', 'paid');
-        $premiumCollection->assertJsonPath('data.insurance_premium_payment.status', 'posted');
-        $premiumCollection->assertJsonPath('data.journal_entry.status', 'posted');
-        $this->assertDatabaseHas('insurance_premium_payments', [
-            'amount_minor' => 4000,
-            'currency' => 'XAF',
-            'status' => 'posted',
-            'customer_account_id' => $collectionAccount['id'],
-        ]);
-        $this->assertDatabaseHas('journal_lines', [
-            'ledger_account_id' => $insurancePremiumLedgerId,
-            'credit_minor' => 4000,
-        ]);
 
         $paidDisbursement = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -2998,43 +2968,6 @@ final class Module4CreditLoansTest extends TestCase
         ]);
     }
 
-    private function createInsurancePremiumMapping(int $ledgerId, ?string $currency = null): void
-    {
-        DB::table('operation_account_mappings')->insert([
-            'public_id' => (string) Str::ulid(),
-            'operation_code_id' => $this->operationCodeIdForInsurancePremium(),
-            'debit_ledger_account_id' => null,
-            'credit_ledger_account_id' => $ledgerId,
-            'currency' => $currency,
-            'status' => 'active',
-            'approval_status' => 'approved',
-            'rules' => null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
-    private function operationCodeIdForInsurancePremium(): int
-    {
-        $code = 'loan_insurance_premium';
-        $existing = DB::table('operation_codes')->where('code', $code)->first(['id']);
-        if (is_object($existing) && is_int($existing->id)) {
-            return $existing->id;
-        }
-
-        return DB::table('operation_codes')->insertGetId([
-            'public_id' => (string) Str::ulid(),
-            'code' => $code,
-            'label' => str_replace('_', ' ', $code),
-            'module' => 'loan',
-            'operation_type' => 'insurance_premium',
-            'direction' => 'credit',
-            'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
     /**
      * @return array{id:int, public_id:string}
      */
@@ -3250,27 +3183,6 @@ final class Module4CreditLoansTest extends TestCase
         ]);
     }
 
-    private function createInsuranceProduct(): string
-    {
-        $publicId = (string) Str::ulid();
-        DB::table('insurance_products')->insert([
-            'public_id' => $publicId,
-            'code' => 'INS-'.Str::ulid(),
-            'name' => 'Loan Insurance',
-            'product_type' => 'loan_insurance',
-            'premium_calculation_type' => 'percentage',
-            'premium_rate' => '2.000000',
-            'currency' => 'XAF',
-            'payment_mode' => 'upfront',
-            'is_refundable' => false,
-            'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        return $publicId;
-    }
-
     private function createDocument(int $agencyId): string
     {
         $publicId = (string) Str::ulid();
@@ -3375,7 +3287,6 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR06S');
         $client = $this->createClientRecord($agencyId, 'verified');
-        $insuranceProductPublicId = $this->createInsuranceProduct();
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
             'tax_rate' => '19.250000',
@@ -3387,10 +3298,6 @@ final class Module4CreditLoansTest extends TestCase
                     'dossier_fee_rate' => '3.000000',
                     'tax_base' => 'principal_plus_interest',
                     'guarantee_deposit_collection_method' => 'cash',
-                ],
-                'insurance' => [
-                    'full_module_enabled' => true,
-                    'insurance_product_public_id' => $insuranceProductPublicId,
                 ],
             ],
         ]);
@@ -3414,18 +3321,21 @@ final class Module4CreditLoansTest extends TestCase
         $before->assertJsonPath('data.ready_for_disbursement', false);
         $before->assertJsonPath('data.required_next_actions.0.action', 'assess_setup_charges');
         self::assertSame([], $before->json('data.setup_charges'));
-        self::assertSame([], $before->json('data.insurance_premiums'));
+        $before->assertJsonPath('data.loan_assurance.managed_as_premium', false);
 
         // Assess, and prove repeated assessment is idempotent (no duplicate rows).
         $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
         $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
         self::assertSame(3, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
-        self::assertSame(1, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
-        // After assessment: all assessed charges/premiums visible and blocking.
+        // After assessment: all assessed setup charges are visible and blocking.
         $assessed = $this->getSetupState($actor, $loan->public_id);
         $assessed->assertJsonPath('data.readiness_status', 'collection_pending');
         $assessed->assertJsonPath('data.ready_for_disbursement', false);
+        $assessed->assertJsonPath('data.loan_assurance.amount_minor', 4000);
+        $assessed->assertJsonPath('data.loan_assurance.blocking_disbursement', false);
+        $assessed->assertJsonPath('data.loan_assurance.managed_as_premium', false);
         $charges = $assessed->json('data.setup_charges');
         self::assertIsArray($charges);
         self::assertCount(3, $charges);
@@ -3437,7 +3347,6 @@ final class Module4CreditLoansTest extends TestCase
             self::assertNull($charge['paid_at']);
             self::assertNull($charge['journal_entry_public_id']);
         }
-        $assessed->assertJsonPath('data.insurance_premiums.0.blocking_disbursement', true);
         // Lock the documented field contract so fields cannot silently disappear.
         $assessed->assertJsonStructure([
             'data' => [
@@ -3451,9 +3360,9 @@ final class Module4CreditLoansTest extends TestCase
                     'public_id', 'charge_type', 'assessed_amount_minor', 'currency', 'status',
                     'paid_at', 'journal_entry_public_id', 'waiver_decision', 'collectable', 'blocking_disbursement',
                 ]],
-                'insurance_premiums' => [[
-                    'public_id', 'premium_amount_minor', 'currency', 'status', 'payments', 'blocking_disbursement',
-                ]],
+                'loan_assurance' => [
+                    'amount_minor', 'rate', 'currency', 'blocking_disbursement', 'managed_as_premium',
+                ],
             ],
         ]);
 
@@ -3461,13 +3370,11 @@ final class Module4CreditLoansTest extends TestCase
         $feeIncomeLedgerId = $this->createRevenueLedger($agencyId, 'SETUP-FEE');
         $taxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-TAX');
         $guaranteeLiabilityLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-GUAR');
-        $insurancePremiumLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-INS');
         $this->createSetupChargeMappings([
             'dossier_fee' => $feeIncomeLedgerId,
             'dossier_fee_tax' => $taxPayableLedgerId,
             'guarantee_deposit' => $guaranteeLiabilityLedgerId,
         ], 'XAF');
-        $this->createInsurancePremiumMapping($insurancePremiumLedgerId, 'XAF');
         $collectionLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-COLLECT');
         $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedgerId);
         $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 52350);
@@ -3507,7 +3414,7 @@ final class Module4CreditLoansTest extends TestCase
         self::assertIsString($paidCharge['journal_entry_public_id']);
         self::assertTrue($this->chargeByType($afterOne->json('data.setup_charges'), 'dossier_fee_tax')['blocking_disbursement']);
 
-        // Collect the rest: tax from account, guarantee from cash, then the insurance premium.
+        // Collect the rest: tax from account and guarantee from cash. Loan assurance is not a premium collection step.
         $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $taxChargePublicId, $collectionAccount['public_id'], 'collect-dossier_fee_tax'));
         $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/'.$guaranteeChargePublicId.'/collect', [
@@ -3516,28 +3423,14 @@ final class Module4CreditLoansTest extends TestCase
                 'paid_on' => '2026-05-13',
                 'idempotency_key' => 'collect-guarantee_deposit',
             ]));
+        self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
-        $premiumAssessment = DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->first(['public_id']);
-        self::assertIsObject($premiumAssessment);
-        self::assertIsString($premiumAssessment->public_id);
-        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loans/'.$loan->public_id.'/insurance-premiums/'.$premiumAssessment->public_id.'/collect', [
-                'customer_account_public_id' => $collectionAccount['public_id'],
-                'paid_on' => '2026-05-13',
-                'idempotency_key' => 'collect-insurance-premium',
-            ]));
-
-        // After all collected: ready_for_disbursement true and premium payment visible.
+        // After all setup charges are collected: ready_for_disbursement true.
         $ready = $this->getSetupState($actor, $loan->public_id);
         $ready->assertJsonPath('data.readiness_status', 'ready');
         $ready->assertJsonPath('data.ready_for_disbursement', true);
         $ready->assertJsonPath('data.required_next_actions.0.action', 'disburse_loan');
-        $ready->assertJsonPath('data.insurance_premiums.0.blocking_disbursement', false);
-        $premiumPayments = $ready->json('data.insurance_premiums.0.payments');
-        self::assertIsArray($premiumPayments);
-        self::assertNotEmpty($premiumPayments);
-        self::assertIsArray($premiumPayments[0]);
-        self::assertIsString($premiumPayments[0]['journal_entry_public_id']);
+        $ready->assertJsonPath('data.loan_assurance.blocking_disbursement', false);
 
         // include_setup_charges on GET /loans/{loan} reuses the same serializer.
         $loanShow = $this->withApiHeaders()->actingAsSanctum($actor)
@@ -3909,11 +3802,11 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($empty);
         $empty->assertJsonPath('data.ready', false);
         self::assertSame('missing', $this->readinessStatus($empty, 'loan_principal_disbursement'));
-        self::assertSame('missing', $this->readinessStatus($empty, 'loan_insurance_premium'));
+        self::assertFalse($this->readinessHasOperation($empty, 'loan_insurance_premium'));
 
         // Configure approved mappings for every loan posting operation.
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
-        foreach (['loan_setup_dossier_fee', 'loan_setup_tax', 'loan_setup_guarantee_deposit', 'loan_insurance_premium'] as $code) {
+        foreach (['loan_setup_dossier_fee', 'loan_setup_tax', 'loan_setup_guarantee_deposit'] as $code) {
             $this->createOperationMapping($code, 'loan', $agency, null, $this->createLedgerAccount($agency)['id']);
         }
 
@@ -3921,15 +3814,15 @@ final class Module4CreditLoansTest extends TestCase
         $ready->assertJsonPath('data.ready', true);
         self::assertSame('ready', $this->readinessStatus($ready, 'loan_principal_disbursement'));
 
-        // Make the insurance mapping unapproved → reported as unapproved, not ready.
+        // Make a setup-charge mapping unapproved -> reported as unapproved, not ready.
         DB::table('operation_account_mappings as m')
             ->join('operation_codes as oc', 'oc.id', '=', 'm.operation_code_id')
-            ->where('oc.code', 'loan_insurance_premium')
+            ->where('oc.code', 'loan_setup_guarantee_deposit')
             ->where('m.agency_id', $agency)
             ->update(['m.approval_status' => 'draft']);
         $unapproved = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
         $unapproved->assertJsonPath('data.ready', false);
-        self::assertSame('unapproved', $this->readinessStatus($unapproved, 'loan_insurance_premium'));
+        self::assertSame('unapproved', $this->readinessStatus($unapproved, 'loan_setup_guarantee_deposit'));
 
         // A duplicate approved principal mapping is reported as overlapping.
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
@@ -4036,6 +3929,19 @@ final class Module4CreditLoansTest extends TestCase
         }
 
         self::fail('Operation '.$operationCode.' missing from readiness response.');
+    }
+
+    private function readinessHasOperation(TestResponse $response, string $operationCode): bool
+    {
+        $operations = $response->json('data.operations');
+        self::assertIsArray($operations);
+        foreach ($operations as $operation) {
+            if (is_array($operation) && ($operation['operation_code'] ?? null) === $operationCode) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function stringJson(TestResponse $response, string $path): string

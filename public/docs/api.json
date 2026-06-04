@@ -20886,7 +20886,7 @@
         "/v1/loans/{loan}": {
             "get": {
                 "operationId": "loan.show",
-                "summary": "Show a loan. Pass include_setup_charges=true to embed the reloadable\nsetup-charge / insurance-premium readiness state under `setup_charges`,\nusing the same serializer as GET /loans/{loan}/setup-charges (FBI2-030)",
+                "summary": "Show a loan. Pass include_setup_charges=true to embed the reloadable\nsetup-charge readiness state under `setup_charges`, using the same\nserializer as GET /loans/{loan}/setup-charges (FBI2-030)",
                 "tags": [
                     "Loan"
                 ],
@@ -20903,7 +20903,7 @@
                     {
                         "name": "include_setup_charges",
                         "in": "query",
-                        "description": "Embed the setup-charge/insurance-premium readiness state under data.setup_charges.",
+                        "description": "Embed the setup-charge readiness state under data.setup_charges.",
                         "schema": {
                             "type": "boolean"
                         }
@@ -21174,74 +21174,6 @@
                     },
                     {
                         "name": "chargePublicId",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "$ref": "#/components/responses/ModelNotFoundException"
-                    },
-                    "401": {
-                        "$ref": "#/components/responses/AuthenticationException"
-                    }
-                }
-            }
-        },
-        "/v1/loans/{loan}/insurance-premiums/{premiumPublicId}/collect": {
-            "post": {
-                "operationId": "loan.collectInsurancePremium",
-                "tags": [
-                    "Loan"
-                ],
-                "parameters": [
-                    {
-                        "name": "loan",
-                        "in": "path",
-                        "required": true,
-                        "description": "The loan public id",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "premiumPublicId",
                         "in": "path",
                         "required": true,
                         "schema": {

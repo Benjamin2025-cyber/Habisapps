@@ -32,22 +32,22 @@ final class LoanController extends BaseController
 
     /**
      * Show a loan. Pass include_setup_charges=true to embed the reloadable
-     * setup-charge / insurance-premium readiness state under `setup_charges`,
-     * using the same serializer as GET /loans/{loan}/setup-charges (FBI2-030).
+     * setup-charge readiness state under `setup_charges`, using the same
+     * serializer as GET /loans/{loan}/setup-charges (FBI2-030).
      */
-    #[QueryParameter('include_setup_charges', 'Embed the setup-charge/insurance-premium readiness state under data.setup_charges.', type: 'boolean')]
+    #[QueryParameter('include_setup_charges', 'Embed the setup-charge readiness state under data.setup_charges.', type: 'boolean')]
     public function show(Request $request, Loan $loan): JsonResponse
     {
         return $this->loan->show($request, $loan);
     }
 
     /**
-     * Reloadable loan setup-charge and insurance-premium state (FBI2-030).
+     * Reloadable loan setup-charge state (FBI2-030).
      *
      * Returns readiness status, assessed charges (with collectable /
-     * blocking_disbursement / waiver_decision flags), insurance premiums and
-     * their payments, and the required next actions before disbursement. Shares
-     * the readiness rules enforced by loan disbursement.
+     * blocking_disbursement / waiver_decision flags) and the required next
+     * actions before disbursement. Shares the readiness rules enforced by loan
+     * disbursement.
      */
     public function setupCharges(Request $request, Loan $loan): JsonResponse
     {
@@ -77,11 +77,6 @@ final class LoanController extends BaseController
     public function collectSetupCharge(Request $request, Loan $loan, string $chargePublicId): JsonResponse
     {
         return $this->loan->collectSetupCharge($request, $loan, $chargePublicId);
-    }
-
-    public function collectInsurancePremium(Request $request, Loan $loan, string $premiumPublicId): JsonResponse
-    {
-        return $this->loan->collectInsurancePremium($request, $loan, $premiumPublicId);
     }
 
     public function listApprovals(Request $request, Loan $loan): JsonResponse

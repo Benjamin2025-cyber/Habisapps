@@ -46,16 +46,11 @@ final class AssessLoanSetupCharges
                 ->whereIn('charge_type', ['dossier_fee', 'dossier_fee_tax', 'guarantee_deposit'])
                 ->orderBy('charge_type')
                 ->get();
-            $existingInsurance = DB::table('insurance_premium_assessments')
-                ->where('loan_id', $lockedLoan->id)
-                ->orderBy('id')
-                ->first();
-
-            if ($existing->isNotEmpty() || is_object($existingInsurance)) {
+            if ($existing->isNotEmpty()) {
                 return [
                     'loan' => $lockedLoan->refresh(),
                     'charges' => $existing->map(fn (object $row): array => $this->chargeRow($row))->values()->all(),
-                    'insurance_premium_assessment' => is_object($existingInsurance) ? $this->insurancePremiumRow($existingInsurance) : null,
+                    'insurance_amount_minor' => $lockedLoan->insurance_amount_minor,
                 ];
             }
 
@@ -95,10 +90,6 @@ final class AssessLoanSetupCharges
                 ]);
             }
 
-            $insurancePremium = $insurance > 0
-                ? $this->assessInsurancePremium($lockedLoan, $product, $rules, $principal, $insurance, $currency)
-                : null;
-
             $lockedLoan->forceFill([
                 'dossier_fees_minor' => $dossierFee,
                 'dossier_fees_tax_minor' => $tax,
@@ -109,7 +100,7 @@ final class AssessLoanSetupCharges
             return [
                 'loan' => $lockedLoan->refresh(),
                 'charges' => $charges,
-                'insurance_premium_assessment' => $insurancePremium,
+                'insurance_amount_minor' => $insurance,
             ];
         });
     }
@@ -186,73 +177,6 @@ final class AssessLoanSetupCharges
     }
 
     /**
-     * @param  array<string, mixed>  $rules
-     * @return array<mixed, mixed>|null
-     */
-    private function assessInsurancePremium(Loan $loan, LoanProduct $product, array $rules, int $principal, int $insurance, string $currency): ?array
-    {
-        $insuranceRules = $this->arrayValue($rules['insurance'] ?? null);
-        $fullModuleEnabled = ($insuranceRules['full_module_enabled'] ?? false) === true;
-        $insuranceProductPublicId = $insuranceRules['insurance_product_public_id'] ?? null;
-
-        if (! $fullModuleEnabled || ! is_string($insuranceProductPublicId) || $insuranceProductPublicId === '') {
-            return null;
-        }
-
-        $insuranceProduct = DB::table('insurance_products')
-            ->where('public_id', $insuranceProductPublicId)
-            ->where('status', 'active')
-            ->first(['id']);
-        if (! is_object($insuranceProduct) || ! property_exists($insuranceProduct, 'id')) {
-            throw new InvalidArgumentException('Configured insurance product is not active.');
-        }
-
-        $subscriptionId = DB::table('insurance_subscriptions')->insertGetId([
-            'public_id' => (string) Str::ulid(),
-            'client_id' => $loan->client_id,
-            'agency_id' => $loan->agency_id,
-            'loan_id' => $loan->id,
-            'insurance_product_id' => (int) $insuranceProduct->id,
-            'subscription_number' => 'INS-SUB-'.Str::ulid(),
-            'starts_on' => now()->toDateString(),
-            'coverage_amount_minor' => $principal,
-            'currency' => $currency,
-            'status' => 'active',
-            'metadata' => json_encode([
-                'source' => 'loan_setup_assessment',
-                'loan_product_public_id' => $product->public_id,
-                'non_refundable_on_early_closure' => true,
-            ], JSON_THROW_ON_ERROR),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $assessmentId = DB::table('insurance_premium_assessments')->insertGetId([
-            'public_id' => (string) Str::ulid(),
-            'insurance_subscription_id' => $subscriptionId,
-            'loan_id' => $loan->id,
-            'base_amount_minor' => $principal,
-            'rate' => $product->insurance_rate,
-            'premium_amount_minor' => $insurance,
-            'currency' => $currency,
-            'due_on' => now()->toDateString(),
-            'assessed_at' => now(),
-            'status' => 'assessed',
-            'metadata' => json_encode([
-                'paid_upfront' => true,
-                'non_refundable_on_early_closure' => true,
-                'stakeholder_section' => 8,
-            ], JSON_THROW_ON_ERROR),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $row = DB::table('insurance_premium_assessments')->where('id', $assessmentId)->first();
-
-        return is_object($row) ? $this->insurancePremiumRow($row) : null;
-    }
-
-    /**
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
      */
@@ -295,24 +219,6 @@ final class AssessLoanSetupCharges
             'base_amount_minor' => $this->rowInt($data, 'base_amount_minor'),
             'rate' => $this->rowNullableString($data, 'rate'),
             'assessed_amount_minor' => $this->rowInt($data, 'assessed_amount_minor'),
-            'currency' => $this->rowString($data, 'currency'),
-            'status' => $this->rowString($data, 'status'),
-            'metadata' => $this->rowJson($data, 'metadata'),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function insurancePremiumRow(object $row): array
-    {
-        $data = (array) $row;
-
-        return [
-            'public_id' => $this->rowString($data, 'public_id'),
-            'base_amount_minor' => $this->rowInt($data, 'base_amount_minor'),
-            'rate' => $this->rowNullableString($data, 'rate'),
-            'premium_amount_minor' => $this->rowInt($data, 'premium_amount_minor'),
             'currency' => $this->rowString($data, 'currency'),
             'status' => $this->rowString($data, 'status'),
             'metadata' => $this->rowJson($data, 'metadata'),

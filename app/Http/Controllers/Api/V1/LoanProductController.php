@@ -46,10 +46,8 @@ final class LoanProductController extends BaseController
             $query->where(static function (Builder $builder) use ($term): void {
                 $builder->where('code', 'ilike', '%'.$term.'%')
                     ->orWhere('name', 'ilike', '%'.$term.'%')
-                    ->orWhere('description', 'ilike', '%'.$term.'%')
                     ->orWhere('status', 'ilike', '%'.$term.'%')
-                    ->orWhere('interest_method', 'ilike', '%'.$term.'%')
-                    ->orWhere('repayment_frequency', 'ilike', '%'.$term.'%');
+                    ->orWhere('term_unit', 'ilike', '%'.$term.'%');
             });
         }
 

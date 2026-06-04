@@ -297,16 +297,16 @@ Any non-null proxy_id_document_number fails on insert.
 
 30. Décaissement prêt — étape "frais de dossier" (setup charges) absente côté FE
     Le décaissement (DisburseLoan) refuse tant que les setup charges du produit ne sont
-    pas ASSESSÉS **et** COLLECTÉS : dossier_fee, dossier_fee_tax, guarantee_deposit +
-    prime d'assurance (cf ensureSetupSatisfied). Endpoints API existants :
+    pas ASSESSÉS **et** COLLECTÉS : dossier_fee, dossier_fee_tax, guarantee_deposit
+    (cf ensureSetupSatisfied). Endpoints API existants :
     - POST loans/{loan}/setup-charges/assess
     - POST loans/{loan}/setup-charges/{chargePublicId}/collect
-    - POST loans/{loan}/insurance-premiums/{premiumPublicId}/collect
     - POST loans/{loan}/setup-charges/{chargePublicId}/direction-decision (waiver direction)
+      NB: la collecte de prime d'assurance côté prêt a été retirée du périmètre v1.
       La page P15 (Déblocage) ne fait QUE le disburse final ; aucune UI pour assess/collect.
       → Construire le flux FE sur le prêt approuvé : assess → liste des charges →
-      collecte (espèces/compte) de chaque charge + assurance → puis déblocage.
-      (NB : besoin d'un GET pour LISTER les charges/primes assessées d'un prêt — à confirmer
+      collecte (espèces/compte) de chaque charge → puis déblocage.
+      (NB : besoin d'un GET pour LISTER les charges assessées d'un prêt — à confirmer
       côté API ; sinon renvoyer la liste dans la réponse d'assess et/ou dans LoanResource.)
 
 31. Produit de prêt GLOBAL vs comptes comptables PAR AGENCE — mapping impossible multi-agence

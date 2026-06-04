@@ -26,7 +26,6 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::get('loans/{loan}/setup-charges', [LoanController::class, 'setupCharges']);
     Route::post('loans/{loan}/setup-charges/assess', [LoanController::class, 'assessSetupCharges']);
     Route::post('loans/{loan}/setup-charges/{chargePublicId}/collect', [LoanController::class, 'collectSetupCharge']);
-    Route::post('loans/{loan}/insurance-premiums/{premiumPublicId}/collect', [LoanController::class, 'collectInsurancePremium']);
     Route::post('loans/{loan}/setup-charges/{chargePublicId}/direction-decision', [LoanController::class, 'decideSetupChargeException']);
     Route::get('loans/{loan}/approvals', [LoanController::class, 'listApprovals']);
     Route::post('loans/{loan}/approvals/{step}', [LoanController::class, 'decideApproval']);

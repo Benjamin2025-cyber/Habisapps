@@ -36,7 +36,6 @@ final class OperationAccountMappingController extends BaseController
         ['code' => 'loan_setup_dossier_fee', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_guarantee_deposit', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
-        ['code' => 'loan_insurance_premium', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
     ];
 
     public function __construct(

@@ -57,7 +57,7 @@ Reasoning:
 
 ## Backlog A: Bancassurance Completion
 
-Current state: `insurance_partners`, `insurance_products`, `insurance_product_coverages`, `insurance_subscriptions`, `insurance_premium_assessments`, `insurance_premium_payments`, `insurance_claims`, and `insurance_claim_documents` exist. Basic insurance APIs exist. Loan-linked borrower insurance premium assessment and account collection exist.
+Current state: `insurance_partners`, `insurance_products`, `insurance_product_coverages`, `insurance_subscriptions`, `insurance_premium_assessments`, `insurance_premium_payments`, `insurance_claims`, and `insurance_claim_documents` exist. Basic insurance APIs exist. V1 loan setup does not create loan-linked borrower insurance premium assessments or account collections; any loan-linked borrower insurance integration requires a separate future bancassurance contract.
 
 Completion standard:
 
