@@ -31,6 +31,7 @@ final class ClientProxyResource extends JsonResource
             'client_public_id' => $record->relationLoaded('client') ? $record->client?->public_id : null,
             'customer_account_public_id' => $this->customerAccountPublicId($record),
             'document_public_id' => $record->relationLoaded('document') ? $record->document?->public_id : null,
+            'back_document_public_id' => $record->relationLoaded('backDocument') ? $record->backDocument?->public_id : null,
             'proxy_full_name' => $showPii ? $record->proxy_full_name : $this->maskName($record->proxy_full_name),
             'proxy_phone_number' => $showPii ? $record->proxy_phone_number : $this->maskPhone($record->proxy_phone_number),
             'proxy_email' => $showPii ? $record->proxy_email : $this->maskEmail($record->proxy_email),

@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $rejected_at
  * @property string|null $rejection_reason
  * @property int|null $document_id
+ * @property int|null $back_document_id
  * @property int|null $created_by_user_id
  * @property Carbon|null $archived_at
  */
@@ -63,6 +64,7 @@ use Illuminate\Support\Carbon;
     'rejected_at',
     'rejection_reason',
     'document_id',
+    'back_document_id',
     'created_by_user_id',
     'archived_at',
 ])]
@@ -133,6 +135,12 @@ final class ClientProxy extends Model
     public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
+    }
+
+    /** @return BelongsTo<Document, $this> */
+    public function backDocument(): BelongsTo
+    {
+        return $this->belongsTo(Document::class, 'back_document_id');
     }
 
     /** @return BelongsTo<User, $this> */

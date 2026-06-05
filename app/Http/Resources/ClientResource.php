@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Client;
+use App\Models\Document;
 use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\URL;
 
 /**
  * @mixin Client
@@ -35,6 +37,7 @@ final class ClientResource extends JsonResource
             'public_id' => $client->public_id,
             'agency_public_id' => $client->relationLoaded('agency') ? $client->agency?->public_id : null,
             'profile_photo_document_public_id' => $client->relationLoaded('profilePhotoDocument') ? $client->profilePhotoDocument?->public_id : null,
+            'profile_photo_thumbnail_url' => $this->profilePhotoThumbnailUrl($client, $showOperationalIdentity),
             'prospector_public_id' => $client->relationLoaded('prospector') ? $client->prospector?->public_id : null,
             'collection_agent_public_id' => $client->relationLoaded('collectionAgent') ? $client->collectionAgent?->public_id : null,
             'sector_public_id' => $client->relationLoaded('sector') ? $client->sector?->public_id : null,
@@ -96,6 +99,34 @@ final class ClientResource extends JsonResource
         }
 
         return mb_substr($value, 0, 1).str_repeat('*', max(0, mb_strlen($value) - 1));
+    }
+
+    /**
+     * Short-lived signed thumbnail URL for the client's profile photo, exposed
+     * only when the actor may view operational identity and the linked document
+     * is an active, image profile photo (API-ISSUE-006). Returns null for
+     * missing, archived, non-image, or unauthorized photos.
+     */
+    private function profilePhotoThumbnailUrl(Client $client, bool $showOperationalIdentity): ?string
+    {
+        if (! $showOperationalIdentity || ! $client->relationLoaded('profilePhotoDocument')) {
+            return null;
+        }
+
+        $document = $client->profilePhotoDocument;
+        if (! $document instanceof Document
+            || $document->status !== Document::STATUS_ACTIVE
+            || $document->category !== 'profile_photo'
+            || ! is_string($document->mime_type)
+            || ! str_starts_with($document->mime_type, 'image/')) {
+            return null;
+        }
+
+        return URL::temporarySignedRoute(
+            'clients.profile-photo-thumbnail',
+            now()->addMinutes(5),
+            ['client' => $client->public_id],
+        );
     }
 
     private function canViewFullPii(Request $request): bool

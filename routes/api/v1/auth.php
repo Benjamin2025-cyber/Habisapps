@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\BatchRunController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ClientGuarantorController;
 use App\Http\Controllers\Api\V1\ClientIdentityDocumentController;
+use App\Http\Controllers\Api\V1\ClientProfilePhotoController;
 use App\Http\Controllers\Api\V1\ClientProxyController;
 use App\Http\Controllers\Api\V1\DocumentController;
 use App\Http\Controllers\Api\V1\ReferenceCatalogController;
@@ -19,6 +20,13 @@ use App\Http\Controllers\Api\V1\StaffAssignmentController;
 use App\Http\Controllers\Api\V1\StaffUserController;
 use App\Http\Controllers\Api\V1\StakeholderDirectoryController;
 use Illuminate\Support\Facades\Route;
+
+// Public, signature-authorized client profile-photo thumbnail (API-ISSUE-006).
+// No bearer token: the signed URL minted by ClientResource is the credential,
+// and it is short-lived and bound to a single client.
+Route::get('clients/{client}/profile-photo-thumbnail', [ClientProfilePhotoController::class, 'thumbnail'])
+    ->middleware('signed')
+    ->name('clients.profile-photo-thumbnail');
 
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:auth.login');
 Route::post('activate', [AuthController::class, 'activate'])->middleware('throttle:auth.activation');

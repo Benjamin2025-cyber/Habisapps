@@ -14,6 +14,7 @@ use App\Models\Client;
 use App\Models\ClientGuarantor;
 use App\Models\Document;
 use App\Models\User;
+use App\Support\Crm\IdentityDocumentTypeCatalog;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
@@ -48,7 +49,7 @@ final class ClientGuarantorController extends BaseController
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
         $query = ClientGuarantor::query()
-            ->with(['client', 'guarantorClient', 'document'])
+            ->with(['client', 'guarantorClient', 'document', 'backDocument'])
             ->where('client_id', $client->id)
             ->where('agency_id', $client->agency_id);
 
@@ -94,6 +95,17 @@ final class ClientGuarantorController extends BaseController
             return $this->respondUnprocessable('Document attachment is invalid for this client.');
         }
 
+        $backDocumentId = $this->resolveDocumentId($client, $request->input('back_document_public_id'));
+        if ($backDocumentId === false) {
+            return $this->respondUnprocessable('Back document attachment is invalid for this client.');
+        }
+
+        if (is_int($documentId) && is_int($backDocumentId) && $documentId === $backDocumentId) {
+            return $this->respondUnprocessable(errors: [
+                'back_document_public_id' => ['The back face must be a different document from the front face.'],
+            ]);
+        }
+
         $record = ClientGuarantor::query()->create([
             'public_id' => (string) Str::ulid(),
             'agency_id' => $client->agency_id,
@@ -102,11 +114,13 @@ final class ClientGuarantorController extends BaseController
             'guarantor_full_name' => $request->input('guarantor_full_name'),
             'guarantor_phone_number' => $request->input('guarantor_phone_number'),
             'relationship_type' => $request->input('relationship_type'),
+            'document_type' => $request->input('document_type'),
             'status' => ClientGuarantor::STATUS_ACTIVE,
             'starts_on' => $request->input('starts_on'),
             'ends_on' => $request->input('ends_on'),
             'verification_status' => ClientGuarantor::VERIFICATION_PENDING,
             'document_id' => is_int($documentId) ? $documentId : null,
+            'back_document_id' => is_int($backDocumentId) ? $backDocumentId : null,
             'created_by_user_id' => $actor->id,
         ]);
 
@@ -115,7 +129,7 @@ final class ClientGuarantorController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            ClientGuarantorResource::make($record->loadMissing(['client', 'guarantorClient', 'document'])),
+            ClientGuarantorResource::make($record->loadMissing(['client', 'guarantorClient', 'document', 'backDocument'])),
             'Client guarantor created successfully'
         );
     }
@@ -145,7 +159,7 @@ final class ClientGuarantorController extends BaseController
         }
 
         return $this->respondSuccess([
-            'guarantor' => ClientGuarantorResource::make($guarantor->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
+            'guarantor' => ClientGuarantorResource::make($guarantor->loadMissing(['client', 'guarantorClient', 'document', 'backDocument']))->resolve($request),
         ]);
     }
 
@@ -174,6 +188,7 @@ final class ClientGuarantorController extends BaseController
             'guarantor_full_name',
             'guarantor_phone_number',
             'relationship_type',
+            'document_type',
             'starts_on',
             'ends_on',
         ]);
@@ -196,8 +211,26 @@ final class ClientGuarantorController extends BaseController
             $attributes['document_id'] = is_int($documentId) ? $documentId : null;
         }
 
+        if ($request->has('back_document_public_id')) {
+            $backDocumentId = $this->resolveDocumentId($client, $request->input('back_document_public_id'));
+            if ($backDocumentId === false) {
+                return $this->respondUnprocessable('Back document attachment is invalid for this client.');
+            }
+
+            $attributes['back_document_id'] = is_int($backDocumentId) ? $backDocumentId : null;
+        }
+
+        // Guard front == back regardless of which side this request changes.
+        $effectiveFrontId = array_key_exists('document_id', $attributes) ? $attributes['document_id'] : $guarantor->document_id;
+        $effectiveBackId = array_key_exists('back_document_id', $attributes) ? $attributes['back_document_id'] : $guarantor->back_document_id;
+        if ($effectiveFrontId !== null && $effectiveBackId !== null && $effectiveFrontId === $effectiveBackId) {
+            return $this->respondUnprocessable(errors: [
+                'back_document_public_id' => ['The back face must be a different document from the front face.'],
+            ]);
+        }
+
         if ($guarantor->verification_status === ClientGuarantor::VERIFICATION_VERIFIED
-            && array_intersect(array_keys($attributes), ['guarantor_client_id', 'guarantor_full_name', 'guarantor_phone_number', 'document_id']) !== []) {
+            && array_intersect(array_keys($attributes), ['guarantor_client_id', 'guarantor_full_name', 'guarantor_phone_number', 'document_type', 'document_id', 'back_document_id']) !== []) {
             $attributes['verification_status'] = ClientGuarantor::VERIFICATION_PENDING_REVIEW;
             $attributes['verified_at'] = null;
             $attributes['verified_by_user_id'] = null;
@@ -210,7 +243,7 @@ final class ClientGuarantorController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
+            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document', 'backDocument']))->resolve($request),
         ], 'Client guarantor updated successfully');
     }
 
@@ -255,6 +288,15 @@ final class ClientGuarantorController extends BaseController
 
         if ($action === 'verify' && ! $this->hasLinkedDocumentEvidence($guarantor)) {
             return $this->respondUnprocessable('Guarantor verification requires linked KYC document evidence.');
+        }
+
+        if ($action === 'verify' && is_string($guarantor->document_type) && $guarantor->document_type !== '') {
+            $requiredFaces = IdentityDocumentTypeCatalog::requiredFaces($guarantor->document_type);
+            if ($requiredFaces !== null && $requiredFaces >= 2 && ! $this->hasBackDocumentEvidence($guarantor)) {
+                return $this->respondUnprocessable(errors: [
+                    'back_document_public_id' => [sprintf('A %s requires both front and back faces before it can be verified.', $guarantor->document_type)],
+                ]);
+            }
         }
 
         $reason = $request->input('reason');
@@ -306,7 +348,7 @@ final class ClientGuarantorController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess([
-            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document']))->resolve($request),
+            'guarantor' => ClientGuarantorResource::make($guarantor->refresh()->loadMissing(['client', 'guarantorClient', 'document', 'backDocument']))->resolve($request),
         ], 'Client guarantor status updated successfully');
     }
 
@@ -363,8 +405,16 @@ final class ClientGuarantorController extends BaseController
 
     private function hasLinkedDocumentEvidence(ClientGuarantor $guarantor): bool
     {
-        $document = $guarantor->document;
+        return $this->isUsableEvidence($guarantor->document);
+    }
 
+    private function hasBackDocumentEvidence(ClientGuarantor $guarantor): bool
+    {
+        return $this->isUsableEvidence($guarantor->backDocument);
+    }
+
+    private function isUsableEvidence(?Document $document): bool
+    {
         return $document instanceof Document
             && $document->status === Document::STATUS_ACTIVE
             && in_array($document->category, ['kyc', 'identity', 'proof_of_address'], true)

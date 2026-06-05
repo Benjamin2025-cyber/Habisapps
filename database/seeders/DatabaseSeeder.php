@@ -14,6 +14,8 @@ final class DatabaseSeeder extends Seeder
 
         $this->call(StandardReportDefinitionSeeder::class);
 
+        $this->call(BatchProcedureSeeder::class);
+
         $this->call(BootstrapAdminSeeder::class);
     }
 }

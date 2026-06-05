@@ -172,6 +172,85 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($valid, 201);
     }
 
+    public function test_loan_product_incomplete_penalty_combinations_fail_validation(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Percentage value type with no value and no base.
+        $missingParts = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-PEN-INC1',
+                'name' => 'Incomplete Penalty 1',
+                'penalty_value_type' => 'percentage',
+            ]);
+        $missingParts->assertStatus(422);
+        $missingParts->assertJsonValidationErrors(['penalty_value', 'penalty_formula_base']);
+
+        // A value supplied with no value type cannot be interpreted.
+        $missingType = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-PEN-INC2',
+                'name' => 'Incomplete Penalty 2',
+                'penalty_value' => '500',
+            ]);
+        $missingType->assertStatus(422);
+        $missingType->assertJsonValidationErrors(['penalty_value_type']);
+
+        // Amount value type cannot pair with a rate-based formula type.
+        $mismatch = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-PEN-INC3',
+                'name' => 'Incomplete Penalty 3',
+                'penalty_value_type' => 'amount',
+                'penalty_value' => '5000',
+                'penalty_formula_type' => 'flat_rate',
+            ]);
+        $mismatch->assertStatus(422);
+        $mismatch->assertJsonValidationErrors(['penalty_formula_type']);
+
+        // A complete fixed-amount combination is accepted.
+        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-PEN-INC-OK',
+                'name' => 'Complete Fixed Penalty',
+                'penalty_value_type' => 'amount',
+                'penalty_value' => '5000',
+                'penalty_formula_type' => 'fixed',
+            ]);
+        $this->assertJsonSuccess($valid, 201);
+    }
+
+    public function test_unrelated_update_of_legacy_partial_penalty_product_is_not_blocked(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Simulate a product persisted before the penalty-coherence rules, with
+        // a stray penalty field but no value type/value.
+        $product = LoanProduct::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'LP-LEGACY-PEN',
+            'name' => 'Legacy Penalty Product',
+            'status' => LoanProduct::STATUS_ACTIVE,
+            'penalty_formula_type' => 'fixed',
+        ]);
+
+        // A PATCH that does not touch any penalty field must succeed.
+        $update = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loan-products/'.$product->public_id, [
+                'name' => 'Legacy Penalty Product Renamed',
+            ]);
+        $this->assertJsonSuccess($update);
+        $update->assertJsonPath('data.name', 'Legacy Penalty Product Renamed');
+
+        // But submitting a penalty field re-engages coherence validation.
+        $incomplete = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loan-products/'.$product->public_id, [
+                'penalty_value_type' => 'percentage',
+            ]);
+        $incomplete->assertStatus(422);
+        $incomplete->assertJsonValidationErrors(['penalty_value', 'penalty_formula_base']);
+    }
+
     public function test_formula_policy_catalog_exposes_keys_approval_and_product_fields(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -333,6 +412,32 @@ final class Module4CreditLoansTest extends TestCase
         $message = $this->requireStringJsonPath($response, 'errors.penalty_policy_key.0');
         self::assertStringContainsString(FormulaPolicyKey::PenaltiesAndArrears->value, $message);
         self::assertStringNotContainsString(FormulaPolicyKey::LoanInterestMethod->value, $message);
+    }
+
+    public function test_loan_creation_from_incomplete_legacy_penalty_product_returns_422(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-PEN-LEGACY');
+        $client = $this->createClientRecord($agencyId, 'verified');
+
+        // Simulate a product persisted before the penalty coherence rules, or
+        // mutated directly outside the loan-product request layer. Product
+        // request validation alone cannot protect loan creation from this state.
+        $product = $this->createLoanProduct($agencyId, [
+            'penalty_formula_type' => 'fixed',
+        ]);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 250000,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['penalty_value_type', 'penalty_value']);
+        self::assertSame(0, Loan::query()->where('loan_product_id', $product->id)->getQuery()->count());
     }
 
     public function test_platform_admin_can_manage_loan_applications_with_scope_and_kyc_rules(): void

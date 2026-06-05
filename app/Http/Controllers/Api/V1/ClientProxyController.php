@@ -15,6 +15,7 @@ use App\Models\ClientProxy;
 use App\Models\CustomerAccount;
 use App\Models\Document;
 use App\Models\User;
+use App\Support\Crm\IdentityDocumentTypeCatalog;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
@@ -53,7 +54,7 @@ final class ClientProxyController extends BaseController
         $today = now()->toDateString();
 
         $query = ClientProxy::query()
-            ->with(['client', 'document'])
+            ->with(['client', 'document', 'backDocument'])
             ->with('customerAccount')
             ->where('client_id', $client->id)
             ->where('agency_id', $client->agency_id)
@@ -104,6 +105,15 @@ final class ClientProxyController extends BaseController
         if ($documentId === false) {
             return $this->respondUnprocessable('Document attachment is invalid for this client.');
         }
+        $backDocumentId = $this->resolveDocumentId($client, $request->input('back_document_public_id'));
+        if ($backDocumentId === false) {
+            return $this->respondUnprocessable('Back document attachment is invalid for this client.');
+        }
+        if (is_int($documentId) && is_int($backDocumentId) && $documentId === $backDocumentId) {
+            return $this->respondUnprocessable(errors: [
+                'back_document_public_id' => ['The back face must be a different document from the front face.'],
+            ]);
+        }
         $accountId = $this->resolveCustomerAccountId($client, $request->input('customer_account_public_id'));
         if ($accountId === false) {
             return $this->respondUnprocessable('Customer account mandate scope is invalid for this client.');
@@ -131,6 +141,7 @@ final class ClientProxyController extends BaseController
             ),
             'verification_status' => ClientProxy::VERIFICATION_PENDING,
             'document_id' => is_int($documentId) ? $documentId : null,
+            'back_document_id' => is_int($backDocumentId) ? $backDocumentId : null,
             'created_by_user_id' => $actor->id,
         ]);
 
@@ -139,7 +150,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            ClientProxyResource::make($record->loadMissing(['client', 'customerAccount', 'document'])),
+            ClientProxyResource::make($record->loadMissing(['client', 'customerAccount', 'document', 'backDocument'])),
             'Client proxy created successfully'
         );
     }
@@ -169,7 +180,7 @@ final class ClientProxyController extends BaseController
         }
 
         return $this->respondSuccess(
-            ClientProxyResource::make($proxy->loadMissing(['client', 'customerAccount', 'document']))
+            ClientProxyResource::make($proxy->loadMissing(['client', 'customerAccount', 'document', 'backDocument']))
         );
     }
 
@@ -228,8 +239,26 @@ final class ClientProxyController extends BaseController
             $attributes['document_id'] = is_int($documentId) ? $documentId : null;
         }
 
+        if ($request->has('back_document_public_id')) {
+            $backDocumentId = $this->resolveDocumentId($client, $request->input('back_document_public_id'));
+            if ($backDocumentId === false) {
+                return $this->respondUnprocessable('Back document attachment is invalid for this client.');
+            }
+
+            $attributes['back_document_id'] = is_int($backDocumentId) ? $backDocumentId : null;
+        }
+
+        // Guard front == back regardless of which side this request changes.
+        $effectiveFrontId = array_key_exists('document_id', $attributes) ? $attributes['document_id'] : $proxy->document_id;
+        $effectiveBackId = array_key_exists('back_document_id', $attributes) ? $attributes['back_document_id'] : $proxy->back_document_id;
+        if ($effectiveFrontId !== null && $effectiveBackId !== null && $effectiveFrontId === $effectiveBackId) {
+            return $this->respondUnprocessable(errors: [
+                'back_document_public_id' => ['The back face must be a different document from the front face.'],
+            ]);
+        }
+
         if ($proxy->verification_status === ClientProxy::VERIFICATION_VERIFIED
-            && array_intersect(array_keys($attributes), ['proxy_full_name', 'proxy_id_document_number', 'document_id', 'customer_account_id', 'operation_types', 'max_amount_minor']) !== []) {
+            && array_intersect(array_keys($attributes), ['proxy_full_name', 'proxy_id_document_type', 'proxy_id_document_number', 'document_id', 'back_document_id', 'customer_account_id', 'operation_types', 'max_amount_minor']) !== []) {
             $attributes['verification_status'] = ClientProxy::VERIFICATION_PENDING_REVIEW;
             $attributes['verified_at'] = null;
             $attributes['verified_by_user_id'] = null;
@@ -250,7 +279,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'customerAccount', 'document'])),
+            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'customerAccount', 'document', 'backDocument'])),
             'Client proxy updated successfully'
         );
     }
@@ -298,6 +327,15 @@ final class ClientProxyController extends BaseController
 
         if ($action === 'verify' && ! $this->hasLinkedDocumentEvidence($proxy)) {
             return $this->respondUnprocessable('Proxy verification requires linked KYC document evidence.');
+        }
+
+        if ($action === 'verify' && is_string($proxy->proxy_id_document_type) && $proxy->proxy_id_document_type !== '') {
+            $requiredFaces = IdentityDocumentTypeCatalog::requiredFaces($proxy->proxy_id_document_type);
+            if ($requiredFaces !== null && $requiredFaces >= 2 && ! $this->hasBackDocumentEvidence($proxy)) {
+                return $this->respondUnprocessable(errors: [
+                    'back_document_public_id' => [sprintf('A %s requires both front and back faces before it can be verified.', $proxy->proxy_id_document_type)],
+                ]);
+            }
         }
 
         $reason = $request->input('reason');
@@ -357,7 +395,7 @@ final class ClientProxyController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'customerAccount', 'document'])),
+            ClientProxyResource::make($proxy->refresh()->loadMissing(['client', 'customerAccount', 'document', 'backDocument'])),
             'Client proxy status updated successfully'
         );
     }
@@ -465,8 +503,16 @@ final class ClientProxyController extends BaseController
 
     private function hasLinkedDocumentEvidence(ClientProxy $proxy): bool
     {
-        $document = $proxy->document;
+        return $this->isUsableEvidence($proxy->document);
+    }
 
+    private function hasBackDocumentEvidence(ClientProxy $proxy): bool
+    {
+        return $this->isUsableEvidence($proxy->backDocument);
+    }
+
+    private function isUsableEvidence(?Document $document): bool
+    {
         return $document instanceof Document
             && $document->status === Document::STATUS_ACTIVE
             && in_array($document->category, ['kyc', 'identity', 'proof_of_address'], true)

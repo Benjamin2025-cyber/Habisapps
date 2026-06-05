@@ -17,6 +17,7 @@ use App\Models\Sector;
 use App\Models\SubSector;
 use App\Models\User;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
+use App\Support\Finance\LoanProductPenaltyTermsValidator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -113,6 +114,11 @@ final class LoanCrudWorkflow extends BaseController
             && ! $actor->can('crm.scope.institution.manage')
             && $this->staffAgencyScope->currentAgencyId($actor) !== $client->agency_id) {
             return $this->respondForbidden('Loan can only be created inside your agency scope.');
+        }
+
+        $penaltyTermErrors = LoanProductPenaltyTermsValidator::errors($product);
+        if ($penaltyTermErrors !== []) {
+            return $this->respondUnprocessable(errors: $penaltyTermErrors);
         }
 
         // Defense in depth: a product created before formula-policy approval

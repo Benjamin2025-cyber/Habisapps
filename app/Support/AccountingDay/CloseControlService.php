@@ -7,6 +7,7 @@ namespace App\Support\AccountingDay;
 use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\TellerSession;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -89,6 +90,37 @@ final class CloseControlService
 
     private function countOpenTellerSessions(AccountingDay $day, string $businessDate): int
     {
+        return $this->openTellerSessionsQuery($day, $businessDate)->getQuery()->count();
+    }
+
+    /**
+     * Public identifiers of the open teller sessions blocking a close for the day.
+     *
+     * Shares the exact scope/date rules with {@see countOpenTellerSessions()} and
+     * the cash-close verification batch so the start-close preflight and the final
+     * close controls can never disagree about what counts as an open session.
+     *
+     * @return array<int, array{teller_session_public_id: string, till_public_id: string|null, teller_user_public_id: string|null, business_date: string}>
+     */
+    public function openTellerSessionDigest(AccountingDay $day): array
+    {
+        $sessions = $this->openTellerSessionsQuery($day, $day->business_date->toDateString())
+            ->with(['till:id,public_id', 'teller:id,public_id'])
+            ->get();
+
+        return $sessions->map(static fn (TellerSession $session): array => [
+            'teller_session_public_id' => $session->public_id,
+            'till_public_id' => $session->till?->public_id,
+            'teller_user_public_id' => $session->teller?->public_id,
+            'business_date' => $session->business_date->toDateString(),
+        ])->values()->all();
+    }
+
+    /**
+     * @return Builder<TellerSession>
+     */
+    private function openTellerSessionsQuery(AccountingDay $day, string $businessDate): Builder
+    {
         $query = TellerSession::query()
             ->where('status', TellerSession::STATUS_OPEN)
             ->where('business_date', $businessDate);
@@ -97,7 +129,7 @@ final class CloseControlService
             $query->where('agency_id', $day->agency_id);
         }
 
-        return $query->getQuery()->count();
+        return $query;
     }
 
     private function countPendingTellerTransactions(AccountingDay $day, string $businessDate): int

@@ -4,20 +4,31 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesLoanProductPenaltyTerms;
 use App\Models\LoanProduct;
 use App\Models\User;
 use App\Support\Finance\FormulaPolicyKey;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 final class StoreLoanProductRequest extends FormRequest
 {
+    use ValidatesLoanProductPenaltyTerms;
+
     public function authorize(): bool
     {
         $user = $this->user();
 
         return $user instanceof User && $user->can('create', LoanProduct::class);
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $this->validatePenaltyTerms($validator);
+        });
     }
 
     /**

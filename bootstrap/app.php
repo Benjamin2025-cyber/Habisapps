@@ -14,6 +14,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -122,6 +123,16 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return ApiResponse::forbidden($e->getMessage() ?: 'Access denied');
+        });
+
+        // Tampered or expired signed URLs (e.g. profile-photo thumbnails) are a
+        // 403, not an unhandled 500.
+        $exceptions->render(function (InvalidSignatureException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return null;
+            }
+
+            return ApiResponse::forbidden('Invalid or expired signature.');
         });
 
         $exceptions->render(function (TooManyRequestsHttpException $e, Request $request) {

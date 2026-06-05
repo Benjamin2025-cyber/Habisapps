@@ -568,6 +568,322 @@ final class Module2CrmKycTest extends TestCase
         $expire->assertJsonPath('data.status', 'expired');
     }
 
+    public function test_guarantor_supports_typed_recto_verso_kyc_evidence(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-GUAR-RV');
+        $creator = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($creator, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($creator);
+        $backDoc = $this->createDocumentViaApi($creator);
+
+        // Valid two-face type with both faces is accepted and exposed.
+        $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$creator->createToken('guar-rv-1')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
+                'guarantor_full_name' => 'Recto Verso Guarantor',
+                'document_type' => 'national_id',
+                'document_public_id' => $frontDoc,
+                'back_document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.document_type', 'national_id');
+        $create->assertJsonPath('data.document_public_id', $frontDoc);
+        $create->assertJsonPath('data.back_document_public_id', $backDoc);
+        $guarantorPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        // A two-face type with both faces can be verified by a second officer.
+        $verify = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($verify);
+        $verify->assertJsonPath('data.guarantor.verification_status', 'verified');
+    }
+
+    public function test_guarantor_two_face_type_cannot_be_verified_without_back_face(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-GUAR-2F');
+        $creator = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($creator, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($creator);
+        $backDoc = $this->createDocumentViaApi($creator);
+
+        $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$creator->createToken('guar-2f-1')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
+                'guarantor_full_name' => 'Front Only Guarantor',
+                'document_type' => 'national_id',
+                'document_public_id' => $frontDoc,
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $guarantorPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $blocked = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $blocked->assertStatus(422);
+        $blocked->assertJsonValidationErrors(['back_document_public_id']);
+
+        // Add the back face, then verification succeeds.
+        $addBack = $this->withApiHeaders(['Authorization' => 'Bearer '.$creator->createToken('guar-2f-2')->plainTextToken])
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId, [
+                'back_document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonSuccess($addBack);
+
+        $verify = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($verify);
+        $verify->assertJsonPath('data.guarantor.verification_status', 'verified');
+    }
+
+    public function test_guarantor_one_face_type_verifies_with_single_document(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-GUAR-1F');
+        $creator = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($creator, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($creator);
+
+        $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$creator->createToken('guar-1f')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
+                'guarantor_full_name' => 'Passport Guarantor',
+                'document_type' => 'passport',
+                'document_public_id' => $frontDoc,
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $guarantorPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $verify = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/guarantors/'.$guarantorPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($verify);
+        $verify->assertJsonPath('data.guarantor.verification_status', 'verified');
+    }
+
+    public function test_guarantor_rejects_invalid_type_same_and_cross_agency_documents(): void
+    {
+        Storage::fake('local');
+
+        $agencyA = $this->createAgency('AG-GUAR-A');
+        $agencyB = $this->createAgency('AG-GUAR-B');
+        $actor = $this->createUserWithRole('kyc-officer', $agencyA['code'], $agencyA['name']);
+        $clientPublicId = $this->createClientViaApi($actor, $agencyA['public_id']);
+        $frontDoc = $this->createDocumentViaApi($actor);
+        $crossAgencyDoc = $this->createDocumentInAgency($agencyB['id']);
+        $token = 'Bearer '.$actor->createToken('guar-neg')->plainTextToken;
+
+        // Invalid catalog type.
+        $invalidType = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
+                'guarantor_full_name' => 'Bad Type',
+                'document_type' => 'not_a_real_type',
+                'document_public_id' => $frontDoc,
+            ]);
+        $invalidType->assertStatus(422);
+        $invalidType->assertJsonValidationErrors(['document_type']);
+
+        // Same document as front and back.
+        $sameDoc = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
+                'guarantor_full_name' => 'Same Doc',
+                'document_type' => 'national_id',
+                'document_public_id' => $frontDoc,
+                'back_document_public_id' => $frontDoc,
+            ]);
+        $sameDoc->assertStatus(422);
+        $sameDoc->assertJsonValidationErrors(['back_document_public_id']);
+
+        // Cross-agency back document.
+        $crossAgency = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/guarantors', [
+                'guarantor_full_name' => 'Cross Agency',
+                'document_type' => 'national_id',
+                'document_public_id' => $frontDoc,
+                'back_document_public_id' => $crossAgencyDoc,
+            ]);
+        $this->assertJsonError($crossAgency, 422, 'Back document attachment is invalid for this client.');
+    }
+
+    public function test_proxy_two_face_type_cannot_be_verified_without_back_face(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-PROXY-2F');
+        $creator = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $verifier = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($creator, $agency['public_id']);
+        $frontDoc = $this->createDocumentViaApi($creator);
+        $backDoc = $this->createDocumentViaApi($creator);
+
+        $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$creator->createToken('proxy-2f-1')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/proxies', [
+                'proxy_full_name' => 'Front Only Proxy',
+                'mandate_type' => 'full',
+                'proxy_id_document_type' => 'national_id',
+                'document_public_id' => $frontDoc,
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.document_public_id', $frontDoc);
+        $proxyPublicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        $blocked = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$proxyPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $blocked->assertStatus(422);
+        $blocked->assertJsonValidationErrors(['back_document_public_id']);
+
+        $addBack = $this->withApiHeaders(['Authorization' => 'Bearer '.$creator->createToken('proxy-2f-2')->plainTextToken])
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$proxyPublicId, [
+                'back_document_public_id' => $backDoc,
+            ]);
+        $this->assertJsonSuccess($addBack);
+        $addBack->assertJsonPath('data.back_document_public_id', $backDoc);
+
+        $verify = $this->withApiHeaders()->actingAsSanctum($verifier)
+            ->patchJson('/api/v1/clients/'.$clientPublicId.'/proxies/'.$proxyPublicId.'/status', [
+                'action' => 'verify',
+            ]);
+        $this->assertJsonSuccess($verify);
+        $verify->assertJsonPath('data.verification_status', 'verified');
+    }
+
+    public function test_proxy_rejects_invalid_document_type(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-PROXY-BAD');
+        $actor = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $clientPublicId = $this->createClientViaApi($actor, $agency['public_id']);
+
+        $invalid = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('proxy-bad')->plainTextToken])
+            ->postJson('/api/v1/clients/'.$clientPublicId.'/proxies', [
+                'proxy_full_name' => 'Bad Type Proxy',
+                'mandate_type' => 'full',
+                'proxy_id_document_type' => 'made_up_type',
+            ]);
+        $invalid->assertStatus(422);
+        $invalid->assertJsonValidationErrors(['proxy_id_document_type']);
+    }
+
+    public function test_profile_photo_thumbnail_signed_url_is_generated_served_and_redacted(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-PP-THUMB');
+        $officer = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $photoPublicId = $this->createDocumentViaApi($officer, 'profile_photo');
+        $photoId = Document::query()->where('public_id', $photoPublicId)->value('id');
+        self::assertIsInt($photoId);
+
+        $client = Client::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-PP-THUMB',
+            'first_name' => 'Photo',
+            'last_name' => 'Client',
+            'status' => Client::STATUS_ACTIVE,
+            'kyc_status' => Client::KYC_STATUS_VERIFIED,
+            'profile_photo_document_id' => $photoId,
+        ]);
+
+        // Operational-identity actor receives a signed thumbnail URL.
+        $authorized = $this->withApiHeaders()->actingAsSanctum($officer)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $this->assertJsonSuccess($authorized);
+        $url = $authorized->json('data.profile_photo_thumbnail_url');
+        self::assertIsString($url);
+        self::assertStringContainsString('signature=', $url);
+
+        // The signed URL renders a thumbnail image without a bearer token.
+        $image = $this->get($url);
+        $image->assertOk();
+        self::assertSame('image/jpeg', $image->headers->get('Content-Type'));
+        self::assertStringContainsString('max-age', (string) $image->headers->get('Cache-Control'));
+
+        // Tampered signature is rejected.
+        $this->get($url.'tampered')->assertForbidden();
+
+        // Redacted actor (clients.view only, no operational identity) gets null.
+        $viewOnly = $this->createUserWithRole('staff', $agency['code'], $agency['name']);
+        $viewOnly->givePermissionTo('crm.clients.view');
+        $redacted = $this->withApiHeaders()->actingAsSanctum($viewOnly)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $this->assertJsonSuccess($redacted);
+        $redacted->assertJsonPath('data.profile_photo_thumbnail_url', null);
+    }
+
+    public function test_profile_photo_thumbnail_url_expires(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-PP-EXP');
+        $officer = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        $photoPublicId = $this->createDocumentViaApi($officer, 'profile_photo');
+        $photoId = Document::query()->where('public_id', $photoPublicId)->value('id');
+        self::assertIsInt($photoId);
+
+        $client = Client::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-PP-EXP',
+            'first_name' => 'Expiry',
+            'last_name' => 'Client',
+            'status' => Client::STATUS_ACTIVE,
+            'kyc_status' => Client::KYC_STATUS_VERIFIED,
+            'profile_photo_document_id' => $photoId,
+        ]);
+
+        $url = $this->withApiHeaders()->actingAsSanctum($officer)
+            ->getJson('/api/v1/clients/'.$client->public_id)
+            ->json('data.profile_photo_thumbnail_url');
+        self::assertIsString($url);
+
+        // Past the 5-minute signature window the URL is rejected.
+        $this->travel(6)->minutes();
+        $this->get($url)->assertForbidden();
+        $this->travelBack();
+    }
+
+    public function test_profile_photo_thumbnail_url_is_null_for_non_image_document(): void
+    {
+        Storage::fake('local');
+
+        $agency = $this->createAgency('AG-PP-NONIMG');
+        $officer = $this->createUserWithRole('kyc-officer', $agency['code'], $agency['name']);
+        // createDocumentInAgency stores raw bytes with no image mime type.
+        $photoPublicId = $this->createDocumentInAgency($agency['id'], 'profile_photo');
+        $photoId = Document::query()->where('public_id', $photoPublicId)->value('id');
+        self::assertIsInt($photoId);
+
+        $client = Client::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $agency['id'],
+            'client_reference' => 'CLI-PP-NONIMG',
+            'first_name' => 'NonImage',
+            'last_name' => 'Client',
+            'status' => Client::STATUS_ACTIVE,
+            'kyc_status' => Client::KYC_STATUS_VERIFIED,
+            'profile_photo_document_id' => $photoId,
+        ]);
+
+        $response = $this->withApiHeaders()->actingAsSanctum($officer)
+            ->getJson('/api/v1/clients/'.$client->public_id);
+        $this->assertJsonSuccess($response);
+        $response->assertJsonPath('data.profile_photo_thumbnail_url', null);
+    }
+
     public function test_proxy_creation_stores_encrypted_id_document_number_without_overflow(): void
     {
         Storage::fake('local');

@@ -8,6 +8,7 @@ use App\Models\AccountingDay;
 use App\Models\User;
 use App\Support\AccountingDay\AccountingDayException;
 use App\Support\AccountingDay\AccountingDayGuard;
+use Database\Seeders\BatchProcedureSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -232,6 +233,27 @@ final class AccountingDayLifecycleTest extends TestCase
         $close->assertJsonPath('data.status', AccountingDay::STATUS_CLOSED);
     }
 
+    public function test_seeded_procedures_let_start_close_create_close_control_runs(): void
+    {
+        $this->seed(BatchProcedureSeeder::class);
+
+        $agency = $this->createAgency('AD-SEEDED-CLOSE');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+
+        $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
+        $this->assertJsonSuccess($startClose, 200);
+        $startClose->assertJsonPath('data.status', AccountingDay::STATUS_CLOSING);
+
+        // No missing_procedure: the seeded procedures were resolved and runs linked.
+        $failures = $startClose->json('data.close_summary.close_control_batch_failures');
+        self::assertIsArray($failures);
+        self::assertNotContains('accounting_close_verification', $failures);
+        self::assertNotContains('cash_close_verification', $failures);
+
+        self::assertSame(2, DB::table('batch_runs')->where('accounting_day_id', $day->id)->count());
+    }
+
     public function test_close_fails_when_required_close_control_procedures_are_missing(): void
     {
         $agency = $this->createAgency('AD-BATCH-MISS');
@@ -245,6 +267,67 @@ final class AccountingDayLifecycleTest extends TestCase
         $this->assertJsonError($close, 422);
         $close->assertJsonPath('errors.code', 'accounting_day_close_blocked');
         $close->assertJsonPath('errors.close_summary.close_control_batch_failures.0', 'accounting_close_verification');
+    }
+
+    public function test_start_close_is_blocked_by_open_teller_sessions_then_succeeds_after_session_closes(): void
+    {
+        $agency = $this->createAgency('AD-START-DEADLOCK');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $teller = $this->createUserWithRole('teller', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $tillId = $this->createTill($agency['id']);
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
+
+        $sessionId = $this->createTellerSession($day, $tillId, $teller->id, 'open');
+        $sessionPublicId = DB::table('teller_sessions')->where('id', $sessionId)->value('public_id');
+
+        $lockBefore = $day->refresh()->write_lock_version;
+
+        $blocked = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
+
+        $this->assertJsonError($blocked, 422);
+        $blocked->assertJsonPath('errors.code', 'open_teller_sessions');
+        $blocked->assertJsonPath('errors.open_teller_sessions_count', 1);
+        $blocked->assertJsonPath('errors.open_teller_sessions.0.teller_session_public_id', $sessionPublicId);
+
+        // The day must remain open: no status change, no write-lock bump, no batch runs.
+        $refreshed = $day->refresh();
+        self::assertSame(AccountingDay::STATUS_OPEN, $refreshed->status);
+        self::assertSame($lockBefore, $refreshed->write_lock_version);
+        self::assertSame(0, DB::table('batch_runs')->where('accounting_day_id', $day->id)->count());
+
+        // Once the teller session closes, start-close can proceed.
+        DB::table('teller_sessions')->where('id', $sessionId)->update([
+            'status' => 'closed',
+            'closed_at' => now(),
+            'closing_declaration_minor' => 0,
+            'updated_at' => now(),
+        ]);
+
+        $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
+        $this->assertJsonSuccess($startClose, 200);
+        $startClose->assertJsonPath('data.status', AccountingDay::STATUS_CLOSING);
+        self::assertSame($lockBefore + 1, $day->refresh()->write_lock_version);
+    }
+
+    public function test_teller_session_close_remains_available_while_day_is_open(): void
+    {
+        $agency = $this->createAgency('AD-TELLER-OPEN');
+        $teller = $this->createUserWithRole('teller', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $tillId = $this->createTill($agency['id']);
+        DB::table('tills')->where('id', $tillId)->update(['requires_denominations' => false]);
+        $sessionId = $this->createTellerSession($day, $tillId, $teller->id, 'open');
+        $sessionPublicId = DB::table('teller_sessions')->where('id', $sessionId)->value('public_id');
+        self::assertIsString($sessionPublicId);
+
+        $close = $this->actingAsSanctum($teller)->postJson("/api/v1/teller-sessions/{$sessionPublicId}/close", [
+            'closing_declaration_minor' => 0,
+        ]);
+
+        $this->assertJsonSuccess($close);
+        self::assertSame('closed', DB::table('teller_sessions')->where('id', $sessionId)->value('status'));
     }
 
     public function test_close_is_blocked_by_open_teller_sessions(): void

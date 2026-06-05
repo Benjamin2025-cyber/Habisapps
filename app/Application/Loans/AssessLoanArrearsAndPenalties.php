@@ -11,6 +11,8 @@ use App\Models\LoanScheduleLine;
 use App\Models\LoanScheduleSnapshot;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\FormulaPolicyRegistry;
+use App\Support\Finance\LoanPenaltyTermsResolver;
+use App\Support\Finance\ResolvedPenaltyTerms;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -22,6 +24,7 @@ final class AssessLoanArrearsAndPenalties
 {
     public function __construct(
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
+        private readonly LoanPenaltyTermsResolver $penaltyTermsResolver,
     ) {}
 
     /**
@@ -55,7 +58,9 @@ final class AssessLoanArrearsAndPenalties
 
             $assessedPenaltyMinor = 0;
             $arrears = [];
-            $graceDays = $this->graceDays($lockedLoan);
+            $snapshotProductTerms = $this->snapshotProductTerms($lockedLoan);
+            $graceDays = $this->graceDays($lockedLoan, $snapshotProductTerms);
+            $penaltyTerms = $this->penaltyTermsResolver->resolve($snapshotProductTerms, $lockedLoan->loanProduct);
 
             $lines = LoanScheduleLine::query()
                 ->where('loan_schedule_snapshot_id', $snapshot->id)
@@ -87,7 +92,7 @@ final class AssessLoanArrearsAndPenalties
                     continue;
                 }
 
-                $penalty = $this->monthlyPenalty($penaltyBase);
+                $penalty = $this->penaltyForLine($penaltyTerms, $line, $originalDue, $unpaid);
                 $line->forceFill([
                     'penalty_minor' => $line->penalty_minor + $penalty,
                     'total_installment_minor' => $this->lineTotal($line) + $penalty,
@@ -188,9 +193,25 @@ final class AssessLoanArrearsAndPenalties
         return $created;
     }
 
-    private function monthlyPenalty(int $penaltyBaseMinor): int
+    private function penaltyForLine(ResolvedPenaltyTerms $terms, LoanScheduleLine $line, int $originalDue, int $unpaid): int
     {
-        return $this->fixedPenaltyAmountMinor() + $this->percentOf($penaltyBaseMinor, $this->variableRatePercent());
+        $baseAmount = $this->penaltyBaseAmount($terms->base, $line, $originalDue, $unpaid);
+
+        return $terms->fixedAmountMinor + $this->percentOf($baseAmount, $terms->ratePercent);
+    }
+
+    private function penaltyBaseAmount(string $base, LoanScheduleLine $line, int $originalDue, int $unpaid): int
+    {
+        return match ($base) {
+            'overdue_amount' => $originalDue,
+            'principal' => $line->principal_minor,
+            'outstanding_principal' => $line->remaining_principal_minor > 0
+                ? $line->remaining_principal_minor
+                : $line->principal_minor,
+            // 'unpaid_scheduled_due' and any unknown base default to the
+            // still-unpaid scheduled due, matching the global-config behavior.
+            default => $unpaid,
+        };
     }
 
     private function percentOf(int $baseMinor, string $rate): int
@@ -242,8 +263,22 @@ final class AssessLoanArrearsAndPenalties
         ];
     }
 
-    private function graceDays(Loan $loan): int
+    /**
+     * Grace days prefer the loan snapshot (so later product edits do not change
+     * historical loans), then the current product, then the default.
+     *
+     * @param  array<array-key, mixed>|null  $snapshotProductTerms
+     */
+    private function graceDays(Loan $loan, ?array $snapshotProductTerms): int
     {
+        $snapshotGrace = $snapshotProductTerms['penalty_grace_days'] ?? null;
+        if (is_int($snapshotGrace)) {
+            return $snapshotGrace;
+        }
+        if (is_numeric($snapshotGrace)) {
+            return (int) $snapshotGrace;
+        }
+
         $product = $loan->loanProduct;
         if ($product instanceof LoanProduct && is_int($product->penalty_grace_days)) {
             return $product->penalty_grace_days;
@@ -252,18 +287,19 @@ final class AssessLoanArrearsAndPenalties
         return 5;
     }
 
-    private function fixedPenaltyAmountMinor(): int
+    /**
+     * @return array<array-key, mixed>|null
+     */
+    private function snapshotProductTerms(Loan $loan): ?array
     {
-        $value = config('formulas.policies.penalties_and_arrears.rules.monthly_arrears_penalty.fixed_amount_minor', 5000);
+        $snapshot = $loan->getAttribute('formula_policy_snapshot');
+        if (! is_array($snapshot)) {
+            return null;
+        }
 
-        return is_int($value) ? $value : 5000;
-    }
+        $terms = $snapshot['product_terms'] ?? null;
 
-    private function variableRatePercent(): string
-    {
-        $value = config('formulas.policies.penalties_and_arrears.rules.monthly_arrears_penalty.variable_rate_percent', '2');
-
-        return is_string($value) && $value !== '' ? $value : '2';
+        return is_array($terms) ? $terms : null;
     }
 
     private function minimumUnpaidAmountMinor(): int

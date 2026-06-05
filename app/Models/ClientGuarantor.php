@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'guarantor_full_name',
     'guarantor_phone_number',
     'relationship_type',
+    'document_type',
     'status',
     'starts_on',
     'ends_on',
@@ -28,6 +29,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'rejected_at',
     'rejection_reason',
     'document_id',
+    'back_document_id',
     'created_by_user_id',
     'archived_at',
 ])]
@@ -93,6 +95,12 @@ final class ClientGuarantor extends Model
     public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
+    }
+
+    /** @return BelongsTo<Document, $this> */
+    public function backDocument(): BelongsTo
+    {
+        return $this->belongsTo(Document::class, 'back_document_id');
     }
 
     /** @return BelongsTo<User, $this> */

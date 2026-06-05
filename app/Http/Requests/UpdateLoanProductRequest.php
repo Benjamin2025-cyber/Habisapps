@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesLoanProductPenaltyTerms;
 use App\Models\LoanProduct;
 use App\Models\User;
 use App\Support\Finance\FormulaPolicyKey;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 final class UpdateLoanProductRequest extends FormRequest
 {
+    use ValidatesLoanProductPenaltyTerms;
+
     public function authorize(): bool
     {
         $user = $this->user();
@@ -21,6 +25,21 @@ final class UpdateLoanProductRequest extends FormRequest
         return $user instanceof User
             && $loanProduct instanceof LoanProduct
             && $user->can('update', $loanProduct);
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $loanProduct = $this->route('loanProduct');
+        $existing = $loanProduct instanceof LoanProduct ? [
+            'penalty_value_type' => $loanProduct->penalty_value_type,
+            'penalty_value' => $loanProduct->penalty_value,
+            'penalty_formula_base' => $loanProduct->penalty_formula_base,
+            'penalty_formula_type' => $loanProduct->penalty_formula_type,
+        ] : [];
+
+        $validator->after(function (Validator $validator) use ($existing): void {
+            $this->validatePenaltyTerms($validator, $existing);
+        });
     }
 
     /**

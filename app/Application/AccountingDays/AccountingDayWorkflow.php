@@ -193,6 +193,20 @@ final class AccountingDayWorkflow extends BaseController
             ]);
         }
 
+        // Preflight: starting close must not trap the day in `closing` while teller
+        // sessions are still open. Run this BEFORE any status change so a blocked
+        // start-close leaves the day open/reopened, does not bump write_lock_version,
+        // and does not create close-control batch runs. Reuses the same scope/date
+        // rules as the cash-close control so the two can never disagree.
+        $openSessions = $this->closeControls->openTellerSessionDigest($accountingDay);
+        if ($openSessions !== []) {
+            return $this->respondUnprocessable('Accounting day close cannot start while teller sessions are still open.', [
+                'code' => 'open_teller_sessions',
+                'open_teller_sessions_count' => count($openSessions),
+                'open_teller_sessions' => $openSessions,
+            ]);
+        }
+
         $previousStatus = $accountingDay->status;
 
         DB::transaction(function () use ($accountingDay): void {
