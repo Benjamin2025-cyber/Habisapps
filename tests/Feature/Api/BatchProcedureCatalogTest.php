@@ -103,6 +103,9 @@ final class BatchProcedureCatalogTest extends TestCase
 
         $responseSchema = $this->dig($schema, ['paths', '/v1/batch-procedures/executable-codes', 'get', 'responses', '200', 'content', 'application/json', 'schema']);
         self::assertIsArray($responseSchema);
+        // Scramble may emit the envelope inline or as a $ref to the collection
+        // component; resolve the reference so the assertions hold either way.
+        $responseSchema = $this->resolveSchemaRef($schema, $responseSchema);
         self::assertSame('object', $responseSchema['type'] ?? null);
 
         $envelopeProperties = $this->dig($responseSchema, ['properties']);
@@ -259,5 +262,27 @@ final class BatchProcedureCatalogTest extends TestCase
         self::assertIsArray($value);
 
         return $value;
+    }
+
+    /**
+     * Resolve a top-level `$ref` schema against the document's components, or
+     * return the schema unchanged when it is already inline.
+     *
+     * @param  array<int|string, mixed>  $document
+     * @param  array<int|string, mixed>  $schema
+     * @return array<int|string, mixed>
+     */
+    private function resolveSchemaRef(array $document, array $schema): array
+    {
+        $ref = $schema['$ref'] ?? null;
+        if (! is_string($ref)) {
+            return $schema;
+        }
+
+        $name = substr($ref, (int) strrpos($ref, '/') + 1);
+        $resolved = $this->dig($document, ['components', 'schemas', $name]);
+        self::assertIsArray($resolved);
+
+        return $resolved;
     }
 }

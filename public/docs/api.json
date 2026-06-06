@@ -38,70 +38,8 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean"
-                                        },
-                                        "message": {
-                                            "type": "string"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "executable_codes": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "$ref": "#/components/schemas/ExecutableBatchProcedureCodeResource"
-                                                    }
-                                                }
-                                            },
-                                            "required": [
-                                                "executable_codes"
-                                            ]
-                                        },
-                                        "errors": {
-                                            "type": "null"
-                                        },
-                                        "meta": {
-                                            "type": "object",
-                                            "properties": {
-                                                "pagination": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "current_page": {
-                                                            "type": "integer"
-                                                        },
-                                                        "per_page": {
-                                                            "type": "integer"
-                                                        },
-                                                        "total": {
-                                                            "type": "integer"
-                                                        },
-                                                        "last_page": {
-                                                            "type": "integer"
-                                                        }
-                                                    },
-                                                    "required": [
-                                                        "current_page",
-                                                        "per_page",
-                                                        "total",
-                                                        "last_page"
-                                                    ]
-                                                }
-                                            },
-                                            "required": [
-                                                "pagination"
-                                            ]
-                                        }
-                                    },
-                                    "required": [
-                                        "success",
-                                        "message",
-                                        "data",
-                                        "errors",
-                                        "meta"
-                                    ]
+                                    "type": "array",
+                                    "items": {}
                                 }
                             }
                         }
@@ -2619,74 +2557,11 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "",
+                        "description": "`ExecutableBatchProcedureCodeCollection`",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean"
-                                        },
-                                        "message": {
-                                            "type": "string"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "properties": {
-                                                "executable_codes": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "$ref": "#/components/schemas/ExecutableBatchProcedureCodeResource"
-                                                    }
-                                                }
-                                            },
-                                            "required": [
-                                                "executable_codes"
-                                            ]
-                                        },
-                                        "errors": {
-                                            "type": "null"
-                                        },
-                                        "meta": {
-                                            "type": "object",
-                                            "properties": {
-                                                "pagination": {
-                                                    "type": "object",
-                                                    "properties": {
-                                                        "current_page": {
-                                                            "type": "integer"
-                                                        },
-                                                        "per_page": {
-                                                            "type": "integer"
-                                                        },
-                                                        "total": {
-                                                            "type": "integer"
-                                                        },
-                                                        "last_page": {
-                                                            "type": "integer"
-                                                        }
-                                                    },
-                                                    "required": [
-                                                        "current_page",
-                                                        "per_page",
-                                                        "total",
-                                                        "last_page"
-                                                    ]
-                                                }
-                                            },
-                                            "required": [
-                                                "pagination"
-                                            ]
-                                        }
-                                    },
-                                    "required": [
-                                        "success",
-                                        "message",
-                                        "data",
-                                        "errors",
-                                        "meta"
-                                    ]
+                                    "$ref": "#/components/schemas/ExecutableBatchProcedureCodeCollection"
                                 }
                             }
                         }
@@ -7154,6 +7029,87 @@
         "/v1/dashboards/operational": {
             "get": {
                 "operationId": "dashboard.operational",
+                "tags": [
+                    "Dashboard"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/dashboards/operational/timeseries": {
+            "get": {
+                "operationId": "dashboard.timeseries",
+                "tags": [
+                    "Dashboard"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/dashboards/agencies-performance": {
+            "get": {
+                "operationId": "dashboard.agenciesPerformance",
                 "tags": [
                     "Dashboard"
                 ],
@@ -25900,15 +25856,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/StaffUserCollection"
-                                        }
-                                    },
-                                    "required": [
-                                        "data"
-                                    ]
+                                    "$ref": "#/components/schemas/StaffUserCollection"
                                 }
                             }
                         }
@@ -30008,41 +29956,6 @@
                 ],
                 "title": "AvailableBalanceResource"
             },
-            "ExecutableBatchProcedureCodeResource": {
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string"
-                    },
-                    "label": {
-                        "type": "string"
-                    },
-                    "description": {
-                        "type": "string"
-                    },
-                    "group": {
-                        "type": "string"
-                    },
-                    "default_schedule_type": {
-                        "type": "string"
-                    },
-                    "prerequisite_codes": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "required": [
-                    "code",
-                    "label",
-                    "description",
-                    "group",
-                    "default_schedule_type",
-                    "prerequisite_codes"
-                ],
-                "title": "ExecutableBatchProcedureCodeResource"
-            },
             "BatchProcedureCollection": {
                 "anyOf": [
                     {
@@ -33428,6 +33341,179 @@
                 ],
                 "title": "EmfRegulatoryAccountResource"
             },
+            "ExecutableBatchProcedureCodeCollection": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "message": {
+                        "type": "string",
+                        "const": "Executable batch-procedure codes retrieved successfully"
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "executable_codes": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/ExecutableBatchProcedureCodeResource"
+                                }
+                            }
+                        },
+                        "required": [
+                            "executable_codes"
+                        ]
+                    },
+                    "errors": {
+                        "type": "null"
+                    },
+                    "meta": {
+                        "type": "object",
+                        "properties": {
+                            "pagination": {
+                                "type": "object",
+                                "properties": {
+                                    "current_page": {
+                                        "type": "integer",
+                                        "const": 1
+                                    },
+                                    "per_page": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "integer",
+                                                "enum": [
+                                                    0
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    "total": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "integer",
+                                                "enum": [
+                                                    0
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    "last_page": {
+                                        "type": "integer",
+                                        "const": 1
+                                    }
+                                },
+                                "required": [
+                                    "current_page",
+                                    "per_page",
+                                    "total",
+                                    "last_page"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "pagination"
+                        ]
+                    }
+                },
+                "required": [
+                    "success",
+                    "message",
+                    "data",
+                    "errors",
+                    "meta"
+                ],
+                "title": "ExecutableBatchProcedureCodeCollection"
+            },
+            "ExecutableBatchProcedureCodeResource": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    ""
+                                ]
+                            }
+                        ]
+                    },
+                    "label": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    ""
+                                ]
+                            }
+                        ]
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    ""
+                                ]
+                            }
+                        ]
+                    },
+                    "group": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    ""
+                                ]
+                            }
+                        ]
+                    },
+                    "default_schedule_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    ""
+                                ]
+                            }
+                        ]
+                    },
+                    "prerequisite_codes": {
+                        "type": "array",
+                        "items": {}
+                    }
+                },
+                "required": [
+                    "code",
+                    "label",
+                    "description",
+                    "group",
+                    "default_schedule_type",
+                    "prerequisite_codes"
+                ],
+                "title": "ExecutableBatchProcedureCodeResource"
+            },
             "JournalEntryCollection": {
                 "type": "array",
                 "items": {
@@ -35531,144 +35617,42 @@
                 "title": "StaffAgencyAssignmentResource"
             },
             "StaffUserCollection": {
-                "anyOf": [
-                    {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "message": {
+                        "type": "string",
+                        "const": "Success"
+                    },
+                    "data": {
                         "type": "object",
                         "properties": {
-                            "success": {
-                                "type": "boolean"
-                            },
-                            "message": {
-                                "type": "string",
-                                "const": "Success"
-                            },
-                            "data": {
-                                "type": "object",
-                                "properties": {
-                                    "users": {
-                                        "type": "array",
-                                        "items": {
-                                            "$ref": "#/components/schemas/StaffUserResource"
-                                        }
-                                    }
-                                },
-                                "required": [
-                                    "users"
-                                ]
-                            },
-                            "errors": {
-                                "type": "null"
-                            },
-                            "meta": {
-                                "type": "object",
-                                "properties": {
-                                    "pagination": {
-                                        "type": "object",
-                                        "properties": {
-                                            "current_page": {
-                                                "type": "string"
-                                            },
-                                            "per_page": {
-                                                "type": "string"
-                                            },
-                                            "total": {
-                                                "type": "string"
-                                            },
-                                            "last_page": {
-                                                "type": "string"
-                                            }
-                                        },
-                                        "required": [
-                                            "current_page",
-                                            "per_page",
-                                            "total",
-                                            "last_page"
-                                        ]
-                                    }
-                                },
-                                "required": [
-                                    "pagination"
-                                ]
+                            "users": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/StaffUserResource"
+                                }
                             }
                         },
                         "required": [
-                            "success",
-                            "message",
-                            "data",
-                            "errors",
-                            "meta"
+                            "users"
                         ]
                     },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "success": {
-                                "type": "boolean"
-                            },
-                            "message": {
-                                "type": "string",
-                                "const": "Success"
-                            },
-                            "data": {
-                                "type": "object",
-                                "properties": {
-                                    "users": {
-                                        "type": "array",
-                                        "items": {
-                                            "$ref": "#/components/schemas/StaffUserResource"
-                                        }
-                                    }
-                                },
-                                "required": [
-                                    "users"
-                                ]
-                            },
-                            "errors": {
-                                "type": "null"
-                            },
-                            "meta": {
-                                "type": "object",
-                                "properties": {
-                                    "pagination": {
-                                        "type": "object",
-                                        "properties": {
-                                            "current_page": {
-                                                "type": "integer",
-                                                "const": 1
-                                            },
-                                            "per_page": {
-                                                "type": "integer",
-                                                "const": 25
-                                            },
-                                            "total": {
-                                                "type": "integer"
-                                            },
-                                            "last_page": {
-                                                "type": "integer",
-                                                "const": 1
-                                            }
-                                        },
-                                        "required": [
-                                            "current_page",
-                                            "per_page",
-                                            "total",
-                                            "last_page"
-                                        ]
-                                    }
-                                },
-                                "required": [
-                                    "pagination"
-                                ]
-                            }
-                        },
-                        "required": [
-                            "success",
-                            "message",
-                            "data",
-                            "errors",
-                            "meta"
-                        ]
+                    "errors": {
+                        "type": "null"
+                    },
+                    "meta": {
+                        "type": "string"
                     }
+                },
+                "required": [
+                    "success",
+                    "message",
+                    "data",
+                    "errors",
+                    "meta"
                 ],
                 "title": "StaffUserCollection"
             },

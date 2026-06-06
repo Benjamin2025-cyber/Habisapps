@@ -16,6 +16,9 @@ use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 final class StaffUserProfileWorkflow extends BaseController
 {
@@ -31,13 +34,17 @@ final class StaffUserProfileWorkflow extends BaseController
         $actor = $request->user();
         $this->authorize('viewAny', User::class);
 
-        $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $query = User::query()->with(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])->latest();
-
         if (! $actor instanceof User) {
             return $this->respondForbidden();
         }
 
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $query = User::query()->with(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])->latest();
+
+        // Non-platform-admins only ever see staff in their current agency.
+        // Resolve that visibility once and reuse it for both the page and the
+        // status counts so the two never diverge.
+        $scopeIds = null;
         if (! $actor->hasRole('platform-admin')) {
             $agencyId = $actor->currentAgencyId();
 
@@ -45,7 +52,8 @@ final class StaffUserProfileWorkflow extends BaseController
                 return $this->respondForbidden();
             }
 
-            $query->whereKey($this->staffAgencyScope->currentAgencyStaffIdList($agencyId));
+            $scopeIds = $this->staffAgencyScope->currentAgencyStaffIdList($agencyId);
+            $query->whereKey($scopeIds);
         }
 
         $search = $request->query('search');
@@ -63,9 +71,86 @@ final class StaffUserProfileWorkflow extends BaseController
             });
         }
 
-        return new StaffUserCollection(
-            $query->paginate($perPage)
-        );
+        $statusFilter = $this->resolveStatusFilter($request);
+        if ($statusFilter !== null) {
+            $query->where('status', $statusFilter);
+        }
+
+        return (new StaffUserCollection($query->paginate($perPage)))
+            ->withStatusCounts($this->statusCounts($scopeIds));
+    }
+
+    /**
+     * Read and validate the optional staff status filter from `filter[status]`
+     * or the top-level `status` query parameter. Throws a 422 for unsupported
+     * statuses.
+     */
+    private function resolveStatusFilter(Request $request): ?string
+    {
+        $status = $request->query('status');
+        $filter = $request->query('filter');
+        if ($status === null && is_array($filter) && array_key_exists('status', $filter)) {
+            $status = $filter['status'];
+        }
+
+        if (! is_string($status) || $status === '') {
+            return null;
+        }
+
+        Validator::make(['status' => $status], [
+            'status' => [Rule::in([
+                User::STATUS_PENDING_VERIFICATION,
+                User::STATUS_ACTIVE,
+                User::STATUS_SUSPENDED,
+                User::STATUS_DEACTIVATED,
+            ])],
+        ])->validate();
+
+        return $status;
+    }
+
+    /**
+     * Status counts for the actor-visible staff population, independent of any
+     * status filter applied to the page.
+     *
+     * @param  array<int, int>|null  $scopeIds  Null = institution-wide (platform admin).
+     * @return array<string, int>
+     */
+    private function statusCounts(?array $scopeIds): array
+    {
+        $counts = [
+            'total' => 0,
+            User::STATUS_PENDING_VERIFICATION => 0,
+            User::STATUS_ACTIVE => 0,
+            User::STATUS_SUSPENDED => 0,
+            User::STATUS_DEACTIVATED => 0,
+        ];
+
+        if ($scopeIds === []) {
+            return $counts;
+        }
+
+        $query = DB::table('users');
+        if ($scopeIds !== null) {
+            $query->whereIn('id', $scopeIds);
+        }
+
+        $rows = $query
+            ->select('status')
+            ->selectRaw('COUNT(*) AS row_count')
+            ->groupBy('status')
+            ->get();
+
+        foreach ($rows as $row) {
+            $status = is_string($row->status) ? $row->status : '';
+            $count = is_numeric($row->row_count) ? (int) $row->row_count : 0;
+            if (array_key_exists($status, $counts)) {
+                $counts[$status] = $count;
+            }
+            $counts['total'] += $count;
+        }
+
+        return $counts;
     }
 
     public function store(CreateStaffUserRequest $request): JsonResponse

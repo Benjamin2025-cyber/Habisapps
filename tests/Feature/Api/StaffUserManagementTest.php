@@ -450,6 +450,108 @@ final class StaffUserManagementTest extends TestCase
         ]);
     }
 
+    public function test_platform_admin_receives_institution_wide_status_counts(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('SC-ADMIN');
+
+        $this->createStaffWithStatus($agency, User::STATUS_PENDING_VERIFICATION);
+        $this->createStaffWithStatus($agency, User::STATUS_PENDING_VERIFICATION);
+        $this->createStaffWithStatus($agency, User::STATUS_SUSPENDED);
+        $this->createStaffWithStatus($agency, User::STATUS_DEACTIVATED);
+        $this->createStaffWithStatus($agency, User::STATUS_ACTIVE);
+        $this->createStaffWithStatus($agency, User::STATUS_ACTIVE);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('sc')->plainTextToken])
+            ->getJson('/api/v1/staff-users?per_page=100');
+
+        $this->assertJsonSuccess($response);
+        // Six created staff plus the acting platform admin (active, no agency).
+        $response->assertJsonPath('meta.status_counts.total', 7);
+        $response->assertJsonPath('meta.status_counts.active', 3);
+        $response->assertJsonPath('meta.status_counts.pending_verification', 2);
+        $response->assertJsonPath('meta.status_counts.suspended', 1);
+        $response->assertJsonPath('meta.status_counts.deactivated', 1);
+    }
+
+    public function test_agency_scoped_actor_receives_only_their_agency_status_counts(): void
+    {
+        $agencyA = $this->createAgency('SC-A');
+        $agencyB = $this->createAgency('SC-B');
+        $manager = $this->createUserWithRole('agency-manager', $agencyA);
+
+        $this->createStaffWithStatus($agencyA, User::STATUS_ACTIVE);
+        $this->createStaffWithStatus($agencyA, User::STATUS_SUSPENDED);
+        $this->createStaffWithStatus($agencyB, User::STATUS_ACTIVE);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$manager->createToken('sc')->plainTextToken])
+            ->getJson('/api/v1/staff-users?per_page=100');
+
+        $this->assertJsonSuccess($response);
+        // Manager (active) + one active + one suspended in agency A; agency B excluded.
+        $response->assertJsonPath('meta.status_counts.total', 3);
+        $response->assertJsonPath('meta.status_counts.active', 2);
+        $response->assertJsonPath('meta.status_counts.suspended', 1);
+        $response->assertJsonPath('meta.status_counts.deactivated', 0);
+    }
+
+    public function test_status_filter_narrows_page_but_not_full_status_counts(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('SC-FILTER');
+
+        $this->createStaffWithStatus($agency, User::STATUS_ACTIVE);
+        $this->createStaffWithStatus($agency, User::STATUS_ACTIVE);
+        $this->createStaffWithStatus($agency, User::STATUS_SUSPENDED);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('sc')->plainTextToken])
+            ->getJson('/api/v1/staff-users?filter[status]=suspended&per_page=100');
+
+        $this->assertJsonSuccess($response);
+        // Page is narrowed to the single suspended user.
+        $response->assertJsonPath('meta.pagination.total', 1);
+        // Full scoped counts are unaffected by the filter (3 created + acting admin).
+        $response->assertJsonPath('meta.status_counts.total', 4);
+        $response->assertJsonPath('meta.status_counts.active', 3);
+        $response->assertJsonPath('meta.status_counts.suspended', 1);
+    }
+
+    public function test_invalid_status_filter_returns_validation_error(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('sc')->plainTextToken])
+            ->getJson('/api/v1/staff-users?filter[status]=not_a_real_status');
+
+        $this->assertJsonError($response, 422);
+    }
+
+    private function createStaffWithStatus(int $agencyId, string $status): User
+    {
+        $user = User::factory()->createOne([
+            'status' => $status,
+            'phone_verified_at' => $status === User::STATUS_PENDING_VERIFICATION ? null : now(),
+            'agency_id' => $agencyId,
+        ]);
+        $user->assignRole('staff');
+
+        DB::table('staff_agency_assignments')->insert([
+            'public_id' => (string) Str::ulid(),
+            'user_id' => $user->id,
+            'agency_id' => $agencyId,
+            'role_at_agency' => 'staff',
+            'starts_on' => now()->toDateString(),
+            'is_primary' => true,
+            'status' => 'active',
+        ]);
+
+        return $user;
+    }
+
     private function createUserWithRole(string $role, ?int $agencyId = null): User
     {
         $user = User::factory()->createOne([

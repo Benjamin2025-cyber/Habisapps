@@ -24,4 +24,14 @@ final class DashboardController extends BaseController
     {
         return $this->dashboard->executive($request);
     }
+
+    public function timeseries(Request $request): JsonResponse
+    {
+        return $this->dashboard->timeseries($request);
+    }
+
+    public function agenciesPerformance(Request $request): JsonResponse
+    {
+        return $this->dashboard->agenciesPerformance($request);
+    }
 }

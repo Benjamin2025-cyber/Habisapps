@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Loans;
 
+use App\Application\Dashboard\DashboardMetrics;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreLoanRequest;
 use App\Http\Requests\UpdateLoanLinkedAccountsRequest;
@@ -32,6 +33,7 @@ final class LoanCrudWorkflow extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly LoanProductFormulaPolicySnapshotter $formulaPolicySnapshotter,
         private readonly LoanSetupState $setupState,
+        private readonly DashboardMetrics $dashboardMetrics,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -80,6 +82,21 @@ final class LoanCrudWorkflow extends BaseController
             // predicate so the response is an empty, scope-safe page rather
             // than leaking another client's loans.
             $query->where('client_id', is_int($clientId) ? $clientId : 0);
+        }
+
+        if ($this->inArrearsFilterRequested($request)) {
+            // Restrict to loans with overdue, unpaid schedule exposure as of
+            // today, using the same delinquency definition as the dashboard.
+            // The candidate set is the already scope-filtered query, so the
+            // arrears predicate cannot widen visibility.
+            $candidateIds = [];
+            foreach ((clone $query)->pluck('id') as $id) {
+                if (is_numeric($id)) {
+                    $candidateIds[] = (int) $id;
+                }
+            }
+            $delinquentIds = $this->dashboardMetrics->delinquentLoanIdsWithin($candidateIds, now()->toDateString());
+            $query->whereKey($delinquentIds === [] ? [0] : $delinquentIds);
         }
 
         $loans = $query->paginate(min(max($request->integer('per_page', 25), 1), 100));
@@ -540,6 +557,25 @@ final class LoanCrudWorkflow extends BaseController
         }
 
         return null;
+    }
+
+    /**
+     * Whether `filter[in_arrears]` (or top-level `in_arrears`) requests only
+     * delinquent loans. Accepts the usual truthy strings.
+     */
+    private function inArrearsFilterRequested(Request $request): bool
+    {
+        $raw = $request->query('in_arrears');
+        $filter = $request->query('filter');
+        if ($raw === null && is_array($filter) && array_key_exists('in_arrears', $filter)) {
+            $raw = $filter['in_arrears'];
+        }
+
+        if (is_bool($raw)) {
+            return $raw;
+        }
+
+        return is_string($raw) && in_array(strtolower($raw), ['1', 'true', 'yes', 'on'], true);
     }
 
     private function canAccessLoanAgency(User $actor, Loan $loan): bool

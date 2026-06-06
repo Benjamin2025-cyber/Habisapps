@@ -7,7 +7,6 @@ namespace App\Application\Dashboard;
 use App\Http\Controllers\BaseController;
 use App\Models\Agency;
 use App\Models\JournalEntry;
-use App\Models\Loan;
 use App\Models\Till;
 use App\Models\User;
 use App\Support\Staff\StaffAgencyScope;
@@ -16,12 +15,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 
 final class DashboardWorkflow extends BaseController
 {
     public function __construct(
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly DashboardMetrics $metrics,
     ) {}
 
     public function operational(Request $request): JsonResponse
@@ -60,20 +61,24 @@ final class DashboardWorkflow extends BaseController
         $loanStatus = is_string($validated['loan_status'] ?? null) && $validated['loan_status'] !== ''
             ? $validated['loan_status']
             : (is_string($validated['product_status'] ?? null) && $validated['product_status'] !== '' ? $validated['product_status'] : null);
-        $loanProductId = $this->loanProductIdByPublicId($validated['loan_product_public_id'] ?? null);
+        $loanProductId = $this->metrics->loanProductIdByPublicId($validated['loan_product_public_id'] ?? null);
         $premiumStatus = is_string($validated['premium_status'] ?? null) && $validated['premium_status'] !== '' ? $validated['premium_status'] : null;
         $claimStatus = is_string($validated['claim_status'] ?? null) && $validated['claim_status'] !== '' ? $validated['claim_status'] : null;
         $asOfDate = $to ?? now()->toDateString();
 
-        $portfolio = $this->portfolioOutstanding($agency, $currency, $asOfDate, $loanStatus, $loanProductId);
-        $par = $this->parBuckets($agency, $currency, $asOfDate, $loanStatus, $loanProductId);
-        $collections = $this->collections($agency, $currency, $from, $to, $loanStatus, $loanProductId);
+        $portfolio = $this->metrics->portfolioOutstanding($agency, $currency, $asOfDate, $loanStatus, $loanProductId);
+        $par = $this->metrics->parBuckets($agency, $currency, $asOfDate, $loanStatus, $loanProductId);
+        $collections = $this->metrics->collections($agency, $currency, $from, $to, $loanStatus, $loanProductId);
+        $activeLoanCount = $this->metrics->reportableLoanCount($agency, $currency, $loanStatus, $loanProductId);
+        $delinquentLoanCount = $this->metrics->delinquentLoanCount($agency, $currency, $asOfDate, $loanStatus, $loanProductId);
         $cashPosition = $this->dailyCashPosition($agency);
         $tellerVariances = $this->tellerVariances($agency, $from, $to);
         $premiums = $this->insurancePremiums($agency, $from, $to, $premiumStatus);
         $claims = $this->claimsByStatus($agency, $claimStatus);
         $sections = $this->dashboardSections([
             ['key' => 'portfolio_outstanding_minor', 'label' => 'Portfolio outstanding', 'value' => $portfolio],
+            ['key' => 'active_loan_count', 'label' => 'Active loans', 'value' => $activeLoanCount],
+            ['key' => 'delinquent_loan_count', 'label' => 'Delinquent loans', 'value' => $delinquentLoanCount],
             ['key' => 'par_30_outstanding_at_risk_minor', 'label' => 'PAR 30', 'value' => $par['par30_outstanding_at_risk_minor']],
             ['key' => 'par_60_outstanding_at_risk_minor', 'label' => 'PAR 60', 'value' => $par['par60_outstanding_at_risk_minor']],
             ['key' => 'par_90_outstanding_at_risk_minor', 'label' => 'PAR 90', 'value' => $par['par90_outstanding_at_risk_minor']],
@@ -106,6 +111,8 @@ final class DashboardWorkflow extends BaseController
                 'claims_by_status' => 'insurance_claims',
             ],
             'portfolio_outstanding_minor' => $portfolio,
+            'active_loan_count' => $activeLoanCount,
+            'delinquent_loan_count' => $delinquentLoanCount,
             'par' => $par,
             'collections' => $collections,
             'cash_position_minor' => $cashPosition,
@@ -134,9 +141,9 @@ final class DashboardWorkflow extends BaseController
         $to = is_string($validated['period_ends_on'] ?? null) && $validated['period_ends_on'] !== '' ? $validated['period_ends_on'] : null;
         $asOfDate = $to ?? now()->toDateString();
 
-        $portfolio = $this->portfolioOutstanding(null, $currency, $asOfDate, null, null);
-        $par = $this->parBuckets(null, $currency, $asOfDate, null, null);
-        $collections = $this->collections(null, $currency, $from, $to, null, null);
+        $portfolio = $this->metrics->portfolioOutstanding(null, $currency, $asOfDate, null, null);
+        $par = $this->metrics->parBuckets(null, $currency, $asOfDate, null, null);
+        $collections = $this->metrics->collections(null, $currency, $from, $to, null, null);
         $premiumTotals = $this->insurancePremiums(null, $from, $to, null);
         $claimCounts = $this->claimsByStatus(null, null);
         $sections = $this->dashboardSections([
@@ -183,6 +190,206 @@ final class DashboardWorkflow extends BaseController
         ], 'Executive dashboard', ['pagination' => $pagination['pagination']]);
     }
 
+    public function timeseries(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondUnauthorized();
+        }
+        if (! $this->canViewOperational($actor)) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'agency_public_id' => ['sometimes', 'nullable', 'string', 'exists:agencies,public_id'],
+            'currency' => ['sometimes', 'string', 'size:3'],
+            'period' => ['sometimes', 'nullable', 'string', Rule::in(['today', 'week', 'month', 'year'])],
+            'granularity' => ['sometimes', 'nullable', 'string', Rule::in(['hour', 'day', 'week', 'month'])],
+            'period_starts_on' => ['sometimes', 'nullable', 'date'],
+            'period_ends_on' => ['sometimes', 'nullable', 'date', 'after_or_equal:period_starts_on'],
+            'loan_product_public_id' => ['sometimes', 'nullable', 'string', 'exists:loan_products,public_id'],
+            'loan_status' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'product_status' => ['sometimes', 'nullable', 'string', 'max:32'],
+        ])->validate();
+
+        try {
+            $agency = $this->resolveAgencyScope($actor, $validated['agency_public_id'] ?? null);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondForbidden($exception->getMessage());
+        }
+
+        $currency = strtoupper((string) ($validated['currency'] ?? 'XAF'));
+        $period = $this->stringOrNull($validated['period'] ?? null);
+        ['from' => $from, 'to' => $to] = $this->resolvePeriod($period, $validated['period_starts_on'] ?? null, $validated['period_ends_on'] ?? null);
+        $granularity = $this->stringOrNull($validated['granularity'] ?? null) ?? $this->metrics->defaultGranularity($period);
+        $loanStatus = $this->resolveLoanStatus($validated);
+        $loanProductId = $this->metrics->loanProductIdByPublicId($validated['loan_product_public_id'] ?? null);
+
+        $buckets = $this->metrics->buildBuckets($from, $to, $granularity, 501);
+        if (count($buckets) > 500) {
+            return $this->respondUnprocessable('The requested period and granularity produce too many buckets (max 500). Narrow the range or use a coarser granularity.');
+        }
+
+        $points = [];
+        foreach ($buckets as $bucket) {
+            $points[] = [
+                'bucket' => $bucket['label'],
+                'balance_minor' => $this->metrics->portfolioBalanceAsOf($agency, $currency, $bucket['as_of'], $loanStatus, $loanProductId),
+                'collection_minor' => $this->metrics->windowedCollectionMinor($agency, $currency, $bucket['start'], $bucket['end'], $loanStatus, $loanProductId),
+            ];
+        }
+
+        return $this->respondSuccess([
+            'agency_public_id' => $agency?->public_id,
+            'currency' => $currency,
+            'period' => ['from' => $from, 'to' => $to],
+            'granularity' => $granularity,
+            'loan_product_public_id' => $validated['loan_product_public_id'] ?? null,
+            'loan_status' => $loanStatus,
+            'points' => $points,
+        ], 'Operational dashboard timeseries');
+    }
+
+    public function agenciesPerformance(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondUnauthorized();
+        }
+        if (! $this->canViewOperational($actor)) {
+            return $this->respondForbidden();
+        }
+
+        $validated = Validator::make($request->all(), [
+            'currency' => ['sometimes', 'string', 'size:3'],
+            'period' => ['sometimes', 'nullable', 'string', Rule::in(['today', 'week', 'month', 'year'])],
+            'period_starts_on' => ['sometimes', 'nullable', 'date'],
+            'period_ends_on' => ['sometimes', 'nullable', 'date', 'after_or_equal:period_starts_on'],
+            'agency_public_id' => ['sometimes', 'nullable', 'string', 'exists:agencies,public_id'],
+        ])->validate();
+
+        try {
+            $scope = $this->resolveAgencyScope($actor, $validated['agency_public_id'] ?? null);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondForbidden($exception->getMessage());
+        }
+
+        $currency = strtoupper((string) ($validated['currency'] ?? 'XAF'));
+        $period = $this->stringOrNull($validated['period'] ?? null);
+        ['from' => $from, 'to' => $to] = $this->resolvePeriod($period, $validated['period_starts_on'] ?? null, $validated['period_ends_on'] ?? null);
+        $asOfDate = $to;
+
+        $agencies = $scope instanceof Agency
+            ? collect([$scope])
+            : Agency::query()->get()->sortBy('code')->values();
+
+        $rows = [];
+        foreach ($agencies as $agency) {
+            $rows[] = $this->agencyPerformanceRow($agency, $currency, $from, $to, $asOfDate);
+        }
+
+        return $this->respondSuccess([
+            'currency' => $currency,
+            'period' => ['from' => $from, 'to' => $to],
+            'agencies' => $rows,
+        ], 'Agency performance dashboard');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function agencyPerformanceRow(Agency $agency, string $currency, string $from, string $to, string $asOfDate): array
+    {
+        $delinquentLoanIds = $this->metrics->delinquentLoanIds($agency, $currency, $asOfDate, null, null);
+        $bestAgent = $this->bestCollector($agency, $currency, $from, $to);
+
+        return [
+            'agency_public_id' => $agency->public_id,
+            'agency_code' => $agency->code,
+            'agency_name' => $agency->name,
+            'collections_minor' => $this->metrics->postedCollectionMinor($agency, $currency, $from, $to, null, null),
+            'loans_count' => $this->metrics->reportableLoanCount($agency, $currency, null, null),
+            'loans_amount_minor' => $this->metrics->portfolioOutstanding($agency, $currency, $asOfDate, null, null),
+            'delinquent_count' => count($delinquentLoanIds),
+            'delinquent_amount_minor' => $this->metrics->outstandingForLoanIds($delinquentLoanIds, $asOfDate),
+            'best_agent_public_id' => $bestAgent['public_id'],
+            'best_agent_name' => $bestAgent['name'],
+        ];
+    }
+
+    /**
+     * Top collector (staff user) by posted repayment allocations in the period.
+     *
+     * @return array{public_id: ?string, name: ?string}
+     */
+    private function bestCollector(Agency $agency, string $currency, string $from, string $to): array
+    {
+        $top = DB::table('loan_repayment_allocations as alloc')
+            ->join('loan_repayments as r', 'r.id', '=', 'alloc.loan_repayment_id')
+            ->where('r.agency_id', $agency->id)
+            ->where('r.status', 'posted')
+            ->where('r.currency', $currency)
+            ->whereIn('alloc.component', ['principal', 'interest', 'penalty'])
+            ->whereNotNull('r.posted_by_user_id')
+            ->whereDate('r.paid_on', '>=', $from)
+            ->whereDate('r.paid_on', '<=', $to)
+            ->groupBy('r.posted_by_user_id')
+            ->select('r.posted_by_user_id')
+            ->selectRaw('SUM(alloc.amount_minor) AS total_minor')
+            ->orderByDesc('total_minor')
+            ->first();
+
+        if (! is_object($top) || ! is_numeric($top->posted_by_user_id ?? null)) {
+            return ['public_id' => null, 'name' => null];
+        }
+
+        $user = User::query()->whereKey((int) $top->posted_by_user_id)->first(['public_id', 'name']);
+        if (! $user instanceof User) {
+            return ['public_id' => null, 'name' => null];
+        }
+
+        return ['public_id' => $user->public_id, 'name' => $user->name];
+    }
+
+    private function canViewOperational(User $actor): bool
+    {
+        return $actor->hasRole('platform-admin')
+            || $actor->hasRole('agency-manager')
+            || $actor->hasPermissionTo('accounting.audit.view');
+    }
+
+    private function stringOrNull(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function resolveLoanStatus(array $validated): ?string
+    {
+        return $this->stringOrNull($validated['loan_status'] ?? null)
+            ?? $this->stringOrNull($validated['product_status'] ?? null);
+    }
+
+    /**
+     * Resolve the effective [from, to] window: explicit dates win per-side, with
+     * gaps filled from the named period (default month). Always returns from<=to.
+     *
+     * @return array{from:string, to:string}
+     */
+    private function resolvePeriod(?string $period, mixed $explicitFrom, mixed $explicitTo): array
+    {
+        $window = $this->metrics->periodWindow($period);
+        $from = $this->stringOrNull($explicitFrom) ?? $window['from'];
+        $to = $this->stringOrNull($explicitTo) ?? $window['to'];
+        if ($from > $to) {
+            $to = $from;
+        }
+
+        return ['from' => $from, 'to' => $to];
+    }
+
     private function resolveAgencyScope(User $actor, mixed $requestedAgencyPublicId): ?Agency
     {
         $isPlatformAdmin = $actor->hasRole('platform-admin');
@@ -210,31 +417,6 @@ final class DashboardWorkflow extends BaseController
         }
 
         return $agency;
-    }
-
-    private function portfolioOutstanding(?Agency $agency, string $currency, string $asOfDate, ?string $loanStatus, ?int $loanProductId): int
-    {
-        $loanIds = $this->reportableLoanIds($agency, $currency, $loanStatus, $loanProductId);
-        if ($loanIds === []) {
-            return 0;
-        }
-
-        $due = $this->numericValue(DB::table('loan_schedule_lines')
-            ->join('loan_schedule_snapshots', 'loan_schedule_snapshots.id', '=', 'loan_schedule_lines.loan_schedule_snapshot_id')
-            ->whereIn('loan_schedule_snapshots.loan_id', $loanIds)
-            ->where('loan_schedule_snapshots.status', 'active')
-            ->whereDate('loan_schedule_lines.due_date', '<=', $asOfDate)
-            ->selectRaw('COALESCE(SUM(loan_schedule_lines.principal_minor + loan_schedule_lines.interest_minor + loan_schedule_lines.penalty_minor), 0) AS total_minor')
-            ->value('total_minor'));
-
-        $paid = $this->numericValue(DB::table('loan_repayment_allocations')
-            ->join('loan_repayments', 'loan_repayments.id', '=', 'loan_repayment_allocations.loan_repayment_id')
-            ->whereIn('loan_repayments.loan_id', $loanIds)
-            ->where('loan_repayments.status', 'posted')
-            ->whereIn('loan_repayment_allocations.component', ['principal', 'interest', 'penalty'])
-            ->sum('loan_repayment_allocations.amount_minor'));
-
-        return max(0, $due - $paid);
     }
 
     private function numericValue(mixed $value): int
@@ -292,144 +474,6 @@ final class DashboardWorkflow extends BaseController
                 'total' => $total,
                 'last_page' => $lastPage,
             ],
-        ];
-    }
-
-    /**
-     * @return array{
-     *     par30_outstanding_at_risk_minor:int,
-     *     par60_outstanding_at_risk_minor:int,
-     *     par90_outstanding_at_risk_minor:int,
-     * }
-     */
-    private function parBuckets(?Agency $agency, string $currency, string $asOfDate, ?string $loanStatus, ?int $loanProductId): array
-    {
-        return [
-            'par30_outstanding_at_risk_minor' => $this->portfolioAtRiskOutstanding($agency, $currency, $asOfDate, 30, $loanStatus, $loanProductId),
-            'par60_outstanding_at_risk_minor' => $this->portfolioAtRiskOutstanding($agency, $currency, $asOfDate, 60, $loanStatus, $loanProductId),
-            'par90_outstanding_at_risk_minor' => $this->portfolioAtRiskOutstanding($agency, $currency, $asOfDate, 90, $loanStatus, $loanProductId),
-        ];
-    }
-
-    private function portfolioAtRiskOutstanding(?Agency $agency, string $currency, string $asOfDate, int $daysPastDue, ?string $loanStatus, ?int $loanProductId): int
-    {
-        $loanIds = $this->reportableLoanIds($agency, $currency, $loanStatus, $loanProductId);
-        if ($loanIds === []) {
-            return 0;
-        }
-        $cutoff = CarbonImmutable::parse($asOfDate)->subDays($daysPastDue)->toDateString();
-
-        $overdueLoanIds = DB::table('loan_schedule_lines')
-            ->join('loan_schedule_snapshots', 'loan_schedule_snapshots.id', '=', 'loan_schedule_lines.loan_schedule_snapshot_id')
-            ->whereIn('loan_schedule_snapshots.loan_id', $loanIds)
-            ->where('loan_schedule_snapshots.status', 'active')
-            ->whereDate('loan_schedule_lines.due_date', '<', $cutoff)
-            ->select('loan_schedule_snapshots.loan_id')
-            ->distinct()
-            ->pluck('loan_schedule_snapshots.loan_id')
-            ->filter(fn (mixed $id): bool => is_numeric($id))
-            ->map(fn (mixed $id): int => (int) $id)
-            ->values()
-            ->all();
-        $overdueLoanIds = array_values($overdueLoanIds);
-
-        if ($overdueLoanIds === []) {
-            return 0;
-        }
-
-        return $this->outstandingForLoanIds($overdueLoanIds, $asOfDate);
-    }
-
-    /**
-     * @return list<int>
-     */
-    private function reportableLoanIds(?Agency $agency, string $currency, ?string $loanStatus, ?int $loanProductId): array
-    {
-        $query = DB::table('loans')
-            ->where('currency', $currency)
-            ->whereIn('status', [Loan::STATUS_DISBURSED, Loan::STATUS_ACTIVE, Loan::STATUS_RESCHEDULED]);
-        if ($agency instanceof Agency) {
-            $query->where('agency_id', $agency->id);
-        }
-        if ($loanStatus !== null) {
-            $query->where('status', $loanStatus);
-        }
-        if ($loanProductId !== null) {
-            $query->where('loan_product_id', $loanProductId);
-        }
-
-        $values = $query->pluck('id')->all();
-        $ids = [];
-        foreach ($values as $value) {
-            if (is_numeric($value)) {
-                $ids[] = (int) $value;
-            }
-        }
-
-        return array_values(array_unique($ids));
-    }
-
-    /**
-     * @return array{
-     *     expected_collection_minor:int,
-     *     actual_collection_minor:int,
-     *     performance_ratio:?float,
-     * }
-     */
-    private function collections(?Agency $agency, string $currency, ?string $from, ?string $to, ?string $loanStatus, ?int $loanProductId): array
-    {
-        $expectedQuery = DB::table('loan_schedule_lines')
-            ->join('loan_schedule_snapshots', 'loan_schedule_snapshots.id', '=', 'loan_schedule_lines.loan_schedule_snapshot_id')
-            ->join('loans', 'loans.id', '=', 'loan_schedule_snapshots.loan_id')
-            ->where('loan_schedule_snapshots.status', 'active')
-            ->where('loans.currency', $currency)
-            ->whereIn('loans.status', [Loan::STATUS_DISBURSED, Loan::STATUS_ACTIVE, Loan::STATUS_RESCHEDULED]);
-        if ($agency instanceof Agency) {
-            $expectedQuery->where('loans.agency_id', $agency->id);
-        }
-        if ($loanStatus !== null) {
-            $expectedQuery->where('loans.status', $loanStatus);
-        }
-        if ($loanProductId !== null) {
-            $expectedQuery->where('loans.loan_product_id', $loanProductId);
-        }
-        if ($from !== null) {
-            $expectedQuery->whereDate('loan_schedule_lines.due_date', '>=', $from);
-        }
-        if ($to !== null) {
-            $expectedQuery->whereDate('loan_schedule_lines.due_date', '<=', $to);
-        }
-        $expected = $this->numericValue($expectedQuery
-            ->selectRaw('COALESCE(SUM(loan_schedule_lines.principal_minor + loan_schedule_lines.interest_minor + loan_schedule_lines.penalty_minor), 0) AS total_minor')
-            ->value('total_minor'));
-
-        $actualQuery = DB::table('loan_repayment_allocations')
-            ->join('loan_repayments', 'loan_repayments.id', '=', 'loan_repayment_allocations.loan_repayment_id')
-            ->join('loans', 'loans.id', '=', 'loan_repayments.loan_id')
-            ->where('loan_repayments.status', 'posted')
-            ->where('loan_repayments.currency', $currency)
-            ->whereIn('loan_repayment_allocations.component', ['principal', 'interest', 'penalty']);
-        if ($agency instanceof Agency) {
-            $actualQuery->where('loans.agency_id', $agency->id);
-        }
-        if ($loanStatus !== null) {
-            $actualQuery->where('loans.status', $loanStatus);
-        }
-        if ($loanProductId !== null) {
-            $actualQuery->where('loans.loan_product_id', $loanProductId);
-        }
-        if ($from !== null) {
-            $actualQuery->whereDate('loan_repayments.paid_on', '>=', $from);
-        }
-        if ($to !== null) {
-            $actualQuery->whereDate('loan_repayments.paid_on', '<=', $to);
-        }
-        $actual = $this->numericValue($actualQuery->sum('loan_repayment_allocations.amount_minor'));
-
-        return [
-            'expected_collection_minor' => $expected,
-            'actual_collection_minor' => $actual,
-            'performance_ratio' => $expected > 0 ? round($actual / $expected, 6) : null,
         ];
     }
 
@@ -586,40 +630,6 @@ final class DashboardWorkflow extends BaseController
         }
 
         return $byStatus;
-    }
-
-    /**
-     * @param  list<int>  $loanIds
-     */
-    private function outstandingForLoanIds(array $loanIds, string $asOfDate): int
-    {
-        $due = $this->numericValue(DB::table('loan_schedule_lines')
-            ->join('loan_schedule_snapshots', 'loan_schedule_snapshots.id', '=', 'loan_schedule_lines.loan_schedule_snapshot_id')
-            ->whereIn('loan_schedule_snapshots.loan_id', $loanIds)
-            ->where('loan_schedule_snapshots.status', 'active')
-            ->whereDate('loan_schedule_lines.due_date', '<=', $asOfDate)
-            ->selectRaw('COALESCE(SUM(loan_schedule_lines.principal_minor + loan_schedule_lines.interest_minor + loan_schedule_lines.penalty_minor), 0) AS total_minor')
-            ->value('total_minor'));
-
-        $paid = $this->numericValue(DB::table('loan_repayment_allocations')
-            ->join('loan_repayments', 'loan_repayments.id', '=', 'loan_repayment_allocations.loan_repayment_id')
-            ->whereIn('loan_repayments.loan_id', $loanIds)
-            ->where('loan_repayments.status', 'posted')
-            ->whereIn('loan_repayment_allocations.component', ['principal', 'interest', 'penalty'])
-            ->sum('loan_repayment_allocations.amount_minor'));
-
-        return max(0, $due - $paid);
-    }
-
-    private function loanProductIdByPublicId(mixed $publicId): ?int
-    {
-        if (! is_string($publicId) || $publicId === '') {
-            return null;
-        }
-
-        $id = DB::table('loan_products')->where('public_id', $publicId)->value('id');
-
-        return is_numeric($id) ? (int) $id : null;
     }
 
     private function dataFreshnessAt(): string
