@@ -3693,6 +3693,7 @@ final class Module4CreditLoansTest extends TestCase
         self::assertIsArray($charges);
         foreach ($charges as $charge) {
             if (is_array($charge) && ($charge['charge_type'] ?? null) === $type) {
+                /** @var array<string, mixed> $charge */
                 return $charge;
             }
         }

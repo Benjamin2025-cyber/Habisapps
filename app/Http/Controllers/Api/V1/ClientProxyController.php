@@ -119,7 +119,7 @@ final class ClientProxyController extends BaseController
             return $this->respondUnprocessable('Customer account mandate scope is invalid for this client.');
         }
 
-        $record = ClientProxy::query()->create([
+        $record = ClientProxy::query()->create(array_merge($this->identityAttributes($request), [
             'public_id' => (string) Str::ulid(),
             'agency_id' => $client->agency_id,
             'client_id' => $client->id,
@@ -143,7 +143,7 @@ final class ClientProxyController extends BaseController
             'document_id' => is_int($documentId) ? $documentId : null,
             'back_document_id' => is_int($backDocumentId) ? $backDocumentId : null,
             'created_by_user_id' => $actor->id,
-        ]);
+        ]));
 
         $this->securityAudit->record('crm.proxy.created', actor: $actor, subject: $record, properties: [
             'client_public_id' => $client->public_id,
@@ -209,6 +209,19 @@ final class ClientProxyController extends BaseController
 
         $attributes = $request->safe()->only([
             'proxy_full_name',
+            'proxy_first_name',
+            'proxy_last_name',
+            'proxy_middle_name',
+            'proxy_date_of_birth',
+            'proxy_place_of_birth',
+            'proxy_identity_issued_on',
+            'proxy_identity_issued_at',
+            'proxy_father_name',
+            'proxy_mother_name',
+            'proxy_address_line_1',
+            'proxy_address_line_2',
+            'proxy_business_address_line_1',
+            'proxy_business_address_line_2',
             'proxy_phone_number',
             'proxy_email',
             'proxy_id_document_type',
@@ -258,7 +271,25 @@ final class ClientProxyController extends BaseController
         }
 
         if ($proxy->verification_status === ClientProxy::VERIFICATION_VERIFIED
-            && array_intersect(array_keys($attributes), ['proxy_full_name', 'proxy_id_document_type', 'proxy_id_document_number', 'document_id', 'back_document_id', 'customer_account_id', 'operation_types', 'max_amount_minor']) !== []) {
+            && array_intersect(array_keys($attributes), [
+                'proxy_full_name',
+                'proxy_first_name',
+                'proxy_last_name',
+                'proxy_middle_name',
+                'proxy_date_of_birth',
+                'proxy_place_of_birth',
+                'proxy_identity_issued_on',
+                'proxy_identity_issued_at',
+                'proxy_father_name',
+                'proxy_mother_name',
+                'proxy_id_document_type',
+                'proxy_id_document_number',
+                'document_id',
+                'back_document_id',
+                'customer_account_id',
+                'operation_types',
+                'max_amount_minor',
+            ]) !== []) {
             $attributes['verification_status'] = ClientProxy::VERIFICATION_PENDING_REVIEW;
             $attributes['verified_at'] = null;
             $attributes['verified_by_user_id'] = null;
@@ -403,6 +434,30 @@ final class ClientProxyController extends BaseController
     private function belongsToClient(ClientProxy $proxy, Client $client): bool
     {
         return $proxy->client_id === $client->id && $proxy->agency_id === $client->agency_id;
+    }
+
+    /**
+     * Proxy personal identity columns sourced from the request (GHI-010C).
+     *
+     * @return array<string, mixed>
+     */
+    private function identityAttributes(Request $request): array
+    {
+        return [
+            'proxy_first_name' => $request->input('proxy_first_name'),
+            'proxy_last_name' => $request->input('proxy_last_name'),
+            'proxy_middle_name' => $request->input('proxy_middle_name'),
+            'proxy_date_of_birth' => $request->input('proxy_date_of_birth'),
+            'proxy_place_of_birth' => $request->input('proxy_place_of_birth'),
+            'proxy_identity_issued_on' => $request->input('proxy_identity_issued_on'),
+            'proxy_identity_issued_at' => $request->input('proxy_identity_issued_at'),
+            'proxy_father_name' => $request->input('proxy_father_name'),
+            'proxy_mother_name' => $request->input('proxy_mother_name'),
+            'proxy_address_line_1' => $request->input('proxy_address_line_1'),
+            'proxy_address_line_2' => $request->input('proxy_address_line_2'),
+            'proxy_business_address_line_1' => $request->input('proxy_business_address_line_1'),
+            'proxy_business_address_line_2' => $request->input('proxy_business_address_line_2'),
+        ];
     }
 
     private function resolveDocumentId(Client $client, mixed $publicId): int|bool|null

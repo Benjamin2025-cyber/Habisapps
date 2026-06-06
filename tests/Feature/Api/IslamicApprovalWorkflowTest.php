@@ -8,6 +8,7 @@ use App\Application\IslamicFinance\IslamicApprovalStateMachine;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -842,7 +843,7 @@ final class IslamicApprovalWorkflowTest extends TestCase
             ->where('family_code', $familyCode)
             ->where('status', 'approved')
             ->where('effective_from', '<=', now()->toDateString())
-            ->where(function ($q): void {
+            ->where(function (Builder $q): void {
                 $q->whereNull('effective_to')->orWhere('effective_to', '>', now()->toDateString());
             })
             ->exists();

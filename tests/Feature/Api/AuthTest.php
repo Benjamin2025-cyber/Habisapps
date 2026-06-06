@@ -8,6 +8,7 @@ use App\Models\OtpChallenge;
 use App\Models\User;
 use App\Support\Otp\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -203,7 +204,7 @@ final class AuthTest extends TestCase
 
         app(OtpService::class)->issueActivationChallenge($user, request());
 
-        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer secret-token')
+        Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer secret-token')
             && $request->data()['to'] === '+237699000019'
             && $request->data()['sender'] === 'HABIS'
             && str_contains((string) $request->data()['message'], '123456'));

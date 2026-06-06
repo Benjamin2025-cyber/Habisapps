@@ -27,6 +27,7 @@ final class StoreClientRequest extends FormRequest
             'collection_agent_public_id' => ['nullable', 'string', 'exists:users,public_id'],
             'sector_public_id' => ['nullable', 'string', 'exists:sectors,public_id'],
             'sub_sector_public_id' => ['nullable', 'string', 'exists:sub_sectors,public_id'],
+            'civility' => ['nullable', 'string', Rule::in(Client::CIVILITIES)],
             'first_name' => ['required', ...$safeText, 'max:128'],
             'last_name' => ['required', ...$safeText, 'max:128'],
             'middle_name' => ['nullable', ...$safeText, 'max:128'],

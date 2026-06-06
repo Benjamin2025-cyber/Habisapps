@@ -22,8 +22,23 @@ final class UpdateClientProxyRequest extends FormRequest
     /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
+        $safeText = ['string', 'not_regex:/[<>]/'];
+
         return [
             'proxy_full_name' => ['sometimes', 'string', 'max:255'],
+            'proxy_first_name' => ['sometimes', 'nullable', ...$safeText, 'max:128'],
+            'proxy_last_name' => ['sometimes', 'nullable', ...$safeText, 'max:128'],
+            'proxy_middle_name' => ['sometimes', 'nullable', ...$safeText, 'max:128'],
+            'proxy_date_of_birth' => ['sometimes', 'nullable', 'date', 'before_or_equal:today'],
+            'proxy_place_of_birth' => ['sometimes', 'nullable', ...$safeText, 'max:255'],
+            'proxy_identity_issued_on' => ['sometimes', 'nullable', 'date', 'before_or_equal:today'],
+            'proxy_identity_issued_at' => ['sometimes', 'nullable', ...$safeText, 'max:255'],
+            'proxy_father_name' => ['sometimes', 'nullable', ...$safeText, 'max:128'],
+            'proxy_mother_name' => ['sometimes', 'nullable', ...$safeText, 'max:128'],
+            'proxy_address_line_1' => ['sometimes', 'nullable', ...$safeText, 'max:255'],
+            'proxy_address_line_2' => ['sometimes', 'nullable', ...$safeText, 'max:255'],
+            'proxy_business_address_line_1' => ['sometimes', 'nullable', ...$safeText, 'max:255'],
+            'proxy_business_address_line_2' => ['sometimes', 'nullable', ...$safeText, 'max:255'],
             'proxy_phone_number' => ['sometimes', 'nullable', 'string', 'max:32'],
             'proxy_email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'proxy_id_document_type' => ['sometimes', 'nullable', 'string', 'max:64', Rule::in(IdentityDocumentTypeCatalog::keys())],

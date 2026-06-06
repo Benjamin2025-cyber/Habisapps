@@ -210,13 +210,18 @@ Acceptance criteria:
 Run focused tests first:
 
 ```bash
-php artisan test tests/Feature/Api/DashboardsTest.php
-php artisan test tests/Feature/Api/StaffUserManagementTest.php
-php artisan test tests/Feature/Api/Module4CreditLoansTest.php --filter loans
+php artisan test --parallel --recreate-databases tests/Feature/Api/DashboardsTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/StaffUserManagementTest.php
+php artisan test --parallel --recreate-databases tests/Feature/Api/Module4CreditLoansTest.php --filter loans
 ```
 
 Then run the broader API suite if the dashboard helpers are significantly refactored:
 
 ```bash
-php artisan test tests/Feature/Api
+php artisan test --parallel --recreate-databases tests/Feature/Api
 ```
+
+Test-running notes:
+
+- Put `--parallel` before any path argument.
+- Do not run multiple `php artisan test --parallel --recreate-databases ...` commands concurrently; database recreation can collide.

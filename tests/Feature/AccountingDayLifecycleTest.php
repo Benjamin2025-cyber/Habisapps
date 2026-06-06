@@ -399,6 +399,22 @@ final class AccountingDayLifecycleTest extends TestCase
         $duplicate->assertJsonPath('data.status', AccountingDay::STATUS_CLOSED);
     }
 
+    public function test_close_control_batch_runs_follow_execution_priority(): void
+    {
+        $agency = $this->createAgency('AD-PRIORITY-CLOSE');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION', 20);
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION', 1);
+        $this->setAccountingDayClosing($day);
+
+        $close = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/close");
+
+        $this->assertJsonSuccess($close);
+        $close->assertJsonPath('data.close_summary.close_control_batches.0.procedure_code', 'cash_close_verification');
+        $close->assertJsonPath('data.close_summary.close_control_batches.1.procedure_code', 'accounting_close_verification');
+    }
+
     public function test_close_control_batch_run_cannot_be_manually_marked_succeeded(): void
     {
         $agency = $this->createAgency('AD-SPOOF');
@@ -588,7 +604,7 @@ final class AccountingDayLifecycleTest extends TestCase
         return $user;
     }
 
-    private function createBatchProcedure(string $code): string
+    private function createBatchProcedure(string $code, ?int $executionPriority = null): string
     {
         $publicId = (string) Str::ulid();
 
@@ -598,6 +614,7 @@ final class AccountingDayLifecycleTest extends TestCase
             'name' => $code,
             'status' => 'active',
             'schedule_type' => 'manual',
+            'execution_priority' => $executionPriority,
             'schedule_metadata' => '{}',
             'created_at' => now(),
             'updated_at' => now(),

@@ -28,6 +28,7 @@ final class UpdateClientRequest extends FormRequest
             'collection_agent_public_id' => ['sometimes', 'nullable', 'string', 'exists:users,public_id'],
             'sector_public_id' => ['sometimes', 'nullable', 'string', 'exists:sectors,public_id'],
             'sub_sector_public_id' => ['sometimes', 'nullable', 'string', 'exists:sub_sectors,public_id'],
+            'civility' => ['sometimes', 'nullable', 'string', Rule::in(Client::CIVILITIES)],
             'first_name' => ['sometimes', ...$safeText, 'max:128'],
             'last_name' => ['sometimes', ...$safeText, 'max:128'],
             'middle_name' => ['sometimes', 'nullable', ...$safeText, 'max:128'],

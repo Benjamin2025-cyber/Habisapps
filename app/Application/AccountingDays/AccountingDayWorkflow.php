@@ -431,6 +431,16 @@ final class AccountingDayWorkflow extends BaseController
             'accounting_close_verification',
             'cash_close_verification',
         ];
+        $proceduresByCode = $this->activeCloseControlProceduresByCode($controlCodes);
+        usort(
+            $controlCodes,
+            function (string $left, string $right) use ($proceduresByCode): int {
+                $priorityCompare = $this->closeControlSortValue($proceduresByCode[$left] ?? null, $left)
+                    <=> $this->closeControlSortValue($proceduresByCode[$right] ?? null, $right);
+
+                return $priorityCompare !== 0 ? $priorityCompare : strcmp($left, $right);
+            },
+        );
 
         $controls = [];
         $failedControls = [];
@@ -438,10 +448,7 @@ final class AccountingDayWorkflow extends BaseController
         $primaryRunId = null;
 
         foreach ($controlCodes as $index => $code) {
-            $procedureQuery = BatchProcedure::query()
-                ->where('status', BatchProcedure::STATUS_ACTIVE);
-            $procedureQuery->getQuery()->whereRaw('LOWER(REPLACE(code, ?, ?)) = ?', ['-', '_', $code]);
-            $procedure = $procedureQuery->first();
+            $procedure = $proceduresByCode[$code] ?? null;
 
             if (! $procedure instanceof BatchProcedure) {
                 $controls[] = [
@@ -519,6 +526,47 @@ final class AccountingDayWorkflow extends BaseController
             'run_public_ids' => $runPublicIds,
             'primary_run_id' => $primaryRunId,
         ];
+    }
+
+    /**
+     * @param  array<int, string>  $controlCodes
+     * @return array<string, BatchProcedure>
+     */
+    private function activeCloseControlProceduresByCode(array $controlCodes): array
+    {
+        $procedures = BatchProcedure::query()
+            ->where('status', BatchProcedure::STATUS_ACTIVE)
+            ->get();
+
+        $wanted = array_fill_keys($controlCodes, true);
+        $byCode = [];
+        foreach ($procedures as $procedure) {
+            $normalized = $this->normalizedProcedureCode($procedure->code);
+            if (isset($wanted[$normalized])) {
+                $byCode[$normalized] = $procedure;
+            }
+        }
+
+        return $byCode;
+    }
+
+    private function closeControlSortValue(?BatchProcedure $procedure, string $code): int
+    {
+        if ($procedure instanceof BatchProcedure && is_int($procedure->execution_priority)) {
+            return $procedure->execution_priority;
+        }
+
+        $metadata = $procedure instanceof BatchProcedure ? $procedure->schedule_metadata : null;
+        if (is_array($metadata) && is_numeric($metadata['execution_priority'] ?? null)) {
+            return (int) $metadata['execution_priority'];
+        }
+
+        return 65535 + (int) array_search($code, ['accounting_close_verification', 'cash_close_verification'], true);
+    }
+
+    private function normalizedProcedureCode(string $code): string
+    {
+        return strtolower(str_replace('-', '_', $code));
     }
 
     /**

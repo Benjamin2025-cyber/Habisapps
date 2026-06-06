@@ -119,6 +119,9 @@ final class SecurityAuditEventDescriptionTest extends TestCase
     /**
      * @return array<string, mixed>|null
      */
+    /**
+     * @return array<string, mixed>|null
+     */
     private function firstEventWhere(TestResponse $response, string $eventCode): ?array
     {
         $events = $response->json('data.events');
@@ -127,6 +130,7 @@ final class SecurityAuditEventDescriptionTest extends TestCase
         foreach ($events as $event) {
             self::assertIsArray($event);
             if (($event['event'] ?? null) === $eventCode) {
+                /** @var array<string, mixed> $event */
                 return $event;
             }
         }

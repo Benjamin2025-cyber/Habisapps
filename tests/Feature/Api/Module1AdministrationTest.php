@@ -9,6 +9,7 @@ use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\JournalEntry;
+use App\Models\OperationCode;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -797,6 +798,133 @@ final class Module1AdministrationTest extends TestCase
         $this->assertJsonError($overwriteResponse, 422, 'Completed batch runs cannot be changed.');
     }
 
+    public function test_batch_procedure_execution_priority_is_validated_persisted_and_serialized(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $created = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-priority-create')->plainTextToken])
+            ->postJson('/api/v1/batch-procedures', [
+                'code' => 'PRIORITY_CLOSE',
+                'name' => 'Priority Close',
+                'schedule_type' => 'daily',
+                'execution_priority' => 7,
+            ]);
+
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.execution_priority', 7);
+        $procedurePublicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $updated = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-priority-update')->plainTextToken])
+            ->patchJson('/api/v1/batch-procedures/'.$procedurePublicId, [
+                'execution_priority' => 3,
+            ]);
+
+        $this->assertJsonSuccess($updated);
+        $updated->assertJsonPath('data.execution_priority', 3);
+
+        $invalid = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-priority-invalid')->plainTextToken])
+            ->postJson('/api/v1/batch-procedures', [
+                'code' => 'INVALID_PRIORITY_CLOSE',
+                'name' => 'Invalid Priority Close',
+                'execution_priority' => 65536,
+            ]);
+
+        $invalid->assertJsonValidationErrors(['execution_priority']);
+    }
+
+    public function test_batch_procedure_derives_execution_priority_from_legacy_schedule_metadata(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $created = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-priority-metadata-create')->plainTextToken])
+            ->postJson('/api/v1/batch-procedures', [
+                'code' => 'METADATA_PRIORITY_CLOSE',
+                'name' => 'Metadata Priority Close',
+                'schedule_metadata' => ['execution_priority' => 12],
+            ]);
+
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.execution_priority', 12);
+        $procedurePublicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $updated = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-priority-metadata-update')->plainTextToken])
+            ->patchJson('/api/v1/batch-procedures/'.$procedurePublicId, [
+                'schedule_metadata' => ['execution_priority' => 9],
+            ]);
+
+        $this->assertJsonSuccess($updated);
+        $updated->assertJsonPath('data.execution_priority', 9);
+    }
+
+    public function test_batch_procedure_operation_codes_can_be_attached_detached_and_serialized(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $firstOperation = $this->createOperationCode('batch_cash_deposit', 'Batch Cash Deposit');
+        $secondOperation = $this->createOperationCode('batch_cash_withdrawal', 'Batch Cash Withdrawal');
+
+        $created = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-op-create')->plainTextToken])
+            ->postJson('/api/v1/batch-procedures', [
+                'code' => 'OPS_CLOSE',
+                'name' => 'Operations Close',
+                'operation_code_public_ids' => [$firstOperation['public_id']],
+            ]);
+
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.operation_codes.0.public_id', $firstOperation['public_id']);
+        $created->assertJsonPath('data.operation_codes.0.code', 'batch_cash_deposit');
+        $created->assertJsonPath('data.operation_codes.0.attachment_status', 'active');
+        $procedurePublicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        $attached = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-op-attach')->plainTextToken])
+            ->postJson('/api/v1/batch-procedures/'.$procedurePublicId.'/operation-codes', [
+                'operation_code_public_ids' => [$secondOperation['public_id']],
+            ]);
+
+        $attachedResponse = $this->assertJsonSuccess($attached);
+        $attachedOperationCodes = $attachedResponse->json('data.operation_codes');
+        self::assertIsArray($attachedOperationCodes);
+        $operationCodes = collect($attachedOperationCodes)->pluck('code')->values()->all();
+        self::assertContains('batch_cash_deposit', $operationCodes);
+        self::assertContains('batch_cash_withdrawal', $operationCodes);
+
+        $detached = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-op-detach')->plainTextToken])
+            ->deleteJson('/api/v1/batch-procedures/'.$procedurePublicId.'/operation-codes/'.$firstOperation['public_id']);
+
+        $detachedResponse = $this->assertJsonSuccess($detached);
+        $detachedOperationCodes = $detachedResponse->json('data.operation_codes');
+        self::assertIsArray($detachedOperationCodes);
+        $remainingOperationCodes = collect($detachedOperationCodes)->pluck('code')->values()->all();
+        self::assertNotContains('batch_cash_deposit', $remainingOperationCodes);
+        self::assertContains('batch_cash_withdrawal', $remainingOperationCodes);
+    }
+
+    public function test_batch_procedure_rejects_inactive_attached_operation_codes(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $inactiveOperation = $this->createOperationCode('batch_inactive_operation', 'Batch Inactive Operation', OperationCode::STATUS_INACTIVE);
+
+        $response = $this
+            ->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('batch-op-inactive')->plainTextToken])
+            ->postJson('/api/v1/batch-procedures', [
+                'code' => 'INACTIVE_OPS_CLOSE',
+                'name' => 'Inactive Operations Close',
+                'operation_code_public_ids' => [$inactiveOperation['public_id']],
+            ]);
+
+        $response->assertJsonValidationErrors(['operation_code_public_ids']);
+        $this->assertDatabaseMissing('batch_procedure_operation_codes', [
+            'operation_code_id' => $inactiveOperation['id'],
+        ]);
+    }
+
     public function test_batch_execution_rejects_missing_handler_and_inactive_procedure(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -1527,6 +1655,31 @@ final class Module1AdministrationTest extends TestCase
             'code' => $code,
             'name' => $name,
             'public_id' => is_object($agency) && is_string($agency->public_id) ? $agency->public_id : '',
+        ];
+    }
+
+    /**
+     * @return array{id:int, public_id:string}
+     */
+    private function createOperationCode(string $code, string $label, string $status = OperationCode::STATUS_ACTIVE): array
+    {
+        $id = DB::table('operation_codes')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => $code,
+            'label' => $label,
+            'module' => 'cash',
+            'operation_type' => 'cash',
+            'direction' => 'debit',
+            'status' => $status,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $operationCode = DB::table('operation_codes')->where('id', $id)->first(['public_id']);
+
+        return [
+            'id' => $id,
+            'public_id' => is_object($operationCode) && is_string($operationCode->public_id) ? $operationCode->public_id : '',
         ];
     }
 

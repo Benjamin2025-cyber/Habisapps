@@ -294,8 +294,8 @@ final class HrPayrollTest extends TestCase
 
         // Snapshot of formula set is persisted on run.
         $runRow = DB::table('hr_payroll_runs')->where('public_id', $runPublicId)->first();
-        self::assertIsObject($runRow);
-        $snapshot = json_decode((string) (((array) $runRow)['formula_snapshot'] ?? '{}'), true);
+        self::assertNotNull($runRow);
+        $snapshot = json_decode((string) ($runRow->formula_snapshot ?? '{}'), true);
         self::assertIsArray($snapshot);
         self::assertSame('CM-CNPS-2026', $snapshot['formula_set_code'] ?? null);
     }

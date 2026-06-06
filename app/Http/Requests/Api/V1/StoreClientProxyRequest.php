@@ -19,8 +19,23 @@ final class StoreClientProxyRequest extends FormRequest
     /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
+        $safeText = ['string', 'not_regex:/[<>]/'];
+
         return [
             'proxy_full_name' => ['required', 'string', 'max:255'],
+            'proxy_first_name' => ['nullable', ...$safeText, 'max:128'],
+            'proxy_last_name' => ['nullable', ...$safeText, 'max:128'],
+            'proxy_middle_name' => ['nullable', ...$safeText, 'max:128'],
+            'proxy_date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
+            'proxy_place_of_birth' => ['nullable', ...$safeText, 'max:255'],
+            'proxy_identity_issued_on' => ['nullable', 'date', 'before_or_equal:today'],
+            'proxy_identity_issued_at' => ['nullable', ...$safeText, 'max:255'],
+            'proxy_father_name' => ['nullable', ...$safeText, 'max:128'],
+            'proxy_mother_name' => ['nullable', ...$safeText, 'max:128'],
+            'proxy_address_line_1' => ['nullable', ...$safeText, 'max:255'],
+            'proxy_address_line_2' => ['nullable', ...$safeText, 'max:255'],
+            'proxy_business_address_line_1' => ['nullable', ...$safeText, 'max:255'],
+            'proxy_business_address_line_2' => ['nullable', ...$safeText, 'max:255'],
             'proxy_phone_number' => ['nullable', 'string', 'max:32'],
             'proxy_email' => ['nullable', 'email', 'max:255'],
             'proxy_id_document_type' => ['nullable', 'string', 'max:64', Rule::in(IdentityDocumentTypeCatalog::keys())],

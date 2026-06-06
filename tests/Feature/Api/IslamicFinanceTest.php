@@ -12,6 +12,7 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -6928,7 +6929,7 @@ final class IslamicFinanceTest extends TestCase
             ->where('family_code', $familyCode)
             ->where('status', 'approved')
             ->where('effective_from', '<=', now()->toDateString())
-            ->where(function ($q): void {
+            ->where(function (Builder $q): void {
                 $q->whereNull('effective_to')->orWhere('effective_to', '>', now()->toDateString());
             })
             ->exists();

@@ -106,12 +106,12 @@ final class ClientGuarantorController extends BaseController
             ]);
         }
 
-        $record = ClientGuarantor::query()->create([
+        $record = ClientGuarantor::query()->create(array_merge($this->identityAttributes($request), [
             'public_id' => (string) Str::ulid(),
             'agency_id' => $client->agency_id,
             'client_id' => $client->id,
             'guarantor_client_id' => is_int($guarantorClientId) ? $guarantorClientId : null,
-            'guarantor_full_name' => $request->input('guarantor_full_name'),
+            'guarantor_full_name' => $this->resolveFullName($request->input('guarantor_full_name'), $request),
             'guarantor_phone_number' => $request->input('guarantor_phone_number'),
             'relationship_type' => $request->input('relationship_type'),
             'document_type' => $request->input('document_type'),
@@ -122,7 +122,7 @@ final class ClientGuarantorController extends BaseController
             'document_id' => is_int($documentId) ? $documentId : null,
             'back_document_id' => is_int($backDocumentId) ? $backDocumentId : null,
             'created_by_user_id' => $actor->id,
-        ]);
+        ]));
 
         $this->securityAudit->record('crm.guarantor.created', actor: $actor, subject: $record, properties: [
             'client_public_id' => $client->public_id,
@@ -186,6 +186,22 @@ final class ClientGuarantorController extends BaseController
 
         $attributes = $request->safe()->only([
             'guarantor_full_name',
+            'guarantor_civility',
+            'guarantor_first_name',
+            'guarantor_last_name',
+            'guarantor_middle_name',
+            'guarantor_date_of_birth',
+            'guarantor_place_of_birth',
+            'guarantor_identity_document_number',
+            'guarantor_identity_issued_on',
+            'guarantor_identity_issued_at',
+            'guarantor_father_name',
+            'guarantor_mother_name',
+            'guarantor_profession',
+            'guarantor_address_line_1',
+            'guarantor_address_line_2',
+            'guarantor_business_address_line_1',
+            'guarantor_business_address_line_2',
             'guarantor_phone_number',
             'relationship_type',
             'document_type',
@@ -230,7 +246,25 @@ final class ClientGuarantorController extends BaseController
         }
 
         if ($guarantor->verification_status === ClientGuarantor::VERIFICATION_VERIFIED
-            && array_intersect(array_keys($attributes), ['guarantor_client_id', 'guarantor_full_name', 'guarantor_phone_number', 'document_type', 'document_id', 'back_document_id']) !== []) {
+            && array_intersect(array_keys($attributes), [
+                'guarantor_client_id',
+                'guarantor_full_name',
+                'guarantor_civility',
+                'guarantor_first_name',
+                'guarantor_last_name',
+                'guarantor_middle_name',
+                'guarantor_date_of_birth',
+                'guarantor_place_of_birth',
+                'guarantor_identity_document_number',
+                'guarantor_identity_issued_on',
+                'guarantor_identity_issued_at',
+                'guarantor_father_name',
+                'guarantor_mother_name',
+                'guarantor_phone_number',
+                'document_type',
+                'document_id',
+                'back_document_id',
+            ]) !== []) {
             $attributes['verification_status'] = ClientGuarantor::VERIFICATION_PENDING_REVIEW;
             $attributes['verified_at'] = null;
             $attributes['verified_by_user_id'] = null;
@@ -355,6 +389,54 @@ final class ClientGuarantorController extends BaseController
     private function belongsToClient(ClientGuarantor $guarantor, Client $client): bool
     {
         return $guarantor->client_id === $client->id && $guarantor->agency_id === $client->agency_id;
+    }
+
+    /**
+     * Standalone guarantor identity columns sourced from the request.
+     *
+     * @return array<string, mixed>
+     */
+    private function identityAttributes(Request $request): array
+    {
+        return [
+            'guarantor_civility' => $request->input('guarantor_civility'),
+            'guarantor_first_name' => $request->input('guarantor_first_name'),
+            'guarantor_last_name' => $request->input('guarantor_last_name'),
+            'guarantor_middle_name' => $request->input('guarantor_middle_name'),
+            'guarantor_date_of_birth' => $request->input('guarantor_date_of_birth'),
+            'guarantor_place_of_birth' => $request->input('guarantor_place_of_birth'),
+            'guarantor_identity_document_number' => $request->input('guarantor_identity_document_number'),
+            'guarantor_identity_issued_on' => $request->input('guarantor_identity_issued_on'),
+            'guarantor_identity_issued_at' => $request->input('guarantor_identity_issued_at'),
+            'guarantor_father_name' => $request->input('guarantor_father_name'),
+            'guarantor_mother_name' => $request->input('guarantor_mother_name'),
+            'guarantor_profession' => $request->input('guarantor_profession'),
+            'guarantor_address_line_1' => $request->input('guarantor_address_line_1'),
+            'guarantor_address_line_2' => $request->input('guarantor_address_line_2'),
+            'guarantor_business_address_line_1' => $request->input('guarantor_business_address_line_1'),
+            'guarantor_business_address_line_2' => $request->input('guarantor_business_address_line_2'),
+        ];
+    }
+
+    /**
+     * Use the explicit full name when provided, otherwise derive a stable
+     * display name from the structured first/middle/last names (GHI-010B).
+     */
+    private function resolveFullName(mixed $fullName, Request $request): ?string
+    {
+        if (is_string($fullName) && trim($fullName) !== '') {
+            return $fullName;
+        }
+
+        $parts = [];
+        foreach (['guarantor_first_name', 'guarantor_middle_name', 'guarantor_last_name'] as $field) {
+            $value = $request->input($field);
+            if (is_string($value) && trim($value) !== '') {
+                $parts[] = trim($value);
+            }
+        }
+
+        return $parts === [] ? null : implode(' ', $parts);
     }
 
     private function resolveGuarantorClientId(Client $client, mixed $publicId): int|bool|null

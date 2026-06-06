@@ -122,6 +122,8 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::get('batch-procedures/{batchProcedure}', [BatchProcedureController::class, 'show']);
     Route::patch('batch-procedures/{batchProcedure}', [BatchProcedureController::class, 'update']);
     Route::patch('batch-procedures/{batchProcedure}/status', [BatchProcedureController::class, 'updateStatus']);
+    Route::post('batch-procedures/{batchProcedure}/operation-codes', [BatchProcedureController::class, 'attachOperationCodes']);
+    Route::delete('batch-procedures/{batchProcedure}/operation-codes/{operationCode}', [BatchProcedureController::class, 'detachOperationCode']);
 
     Route::get('batch-runs', [BatchRunController::class, 'index']);
     Route::post('batch-runs', [BatchRunController::class, 'store']);

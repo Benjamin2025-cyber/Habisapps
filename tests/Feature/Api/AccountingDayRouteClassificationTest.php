@@ -34,7 +34,9 @@ final class AccountingDayRouteClassificationTest extends TestCase
                 continue;
             }
 
-            $methods = array_values(array_diff($route->methods(), ['HEAD', 'OPTIONS']));
+            /** @var array<string> $routeMethods */
+            $routeMethods = $route->methods();
+            $methods = array_values(array_diff($routeMethods, ['HEAD', 'OPTIONS']));
             foreach ($methods as $method) {
                 if (in_array($method, ['GET'], true)) {
                     continue;

@@ -42,6 +42,7 @@ final class ReferenceNumberGenerator
                 throw new InvalidArgumentException(sprintf('Reference sequence [%s] could not be reserved.', $key));
             }
 
+            /** @var \stdClass $sequence */
             $prefix = (string) $sequence->prefix;
             $padding = (int) $sequence->padding;
             $nextNumber = (int) $sequence->next_number;

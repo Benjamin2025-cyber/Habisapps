@@ -620,7 +620,7 @@ final class InsuranceModuleTest extends TestCase
     {
         [$subscriptionPublicId, $subscriptionId] = $this->createStandaloneSubscription($actor);
         $subscription = DB::table('insurance_subscriptions')->where('id', $subscriptionId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agencyId = $this->requireIntFromRow($subscription, 'agency_id');
         $agencyPublicId = $this->requirePublicIdById('agencies', $agencyId);
 
@@ -828,7 +828,7 @@ final class InsuranceModuleTest extends TestCase
     {
         [$subscriptionPublicId, $subscriptionId] = $this->createStandaloneSubscription($maker);
         $subscription = DB::table('insurance_subscriptions')->where('id', $subscriptionId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agencyId = (int) $subscription->agency_id;
         $productId = (int) $subscription->insurance_product_id;
 
@@ -1085,7 +1085,7 @@ final class InsuranceModuleTest extends TestCase
     {
         [$subscriptionPublicId, $subscriptionId] = $this->createStandaloneSubscription($actor);
         $subscription = DB::table('insurance_subscriptions')->where('id', $subscriptionId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
 
         $claimResponse = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -1216,7 +1216,7 @@ final class InsuranceModuleTest extends TestCase
     {
         [$subscriptionPublicId, $subscriptionId] = $this->createStandaloneSubscription($actor);
         $subscription = DB::table('insurance_subscriptions')->where('id', $subscriptionId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agencyId = (int) $subscription->agency_id;
         $clientId = (int) $subscription->client_id;
 
@@ -1406,7 +1406,7 @@ final class InsuranceModuleTest extends TestCase
     {
         [$subscriptionPublicId, $subscriptionId] = $this->createStandaloneSubscription($actor);
         $subscription = DB::table('insurance_subscriptions')->where('id', $subscriptionId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agencyId = (int) $subscription->agency_id;
 
         if (! $createMapping) {
@@ -1497,7 +1497,7 @@ final class InsuranceModuleTest extends TestCase
     {
         [$subscriptionPublicId, $subscriptionId] = $this->createStandaloneSubscription($actor);
         $subscription = DB::table('insurance_subscriptions')->where('id', $subscriptionId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
 
         $agencyId = (int) $subscription->agency_id;
         $clientId = (int) $subscription->client_id;

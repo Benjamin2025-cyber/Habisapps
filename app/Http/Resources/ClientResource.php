@@ -43,6 +43,8 @@ final class ClientResource extends JsonResource
             'sector_public_id' => $client->relationLoaded('sector') ? $client->sector?->public_id : null,
             'sub_sector_public_id' => $client->relationLoaded('subSector') ? $client->subSector?->public_id : null,
             'client_reference' => $client->client_reference,
+            // Civility/title is a non-sensitive salutation; always visible.
+            'civility' => $client->civility,
             'first_name' => $showOperationalIdentity ? $client->first_name : $this->maskName($client->first_name),
             'last_name' => $showOperationalIdentity ? $client->last_name : $this->maskName($client->last_name),
             'middle_name' => $showOperationalIdentity ? $client->middle_name : $this->maskName($client->middle_name),

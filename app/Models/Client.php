@@ -41,6 +41,7 @@ use Illuminate\Support\Carbon;
     'sector_id',
     'sub_sector_id',
     'client_reference',
+    'civility',
     'first_name',
     'last_name',
     'middle_name',
@@ -82,6 +83,13 @@ use Illuminate\Support\Carbon;
 final class Client extends Model
 {
     use HasAuditLog, HasUlids;
+
+    /**
+     * Catalog of accepted civility/title values (GHI-010A).
+     *
+     * @var list<string>
+     */
+    public const array CIVILITIES = ['m', 'mme', 'mlle', 'dr'];
 
     public const string STATUS_ACTIVE = 'active';
 

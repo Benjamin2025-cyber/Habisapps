@@ -6,6 +6,8 @@ namespace App\Http\Resources;
 
 use App\Application\BatchRuns\BatchProcedureRegistry;
 use App\Models\BatchProcedure;
+use App\Models\BatchProcedureOperationCode;
+use App\Models\OperationCode;
 use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -29,7 +31,9 @@ final class BatchProcedureResource extends JsonResource
                 'name' => null,
                 'description' => null,
                 'schedule_type' => null,
+                'execution_priority' => null,
                 'schedule_metadata' => null,
+                'operation_codes' => [],
                 'status' => null,
                 'executable' => false,
                 'created_at' => null,
@@ -43,7 +47,9 @@ final class BatchProcedureResource extends JsonResource
             'name' => $procedure->name,
             'description' => $procedure->description,
             'schedule_type' => $procedure->schedule_type,
+            'execution_priority' => $procedure->execution_priority,
             'schedule_metadata' => $procedure->schedule_metadata,
+            'operation_codes' => $this->operationCodes($procedure),
             'status' => $procedure->status,
             'executable' => BatchProcedureRegistry::isExecutable($procedure->code),
             'created_at' => $this->formatDate($procedure->created_at),
@@ -58,5 +64,39 @@ final class BatchProcedureResource extends JsonResource
         }
 
         return $value->format(DateTimeInterface::ATOM);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function operationCodes(BatchProcedure $procedure): array
+    {
+        if (! $procedure->relationLoaded('operationCodes')) {
+            return [];
+        }
+
+        return $procedure->operationCodes
+            ->map(
+                /**
+                 * @return array<string, mixed>
+                 */
+                static function (OperationCode $code): array {
+                    $pivot = $code->getRelationValue('pivot');
+                    $attachmentStatus = $pivot instanceof BatchProcedureOperationCode ? $pivot->status : null;
+
+                    return [
+                        'public_id' => $code->public_id,
+                        'code' => $code->code,
+                        'label' => $code->label,
+                        'module' => $code->module,
+                        'operation_type' => $code->operation_type,
+                        'direction' => $code->direction,
+                        'status' => $code->status,
+                        'attachment_status' => $attachmentStatus,
+                    ];
+                }
+            )
+            ->values()
+            ->all();
     }
 }

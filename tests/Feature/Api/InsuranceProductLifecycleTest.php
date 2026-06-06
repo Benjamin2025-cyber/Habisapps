@@ -107,7 +107,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         ] as $productType) {
             [$productPublicId] = $this->createProductContext($admin, $productType);
             $product = DB::table('insurance_products')->where('public_id', $productPublicId)->first(['product_type']);
-            self::assertIsObject($product);
+            self::assertNotNull($product);
             self::assertSame($productType, (string) $product->product_type);
         }
     }
@@ -413,7 +413,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         [, $subscriptionPublicId] = $this->createSubscriptionWithRuleVersion($admin, $checker, 'annual');
 
         $subscription = DB::table('insurance_subscriptions')->where('public_id', $subscriptionPublicId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $refundDebitLedger = $this->makeLedger((int) $subscription->agency_id);
         $refundCreditLedger = $this->makeLedger((int) $subscription->agency_id);
         $this->createRefundMapping((int) $subscription->agency_id, $refundDebitLedger['id'], $refundCreditLedger['id']);
@@ -913,7 +913,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         $this->assertJsonError($blockedReview, 422);
 
         $claimRow = DB::table('insurance_claims')->where('public_id', $claimPublicId)->first();
-        self::assertIsObject($claimRow);
+        self::assertNotNull($claimRow);
         DB::table('clients')->where('id', (int) $claimRow->client_id)->update([
             'phone_number' => '+237699000001',
             'updated_at' => now(),
@@ -1065,7 +1065,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         $checker = $this->createUser('platform-admin');
         [$productPublicId, $subscriptionPublicId] = $this->createSubscriptionWithRuleVersion($admin, $checker, 'annual');
         $subscription = DB::table('insurance_subscriptions')->where('public_id', $subscriptionPublicId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agencyPublicId = DB::table('agencies')->where('id', (int) $subscription->agency_id)->value('public_id');
         self::assertIsString($agencyPublicId);
 
@@ -1124,7 +1124,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         $admin = $this->createUser('platform-admin');
         [$subscriptionPublicId] = $this->createPaidPremiumContext($admin);
         $subscription = DB::table('insurance_subscriptions')->where('public_id', $subscriptionPublicId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agencyPublicId = DB::table('agencies')->where('id', (int) $subscription->agency_id)->value('public_id');
         self::assertIsString($agencyPublicId);
 
@@ -1172,7 +1172,7 @@ final class InsuranceProductLifecycleTest extends TestCase
         $checker = $this->createUser('platform-admin');
         [, $subscriptionPublicId] = $this->createSubscriptionWithRuleVersion($admin, $checker, 'annual');
         $subscription = DB::table('insurance_subscriptions')->where('public_id', $subscriptionPublicId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $refundDebitLedger = $this->makeLedger((int) $subscription->agency_id);
         $refundCreditLedger = $this->makeLedger((int) $subscription->agency_id);
         $this->createRefundMapping((int) $subscription->agency_id, $refundDebitLedger['id'], $refundCreditLedger['id']);
@@ -1277,7 +1277,7 @@ final class InsuranceProductLifecycleTest extends TestCase
             ->update(['new_business_enabled' => false, 'updated_at' => now()]);
 
         $subscription = DB::table('insurance_subscriptions')->where('public_id', $subscriptionPublicId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $secondClient = $this->makeClient((int) $subscription->agency_id);
         $agencyPublicId = DB::table('agencies')->where('id', (int) $subscription->agency_id)->value('public_id');
         self::assertIsString($agencyPublicId);
@@ -1328,9 +1328,9 @@ final class InsuranceProductLifecycleTest extends TestCase
         [$productPublicId, $subscriptionPublicId] = $this->createSubscriptionWithRuleVersion($admin, $checker, 'annual');
 
         $subscription = DB::table('insurance_subscriptions')->where('public_id', $subscriptionPublicId)->first();
-        self::assertIsObject($subscription);
+        self::assertNotNull($subscription);
         $agency = DB::table('agencies')->where('id', (int) $subscription->agency_id)->first(['id', 'public_id']);
-        self::assertIsObject($agency);
+        self::assertNotNull($agency);
         $this->assignUserToAgency($reportUser, (int) $agency->id, 'insurance-reporting');
         $reportUser->givePermissionTo('insurance.reports.export');
 
@@ -1489,9 +1489,9 @@ final class InsuranceProductLifecycleTest extends TestCase
     private function markProductReadyAndActivate(User $actor, string $productPublicId, string $businessModel = 'broker'): void
     {
         $product = DB::table('insurance_products')->where('public_id', $productPublicId)->first(['id', 'insurance_partner_id']);
-        self::assertIsObject($product);
+        self::assertNotNull($product);
         $partner = DB::table('insurance_partners')->where('id', (int) $product->insurance_partner_id)->first(['agency_id']);
-        self::assertIsObject($partner);
+        self::assertNotNull($partner);
         $agencyId = (int) $partner->agency_id;
         $premiumLedger = $this->makeLedger($agencyId);
         $claimDebitLedger = $this->makeLedger($agencyId);

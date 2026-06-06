@@ -108,6 +108,7 @@ final class ClientCrudWorkflow extends BaseController
             'collection_agent_id' => $collectionAgentId,
             'sector_id' => $sectorId,
             'sub_sector_id' => $subSectorId,
+            'civility' => $request->input('civility'),
             'first_name' => $request->string('first_name')->toString(),
             'last_name' => $request->string('last_name')->toString(),
             'middle_name' => $request->input('middle_name'),
@@ -203,6 +204,7 @@ final class ClientCrudWorkflow extends BaseController
 
         $safe = $request->safe();
         $attributes = $safe->only([
+            'civility',
             'first_name',
             'last_name',
             'middle_name',

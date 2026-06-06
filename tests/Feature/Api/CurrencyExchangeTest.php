@@ -189,7 +189,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->first();
-        self::assertIsObject($balance);
+        self::assertNotNull($balance);
         self::assertSame(100, (int) $balance->current_balance_minor);
 
         $this->assertDatabaseHas('journal_entries', [
@@ -287,7 +287,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->first();
-        self::assertIsObject($balance);
+        self::assertNotNull($balance);
         self::assertSame(0, (int) $balance->current_balance_minor);
 
         $this->assertDatabaseHas('journal_entries', [
@@ -328,7 +328,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->first();
-        self::assertIsObject($balance);
+        self::assertNotNull($balance);
         self::assertSame(500, (int) $balance->current_balance_minor);
     }
 
@@ -458,7 +458,7 @@ final class CurrencyExchangeTest extends TestCase
             ->where('till_id', $context['till_id'])
             ->where('currency', 'EUR')
             ->first();
-        self::assertIsObject($balance);
+        self::assertNotNull($balance);
         self::assertSame(200, (int) $balance->current_balance_minor);
 
         $this->assertDatabaseHas('journal_entries', [

@@ -8,6 +8,7 @@ use App\Support\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string|null $description
  * @property string|null $schedule_type
+ * @property int|null $execution_priority
  * @property array<string, mixed>|null $schedule_metadata
  * @property string $status
  */
@@ -26,6 +28,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'description',
     'schedule_type',
+    'execution_priority',
     'schedule_metadata',
     'status',
 ])]
@@ -56,10 +59,20 @@ final class BatchProcedure extends Model
         return $this->hasMany(BatchRun::class);
     }
 
+    /** @return BelongsToMany<OperationCode, $this, BatchProcedureOperationCode> */
+    public function operationCodes(): BelongsToMany
+    {
+        return $this->belongsToMany(OperationCode::class, 'batch_procedure_operation_codes')
+            ->using(BatchProcedureOperationCode::class)
+            ->withPivot(['status'])
+            ->withTimestamps();
+    }
+
     protected function casts(): array
     {
         return [
             'schedule_metadata' => 'array',
+            'execution_priority' => 'integer',
         ];
     }
 }
