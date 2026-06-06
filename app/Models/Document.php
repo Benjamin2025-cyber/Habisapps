@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\Media\MediaStorageDiskResolver;
 use App\Support\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -71,9 +72,15 @@ final class Document extends Model implements HasMedia
 
     public function registerMediaCollections(): void
     {
-        $diskName = config('media-library.disk_name', 'local');
-        if (! is_string($diskName) || $diskName === '') {
-            $diskName = 'local';
+        // This runs on every Document boot (including reads/downloads). An
+        // explicit-disk misconfiguration makes the resolver throw; we degrade
+        // to the private local disk here so serving existing media never 500s.
+        // The actual upload path (resolveForUpload) and the status endpoint
+        // still surface the misconfiguration loudly to operators.
+        try {
+            $diskName = MediaStorageDiskResolver::fromConfig()->resolve()['disk'];
+        } catch (\Throwable) {
+            $diskName = MediaStorageDiskResolver::DISK_LOCAL;
         }
 
         $this->addMediaCollection('kyc_documents')

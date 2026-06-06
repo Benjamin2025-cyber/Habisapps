@@ -188,6 +188,11 @@ final class AppServiceProvider extends ServiceProvider
             $this->integerConfig('security.rate_limits.accounting_lifecycle.max_attempts', 30),
             $this->integerConfig('security.rate_limits.accounting_lifecycle.decay_minutes', 1),
         )->by($this->rateLimitKey($request)));
+
+        RateLimiter::for('media.storage.status', fn (Request $request): Limit => Limit::perMinute(
+            $this->integerConfig('security.rate_limits.media_storage_status.max_attempts', 60),
+            $this->integerConfig('security.rate_limits.media_storage_status.decay_minutes', 1),
+        )->by($this->rateLimitKey($request)));
     }
 
     private function integerConfig(string $key, int $default): int

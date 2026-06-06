@@ -94,6 +94,9 @@ return [
                 'system.database.restore.plan',
                 'system.database.restore.execute',
                 'system.database.maintenance.manage',
+                'system.media-storage.view',
+                'system.media-storage.manage',
+                'system.media-storage.migrate',
                 'audit.view',
                 'agencies.view',
                 'agencies.manage',
@@ -629,6 +632,20 @@ return [
                 static fn (string $disk): string => trim($disk),
                 explode(',', (string) env('DOCUMENT_BACKFILL_ALLOWED_SOURCE_DISKS', 'local'))
             ), static fn (string $disk): bool => $disk !== '')),
+        ],
+        'media' => [
+            // When true, the media disk is resolved automatically (R2 when fully
+            // configured, otherwise the private local disk). When false, the
+            // explicit MEDIA_DISK is used (validated against allowed disks).
+            'auto' => (bool) env('MEDIA_DISK_AUTO', true),
+            // Master switch for R2-backed media. R2 is never used unless this is
+            // true AND credentials + bucket are configured.
+            'r2_enabled' => (bool) env('R2_ENABLED', false),
+            // fail_closed: reject uploads with 503 when R2 is enabled but
+            // unreachable. fallback_local: store on the private local disk and
+            // record an audit warning.
+            'r2_fallback_mode' => env('MEDIA_R2_FALLBACK_MODE', 'fail_closed'),
+            'r2_health_timeout_seconds' => (int) env('MEDIA_R2_HEALTH_TIMEOUT_SECONDS', 5),
         ],
     ],
 ];

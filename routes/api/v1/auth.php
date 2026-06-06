@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\ClientIdentityDocumentController;
 use App\Http\Controllers\Api\V1\ClientProfilePhotoController;
 use App\Http\Controllers\Api\V1\ClientProxyController;
 use App\Http\Controllers\Api\V1\DocumentController;
+use App\Http\Controllers\Api\V1\MediaStorageController;
 use App\Http\Controllers\Api\V1\ReferenceCatalogController;
 use App\Http\Controllers\Api\V1\ReferenceNumberController;
 use App\Http\Controllers\Api\V1\RoleController;
@@ -141,4 +142,12 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::get('formula-policies', [ReferenceCatalogController::class, 'formulaPolicies']);
 
     Route::get('audit-events', [AuditEventController::class, 'index'])->middleware('throttle:audit.browse');
+
+    Route::get('media-storage/status', [MediaStorageController::class, 'status'])->middleware('throttle:media.storage.status');
+    // Static sub-path declared before the wildcard binding so it is never
+    // captured as a migration public id.
+    Route::get('media-storage/migrations', [MediaStorageController::class, 'migrations']);
+    Route::post('media-storage/migrations', [MediaStorageController::class, 'requestMigration'])
+        ->defaults('accounting_day_classification', 'system_maintenance');
+    Route::get('media-storage/migrations/{migration}', [MediaStorageController::class, 'showMigration']);
 });

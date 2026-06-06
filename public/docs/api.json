@@ -7804,7 +7804,7 @@
                         "required": true,
                         "description": "The database backup public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -7851,7 +7851,7 @@
                         "required": true,
                         "description": "The database backup public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -7868,6 +7868,17 @@
                         }
                     },
                     "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "503": {
                         "description": "",
                         "content": {
                             "application/json": {
@@ -7911,7 +7922,7 @@
                         "required": true,
                         "description": "The database backup public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -7981,7 +7992,7 @@
                         "required": true,
                         "description": "The database backup public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -7998,6 +8009,17 @@
                         }
                     },
                     "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "503": {
                         "description": "",
                         "content": {
                             "application/json": {
@@ -8243,7 +8265,7 @@
                         "required": true,
                         "description": "The restore operation public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -8292,7 +8314,7 @@
                         "required": true,
                         "description": "The restore operation public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -8307,49 +8329,27 @@
                     }
                 },
                 "responses": {
-                    "202": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        }
-                    },
-                    "409": {
-                        "description": "",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {}
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "$ref": "#/components/responses/ValidationException"
-                    },
                     "200": {
                         "description": "",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "string"
+                                    "type": "object"
                                 }
                             }
                         }
-                    },
-                    "403": {
-                        "$ref": "#/components/responses/AuthorizationException"
                     },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
                     },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
                     }
                 }
             }
@@ -8367,7 +8367,7 @@
                         "required": true,
                         "description": "The restore operation public id",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         }
                     }
                 ],
@@ -24348,6 +24348,177 @@
                 }
             }
         },
+        "/v1/media-storage/status": {
+            "get": {
+                "operationId": "mediaStorage.status",
+                "description": "Reports the active media disk and R2 readiness for platform/admin\ndiagnostics. Requires `system.media-storage.view`. Never returns\nsecrets, bucket names, endpoints, credentials, or raw object keys.",
+                "summary": "Media storage status",
+                "tags": [
+                    "MediaStorage"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/media-storage/migrations": {
+            "get": {
+                "operationId": "mediaStorage.migrations",
+                "description": "Requires `system.media-storage.view`.",
+                "summary": "List media storage migration operations",
+                "tags": [
+                    "MediaStorage"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "mediaStorage.requestMigration",
+                "description": "Requires `system.media-storage.migrate`.",
+                "summary": "Request a local-to-R2 migration (supports dry-run)",
+                "tags": [
+                    "MediaStorage"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/media-storage/migrations/{migration}": {
+            "get": {
+                "operationId": "mediaStorage.showMigration",
+                "description": "Requires `system.media-storage.view`.",
+                "summary": "Show a media storage migration operation",
+                "tags": [
+                    "MediaStorage"
+                ],
+                "parameters": [
+                    {
+                        "name": "migration",
+                        "in": "path",
+                        "required": true,
+                        "description": "The migration public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientPublicId}/notification-consents": {
             "post": {
                 "operationId": "notificationConsent.store",
@@ -26518,6 +26689,9 @@
                                                 "system.database.restore.execute",
                                                 "system.database.restore.plan",
                                                 "system.database.view",
+                                                "system.media-storage.manage",
+                                                "system.media-storage.migrate",
+                                                "system.media-storage.view",
                                                 "system.view-health",
                                                 "users.create",
                                                 "users.manage",
@@ -31584,7 +31758,10 @@
                                 ]
                             },
                             "execution_priority": {
-                                "type": "string"
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
                             },
                             "schedule_metadata": {
                                 "type": [
@@ -32381,7 +32558,10 @@
                         ]
                     },
                     "document_type": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "document_public_id": {
                         "type": [
@@ -32402,57 +32582,40 @@
                         ]
                     },
                     "guarantor_civility": {
-                        "type": "string",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
                         "description": "Civility/title is a non-sensitive salutation; always visible."
                     },
                     "guarantor_first_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "guarantor_last_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "guarantor_middle_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "guarantor_father_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "guarantor_mother_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "guarantor_date_of_birth": {
@@ -32468,13 +32631,9 @@
                         ]
                     },
                     "guarantor_identity_document_number": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "guarantor_identity_issued_on": {
@@ -33141,53 +33300,33 @@
                         ]
                     },
                     "proxy_first_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "proxy_last_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "proxy_middle_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "proxy_father_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "proxy_mother_name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
+                        "type": [
+                            "string",
+                            "null"
                         ]
                     },
                     "proxy_date_of_birth": {
@@ -33439,7 +33578,10 @@
                         "type": "string"
                     },
                     "civility": {
-                        "type": "string",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
                         "description": "Civility/title is a non-sensitive salutation; always visible."
                     },
                     "first_name": {
@@ -34425,19 +34567,31 @@
                         "type": "string"
                     },
                     "size_bytes": {
-                        "type": "string"
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
                     },
                     "checksum_sha256": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "encrypted": {
-                        "type": "string"
+                        "type": "boolean"
                     },
                     "compression": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "verification_status": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "verified_at": {
                         "type": [
@@ -34464,7 +34618,17 @@
                         ]
                     },
                     "failure_reason": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "metadata": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "additionalProperties": {}
                     },
                     "is_downloadable": {
                         "type": "boolean"
@@ -34499,6 +34663,7 @@
                     "completed_at",
                     "expires_at",
                     "failure_reason",
+                    "metadata",
                     "is_downloadable",
                     "created_at",
                     "updated_at"
@@ -34589,7 +34754,10 @@
                         "type": "string"
                     },
                     "confirmation_method": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "destructive": {
                         "type": "boolean"
@@ -34632,7 +34800,10 @@
                         ]
                     },
                     "failure_reason": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "created_at": {
                         "type": [
@@ -41555,124 +41726,50 @@
                         ]
                     },
                     "payment_method": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "string",
-                                "enum": [
-                                    "cash"
-                                ]
-                            }
-                        ]
+                        "type": "string"
                     },
                     "cash_amount_minor": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "integer"
-                            }
-                        ]
+                        "type": "integer"
                     },
                     "cheque_amount_minor": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "integer",
-                                "enum": [
-                                    0
-                                ]
-                            }
-                        ]
+                        "type": "integer"
                     },
                     "transfer_amount_minor": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "integer",
-                                "enum": [
-                                    0
-                                ]
-                            }
-                        ]
+                        "type": "integer"
                     },
                     "channel": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "external_reference": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "fee_policy_key": {
-                        "type": "string"
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     },
                     "fees_applied": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "boolean"
-                            }
-                        ]
+                        "type": "boolean"
                     },
                     "fee_amount_minor": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "integer",
-                                "enum": [
-                                    0
-                                ]
-                            }
-                        ]
+                        "type": "integer"
                     },
                     "notify_customer": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "boolean"
-                            }
-                        ]
+                        "type": "boolean"
                     },
                     "notification_channels": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "array",
-                                "items": {
-                                    "type": "string"
-                                },
-                                "minItems": 0,
-                                "maxItems": 0,
-                                "additionalItems": false
-                            }
-                        ]
+                        "type": "array",
+                        "items": {}
                     },
                     "notification_status": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "string",
-                                "enum": [
-                                    "not_requested"
-                                ]
-                            }
-                        ]
+                        "type": "string"
                     },
                     "tenders": {
                         "type": "array",

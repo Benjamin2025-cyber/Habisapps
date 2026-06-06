@@ -11,15 +11,19 @@ use App\Http\Resources\DocumentResource;
 use App\Models\Agency;
 use App\Models\Document;
 use App\Models\User;
+use App\Support\Media\MediaStorageDiskResolver;
 use App\Support\Security\SecurityAudit;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
+use Throwable;
 
 final class DocumentController extends BaseController
 {
@@ -97,7 +101,30 @@ final class DocumentController extends BaseController
             throw new RuntimeException('Unable to compute checksum for uploaded document.');
         }
 
-        $document = DB::transaction(function () use ($actor, $agencyId, $request, $checksum): Document {
+        // Resolve the destination disk and apply the configured R2 health
+        // policy before any write. fail_closed rejects the upload (so no
+        // orphan document row is created) when R2 is enabled but unreachable;
+        // fallback_local stores on the private local disk and is audited below.
+        try {
+            $decision = MediaStorageDiskResolver::fromConfig()->resolveForUpload();
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondError(
+                'Media storage configuration is invalid.',
+                ['code' => 'media_storage_invalid_config', 'reason' => $exception->getMessage()],
+                HttpResponse::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
+
+        if ($decision['outcome'] === MediaStorageDiskResolver::OUTCOME_FAIL_CLOSED) {
+            return $this->respondError(
+                'Media storage is currently unavailable. Please retry shortly.',
+                ['code' => 'media_storage_unavailable'],
+                HttpResponse::HTTP_SERVICE_UNAVAILABLE
+            );
+        }
+        $targetDisk = $decision['disk'];
+
+        $document = DB::transaction(function () use ($actor, $agencyId, $request, $checksum, $targetDisk): Document {
             $document = Document::query()->create([
                 'agency_id' => $agencyId,
                 'uploaded_by_user_id' => $actor instanceof User ? $actor->id : null,
@@ -109,7 +136,7 @@ final class DocumentController extends BaseController
 
             $media = $document->addMediaFromRequest('file')
                 ->sanitizingFileName(fn (string $fileName): string => $this->sanitizeFileName($fileName))
-                ->toMediaCollection('kyc_documents');
+                ->toMediaCollection('kyc_documents', $targetDisk);
 
             $document->update([
                 'disk' => $media->disk,
@@ -123,7 +150,16 @@ final class DocumentController extends BaseController
             return $document->refresh();
         });
 
-        $this->securityAudit->record('document.created', actor: $actor instanceof User ? $actor : null, subject: $document, request: $request);
+        $actorUser = $actor instanceof User ? $actor : null;
+        $this->securityAudit->record('document.created', actor: $actorUser, subject: $document, request: $request);
+
+        // Storage-selection audit. Properties carry only the disk name, never
+        // object keys, bucket names, endpoints, or credentials.
+        if ($decision['outcome'] === MediaStorageDiskResolver::OUTCOME_FALLBACK_LOCAL) {
+            $this->securityAudit->record('media.storage.local_fallback_used', actor: $actorUser, subject: $document, properties: ['disk' => $document->disk], request: $request);
+        } elseif ($decision['outcome'] === MediaStorageDiskResolver::OUTCOME_R2) {
+            $this->securityAudit->record('media.storage.r2_selected', actor: $actorUser, subject: $document, properties: ['disk' => $document->disk], request: $request);
+        }
 
         return $this->respondCreated(
             DocumentResource::make($document),
@@ -198,6 +234,20 @@ final class DocumentController extends BaseController
 
         $media = $document->getFirstMedia('kyc_documents');
         if ($media === null) {
+            return $this->respondNotFound('Document file is not available.');
+        }
+
+        // The object may be absent on its backing disk (local or R2). Probe
+        // existence first so a missing/relocated object yields a controlled
+        // 404 rather than a 500 from the streaming response. The disk is read
+        // from the media row itself, so local-backed and R2-backed media both
+        // serve from wherever they actually live (R2-007).
+        try {
+            $exists = Storage::disk($media->disk)->exists($media->getPathRelativeToRoot());
+        } catch (Throwable) {
+            return $this->respondNotFound('Document file is not available.');
+        }
+        if (! $exists) {
             return $this->respondNotFound('Document file is not available.');
         }
 

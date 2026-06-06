@@ -532,13 +532,6 @@ final class RoleController extends BaseController
     /**
      * @return array<int, string>
      */
-    /**
-     * Protected permissions that can NEVER be delegated to non-platform roles,
-     * even when protected delegation is enabled. These confer institution-wide
-     * control and must remain platform-admin only.
-     *
-     * @return array<int, string>
-     */
     private function nonDelegableProtectedPermissions(): array
     {
         return [
@@ -562,6 +555,11 @@ final class RoleController extends BaseController
             'system.database.restore.plan',
             'system.database.restore.execute',
             'system.database.maintenance.manage',
+            // Media storage management is an institution-control surface:
+            // migration and configuration confer system-wide power over
+            // regulated evidence files and must remain platform-admin only.
+            'system.media-storage.manage',
+            'system.media-storage.migrate',
         ];
     }
 
@@ -600,6 +598,9 @@ final class RoleController extends BaseController
             'system.database.restore.plan',
             'system.database.restore.execute',
             'system.database.maintenance.manage',
+            'system.media-storage.view',
+            'system.media-storage.manage',
+            'system.media-storage.migrate',
         ];
     }
 

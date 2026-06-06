@@ -16,7 +16,7 @@ return [
     /*
      * The path where your OpenAPI specification will be exported.
      */
-    'export_path' => 'api.json',
+    'export_path' => 'public/docs/api.json',
 
     'info' => [
         /*

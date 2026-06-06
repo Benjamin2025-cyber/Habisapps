@@ -58,6 +58,16 @@ final class SecurityEventCatalog
         'database.maintenance.locked' => 'Database maintenance lock engaged',
         'database.maintenance.unlocked' => 'Database maintenance lock released',
 
+        // Media storage (R2) selection and migration
+        'media.storage.r2_selected' => 'Media stored on R2',
+        'media.storage.local_fallback_used' => 'Media stored on local disk (R2 fallback)',
+        'media.storage.health_checked' => 'Media storage health checked',
+        'media.migration.requested' => 'Media migration requested',
+        'media.migration.started' => 'Media migration started',
+        'media.migration.completed' => 'Media migration completed',
+        'media.migration.failed' => 'Media migration failed',
+        'media.migration.item_failed' => 'Media migration item failed',
+
         // Authentication
         'auth.login_succeeded' => 'Login succeeded',
         'auth.login_failed' => 'Login failed',

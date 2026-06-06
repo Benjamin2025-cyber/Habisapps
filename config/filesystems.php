@@ -60,6 +60,36 @@ return [
             'report' => false,
         ],
 
+        // Cloudflare R2 is S3-compatible. The endpoint follows Cloudflare's
+        // documented shape https://<ACCOUNT_ID>.r2.cloudflarestorage.com and is
+        // derived from the account id when R2_ENDPOINT is not supplied. The
+        // region must be the literal "auto". `throw` is enabled so genuine
+        // storage failures (auth/connectivity) surface to the upload fallback
+        // and health logic instead of being silently swallowed.
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => env('R2_REGION', 'auto'),
+            'bucket' => env('R2_BUCKET'),
+            'url' => env('R2_URL'),
+            'account_id' => env('R2_ACCOUNT_ID'),
+            'endpoint' => env('R2_ENDPOINT') ?: (env('R2_ACCOUNT_ID')
+                ? 'https://'.env('R2_ACCOUNT_ID').'.r2.cloudflarestorage.com'
+                : null),
+            'use_path_style_endpoint' => env('R2_USE_PATH_STYLE_ENDPOINT', true),
+            // Bound the connection-establishment phase so an unreachable R2
+            // endpoint fails fast (e.g. the upload health probe / fail_closed
+            // decision) instead of hanging on the AWS SDK's default. This caps
+            // the connect phase only, not transfer duration, so large uploads
+            // are unaffected.
+            'http' => [
+                'connect_timeout' => (int) env('MEDIA_R2_HEALTH_TIMEOUT_SECONDS', 5),
+            ],
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*
