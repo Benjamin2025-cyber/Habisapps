@@ -552,6 +552,16 @@ final class RoleController extends BaseController
             'crm.scope.institution.read',
             'crm.scope.institution.review',
             'crm.scope.institution.manage',
+            // Database-management is an institution-control surface: backup,
+            // restore, and maintenance confer system-wide power over financial,
+            // PII, and audit data and must remain platform-admin only.
+            'system.database.view',
+            'system.database.backup.create',
+            'system.database.backup.download',
+            'system.database.backup.delete',
+            'system.database.restore.plan',
+            'system.database.restore.execute',
+            'system.database.maintenance.manage',
         ];
     }
 
@@ -583,6 +593,13 @@ final class RoleController extends BaseController
             'crm.proxies.verify',
             'crm.proxies.reject',
             'cash.denominations.manage',
+            'system.database.view',
+            'system.database.backup.create',
+            'system.database.backup.download',
+            'system.database.backup.delete',
+            'system.database.restore.plan',
+            'system.database.restore.execute',
+            'system.database.maintenance.manage',
         ];
     }
 

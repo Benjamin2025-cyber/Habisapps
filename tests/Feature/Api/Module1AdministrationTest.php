@@ -516,6 +516,16 @@ final class Module1AdministrationTest extends TestCase
             ]);
         $floor->assertStatus(422);
 
+        $databaseFloor = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->putJson('/api/v1/roles/auditor/permissions', [
+                'replace' => true,
+                'permissions' => ['audit.view', 'system.database.restore.execute'],
+            ]);
+        $databaseFloor->assertStatus(422);
+        $databaseFloorMessage = $databaseFloor->json('message');
+        self::assertIsString($databaseFloorMessage);
+        self::assertStringContainsString('system.database.restore.execute', $databaseFloorMessage);
+
         // Platform-admin can never drop its minimum administration permissions.
         $minimumPermissions = config('security.permissions.roles.platform-admin', []);
         self::assertIsArray($minimumPermissions);
@@ -645,6 +655,8 @@ final class Module1AdministrationTest extends TestCase
         self::assertIsArray($nonDelegable);
         self::assertContains('crm.pii.view', $protected);
         self::assertContains('roles.manage', $nonDelegable);
+        self::assertContains('system.database.view', $nonDelegable);
+        self::assertContains('system.database.restore.execute', $nonDelegable);
 
         // Each role carries a permissions_version for optimistic concurrency.
         $roles = $response->json('data.roles');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\ApiVersion;
 use App\Http\Middleware\EnforceAccountingDayRegistrationLock;
+use App\Http\Middleware\EnforceDatabaseRestoreLock;
 use App\Http\Middleware\IdempotencyMiddleware;
 use App\Http\Middleware\RemoveServerDisclosureHeaders;
 use App\Support\AccountingDay\AccountingDayException;
@@ -40,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(
             append: [
+                EnforceDatabaseRestoreLock::class,
                 RemoveServerDisclosureHeaders::class,
             ],
             prepend: [

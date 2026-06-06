@@ -39,6 +39,25 @@ final class SecurityEventCatalog
         'batch.run.retry_requested' => 'Batch run retry requested',
         'batch.run.cancelled' => 'Batch run cancelled',
 
+        // Database management
+        'database.backup.requested' => 'Database backup requested',
+        'database.backup.started' => 'Database backup started',
+        'database.backup.completed' => 'Database backup completed',
+        'database.backup.failed' => 'Database backup failed',
+        'database.backup.verified' => 'Database backup verified',
+        'database.backup.verification_failed' => 'Database backup verification failed',
+        'database.backup.downloaded' => 'Database backup download authorized',
+        'database.backup.deleted' => 'Database backup deleted',
+        'database.restore.planned' => 'Database restore planned',
+        'database.restore.requested' => 'Database restore requested',
+        'database.restore.started' => 'Database restore started',
+        'database.restore.completed' => 'Database restore completed',
+        'database.restore.failed' => 'Database restore failed',
+        'database.restore.cancelled' => 'Database restore cancelled',
+        'database.retention.run' => 'Database backup retention run',
+        'database.maintenance.locked' => 'Database maintenance lock engaged',
+        'database.maintenance.unlocked' => 'Database maintenance lock released',
+
         // Authentication
         'auth.login_succeeded' => 'Login succeeded',
         'auth.login_failed' => 'Login failed',

@@ -87,6 +87,13 @@ return [
         'roles' => [
             'platform-admin' => [
                 'system.view-health',
+                'system.database.view',
+                'system.database.backup.create',
+                'system.database.backup.download',
+                'system.database.backup.delete',
+                'system.database.restore.plan',
+                'system.database.restore.execute',
+                'system.database.maintenance.manage',
                 'audit.view',
                 'agencies.view',
                 'agencies.manage',

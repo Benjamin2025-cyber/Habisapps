@@ -44,6 +44,10 @@ use App\Policies\RolePolicy;
 use App\Policies\StaffAssignmentPolicy;
 use App\Policies\TillPolicy;
 use App\Policies\UserPolicy;
+use App\Support\DatabaseManagement\Contracts\DatabaseBackupRunner;
+use App\Support\DatabaseManagement\Contracts\DatabaseRestoreRunner;
+use App\Support\DatabaseManagement\NativePostgresBackupRunner;
+use App\Support\DatabaseManagement\NativePostgresRestoreRunner;
 use Dedoc\Scramble\Scramble;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Http\FormRequest;
@@ -63,7 +67,15 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(
+            DatabaseBackupRunner::class,
+            NativePostgresBackupRunner::class,
+        );
+
+        $this->app->bind(
+            DatabaseRestoreRunner::class,
+            NativePostgresRestoreRunner::class,
+        );
     }
 
     /**
