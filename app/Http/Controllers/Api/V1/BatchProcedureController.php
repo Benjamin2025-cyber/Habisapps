@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\BatchRuns\BatchProcedureRegistry;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\BatchProcedureCollection;
 use App\Http\Resources\BatchProcedureResource;
+use App\Http\Resources\ExecutableBatchProcedureCodeCollection;
 use App\Models\BatchProcedure;
 use App\Support\Security\SecurityAudit;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,6 +49,23 @@ final class BatchProcedureController extends BaseController
         }
 
         return new BatchProcedureCollection($query->paginate($perPage));
+    }
+
+    /**
+     * List executable batch-procedure codes
+     *
+     * Returns the authoritative catalog of batch-procedure codes the backend can
+     * actually execute, including stable machine codes and frontend-useful
+     * metadata. This is the same registry execution dispatch routes against, so
+     * the frontend never has to mirror backend source.
+     *
+     * @authenticated
+     */
+    public function executableCodes(Request $request): ExecutableBatchProcedureCodeCollection
+    {
+        $this->authorize('viewAny', BatchProcedure::class);
+
+        return new ExecutableBatchProcedureCodeCollection(BatchProcedureRegistry::catalog());
     }
 
     /**

@@ -46,7 +46,7 @@ final class AuditEventResource extends JsonResource
     }
 
     /**
-     * @return array<string, mixed>|null
+     * @return array<array-key, mixed>|null
      */
     private function safeProperties(mixed $properties): ?array
     {
@@ -62,15 +62,20 @@ final class AuditEventResource extends JsonResource
     }
 
     /**
+     * Strips sensitive string-keyed entries while preserving list values
+     * (integer keys), so readable metadata such as `changed_fields` survives
+     * serialization. Sensitivity is a property of named keys, so integer keys
+     * are kept and arrays are sanitized recursively.
+     *
      * @param  array<mixed>  $values
-     * @return array<string, mixed>
+     * @return array<array-key, mixed>
      */
     private function sanitizeArray(array $values): array
     {
         $safe = [];
 
         foreach ($values as $key => $value) {
-            if (! is_string($key) || $this->isSensitivePropertyKey($key)) {
+            if (is_string($key) && $this->isSensitivePropertyKey($key)) {
                 continue;
             }
 

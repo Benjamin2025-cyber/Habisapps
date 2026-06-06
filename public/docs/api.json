@@ -38,8 +38,70 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "array",
-                                    "items": {}
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "executable_codes": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/ExecutableBatchProcedureCodeResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "executable_codes"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "pagination": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "per_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        },
+                                                        "last_page": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_page",
+                                                        "per_page",
+                                                        "total",
+                                                        "last_page"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "pagination"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
                                 }
                             }
                         }
@@ -2547,6 +2609,97 @@
                 }
             }
         },
+        "/v1/batch-procedures/executable-codes": {
+            "get": {
+                "operationId": "batchProcedure.executableCodes",
+                "description": "Returns the authoritative catalog of batch-procedure codes the backend can\nactually execute, including stable machine codes and frontend-useful\nmetadata. This is the same registry execution dispatch routes against, so\nthe frontend never has to mirror backend source.",
+                "summary": "List executable batch-procedure codes",
+                "tags": [
+                    "BatchProcedure"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "executable_codes": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/ExecutableBatchProcedureCodeResource"
+                                                    }
+                                                }
+                                            },
+                                            "required": [
+                                                "executable_codes"
+                                            ]
+                                        },
+                                        "errors": {
+                                            "type": "null"
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "pagination": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "current_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "per_page": {
+                                                            "type": "integer"
+                                                        },
+                                                        "total": {
+                                                            "type": "integer"
+                                                        },
+                                                        "last_page": {
+                                                            "type": "integer"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "current_page",
+                                                        "per_page",
+                                                        "total",
+                                                        "last_page"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "pagination"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "message",
+                                        "data",
+                                        "errors",
+                                        "meta"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/v1/batch-procedures/{batchProcedure}": {
             "get": {
                 "operationId": "batchProcedure.show",
@@ -4647,6 +4800,72 @@
                     },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
+        "/v1/clients/{client}/profile-photo-thumbnail": {
+            "get": {
+                "operationId": "clients.profile-photo-thumbnail",
+                "tags": [
+                    "ClientProfilePhoto"
+                ],
+                "parameters": [
+                    {
+                        "name": "client",
+                        "in": "path",
+                        "required": true,
+                        "description": "The client public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "image/jpeg": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "string"
+                                        },
+                                        {
+                                            "type": "object"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        "headers": {
+                            "Content-Length": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "Cache-Control": {
+                                "schema": {
+                                    "type": "string",
+                                    "const": "private, max-age=300, no-transform"
+                                }
+                            },
+                            "Content-Disposition": {
+                                "schema": {
+                                    "type": "string",
+                                    "const": "inline; filename=\"profile-photo-thumbnail.jpg\""
+                                }
+                            },
+                            "X-Content-Type-Options": {
+                                "schema": {
+                                    "type": "string",
+                                    "const": "nosniff"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
                     }
                 }
             }
@@ -21048,8 +21267,8 @@
         "/v1/loans/{loan}/setup-charges": {
             "get": {
                 "operationId": "loan.setupCharges",
-                "description": "Returns readiness status, assessed charges (with collectable /\nblocking_disbursement / waiver_decision flags), insurance premiums and\ntheir payments, and the required next actions before disbursement. Shares\nthe readiness rules enforced by loan disbursement.",
-                "summary": "Reloadable loan setup-charge and insurance-premium state (FBI2-030)",
+                "description": "Returns readiness status, assessed charges (with collectable /\nblocking_disbursement / waiver_decision flags) and the required next\nactions before disbursement. Shares the readiness rules enforced by loan\ndisbursement.",
+                "summary": "Reloadable loan setup-charge state (FBI2-030)",
                 "tags": [
                     "Loan"
                 ],
@@ -29789,6 +30008,41 @@
                 ],
                 "title": "AvailableBalanceResource"
             },
+            "ExecutableBatchProcedureCodeResource": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "group": {
+                        "type": "string"
+                    },
+                    "default_schedule_type": {
+                        "type": "string"
+                    },
+                    "prerequisite_codes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": [
+                    "code",
+                    "label",
+                    "description",
+                    "group",
+                    "default_schedule_type",
+                    "prerequisite_codes"
+                ],
+                "title": "ExecutableBatchProcedureCodeResource"
+            },
             "BatchProcedureCollection": {
                 "anyOf": [
                     {
@@ -29967,6 +30221,9 @@
                             "status": {
                                 "type": "string"
                             },
+                            "executable": {
+                                "type": "boolean"
+                            },
                             "created_at": {
                                 "type": [
                                     "string",
@@ -29988,6 +30245,7 @@
                             "schedule_type",
                             "schedule_metadata",
                             "status",
+                            "executable",
                             "created_at",
                             "updated_at"
                         ]
@@ -30016,6 +30274,9 @@
                             "status": {
                                 "type": "null"
                             },
+                            "executable": {
+                                "type": "boolean"
+                            },
                             "created_at": {
                                 "type": "null"
                             },
@@ -30031,6 +30292,7 @@
                             "schedule_type",
                             "schedule_metadata",
                             "status",
+                            "executable",
                             "created_at",
                             "updated_at"
                         ]
@@ -30676,7 +30938,16 @@
                             "null"
                         ]
                     },
+                    "document_type": {
+                        "type": "string"
+                    },
                     "document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "back_document_public_id": {
                         "type": [
                             "string",
                             "null"
@@ -30765,7 +31036,9 @@
                     "public_id",
                     "client_public_id",
                     "guarantor_client_public_id",
+                    "document_type",
                     "document_public_id",
+                    "back_document_public_id",
                     "guarantor_full_name",
                     "guarantor_phone_number",
                     "relationship_type",
@@ -31279,6 +31552,12 @@
                             "null"
                         ]
                     },
+                    "back_document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "proxy_full_name": {
                         "type": [
                             "string",
@@ -31397,6 +31676,7 @@
                     "client_public_id",
                     "customer_account_public_id",
                     "document_public_id",
+                    "back_document_public_id",
                     "proxy_full_name",
                     "proxy_phone_number",
                     "proxy_email",
@@ -31433,6 +31713,12 @@
                         ]
                     },
                     "profile_photo_document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "profile_photo_thumbnail_url": {
                         "type": [
                             "string",
                             "null"
@@ -31696,6 +31982,7 @@
                     "public_id",
                     "agency_public_id",
                     "profile_photo_document_public_id",
+                    "profile_photo_thumbnail_url",
                     "prospector_public_id",
                     "collection_agent_public_id",
                     "sector_public_id",
@@ -36327,6 +36614,21 @@
                         ],
                         "maxLength": 64
                     },
+                    "document_type": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "national_id",
+                            "passport",
+                            "drivers_license",
+                            "residence_permit",
+                            "voter_card",
+                            "birth_certificate"
+                        ],
+                        "maxLength": 64
+                    },
                     "starts_on": {
                         "type": [
                             "string",
@@ -36342,6 +36644,12 @@
                         "format": "date-time"
                     },
                     "document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "back_document_public_id": {
                         "type": [
                             "string",
                             "null"
@@ -36436,6 +36744,14 @@
                             "string",
                             "null"
                         ],
+                        "enum": [
+                            "national_id",
+                            "passport",
+                            "drivers_license",
+                            "residence_permit",
+                            "voter_card",
+                            "birth_certificate"
+                        ],
                         "maxLength": 64
                     },
                     "proxy_id_document_number": {
@@ -36485,6 +36801,12 @@
                         "format": "date-time"
                     },
                     "document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "back_document_public_id": {
                         "type": [
                             "string",
                             "null"
@@ -38699,50 +39021,124 @@
                         ]
                     },
                     "payment_method": {
-                        "type": "string"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "cash"
+                                ]
+                            }
+                        ]
                     },
                     "cash_amount_minor": {
-                        "type": "integer"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "integer"
+                            }
+                        ]
                     },
                     "cheque_amount_minor": {
-                        "type": "integer"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "integer",
+                                "enum": [
+                                    0
+                                ]
+                            }
+                        ]
                     },
                     "transfer_amount_minor": {
-                        "type": "integer"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "integer",
+                                "enum": [
+                                    0
+                                ]
+                            }
+                        ]
                     },
                     "channel": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
+                        "type": "string"
                     },
                     "external_reference": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
+                        "type": "string"
                     },
                     "fee_policy_key": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
+                        "type": "string"
                     },
                     "fees_applied": {
-                        "type": "boolean"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ]
                     },
                     "fee_amount_minor": {
-                        "type": "integer"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "integer",
+                                "enum": [
+                                    0
+                                ]
+                            }
+                        ]
                     },
                     "notify_customer": {
-                        "type": "boolean"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "boolean"
+                            }
+                        ]
                     },
                     "notification_channels": {
-                        "type": "array",
-                        "items": {}
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 0,
+                                "maxItems": 0,
+                                "additionalItems": false
+                            }
+                        ]
                     },
                     "notification_status": {
-                        "type": "string"
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "not_requested"
+                                ]
+                            }
+                        ]
                     },
                     "tenders": {
                         "type": "array",
@@ -39384,6 +39780,21 @@
                         ],
                         "maxLength": 64
                     },
+                    "document_type": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "national_id",
+                            "passport",
+                            "drivers_license",
+                            "residence_permit",
+                            "voter_card",
+                            "birth_certificate"
+                        ],
+                        "maxLength": 64
+                    },
                     "starts_on": {
                         "type": [
                             "string",
@@ -39399,6 +39810,12 @@
                         "format": "date-time"
                     },
                     "document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "back_document_public_id": {
                         "type": [
                             "string",
                             "null"
@@ -39599,6 +40016,14 @@
                             "string",
                             "null"
                         ],
+                        "enum": [
+                            "national_id",
+                            "passport",
+                            "drivers_license",
+                            "residence_permit",
+                            "voter_card",
+                            "birth_certificate"
+                        ],
                         "maxLength": 64
                     },
                     "proxy_id_document_number": {
@@ -39648,6 +40073,12 @@
                         "format": "date-time"
                     },
                     "document_public_id": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "back_document_public_id": {
                         "type": [
                             "string",
                             "null"
@@ -41113,6 +41544,25 @@
             }
         },
         "responses": {
+            "ModelNotFoundException": {
+                "description": "Not found",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Error overview."
+                                }
+                            },
+                            "required": [
+                                "message"
+                            ]
+                        }
+                    }
+                }
+            },
             "ValidationException": {
                 "description": "Validation error",
                 "content": {
@@ -41145,25 +41595,6 @@
             },
             "AuthenticationException": {
                 "description": "Unauthenticated",
-                "content": {
-                    "application/json": {
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "message": {
-                                    "type": "string",
-                                    "description": "Error overview."
-                                }
-                            },
-                            "required": [
-                                "message"
-                            ]
-                        }
-                    }
-                }
-            },
-            "ModelNotFoundException": {
-                "description": "Not found",
                 "content": {
                     "application/json": {
                         "schema": {

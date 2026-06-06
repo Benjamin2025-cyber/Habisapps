@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources;
 
+use App\Application\BatchRuns\BatchProcedureRegistry;
 use App\Models\BatchProcedure;
 use DateTimeInterface;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ final class BatchProcedureResource extends JsonResource
                 'schedule_type' => null,
                 'schedule_metadata' => null,
                 'status' => null,
+                'executable' => false,
                 'created_at' => null,
                 'updated_at' => null,
             ];
@@ -43,6 +45,7 @@ final class BatchProcedureResource extends JsonResource
             'schedule_type' => $procedure->schedule_type,
             'schedule_metadata' => $procedure->schedule_metadata,
             'status' => $procedure->status,
+            'executable' => BatchProcedureRegistry::isExecutable($procedure->code),
             'created_at' => $this->formatDate($procedure->created_at),
             'updated_at' => $this->formatDate($procedure->updated_at),
         ];

@@ -11,23 +11,6 @@ use InvalidArgumentException;
 
 final class ExecuteRegisteredBatchRun
 {
-    private const array LOAN_ARREARS_PROCEDURE_CODES = [
-        'loan_arrears_assessment',
-        'loan_monthly_arrears_penalty',
-    ];
-
-    private const array CASH_CLOSE_PROCEDURE_CODES = [
-        'cash_close_verification',
-        'cash_daily_close',
-        'agency_cash_close',
-    ];
-
-    private const array ACCOUNTING_CLOSE_PROCEDURE_CODES = [
-        'accounting_close_verification',
-        'accounting_daily_close',
-        'journal_close_verification',
-    ];
-
     public function __construct(
         private readonly ExecuteLoanArrearsAssessmentBatch $executeLoanArrearsAssessmentBatch,
         private readonly ExecuteCashCloseVerificationBatch $executeCashCloseVerificationBatch,
@@ -53,29 +36,18 @@ final class ExecuteRegisteredBatchRun
         $this->guardNoRunningBatchInScope($batchRun);
         $this->guardPrerequisitesSatisfied($batchRun);
 
-        if (in_array($procedureCode, self::LOAN_ARREARS_PROCEDURE_CODES, true)) {
-            return $this->executeLoanArrearsAssessmentBatch->execute($batchRun);
-        }
-
-        if (in_array($procedureCode, self::CASH_CLOSE_PROCEDURE_CODES, true)) {
-            return $this->executeCashCloseVerificationBatch->execute($batchRun);
-        }
-
-        if ($this->executeLoanServicingHooksBatch->supports($procedureCode)) {
-            return $this->executeLoanServicingHooksBatch->execute($batchRun);
-        }
-
-        return $this->executeAccountingCloseVerificationBatch->execute($batchRun);
+        return match (BatchProcedureRegistry::handlerFor($procedureCode)) {
+            BatchProcedureRegistry::HANDLER_LOAN_ARREARS => $this->executeLoanArrearsAssessmentBatch->execute($batchRun),
+            BatchProcedureRegistry::HANDLER_CASH_CLOSE => $this->executeCashCloseVerificationBatch->execute($batchRun),
+            BatchProcedureRegistry::HANDLER_LOAN_SERVICING_HOOK => $this->executeLoanServicingHooksBatch->execute($batchRun),
+            BatchProcedureRegistry::HANDLER_ACCOUNTING_CLOSE => $this->executeAccountingCloseVerificationBatch->execute($batchRun),
+            default => throw new InvalidArgumentException('This batch procedure is not executable.'),
+        };
     }
 
     private function guardSupportedProcedure(string $procedureCode): void
     {
-        if (
-            ! in_array($procedureCode, self::LOAN_ARREARS_PROCEDURE_CODES, true)
-            && ! in_array($procedureCode, self::CASH_CLOSE_PROCEDURE_CODES, true)
-            && ! in_array($procedureCode, self::ACCOUNTING_CLOSE_PROCEDURE_CODES, true)
-            && ! $this->executeLoanServicingHooksBatch->supports($procedureCode)
-        ) {
+        if (! BatchProcedureRegistry::isExecutable($procedureCode)) {
             throw new InvalidArgumentException('This batch procedure is not executable.');
         }
     }

@@ -13,18 +13,6 @@ use Throwable;
 
 final class ExecuteLoanServicingHooksBatch
 {
-    private const array PORTFOLIO_REPORT_PROCEDURE_CODES = [
-        'loan_portfolio_report_hook',
-        'credit_portfolio_report_hook',
-        'portfolio_report_generation',
-    ];
-
-    private const array NOTIFICATION_PROCEDURE_CODES = [
-        'loan_servicing_notification_hook',
-        'loan_notifications_hook',
-        'credit_notification_hook',
-    ];
-
     public function execute(BatchRun $batchRun): BatchRun
     {
         $batchRun->loadMissing(['batchProcedure', 'agency', 'operator']);
@@ -45,7 +33,7 @@ final class ExecuteLoanServicingHooksBatch
         ])->save();
 
         try {
-            $summary = in_array($procedureCode, self::PORTFOLIO_REPORT_PROCEDURE_CODES, true)
+            $summary = BatchProcedureRegistry::variantFor($procedureCode) === BatchProcedureRegistry::VARIANT_PORTFOLIO_REPORT
                 ? $this->queuePortfolioReportRun($batchRun, $procedureCode)
                 : $this->queueNotificationDelivery($batchRun, $procedureCode);
 
@@ -70,8 +58,7 @@ final class ExecuteLoanServicingHooksBatch
 
     public function supports(string $procedureCode): bool
     {
-        return in_array($procedureCode, self::PORTFOLIO_REPORT_PROCEDURE_CODES, true)
-            || in_array($procedureCode, self::NOTIFICATION_PROCEDURE_CODES, true);
+        return BatchProcedureRegistry::handlerFor($procedureCode) === BatchProcedureRegistry::HANDLER_LOAN_SERVICING_HOOK;
     }
 
     /**

@@ -117,6 +117,7 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
         ->defaults('accounting_day_classification', 'administration');
 
     Route::get('batch-procedures', [BatchProcedureController::class, 'index']);
+    Route::get('batch-procedures/executable-codes', [BatchProcedureController::class, 'executableCodes']);
     Route::post('batch-procedures', [BatchProcedureController::class, 'store']);
     Route::get('batch-procedures/{batchProcedure}', [BatchProcedureController::class, 'show']);
     Route::patch('batch-procedures/{batchProcedure}', [BatchProcedureController::class, 'update']);
