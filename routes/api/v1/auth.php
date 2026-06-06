@@ -79,6 +79,7 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::get('guarantors', [StakeholderDirectoryController::class, 'guarantors']);
     Route::get('proxies', [StakeholderDirectoryController::class, 'proxies']);
 
+    Route::get('clients/stats', [ClientController::class, 'stats']);
     Route::get('clients', [ClientController::class, 'index']);
     Route::post('clients', [ClientController::class, 'store'])->middleware('throttle:client.create');
     Route::get('clients/{client}', [ClientController::class, 'show']);

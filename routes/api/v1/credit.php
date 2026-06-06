@@ -18,6 +18,7 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::patch('loan-products/{loanProduct}', [LoanProductController::class, 'update']);
     Route::delete('loan-products/{loanProduct}', [LoanProductController::class, 'destroy']);
 
+    Route::get('loans/stats', [LoanController::class, 'stats']);
     Route::get('loans', [LoanController::class, 'index']);
     Route::post('loans', [LoanController::class, 'store']);
     Route::get('loans/{loan}', [LoanController::class, 'show']);

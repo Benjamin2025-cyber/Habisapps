@@ -501,6 +501,8 @@ return [
                 'loans.early-repayments.create',
                 'loans.arrears.assess',
                 'loans.recoveries.manage',
+                'journal.entries.view',
+                'journal.lines.view',
             ],
             'kyc-officer' => [
                 'system.view-health',

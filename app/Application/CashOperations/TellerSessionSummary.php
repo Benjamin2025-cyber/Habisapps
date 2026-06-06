@@ -116,6 +116,8 @@ final class TellerSessionSummary
                 DB::raw('COUNT(*) AS transaction_count'),
                 DB::raw("COALESCE(SUM(CASE WHEN status = '{$posted}' THEN 1 ELSE 0 END), 0) AS posted_count"),
                 DB::raw("COALESCE(SUM(CASE WHEN status NOT IN ('".implode("', '", $closedStatuses)."') THEN 1 ELSE 0 END), 0) AS pending_count"),
+                DB::raw("COALESCE(SUM(CASE WHEN status = '{$posted}' AND fees_applied = true THEN fee_amount_minor ELSE 0 END), 0) AS commissions_total"),
+                DB::raw("COUNT(DISTINCT CASE WHEN status = '{$posted}' AND client_id IS NOT NULL THEN client_id END) AS distinct_clients_served"),
                 DB::raw('MAX(created_at) AS last_transaction_at'),
             ]);
 
@@ -157,6 +159,8 @@ final class TellerSessionSummary
             'withdrawals_total_minor' => $withdrawals,
             'manual_journals_total_minor' => $manual,
             'reversals_total_minor' => $reversals,
+            'commissions_total_minor' => $this->intFrom($aggregate, 'commissions_total'),
+            'distinct_clients_served_count' => $this->intFrom($aggregate, 'distinct_clients_served'),
             'transaction_count' => $transactionCount,
             'posted_transaction_count' => $postedCount,
             'pending_transaction_count' => $pendingCount,

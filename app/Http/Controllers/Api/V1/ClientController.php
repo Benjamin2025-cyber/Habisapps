@@ -21,6 +21,11 @@ final class ClientController extends BaseController
         private readonly ClientWorkflowControllerAdapter $client,
     ) {}
 
+    public function stats(Request $request): JsonResponse
+    {
+        return $this->client->stats($request);
+    }
+
     /**
      * List CRM clients.
      *

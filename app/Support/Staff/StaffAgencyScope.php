@@ -55,4 +55,24 @@ final class StaffAgencyScope
             ->values()
             ->all();
     }
+
+    /**
+     * @return array<int, int>
+     */
+    public function activeAssignedAgencyIds(User $user): array
+    {
+        $today = now()->toDateString();
+
+        return DB::table('staff_agency_assignments')
+            ->where('user_id', $user->id)
+            ->where('status', StaffAgencyAssignment::STATUS_ACTIVE)
+            ->where('starts_on', '<=', $today)
+            ->whereRaw('(ends_on IS NULL OR ends_on >= ?)', [$today])
+            ->pluck('agency_id')
+            ->filter(static fn (mixed $agencyId): bool => is_numeric($agencyId))
+            ->map(static fn (mixed $agencyId): int => (int) $agencyId)
+            ->unique()
+            ->values()
+            ->all();
+    }
 }

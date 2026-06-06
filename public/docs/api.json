@@ -2495,6 +2495,14 @@
                                         ],
                                         "maxLength": 32
                                     },
+                                    "execution_priority": {
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "minimum": 0,
+                                        "maximum": 65535
+                                    },
                                     "schedule_metadata": {
                                         "type": [
                                             "array",
@@ -2513,6 +2521,15 @@
                                             "active",
                                             "inactive"
                                         ]
+                                    },
+                                    "operation_code_public_ids": {
+                                        "type": [
+                                            "array",
+                                            "null"
+                                        ],
+                                        "items": {
+                                            "type": "string"
+                                        }
                                     }
                                 },
                                 "required": [
@@ -2663,7 +2680,24 @@
                                         ],
                                         "maxLength": 32
                                     },
+                                    "execution_priority": {
+                                        "type": [
+                                            "integer",
+                                            "null"
+                                        ],
+                                        "minimum": 0,
+                                        "maximum": 65535
+                                    },
                                     "schedule_metadata": {
+                                        "type": [
+                                            "array",
+                                            "null"
+                                        ],
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "operation_code_public_ids": {
                                         "type": [
                                             "array",
                                             "null"
@@ -2775,6 +2809,122 @@
                     },
                     "422": {
                         "$ref": "#/components/responses/ValidationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/batch-procedures/{batchProcedure}/operation-codes": {
+            "post": {
+                "operationId": "batchProcedure.attachOperationCodes",
+                "tags": [
+                    "BatchProcedure"
+                ],
+                "parameters": [
+                    {
+                        "name": "batchProcedure",
+                        "in": "path",
+                        "required": true,
+                        "description": "The batch procedure public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "operation_code_public_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "minItems": 1
+                                    }
+                                },
+                                "required": [
+                                    "operation_code_public_ids"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/batch-procedures/{batchProcedure}/operation-codes/{operationCode}": {
+            "delete": {
+                "operationId": "batchProcedure.detachOperationCode",
+                "tags": [
+                    "BatchProcedure"
+                ],
+                "parameters": [
+                    {
+                        "name": "batchProcedure",
+                        "in": "path",
+                        "required": true,
+                        "description": "The batch procedure public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "operationCode",
+                        "in": "path",
+                        "required": true,
+                        "description": "The operation code public id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
                     },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
@@ -3238,6 +3388,29 @@
                     },
                     "404": {
                         "$ref": "#/components/responses/ModelNotFoundException"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/clients/stats": {
+            "get": {
+                "operationId": "client.stats",
+                "tags": [
+                    "Client"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
                     },
                     "401": {
                         "$ref": "#/components/responses/AuthenticationException"
@@ -7112,6 +7285,164 @@
                 "operationId": "dashboard.agenciesPerformance",
                 "tags": [
                     "Dashboard"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/dashboards/loan-officer": {
+            "get": {
+                "operationId": "dashboard.loanOfficer",
+                "tags": [
+                    "Dashboard"
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "description": "Portfolio currency for loan-officer metrics (default XAF).",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/dashboards/kyc-officer": {
+            "get": {
+                "operationId": "dashboard.kycOfficer",
+                "tags": [
+                    "Dashboard"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/dashboards/accountant": {
+            "get": {
+                "operationId": "dashboard.accountant",
+                "tags": [
+                    "Dashboard"
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "description": "Currency for awaiting-disbursement counts (default XAF).",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/dashboards/regional": {
+            "get": {
+                "operationId": "dashboard.regional",
+                "tags": [
+                    "Dashboard"
+                ],
+                "parameters": [
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "description": "Portfolio currency for regional metrics (default XAF).",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
                     "200": {
@@ -19534,156 +19865,117 @@
                 }
             }
         },
+        "/v1/journal-entries/stats": {
+            "get": {
+                "operationId": "journalEntry.stats",
+                "tags": [
+                    "JournalEntry"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Limit results to a journal entry status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "agency_public_id",
+                        "in": "query",
+                        "description": "Institution-scope readers may limit results to an agency public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search reference, description, source module/type, and status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/v1/journal-entries": {
             "get": {
                 "operationId": "journalEntry.index",
                 "tags": [
                     "JournalEntry"
                 ],
-                "responses": {
-                    "200": {
-                        "description": "Paginated set of `JournalEntryResource`",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/components/schemas/JournalEntryCollection"
-                                        },
-                                        "links": {
-                                            "type": "object",
-                                            "properties": {
-                                                "first": {
-                                                    "type": [
-                                                        "string",
-                                                        "null"
-                                                    ]
-                                                },
-                                                "last": {
-                                                    "type": [
-                                                        "string",
-                                                        "null"
-                                                    ]
-                                                },
-                                                "prev": {
-                                                    "type": [
-                                                        "string",
-                                                        "null"
-                                                    ]
-                                                },
-                                                "next": {
-                                                    "type": [
-                                                        "string",
-                                                        "null"
-                                                    ]
-                                                }
-                                            },
-                                            "required": [
-                                                "first",
-                                                "last",
-                                                "prev",
-                                                "next"
-                                            ]
-                                        },
-                                        "meta": {
-                                            "type": "object",
-                                            "properties": {
-                                                "current_page": {
-                                                    "type": "integer",
-                                                    "minimum": 1
-                                                },
-                                                "from": {
-                                                    "type": [
-                                                        "integer",
-                                                        "null"
-                                                    ],
-                                                    "minimum": 1
-                                                },
-                                                "last_page": {
-                                                    "type": "integer",
-                                                    "minimum": 1
-                                                },
-                                                "links": {
-                                                    "type": "array",
-                                                    "description": "Generated paginator links.",
-                                                    "items": {
-                                                        "type": "object",
-                                                        "properties": {
-                                                            "url": {
-                                                                "type": [
-                                                                    "string",
-                                                                    "null"
-                                                                ]
-                                                            },
-                                                            "label": {
-                                                                "type": "string"
-                                                            },
-                                                            "active": {
-                                                                "type": "boolean"
-                                                            }
-                                                        },
-                                                        "required": [
-                                                            "url",
-                                                            "label",
-                                                            "active"
-                                                        ]
-                                                    }
-                                                },
-                                                "path": {
-                                                    "type": [
-                                                        "string",
-                                                        "null"
-                                                    ],
-                                                    "description": "Base path for paginator generated URLs."
-                                                },
-                                                "per_page": {
-                                                    "type": "integer",
-                                                    "description": "Number of items shown per page.",
-                                                    "minimum": 0
-                                                },
-                                                "to": {
-                                                    "type": [
-                                                        "integer",
-                                                        "null"
-                                                    ],
-                                                    "description": "Number of the last item in the slice.",
-                                                    "minimum": 1
-                                                },
-                                                "total": {
-                                                    "type": "integer",
-                                                    "description": "Total number of items being paginated.",
-                                                    "minimum": 0
-                                                }
-                                            },
-                                            "required": [
-                                                "current_page",
-                                                "from",
-                                                "last_page",
-                                                "links",
-                                                "path",
-                                                "per_page",
-                                                "to",
-                                                "total"
-                                            ]
-                                        }
-                                    },
-                                    "required": [
-                                        "data",
-                                        "links",
-                                        "meta"
-                                    ]
-                                }
-                            }
+                "parameters": [
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Limit results to a journal entry status.",
+                        "schema": {
+                            "type": "string"
                         }
                     },
-                    "403": {
-                        "description": "",
+                    {
+                        "name": "agency_public_id",
+                        "in": "query",
+                        "description": "Institution-scope readers may limit results to an agency public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search reference, description, source module/type, and status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`JournalEntryCollection`",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "array",
-                                    "items": {}
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "data": {
+                                                    "$ref": "#/components/schemas/JournalEntryCollection"
+                                                }
+                                            },
+                                            "required": [
+                                                "data"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object"
+                                        }
+                                    ]
                                 }
                             }
                         }
@@ -20985,11 +21277,86 @@
                 }
             }
         },
-        "/v1/loans": {
+        "/v1/loans/stats": {
             "get": {
-                "operationId": "loan.index",
+                "operationId": "loan.stats",
                 "tags": [
                     "Loan"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter[credit_agent_public_id]",
+                        "in": "query",
+                        "description": "Limit results to loans assigned to a credit agent public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Bracketed alias for top-level status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[in_arrears]",
+                        "in": "query",
+                        "description": "When true, return only loans with overdue unpaid schedule exposure.",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "filter[par_bucket]",
+                        "in": "query",
+                        "description": "Non-cumulative PAR band filter: 30, 60, or 90. Requires arrears context.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "filter[as_of_date]",
+                        "in": "query",
+                        "description": "As-of date for delinquency projection (YYYY-MM-DD). Defaults to today.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[awaiting_disbursement]",
+                        "in": "query",
+                        "description": "When true, return only approved loans ready for principal disbursement.",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "agency_public_id",
+                        "in": "query",
+                        "description": "Institution-scope readers may limit results to an agency public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "description": "Limit results to a currency code.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
                 ],
                 "responses": {
                     "200": {
@@ -20997,19 +21364,113 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "array",
-                                    "items": {}
+                                    "type": "object"
                                 }
                             }
                         }
                     },
-                    "403": {
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
+        "/v1/loans": {
+            "get": {
+                "operationId": "loan.index",
+                "tags": [
+                    "Loan"
+                ],
+                "parameters": [
+                    {
+                        "name": "filter[credit_agent_public_id]",
+                        "in": "query",
+                        "description": "Limit results to loans assigned to a credit agent public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Loan status filter.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[status]",
+                        "in": "query",
+                        "description": "Bracketed alias for top-level status.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filter[in_arrears]",
+                        "in": "query",
+                        "description": "When true, return only loans with overdue unpaid schedule exposure.",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "filter[par_bucket]",
+                        "in": "query",
+                        "description": "Non-cumulative PAR band filter: 30, 60, or 90. Requires arrears context.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "filter[as_of_date]",
+                        "in": "query",
+                        "description": "As-of date for delinquency projection (YYYY-MM-DD). Defaults to today.",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "filter[awaiting_disbursement]",
+                        "in": "query",
+                        "description": "When true, return only approved loans ready for principal disbursement.",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "agency_public_id",
+                        "in": "query",
+                        "description": "Institution-scope readers may limit results to an agency public ID.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "currency",
+                        "in": "query",
+                        "description": "Limit results to a currency code.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Results per page. Capped at 100.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
                         "description": "",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "array",
-                                    "items": {}
+                                    "type": "object"
                                 }
                             }
                         }
@@ -30124,12 +30585,66 @@
                                     "null"
                                 ]
                             },
+                            "execution_priority": {
+                                "type": "string"
+                            },
                             "schedule_metadata": {
                                 "type": [
                                     "array",
                                     "null"
                                 ],
                                 "items": {}
+                            },
+                            "operation_codes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "public_id": {
+                                            "type": "string"
+                                        },
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "label": {
+                                            "type": "string"
+                                        },
+                                        "module": {
+                                            "type": "string"
+                                        },
+                                        "operation_type": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "direction": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "attachment_status": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "public_id",
+                                        "code",
+                                        "label",
+                                        "module",
+                                        "operation_type",
+                                        "direction",
+                                        "status",
+                                        "attachment_status"
+                                    ]
+                                }
                             },
                             "status": {
                                 "type": "string"
@@ -30156,7 +30671,9 @@
                             "name",
                             "description",
                             "schedule_type",
+                            "execution_priority",
                             "schedule_metadata",
+                            "operation_codes",
                             "status",
                             "executable",
                             "created_at",
@@ -30181,8 +30698,20 @@
                             "schedule_type": {
                                 "type": "null"
                             },
+                            "execution_priority": {
+                                "type": "null"
+                            },
                             "schedule_metadata": {
                                 "type": "null"
+                            },
+                            "operation_codes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 0,
+                                "maxItems": 0,
+                                "additionalItems": false
                             },
                             "status": {
                                 "type": "null"
@@ -30203,7 +30732,9 @@
                             "name",
                             "description",
                             "schedule_type",
+                            "execution_priority",
                             "schedule_metadata",
+                            "operation_codes",
                             "status",
                             "executable",
                             "created_at",
@@ -30872,6 +31403,124 @@
                             "null"
                         ]
                     },
+                    "guarantor_civility": {
+                        "type": "string",
+                        "description": "Civility/title is a non-sensitive salutation; always visible."
+                    },
+                    "guarantor_first_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "guarantor_last_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "guarantor_middle_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "guarantor_father_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "guarantor_mother_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "guarantor_date_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_place_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_identity_document_number": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "guarantor_identity_issued_on": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_identity_issued_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_profession": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_business_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "guarantor_business_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "guarantor_phone_number": {
                         "type": [
                             "string",
@@ -30953,6 +31602,22 @@
                     "document_public_id",
                     "back_document_public_id",
                     "guarantor_full_name",
+                    "guarantor_civility",
+                    "guarantor_first_name",
+                    "guarantor_last_name",
+                    "guarantor_middle_name",
+                    "guarantor_father_name",
+                    "guarantor_mother_name",
+                    "guarantor_date_of_birth",
+                    "guarantor_place_of_birth",
+                    "guarantor_identity_document_number",
+                    "guarantor_identity_issued_on",
+                    "guarantor_identity_issued_at",
+                    "guarantor_profession",
+                    "guarantor_address_line_1",
+                    "guarantor_address_line_2",
+                    "guarantor_business_address_line_1",
+                    "guarantor_business_address_line_2",
                     "guarantor_phone_number",
                     "relationship_type",
                     "status",
@@ -31477,6 +32142,104 @@
                             "null"
                         ]
                     },
+                    "proxy_first_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "proxy_last_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "proxy_middle_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "proxy_father_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "proxy_mother_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "proxy_date_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_place_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_identity_issued_on": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_identity_issued_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_business_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "proxy_business_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
                     "proxy_phone_number": {
                         "type": [
                             "string",
@@ -31591,6 +32354,19 @@
                     "document_public_id",
                     "back_document_public_id",
                     "proxy_full_name",
+                    "proxy_first_name",
+                    "proxy_last_name",
+                    "proxy_middle_name",
+                    "proxy_father_name",
+                    "proxy_mother_name",
+                    "proxy_date_of_birth",
+                    "proxy_place_of_birth",
+                    "proxy_identity_issued_on",
+                    "proxy_identity_issued_at",
+                    "proxy_address_line_1",
+                    "proxy_address_line_2",
+                    "proxy_business_address_line_1",
+                    "proxy_business_address_line_2",
                     "proxy_phone_number",
                     "proxy_email",
                     "proxy_id_document_type",
@@ -31663,6 +32439,10 @@
                     },
                     "client_reference": {
                         "type": "string"
+                    },
+                    "civility": {
+                        "type": "string",
+                        "description": "Civility/title is a non-sensitive salutation; always visible."
                     },
                     "first_name": {
                         "type": [
@@ -31901,6 +32681,7 @@
                     "sector_public_id",
                     "sub_sector_public_id",
                     "client_reference",
+                    "civility",
                     "first_name",
                     "last_name",
                     "middle_name",
@@ -33515,10 +34296,145 @@
                 "title": "ExecutableBatchProcedureCodeResource"
             },
             "JournalEntryCollection": {
-                "type": "array",
-                "items": {
-                    "$ref": "#/components/schemas/JournalEntryResource"
-                },
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "journal_entries": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/JournalEntryResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "journal_entries"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "string"
+                                            },
+                                            "per_page": {
+                                                "type": "string"
+                                            },
+                                            "total": {
+                                                "type": "string"
+                                            },
+                                            "last_page": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "success": {
+                                "type": "boolean"
+                            },
+                            "message": {
+                                "type": "string",
+                                "const": "Success"
+                            },
+                            "data": {
+                                "type": "object",
+                                "properties": {
+                                    "journal_entries": {
+                                        "type": "array",
+                                        "items": {
+                                            "$ref": "#/components/schemas/JournalEntryResource"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "journal_entries"
+                                ]
+                            },
+                            "errors": {
+                                "type": "null"
+                            },
+                            "meta": {
+                                "type": "object",
+                                "properties": {
+                                    "pagination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "current_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            },
+                                            "per_page": {
+                                                "type": "integer",
+                                                "const": 25
+                                            },
+                                            "total": {
+                                                "type": "integer"
+                                            },
+                                            "last_page": {
+                                                "type": "integer",
+                                                "const": 1
+                                            }
+                                        },
+                                        "required": [
+                                            "current_page",
+                                            "per_page",
+                                            "total",
+                                            "last_page"
+                                        ]
+                                    }
+                                },
+                                "required": [
+                                    "pagination"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "success",
+                            "message",
+                            "data",
+                            "errors",
+                            "meta"
+                        ]
+                    }
+                ],
                 "title": "JournalEntryCollection"
             },
             "JournalEntryResource": {
@@ -36582,6 +37498,124 @@
                             "string",
                             "null"
                         ],
+                        "description": "A standalone guarantor needs a display name, but it can be derived\nfrom structured names, so a last name (or linked client) suffices.",
+                        "maxLength": 255
+                    },
+                    "guarantor_civility": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "m",
+                            "mme",
+                            "mlle",
+                            "dr"
+                        ]
+                    },
+                    "guarantor_first_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_last_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_middle_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_date_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "guarantor_place_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_identity_document_number": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_identity_issued_on": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "guarantor_identity_issued_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_father_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_mother_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_profession": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_business_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_business_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
                         "maxLength": 255
                     },
                     "guarantor_phone_number": {
@@ -36706,6 +37740,97 @@
                 "properties": {
                     "proxy_full_name": {
                         "type": "string",
+                        "maxLength": 255
+                    },
+                    "proxy_first_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_last_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_middle_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_date_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "proxy_place_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_identity_issued_on": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "proxy_identity_issued_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_father_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_mother_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_business_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_business_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
                         "maxLength": 255
                     },
                     "proxy_phone_number": {
@@ -36855,6 +37980,18 @@
                         "type": [
                             "string",
                             "null"
+                        ]
+                    },
+                    "civility": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "m",
+                            "mme",
+                            "mlle",
+                            "dr"
                         ]
                     },
                     "first_name": {
@@ -38736,6 +39873,12 @@
                             "reversals_total_minor": {
                                 "type": "integer"
                             },
+                            "commissions_total_minor": {
+                                "type": "integer"
+                            },
+                            "distinct_clients_served_count": {
+                                "type": "integer"
+                            },
                             "transaction_count": {
                                 "type": "integer"
                             },
@@ -38760,6 +39903,8 @@
                             "withdrawals_total_minor",
                             "manual_journals_total_minor",
                             "reversals_total_minor",
+                            "commissions_total_minor",
+                            "distinct_clients_served_count",
                             "transaction_count",
                             "posted_transaction_count",
                             "pending_transaction_count",
@@ -39750,6 +40895,123 @@
                         ],
                         "maxLength": 255
                     },
+                    "guarantor_civility": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "m",
+                            "mme",
+                            "mlle",
+                            "dr"
+                        ]
+                    },
+                    "guarantor_first_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_last_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_middle_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_date_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "guarantor_place_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_identity_document_number": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_identity_issued_on": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "guarantor_identity_issued_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_father_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_mother_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_profession": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "guarantor_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_business_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "guarantor_business_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
                     "guarantor_phone_number": {
                         "type": [
                             "string",
@@ -39980,6 +41242,97 @@
                         "type": "string",
                         "maxLength": 255
                     },
+                    "proxy_first_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_last_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_middle_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_date_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "proxy_place_of_birth": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_identity_issued_on": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "proxy_identity_issued_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_father_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_mother_name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128
+                    },
+                    "proxy_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_business_address_line_1": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
+                    "proxy_business_address_line_2": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 255
+                    },
                     "proxy_phone_number": {
                         "type": [
                             "string",
@@ -40157,6 +41510,18 @@
                         "type": [
                             "string",
                             "null"
+                        ]
+                    },
+                    "civility": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "m",
+                            "mme",
+                            "mlle",
+                            "dr"
                         ]
                     },
                     "first_name": {

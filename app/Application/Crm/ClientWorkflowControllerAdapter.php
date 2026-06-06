@@ -17,7 +17,13 @@ final class ClientWorkflowControllerAdapter
     public function __construct(
         private readonly ClientCrudWorkflow $crud,
         private readonly ClientKycWorkflow $kyc,
+        private readonly ClientStatsWorkflow $clientStats,
     ) {}
+
+    public function stats(Request $request): JsonResponse
+    {
+        return $this->clientStats->stats($request);
+    }
 
     public function index(Request $request): ClientCollection|JsonResponse
     {

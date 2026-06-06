@@ -72,9 +72,15 @@ final class LoanResource extends JsonResource
         }
 
         $setupChargesState = $loan->getAttribute('setup_charges_state');
+        $arrearsProjection = $loan->getAttribute('arrears_projection');
 
         return [
             ...(is_array($setupChargesState) ? ['setup_charges' => $setupChargesState] : []),
+            ...(is_array($arrearsProjection) ? [
+                'days_in_arrears' => $arrearsProjection['days_in_arrears'] ?? null,
+                'overdue_amount_minor' => $arrearsProjection['overdue_amount_minor'] ?? null,
+                'par_bucket' => $arrearsProjection['par_bucket'] ?? null,
+            ] : []),
             'public_id' => $loan->public_id,
             'loan_number' => $loan->loan_number,
             'status' => $loan->status,

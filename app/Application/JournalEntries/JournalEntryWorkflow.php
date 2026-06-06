@@ -17,7 +17,6 @@ use App\Models\User;
 use App\Support\AccountingDay\AccountingDayException;
 use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +29,7 @@ final class JournalEntryWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
         private readonly AccountingDayGuard $accountingDayGuard,
+        private readonly JournalEntryListQuery $journalEntryListQuery,
     ) {}
 
     public function index(Request $request): JournalEntryCollection|JsonResponse
@@ -39,22 +39,12 @@ final class JournalEntryWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = JournalEntry::query()->with(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])->latest();
-
-        $search = $request->query('search');
-        if (is_string($search) && trim($search) !== '') {
-            $term = trim($search);
-            $query->where(function (Builder $builder) use ($term): void {
-                $builder
-                    ->where('reference', 'ilike', '%'.$term.'%')
-                    ->orWhere('description', 'ilike', '%'.$term.'%')
-                    ->orWhere('source_module', 'ilike', '%'.$term.'%')
-                    ->orWhere('source_type', 'ilike', '%'.$term.'%')
-                    ->orWhere('status', 'ilike', '%'.$term.'%');
-            });
+        $built = $this->journalEntryListQuery->build($actor, $request);
+        if ($built['error'] instanceof JsonResponse) {
+            return $built['error'];
         }
 
-        return new JournalEntryCollection($query->paginate(min(max($request->integer('per_page', 25), 1), 100)));
+        return new JournalEntryCollection($built['query']->paginate(min(max($request->integer('per_page', 25), 1), 100)));
     }
 
     public function store(StoreJournalEntryRequest $request): JsonResponse

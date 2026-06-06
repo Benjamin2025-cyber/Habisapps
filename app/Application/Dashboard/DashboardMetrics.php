@@ -189,6 +189,39 @@ final class DashboardMetrics
     }
 
     /**
+     * Restrict an arbitrary loan-id set to the reportable (live portfolio)
+     * statuses. Callers that derive delinquency from an already-scoped id set
+     * (loan in-arrears filter, loans/stats, field-role dashboards) must run this
+     * first so their arrears/PAR numbers use the same status basis as the
+     * operational dashboard and cannot diverge (e.g. a written-off loan whose
+     * schedule snapshot is still active must not surface as "in arrears" here
+     * while being excluded from the dashboard delinquent count).
+     *
+     * @param  list<int>  $loanIds
+     * @return list<int>
+     */
+    public function reportableLoanIdsWithin(array $loanIds): array
+    {
+        if ($loanIds === []) {
+            return [];
+        }
+
+        $values = DB::table('loans')
+            ->whereIn('id', $loanIds)
+            ->whereIn('status', self::REPORTABLE_LOAN_STATUSES)
+            ->pluck('id');
+
+        $ids = [];
+        foreach ($values as $value) {
+            if (is_numeric($value)) {
+                $ids[] = (int) $value;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Subset of the given loans that have overdue, not-fully-paid schedule
      * exposure as of the date. Lets callers (e.g. the loan in-arrears filter)
      * apply the same delinquency definition to an already-scoped loan set.
@@ -294,6 +327,28 @@ final class DashboardMetrics
     public function postedCollectionMinor(?Agency $agency, string $currency, ?string $from, ?string $to, ?string $loanStatus, ?int $loanProductId): int
     {
         $query = $this->postedAllocationQuery($agency, $currency, $loanStatus, $loanProductId);
+        if ($from !== null) {
+            $query->whereDate('loan_repayments.paid_on', '>=', $from);
+        }
+        if ($to !== null) {
+            $query->whereDate('loan_repayments.paid_on', '<=', $to);
+        }
+
+        return $this->numericValue($query->sum('loan_repayment_allocations.amount_minor'));
+    }
+
+    /**
+     * Posted collections attributed to a credit agent through repayment posting.
+     */
+    public function postedCollectionMinorForCreditAgent(int $creditAgentUserId, string $currency, ?string $from, ?string $to): int
+    {
+        $query = DB::table('loan_repayment_allocations')
+            ->join('loan_repayments', 'loan_repayments.id', '=', 'loan_repayment_allocations.loan_repayment_id')
+            ->join('loans', 'loans.id', '=', 'loan_repayments.loan_id')
+            ->where('loan_repayments.status', 'posted')
+            ->where('loan_repayments.currency', $currency)
+            ->where('loans.credit_agent_id', $creditAgentUserId)
+            ->whereIn('loan_repayment_allocations.component', ['principal', 'interest', 'penalty']);
         if ($from !== null) {
             $query->whereDate('loan_repayments.paid_on', '>=', $from);
         }

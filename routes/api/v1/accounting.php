@@ -106,6 +106,7 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::post('account-holds/{accountHold}/release', [AccountHoldController::class, 'release']);
     Route::delete('account-holds/{accountHold}', [AccountHoldController::class, 'destroy']);
 
+    Route::get('journal-entries/stats', [JournalEntryController::class, 'stats']);
     Route::get('journal-entries', [JournalEntryController::class, 'index']);
     Route::post('journal-entries', [JournalEntryController::class, 'store'])->middleware('throttle:journal.write');
     Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show']);

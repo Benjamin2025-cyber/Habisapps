@@ -20,6 +20,30 @@ final class LoanController extends BaseController
         private readonly LoanWorkflowControllerAdapter $loan,
     ) {}
 
+    #[QueryParameter('filter[credit_agent_public_id]', 'Limit results to loans assigned to a credit agent public ID.', type: 'string')]
+    #[QueryParameter('filter[status]', 'Bracketed alias for top-level status.', type: 'string')]
+    #[QueryParameter('filter[in_arrears]', 'When true, return only loans with overdue unpaid schedule exposure.', type: 'boolean')]
+    #[QueryParameter('filter[par_bucket]', 'Non-cumulative PAR band filter: 30, 60, or 90. Requires arrears context.', type: 'integer')]
+    #[QueryParameter('filter[as_of_date]', 'As-of date for delinquency projection (YYYY-MM-DD). Defaults to today.', type: 'string', format: 'date')]
+    #[QueryParameter('filter[awaiting_disbursement]', 'When true, return only approved loans ready for principal disbursement.', type: 'boolean')]
+    #[QueryParameter('agency_public_id', 'Institution-scope readers may limit results to an agency public ID.', type: 'string')]
+    #[QueryParameter('currency', 'Limit results to a currency code.', type: 'string')]
+    #[QueryParameter('per_page', 'Results per page. Capped at 100.', type: 'integer')]
+    public function stats(Request $request): JsonResponse
+    {
+        return $this->loan->stats($request);
+    }
+
+    #[QueryParameter('filter[credit_agent_public_id]', 'Limit results to loans assigned to a credit agent public ID.', type: 'string')]
+    #[QueryParameter('status', 'Loan status filter.', type: 'string')]
+    #[QueryParameter('filter[status]', 'Bracketed alias for top-level status.', type: 'string')]
+    #[QueryParameter('filter[in_arrears]', 'When true, return only loans with overdue unpaid schedule exposure.', type: 'boolean')]
+    #[QueryParameter('filter[par_bucket]', 'Non-cumulative PAR band filter: 30, 60, or 90. Requires arrears context.', type: 'integer')]
+    #[QueryParameter('filter[as_of_date]', 'As-of date for delinquency projection (YYYY-MM-DD). Defaults to today.', type: 'string', format: 'date')]
+    #[QueryParameter('filter[awaiting_disbursement]', 'When true, return only approved loans ready for principal disbursement.', type: 'boolean')]
+    #[QueryParameter('agency_public_id', 'Institution-scope readers may limit results to an agency public ID.', type: 'string')]
+    #[QueryParameter('currency', 'Limit results to a currency code.', type: 'string')]
+    #[QueryParameter('per_page', 'Results per page. Capped at 100.', type: 'integer')]
     public function index(Request $request): JsonResponse
     {
         return $this->loan->index($request);

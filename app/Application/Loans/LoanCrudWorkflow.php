@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Application\Loans;
 
-use App\Application\Dashboard\DashboardMetrics;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreLoanRequest;
 use App\Http\Requests\UpdateLoanLinkedAccountsRequest;
@@ -21,7 +20,6 @@ use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
 use App\Support\Finance\LoanProductPenaltyTermsValidator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -33,7 +31,8 @@ final class LoanCrudWorkflow extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly LoanProductFormulaPolicySnapshotter $formulaPolicySnapshotter,
         private readonly LoanSetupState $setupState,
-        private readonly DashboardMetrics $dashboardMetrics,
+        private readonly LoanListQuery $loanListQuery,
+        private readonly LoanDelinquencyProjection $delinquencyProjection,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -43,63 +42,22 @@ final class LoanCrudWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = Loan::query()->with($this->relations())->latest();
-        if (! $actor->hasRole('platform-admin') && ! $actor->can('crm.scope.institution.read')) {
-            $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
-            if ($agencyId === null) {
-                return $this->respondForbidden('Loan list requires an active agency assignment.');
+        $built = $this->loanListQuery->build($actor, $request);
+        if ($built['error'] instanceof JsonResponse) {
+            return $built['error'];
+        }
+
+        $loans = $built['query']->paginate(min(max($request->integer('per_page', 25), 1), 100));
+        if ($built['include_arrears_fields']) {
+            $loanIds = array_values($loans->getCollection()->pluck('id')
+                ->filter(static fn (mixed $id): bool => is_numeric($id))
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all());
+            $projections = $this->delinquencyProjection->forLoanIds($loanIds, $built['as_of_date']);
+            foreach ($loans->getCollection() as $loan) {
+                $loan->setAttribute('arrears_projection', $projections[$loan->id] ?? null);
             }
-            $query->where('agency_id', $agencyId);
         }
-
-        $status = $request->query('status');
-        if (is_string($status) && $status !== '') {
-            $query->where('status', $status);
-        }
-
-        $search = $request->query('search');
-        if (is_string($search) && trim($search) !== '') {
-            $term = trim($search);
-            $query->where(function (Builder $builder) use ($term): void {
-                $builder
-                    ->where('loan_number', 'ilike', '%'.$term.'%')
-                    ->orWhere('status', 'ilike', '%'.$term.'%')
-                    ->orWhere('purpose', 'ilike', '%'.$term.'%')
-                    ->orWhereHas('client', function (Builder $clientQuery) use ($term): void {
-                        $clientQuery
-                            ->where('client_reference', 'ilike', '%'.$term.'%')
-                            ->orWhere('first_name', 'ilike', '%'.$term.'%')
-                            ->orWhere('last_name', 'ilike', '%'.$term.'%')
-                            ->orWhere('phone_number', 'ilike', '%'.$term.'%');
-                    });
-            });
-        }
-
-        $clientPublicId = $this->clientFilterValue($request);
-        if ($clientPublicId !== null) {
-            $clientId = Client::query()->where('public_id', $clientPublicId)->value('id');
-            // An unknown or out-of-scope client id produces an impossible
-            // predicate so the response is an empty, scope-safe page rather
-            // than leaking another client's loans.
-            $query->where('client_id', is_int($clientId) ? $clientId : 0);
-        }
-
-        if ($this->inArrearsFilterRequested($request)) {
-            // Restrict to loans with overdue, unpaid schedule exposure as of
-            // today, using the same delinquency definition as the dashboard.
-            // The candidate set is the already scope-filtered query, so the
-            // arrears predicate cannot widen visibility.
-            $candidateIds = [];
-            foreach ((clone $query)->pluck('id') as $id) {
-                if (is_numeric($id)) {
-                    $candidateIds[] = (int) $id;
-                }
-            }
-            $delinquentIds = $this->dashboardMetrics->delinquentLoanIdsWithin($candidateIds, now()->toDateString());
-            $query->whereKey($delinquentIds === [] ? [0] : $delinquentIds);
-        }
-
-        $loans = $query->paginate(min(max($request->integer('per_page', 25), 1), 100));
 
         return $this->respondSuccess([
             'loans' => LoanResource::collection($loans->getCollection()),
@@ -537,45 +495,6 @@ final class LoanCrudWorkflow extends BaseController
         $id = CustomerAccount::query()->where('public_id', $publicId)->value('id');
 
         return is_int($id) ? $id : null;
-    }
-
-    /**
-     * Read the client public id filter from either the top-level
-     * `client_public_id` query parameter or the `filter[client_public_id]`
-     * bracket form. Returns null when no usable value is present.
-     */
-    private function clientFilterValue(Request $request): ?string
-    {
-        $direct = $request->query('client_public_id');
-        if (is_string($direct) && $direct !== '') {
-            return $direct;
-        }
-
-        $filter = $request->query('filter');
-        if (is_array($filter) && isset($filter['client_public_id']) && is_string($filter['client_public_id']) && $filter['client_public_id'] !== '') {
-            return $filter['client_public_id'];
-        }
-
-        return null;
-    }
-
-    /**
-     * Whether `filter[in_arrears]` (or top-level `in_arrears`) requests only
-     * delinquent loans. Accepts the usual truthy strings.
-     */
-    private function inArrearsFilterRequested(Request $request): bool
-    {
-        $raw = $request->query('in_arrears');
-        $filter = $request->query('filter');
-        if ($raw === null && is_array($filter) && array_key_exists('in_arrears', $filter)) {
-            $raw = $filter['in_arrears'];
-        }
-
-        if (is_bool($raw)) {
-            return $raw;
-        }
-
-        return is_string($raw) && in_array(strtolower($raw), ['1', 'true', 'yes', 'on'], true);
     }
 
     private function canAccessLoanAgency(User $actor, Loan $loan): bool

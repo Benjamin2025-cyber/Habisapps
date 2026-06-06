@@ -19,7 +19,13 @@ final class LoanWorkflowControllerAdapter
         private readonly LoanApprovalWorkflow $approval,
         private readonly LoanScheduleWorkflow $schedule,
         private readonly LoanRepaymentWorkflow $repayment,
+        private readonly LoanStatsWorkflow $loanStats,
     ) {}
+
+    public function stats(Request $request): JsonResponse
+    {
+        return $this->loanStats->stats($request);
+    }
 
     public function index(Request $request): JsonResponse
     {

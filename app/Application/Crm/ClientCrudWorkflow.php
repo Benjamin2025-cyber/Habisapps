@@ -18,7 +18,6 @@ use App\Models\User;
 use App\Support\References\ReferenceNumberGenerator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -30,6 +29,7 @@ final class ClientCrudWorkflow extends BaseController
         private readonly ReferenceNumberGenerator $referenceNumberGenerator,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly CreateClient $createClient,
+        private readonly ClientListQuery $clientListQuery,
     ) {}
 
     public function index(Request $request): ClientCollection|JsonResponse
@@ -39,21 +39,12 @@ final class ClientCrudWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        $perPage = min(max($request->integer('per_page', 25), 1), 100);
-        $query = Client::query()
-            ->with(['agency', 'profilePhotoDocument', 'prospector', 'collectionAgent', 'sector', 'subSector'])
-            ->latest();
-
-        if (! $this->shouldUseInstitutionScope($actor, $request)) {
-            $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
-            if ($agencyId === null) {
-                return $this->respondForbidden();
-            }
-
-            $query->where('agency_id', $agencyId);
+        $built = $this->clientListQuery->build($actor, $request);
+        if ($built['error'] instanceof JsonResponse) {
+            return $built['error'];
         }
 
-        $this->applySafeFilters($query, $request, $actor);
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
 
         if ($actor->hasPermissionTo('crm.pii.view')) {
             $this->securityAudit->record('crm.client.pii_list_viewed', actor: $actor, properties: [
@@ -63,7 +54,7 @@ final class ClientCrudWorkflow extends BaseController
         }
 
         return new ClientCollection(
-            $query->paginate($perPage)
+            $built['query']->paginate($perPage)
         );
     }
 
@@ -276,41 +267,6 @@ final class ClientCrudWorkflow extends BaseController
     private function shouldUseInstitutionScope(User $actor, Request $request): bool
     {
         return $request->query('scope') === 'all' && $this->hasInstitutionReadScope($actor);
-    }
-
-    /**
-     * @param  Builder<Client>  $query
-     */
-    private function applySafeFilters(Builder $query, Request $request, User $actor): void
-    {
-        $status = $request->query('status');
-        if (is_string($status) && $status !== '') {
-            $query->where('status', $status);
-        }
-
-        $kycStatus = $request->query('kyc_status');
-        if (is_string($kycStatus) && $kycStatus !== '') {
-            $query->where('kyc_status', $kycStatus);
-        }
-
-        $search = $request->query('search');
-        if (! is_string($search) || trim($search) === '') {
-            return;
-        }
-
-        $term = trim($search);
-        $query->where(function (Builder $builder) use ($actor, $term): void {
-            $builder
-                ->where('client_reference', 'ilike', '%'.$term.'%')
-                ->orWhere('first_name', 'ilike', '%'.$term.'%')
-                ->orWhere('last_name', 'ilike', '%'.$term.'%');
-
-            if ($actor->hasPermissionTo('crm.pii.view')) {
-                $builder
-                    ->orWhere('phone_number', 'ilike', '%'.$term.'%')
-                    ->orWhere('email', 'ilike', '%'.$term.'%');
-            }
-        });
     }
 
     private function resolveCreateAgency(User $actor, mixed $requestedAgencyPublicId): ?Agency
