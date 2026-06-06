@@ -15,6 +15,7 @@
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.25",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.0",
         "spatie/laravel-medialibrary": "^11.22",
