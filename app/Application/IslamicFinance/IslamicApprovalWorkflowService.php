@@ -324,7 +324,7 @@ final class IslamicApprovalWorkflowService
                 ->lockForUpdate()
                 ->first();
             if (! is_object($workflow)) {
-                throw new InvalidArgumentException('Approval workflow not found for '.$subjectType.':'.$subjectPublicId.'.');
+                throw new InvalidArgumentException(__('islamic_governance.approval_workflow_not_found_for_subject', ['subject_type' => $subjectType, 'subject_public_id' => $subjectPublicId]));
             }
 
             $fromState = $this->rowString($workflow, 'current_state');
@@ -509,7 +509,7 @@ final class IslamicApprovalWorkflowService
         $allowed = ['required_controls', 'required_documents', 'max_notional_minor', 'allowed_agencies', 'expires_on'];
         foreach (array_keys($conditions) as $key) {
             if (! in_array($key, $allowed, true)) {
-                throw new InvalidArgumentException('Unknown approval condition key: '.$key.'.');
+                throw new InvalidArgumentException(__('islamic_governance.approval_unknown_condition_key', ['key' => $key]));
             }
         }
 
@@ -519,11 +519,11 @@ final class IslamicApprovalWorkflowService
             }
             $value = $conditions[$listKey];
             if (! is_array($value)) {
-                throw new InvalidArgumentException($listKey.' must be a list of strings.');
+                throw new InvalidArgumentException(__('islamic_governance.approval_condition_must_be_list_of_strings', ['key' => $listKey]));
             }
             foreach ($value as $item) {
                 if (! is_string($item) || $item === '') {
-                    throw new InvalidArgumentException($listKey.' must be a list of non-empty strings.');
+                    throw new InvalidArgumentException(__('islamic_governance.approval_condition_must_be_list_of_non_empty_strings', ['key' => $listKey]));
                 }
             }
         }

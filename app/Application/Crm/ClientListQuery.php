@@ -122,7 +122,7 @@ final class ClientListQuery extends BaseController
             if ($unknown !== []) {
                 return $this->respondUnprocessable(
                     message: 'Unsupported filter parameters.',
-                    errors: ['filter' => ['The following filter keys are not supported: '.implode(', ', $unknown)]],
+                    errors: ['filter' => [__('domain.unsupported_filter_keys', ['keys' => implode(', ', $unknown)])]],
                 );
             }
         }

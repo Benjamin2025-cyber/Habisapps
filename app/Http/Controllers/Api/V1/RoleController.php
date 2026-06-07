@@ -282,7 +282,7 @@ final class RoleController extends BaseController
 
         $nonDelegable = array_values(array_intersect($newlyAdded, $this->nonDelegableProtectedPermissions()));
         if ($nonDelegable !== []) {
-            return $this->respondUnprocessable('These permissions can never be delegated to non-platform roles: '.implode(', ', $nonDelegable).'.');
+            return $this->respondUnprocessable(__('crm.permissions_never_delegable', ['permissions' => implode(', ', $nonDelegable)]));
         }
 
         $this->securityAudit->record('role.protected_permissions_delegated', actor: $request->user(), properties: [

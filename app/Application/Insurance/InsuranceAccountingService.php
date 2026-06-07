@@ -348,7 +348,7 @@ final class InsuranceAccountingService
 
         $ledgerAccountId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
         if (! is_int($ledgerAccountId)) {
-            throw new InvalidArgumentException('Active credit ledger mapping is required for '.$operationCode.'.');
+            throw new InvalidArgumentException(__('insurance.accounting_active_credit_mapping_required', ['operation_code' => $operationCode]));
         }
 
         return $ledgerAccountId;
@@ -381,7 +381,7 @@ final class InsuranceAccountingService
         $debitId = is_object($mapping) ? $mapping->debit_ledger_account_id : null;
         $creditId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
         if (! is_int($debitId) || ! is_int($creditId)) {
-            throw new InvalidArgumentException('Active debit and credit ledger mappings are required for '.$operationCode.'.');
+            throw new InvalidArgumentException(__('insurance.accounting_active_debit_credit_mapping_required', ['operation_code' => $operationCode]));
         }
 
         return [$debitId, $creditId];

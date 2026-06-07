@@ -369,7 +369,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                 }
                 $currentStatus = $this->rowString($goods, 'status');
                 if (IslamicSalamGoodsStateMachine::isTerminal($currentStatus)) {
-                    throw new InvalidArgumentException(sprintf('Salam goods are in terminal status "%s" and cannot accept new deliveries.', $currentStatus));
+                    throw new InvalidArgumentException(__('islamic_finance.salam_terminal_cannot_accept_deliveries', ['status' => $currentStatus]));
                 }
 
                 $totalQty = $this->rowInt($goods, 'quantity_units');
@@ -668,10 +668,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
                 IslamicSalamGoodsStateMachine::STATUS_SETTLED,
                 IslamicSalamGoodsStateMachine::STATUS_CANCELLED,
             ], true)) {
-                throw new InvalidArgumentException(sprintf(
-                    'Salam financing approval cannot proceed with goods in "%s" status (IF-041 activation gate).',
-                    $status
-                ));
+                throw new InvalidArgumentException(__('islamic_finance.salam_approval_blocked_goods_status', ['status' => $status]));
             }
             $quantity = is_numeric($row->quantity_units ?? null) ? (int) $row->quantity_units : 0;
             if ($quantity <= 0) {
@@ -706,11 +703,11 @@ final class IslamicSalamGoodsWorkflow extends BaseController
             }
             $value = $evidence[$key];
             if (! is_string($value) || $value === '') {
-                throw new InvalidArgumentException(sprintf('Salam goods transition evidence "%s" must be a non-empty document public_id.', $key));
+                throw new InvalidArgumentException(__('islamic_finance.salam_evidence_must_be_document_id', ['key' => $key]));
             }
             $exists = DB::table('documents')->where('public_id', $value)->exists();
             if (! $exists) {
-                throw new InvalidArgumentException(sprintf('Salam goods transition evidence "%s" references unknown document "%s".', $key, $value));
+                throw new InvalidArgumentException(__('islamic_finance.salam_evidence_unknown_document', ['key' => $key, 'value' => $value]));
             }
         }
     }

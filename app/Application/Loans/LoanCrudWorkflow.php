@@ -205,14 +205,14 @@ final class LoanCrudWorkflow extends BaseController
         $unknownFields = array_values(array_diff(array_keys($request->all()), $accountFieldNames));
         if ($unknownFields !== []) {
             return $this->respondUnprocessable(errors: [
-                'accounts' => ['Unknown linked-account field(s): '.implode(', ', $unknownFields).'.'],
+                'accounts' => [__('loans.unknown_linked_account_fields', ['fields' => implode(', ', $unknownFields)])],
             ]);
         }
 
         $presentFields = array_values(array_filter($accountFieldNames, fn (string $field): bool => $request->has($field)));
         if ($presentFields === []) {
             return $this->respondUnprocessable(errors: [
-                'accounts' => ['Provide at least one linked-account field: '.implode(', ', $accountFieldNames).'.'],
+                'accounts' => [__('loans.provide_linked_account_field', ['fields' => implode(', ', $accountFieldNames)])],
             ]);
         }
 

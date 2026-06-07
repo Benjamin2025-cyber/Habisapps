@@ -219,7 +219,7 @@ final class GenerateLoanSchedule
     private function percentOf(int $baseMinor, mixed $rate, string $label): int
     {
         if (! is_int($rate) && ! is_float($rate) && ! is_string($rate)) {
-            throw new InvalidArgumentException(sprintf('Schedule %s rate must be numeric.', $label));
+            throw new InvalidArgumentException(__('loans.schedule_rate_must_be_numeric', ['label' => $label]));
         }
 
         try {
@@ -229,7 +229,7 @@ final class GenerateLoanSchedule
                 ->toScale(0, RoundingMode::UNNECESSARY)
                 ->toInt();
         } catch (MathException) {
-            throw new InvalidArgumentException(sprintf('Schedule %s cannot be represented in whole minor units.', $label));
+            throw new InvalidArgumentException(__('loans.schedule_not_whole_minor_units', ['label' => $label]));
         }
     }
 
@@ -270,7 +270,7 @@ final class GenerateLoanSchedule
     {
         foreach ($expectedTotals as $component => $expectedTotal) {
             if (! isset($shares[$component]) || array_sum($shares[$component]) !== $expectedTotal) {
-                throw new InvalidArgumentException('Generated schedule component shares do not reconcile for '.$component.'.');
+                throw new InvalidArgumentException(__('loans.schedule_component_shares_do_not_reconcile', ['component' => $component]));
             }
         }
     }
@@ -283,7 +283,7 @@ final class GenerateLoanSchedule
         foreach ($expectedTotals as $component => $expectedTotal) {
             $actual = $snapshot->lines->sum($component);
             if ($actual !== $expectedTotal) {
-                throw new InvalidArgumentException('Persisted schedule totals do not reconcile for '.$component.'.');
+                throw new InvalidArgumentException(__('loans.schedule_persisted_totals_do_not_reconcile', ['component' => $component]));
             }
         }
     }

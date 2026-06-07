@@ -152,21 +152,21 @@ final class IslamicApprovalStateMachine
     public function assertState(string $state): void
     {
         if (! in_array($state, self::STATES, true)) {
-            throw new InvalidArgumentException('Unknown approval state: '.$state.'.');
+            throw new InvalidArgumentException(__('islamic_governance.approval_unknown_state', ['state' => $state]));
         }
     }
 
     public function assertDecision(string $decision): void
     {
         if (! in_array($decision, self::DECISIONS, true)) {
-            throw new InvalidArgumentException('Unknown approval decision: '.$decision.'.');
+            throw new InvalidArgumentException(__('islamic_governance.approval_unknown_decision', ['decision' => $decision]));
         }
     }
 
     public function assertSubjectType(string $subjectType): void
     {
         if (! in_array($subjectType, self::SUBJECT_TYPES, true)) {
-            throw new InvalidArgumentException('Unknown approval subject type: '.$subjectType.'.');
+            throw new InvalidArgumentException(__('islamic_governance.approval_unknown_subject_type', ['subject_type' => $subjectType]));
         }
     }
 
@@ -187,7 +187,7 @@ final class IslamicApprovalStateMachine
         $candidate = self::TRANSITIONS[$fromState][$decision] ?? null;
         if (! is_string($candidate)) {
             throw new InvalidArgumentException(
-                'Decision '.$decision.' is not allowed from state '.$fromState.'.'
+                __('islamic_governance.approval_decision_not_allowed_from_state', ['decision' => $decision, 'from_state' => $fromState])
             );
         }
 

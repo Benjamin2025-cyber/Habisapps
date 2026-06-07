@@ -93,6 +93,14 @@ final class LocalizationTest extends TestCase
 
                 return ApiResponse::success();
             });
+
+            Route::post('/api/v1/test/validation-attributes', static function (Request $request) {
+                Validator::make($request->all(), [
+                    'phone_number' => ['required', 'string'],
+                ])->validate();
+
+                return ApiResponse::success();
+            });
         });
     }
 
@@ -201,15 +209,147 @@ final class LocalizationTest extends TestCase
     {
         $english = $this->withApiHeaders()->postJson('/api/v1/test/validation-rules', ['amount' => 'abc']);
         $this->assertJsonError($english, 422, 'Validation failed');
-        $english->assertJsonPath('errors.email.0', 'The email field is required.');
+        $english->assertJsonPath('errors.email.0', 'The email address field is required.');
         $english->assertJsonPath('errors.amount.0', 'The amount field must be a number.');
 
         $french = $this->withApiHeaders(['X-Locale' => 'fr'])->postJson('/api/v1/test/validation-rules', ['amount' => 'abc']);
         $this->assertJsonError($french, 422, 'Échec de la validation');
-        $french->assertJsonPath('errors.email.0', 'Le champ email est obligatoire.');
-        $french->assertJsonPath('errors.amount.0', 'Le champ amount doit être un nombre.');
+        $french->assertJsonPath('errors.email.0', 'Le champ adresse e-mail est obligatoire.');
+        $french->assertJsonPath('errors.amount.0', 'Le champ montant doit être un nombre.');
         // Field keys remain machine-readable, not translated labels.
         $french->assertJsonStructure(['errors' => ['email', 'amount']]);
+    }
+
+    public function test_validation_attribute_names_are_humanized_and_localized(): void
+    {
+        // I13-2: snake_case field names must render as friendly labels, not the
+        // raw `phone_number`, in both locales — while the error-bag KEY stays
+        // machine-readable.
+        $english = $this->withApiHeaders()->postJson('/api/v1/test/validation-attributes', []);
+        $this->assertJsonError($english, 422, 'Validation failed');
+        $english->assertJsonPath('errors.phone_number.0', 'The phone number field is required.');
+
+        $french = $this->withApiHeaders(['X-Locale' => 'fr'])->postJson('/api/v1/test/validation-attributes', []);
+        $this->assertJsonError($french, 422, 'Échec de la validation');
+        $french->assertJsonPath('errors.phone_number.0', 'Le champ numéro de téléphone est obligatoire.');
+        // Field key stays machine-readable.
+        $french->assertJsonStructure(['errors' => ['phone_number']]);
+    }
+
+    public function test_validation_attribute_key_sets_match_between_english_and_french(): void
+    {
+        $english = require lang_path('en/validation.php');
+        $french = require lang_path('fr/validation.php');
+        self::assertIsArray($english);
+        self::assertIsArray($french);
+
+        $englishAttributes = $english['attributes'] ?? null;
+        $frenchAttributes = $french['attributes'] ?? null;
+        self::assertIsArray($englishAttributes);
+        self::assertIsArray($frenchAttributes);
+        self::assertNotEmpty($englishAttributes);
+        self::assertSame(
+            array_keys($englishAttributes),
+            array_keys($frenchAttributes),
+            'Validation attribute keys differ between en and fr'
+        );
+    }
+
+    public function test_french_default_locale_applies_when_no_locale_is_requested(): void
+    {
+        // I13-1: a French-first product must serve French to callers that send no
+        // usable X-Locale / Accept-Language (server-to-server, webhooks, cron),
+        // while English remains the safe fallback. The test HTTP kernel injects a
+        // default `Accept-Language: en-us` header, so we send an empty one to
+        // represent a client that expresses no language preference.
+        Config::set('localization.default_locale', 'fr');
+        Config::set('localization.fallback_locale', 'en');
+
+        $headerless = ['Accept-Language' => ''];
+
+        $state = $this->withApiHeaders($headerless)->getJson('/api/v1/test/locale-state');
+        $this->assertJsonSuccess($state);
+        $state->assertJsonPath('data.locale', 'fr');
+        $state->assertJsonPath('data.fallback_locale', 'en');
+
+        $message = $this->withApiHeaders($headerless)->getJson('/api/v1/test/localized-success');
+        $this->assertJsonSuccess($message);
+        $message->assertJsonPath('message', 'Succès');
+    }
+
+    public function test_dynamic_domain_messages_render_in_both_locales_with_placeholders(): void
+    {
+        // I13-3: representative dynamic/concatenated domain messages — previously
+        // English-only — now render in French with their machine values preserved
+        // as placeholder substitutions. English output is asserted byte-for-byte
+        // by the existing module suites; here we lock the French rendering and the
+        // placeholder contract for one message per high-traffic module.
+        $cases = [
+            // [key, replacements, expected English, expected French]
+            ['loans.status_invalid_transition', ['from' => 'active', 'to' => 'closed'],
+                'Loan status cannot transition from active to closed.',
+                'Le statut du prêt ne peut pas passer de active à closed.'],
+            ['reporting.fx_currency_not_active', ['currency' => 'USD'],
+                'Currency USD is not active for currency-exchange operations.',
+                'La devise USD n’est pas active pour les opérations de change.'],
+            ['domain.unsupported_filter_keys', ['keys' => 'foo, bar'],
+                'The following filter keys are not supported: foo, bar',
+                'Les clés de filtre suivantes ne sont pas prises en charge : foo, bar'],
+            ['crm.document_requires_both_faces', ['type' => 'national_id'],
+                'A national_id requires both front and back faces before it can be verified.',
+                'Un national_id nécessite à la fois le recto et le verso avant de pouvoir être vérifié.'],
+            ['islamic_governance.authority_status_cannot_transition', ['previous' => 'draft', 'to' => 'active'],
+                'Authority status draft cannot transition to active.',
+                'Le statut d’autorité draft ne peut pas passer à active.'],
+            ['insurance.claim_required_evidence_missing', ['types' => 'police_report, invoice'],
+                'Required claim evidence is missing: police_report, invoice.',
+                'Des pièces justificatives de sinistre requises sont manquantes : police_report, invoice.'],
+            ['cash_journal.physical_cash_whole_units', ['currency' => 'XAF'],
+                'Physical XAF cash amounts must be whole cash units.',
+                'Les montants en espèces physiques en XAF doivent être des unités de caisse entières.'],
+            ['database_management.driver_unsupported', [],
+                'The configured database driver is not supported for managed backups.',
+                'Le pilote de base de données configuré n’est pas pris en charge pour les sauvegardes gérées.'],
+        ];
+
+        foreach ($cases as [$key, $replacements, $expectedEnglish, $expectedFrench]) {
+            $this->app->setLocale('en');
+            self::assertSame($expectedEnglish, __($key, $replacements), "EN render for {$key}");
+
+            $this->app->setLocale('fr');
+            self::assertSame($expectedFrench, __($key, $replacements), "FR render for {$key}");
+        }
+    }
+
+    public function test_translation_calls_do_not_use_colon_prefixed_replacement_keys(): void
+    {
+        // Guard against a subtle regression: Laravel replacement keys must be
+        // bare (`['code' => $x]`), NOT colon-prefixed (`[':code' => $x]`). The
+        // latter silently leaves the `:code` placeholder unsubstituted in the
+        // rendered message, which content-less feature tests don't catch.
+        $violations = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(app_path(), \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (! $file instanceof \SplFileInfo || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $contents = file_get_contents($file->getPathname());
+            if (! is_string($contents)) {
+                continue;
+            }
+
+            foreach (explode("\n", $contents) as $number => $line) {
+                if (str_contains($line, '__(') && preg_match("/(\[|,\s*)':[a-z_]+'\s*=>/", $line) === 1) {
+                    $violations[] = $file->getPathname().':'.($number + 1);
+                }
+            }
+        }
+
+        self::assertSame([], $violations, "Colon-prefixed translation replacement keys found:\n".implode("\n", $violations));
     }
 
     public function test_requested_locale_translates_api_envelope_and_validation_errors(): void
@@ -222,7 +362,7 @@ final class LocalizationTest extends TestCase
         $validation = $this->withApiHeaders(['X-Locale' => 'fr'])->postJson('/api/v1/test/localized-validation', []);
 
         $this->assertJsonError($validation, 422, 'Échec de la validation');
-        $validation->assertJsonPath('errors.email.0', 'Le champ email est obligatoire.');
+        $validation->assertJsonPath('errors.email.0', 'Le champ adresse e-mail est obligatoire.');
     }
 
     public function test_unsupported_locale_falls_back_to_english(): void
@@ -340,6 +480,15 @@ final class LocalizationTest extends TestCase
             'domain',
             'system',
             'validation',
+            // I13-3 per-module dynamic-message catalogues.
+            'loans',
+            'cash_journal',
+            'islamic_finance',
+            'islamic_governance',
+            'crm',
+            'reporting',
+            'insurance',
+            'notifications',
         ];
 
         foreach ($files as $file) {

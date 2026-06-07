@@ -424,7 +424,7 @@ final class TellerSessionWorkflow extends BaseController
         if (! is_string($sort) || ! array_key_exists($sort, self::ALLOWED_SORTS)) {
             return $this->respondUnprocessable(
                 message: 'Unsupported sort parameter.',
-                errors: ['sort' => ['Allowed sort values: '.implode(', ', array_keys(self::ALLOWED_SORTS))]]
+                errors: ['sort' => [__('cash_journal.allowed_sort_values', ['values' => implode(', ', array_keys(self::ALLOWED_SORTS))])]]
             );
         }
 

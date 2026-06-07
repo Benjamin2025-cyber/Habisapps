@@ -338,10 +338,10 @@ final class RegulatoryReportingWorkflow extends BaseController
                 throw new InvalidArgumentException('Report definitions may not reference arbitrary tables, SQL, joins, or raw query fields.');
             }
             if ($key === 'source' && is_string($value) && ! in_array($value, self::ALLOWED_DEFINITION_SOURCES, true)) {
-                throw new InvalidArgumentException('Report definition source is not allowlisted: '.$value.'.');
+                throw new InvalidArgumentException(__('reporting.report_definition_source_not_allowlisted', ['source' => $value]));
             }
             if ($key === 'field' && is_string($value) && ! in_array($value, self::ALLOWED_DEFINITION_FIELDS, true)) {
-                throw new InvalidArgumentException('Report definition field is not allowlisted: '.$value.'.');
+                throw new InvalidArgumentException(__('reporting.report_definition_field_not_allowlisted', ['field' => $value]));
             }
             if ($key === 'fields' && is_array($value)) {
                 foreach ($value as $field) {

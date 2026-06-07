@@ -40,7 +40,7 @@ final class TransitionLoanStatus
             $allowed = self::allowedTransitions()[$fromStatus] ?? [];
 
             if (! in_array($toStatus, $allowed, true)) {
-                throw new InvalidArgumentException(sprintf('Loan status cannot transition from %s to %s.', $fromStatus, $toStatus));
+                throw new InvalidArgumentException(__('loans.status_invalid_transition', ['from' => $fromStatus, 'to' => $toStatus]));
             }
 
             $lockedLoan->forceFill([

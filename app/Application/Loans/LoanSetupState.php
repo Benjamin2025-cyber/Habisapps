@@ -76,7 +76,7 @@ final class LoanSetupState
 
         if ($evaluation['blocking_charge_types'] !== []) {
             throw new InvalidArgumentException(
-                'Setup charges must be collected before disbursement: '.implode(', ', $evaluation['blocking_charge_types']).'.'
+                __('loans.setup_charges_must_be_collected', ['types' => implode(', ', $evaluation['blocking_charge_types'])])
             );
         }
 

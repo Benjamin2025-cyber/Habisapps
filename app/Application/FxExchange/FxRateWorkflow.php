@@ -174,7 +174,7 @@ final class FxRateWorkflow extends BaseController
             ->where('status', 'active')
             ->first(['code']);
         if (! is_object($currency)) {
-            throw new InvalidArgumentException('Currency '.$code.' is not active for currency-exchange operations.');
+            throw new InvalidArgumentException(__('reporting.fx_currency_not_active', ['currency' => $code]));
         }
     }
 

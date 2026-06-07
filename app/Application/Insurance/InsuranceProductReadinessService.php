@@ -21,31 +21,31 @@ final class InsuranceProductReadinessService
         $partner = $this->partner($product);
         $agencyId = is_object($partner) ? $this->rowNullableInt($partner, 'agency_id') : null;
         if (! is_object($partner)) {
-            $failures[] = 'active insurance partner must be configured';
+            $failures[] = __('insurance.readiness_active_partner_required');
         } elseif ($agencyId === null) {
-            $failures[] = 'insurance partner must be agency-scoped before activation';
+            $failures[] = __('insurance.readiness_partner_must_be_agency_scoped');
         }
 
         if ($this->rowNullableString($product, 'business_model') === null) {
-            $failures[] = 'business_model must be set before activating the product';
+            $failures[] = __('insurance.readiness_business_model_required');
         }
 
         if ($this->rowNullableString($product, 'report_category') === null) {
-            $failures[] = 'report_category must be set before activating the product';
+            $failures[] = __('insurance.readiness_report_category_required');
         }
 
         if (! $this->hasApprovedRuleVersion($productId)) {
-            $failures[] = 'at least one approved rule version is required';
+            $failures[] = __('insurance.readiness_approved_rule_version_required');
         }
 
         if (! $this->hasEvidenceConfiguration($productId)) {
-            $failures[] = 'at least one claim evidence requirement must be configured';
+            $failures[] = __('insurance.readiness_evidence_configuration_required');
         }
 
         if ($agencyId !== null) {
             foreach ($this->requiredOperationCodes($product) as $operationCode) {
                 if (! $this->hasActiveOperationMapping($operationCode, $agencyId, $currency)) {
-                    $failures[] = 'active '.$operationCode.' accounting mapping is required';
+                    $failures[] = __('insurance.readiness_active_operation_mapping_required', ['operation_code' => $operationCode]);
                 }
             }
         }

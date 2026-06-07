@@ -75,7 +75,7 @@ final class IslamicTreatmentRoutingService
             $asOf,
         );
         if (! $usability['ok']) {
-            throw new InvalidArgumentException('Islamic treatment policy is not usable: '.implode(' ', $usability['reasons']));
+            throw new InvalidArgumentException(__('islamic_governance.treatment_policy_not_usable', ['reasons' => implode(' ', $usability['reasons'])]));
         }
 
         $operationCode = $this->operationCodeForEvent($policy, $eventType);
@@ -264,7 +264,7 @@ final class IslamicTreatmentRoutingService
         $required = $this->decodeJsonObject(((array) $policy)['required_operation_codes'] ?? null);
         $code = is_array($required) && is_string($required[$eventType] ?? null) ? $required[$eventType] : null;
         if (! is_string($code) || $code === '') {
-            throw new InvalidArgumentException('Islamic treatment policy is missing required operation code for '.$eventType.'.');
+            throw new InvalidArgumentException(__('islamic_governance.treatment_policy_missing_operation_code', ['event' => $eventType]));
         }
 
         return $code;

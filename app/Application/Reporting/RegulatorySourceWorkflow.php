@@ -120,7 +120,7 @@ final class RegulatorySourceWorkflow extends BaseController
 
                     $existing = DB::table('emf_regulatory_accounts')->where('code', $code)->first(['id']);
                     if (is_object($existing)) {
-                        throw new InvalidArgumentException('EMF regulatory account code already exists: '.$code.'.');
+                        throw new InvalidArgumentException(__('reporting.regulatory_emf_code_already_exists', ['code' => $code]));
                     }
 
                     $parentId = null;
@@ -130,7 +130,7 @@ final class RegulatorySourceWorkflow extends BaseController
                         } else {
                             $parent = DB::table('emf_regulatory_accounts')->where('code', $parentCode)->first(['id']);
                             if (! is_object($parent)) {
-                                throw new InvalidArgumentException('Parent code not found in import batch or existing accounts: '.$parentCode.'.');
+                                throw new InvalidArgumentException(__('reporting.regulatory_parent_code_not_found', ['code' => $parentCode]));
                             }
                             $parentId = $this->rowInt($parent, 'id');
                         }

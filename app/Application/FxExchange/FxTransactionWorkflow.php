@@ -338,7 +338,7 @@ final class FxTransactionWorkflow extends BaseController
             ->where('status', 'active')
             ->first(['code']);
         if (! is_object($currency)) {
-            throw new InvalidArgumentException('Currency '.$code.' is not active for currency-exchange operations.');
+            throw new InvalidArgumentException(__('reporting.fx_currency_not_active', ['currency' => $code]));
         }
     }
 
@@ -356,7 +356,7 @@ final class FxTransactionWorkflow extends BaseController
             ->orderByDesc('effective_on')
             ->first();
         if (! is_object($rate)) {
-            throw new InvalidArgumentException('No active exchange rate is available for '.$base.'/'.$quote.'.');
+            throw new InvalidArgumentException(__('reporting.fx_no_active_rate', ['base' => $base, 'quote' => $quote]));
         }
 
         return $rate;

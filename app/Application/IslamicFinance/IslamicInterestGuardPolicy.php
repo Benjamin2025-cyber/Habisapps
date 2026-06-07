@@ -50,7 +50,7 @@ final class IslamicInterestGuardPolicy
     public function assertIslamicMappingAllowed(string $mappingCode): void
     {
         if ($this->tokenForbidden($mappingCode)) {
-            throw new InvalidArgumentException('Islamic posting cannot use conventional interest mapping: '.$mappingCode.'.');
+            throw new InvalidArgumentException(__('islamic_governance.interest_mapping_forbidden', ['mapping_code' => $mappingCode]));
         }
     }
 
@@ -65,10 +65,10 @@ final class IslamicInterestGuardPolicy
                 continue;
             }
             if ($this->tokenForbidden($normalized)) {
-                throw new InvalidArgumentException('Islamic statements cannot use forbidden interest terminology: '.$label.'.');
+                throw new InvalidArgumentException(__('islamic_governance.interest_statement_terminology_forbidden', ['label' => $label]));
             }
             if (! in_array($normalized, self::ALLOWED_STATEMENT_LABELS, true)) {
-                throw new InvalidArgumentException('Islamic statement label is not approved: '.$label.'.');
+                throw new InvalidArgumentException(__('islamic_governance.interest_statement_label_not_approved', ['label' => $label]));
             }
         }
     }
@@ -79,7 +79,7 @@ final class IslamicInterestGuardPolicy
             return;
         }
         if (! in_array($treatment, self::ALLOWED_LATE_PAYMENT_TREATMENTS, true)) {
-            throw new InvalidArgumentException('Forbidden Islamic late-payment treatment: '.$treatment.'.');
+            throw new InvalidArgumentException(__('islamic_governance.forbidden_late_payment_treatment', ['treatment' => $treatment]));
         }
     }
 

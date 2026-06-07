@@ -647,16 +647,14 @@ final class IslamicIstisnaaProjectWorkflow extends BaseController
         foreach ($projects as $project) {
             $milestoneCount = DB::table('islamic_istisnaa_milestones')->where('islamic_istisnaa_project_id', (int) $project->id)->count();
             if ($milestoneCount === 0) {
-                throw new InvalidArgumentException(sprintf(
-                    'Istisnaa financing requires milestones on all linked projects; project %s has none (IF-042 activation gate).',
-                    $this->rowString($project, 'public_id')
-                ));
+                throw new InvalidArgumentException(__('islamic_finance.istisnaa_project_requires_milestones', [
+                    'public_id' => $this->rowString($project, 'public_id'),
+                ]));
             }
             if (is_string($project->parallel_supplier_reference ?? null) && $project->parallel_supplier_reference !== '' && ! (bool) ($project->parallel_supplier_approved ?? false)) {
-                throw new InvalidArgumentException(sprintf(
-                    'Istisnaa parallel supplier reference must be approved before financing activation (project %s, IF-042 supplier link).',
-                    $this->rowString($project, 'public_id')
-                ));
+                throw new InvalidArgumentException(__('islamic_finance.istisnaa_parallel_supplier_unapproved', [
+                    'public_id' => $this->rowString($project, 'public_id'),
+                ]));
             }
             $screening = $this->evaluateProjectApprovalScreening(project: $project, actor: $actor);
             if ($screening['result'] === 'fail') {

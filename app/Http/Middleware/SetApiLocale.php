@@ -62,9 +62,17 @@ final class SetApiLocale
             return [$explicit, $fallback];
         }
 
-        $preferred = $request->getPreferredLanguage($supported);
-        if (is_string($preferred) && $preferred !== '') {
-            return [$preferred, $fallback];
+        // Only negotiate Accept-Language when the header is actually present.
+        // Symfony's getPreferredLanguage() returns the first supported locale
+        // when no Accept-Language header is sent, which would otherwise shadow
+        // the configured default locale for header-less callers (server-to-server
+        // calls, webhooks, cron/CLI-triggered API paths).
+        $acceptLanguage = $request->headers->get('Accept-Language');
+        if (is_string($acceptLanguage) && trim($acceptLanguage) !== '') {
+            $preferred = $request->getPreferredLanguage($supported);
+            if (is_string($preferred) && $preferred !== '') {
+                return [$preferred, $fallback];
+            }
         }
 
         $default = $this->canonicalLocale(config('localization.default_locale', config('app.locale', 'en')), $supported);

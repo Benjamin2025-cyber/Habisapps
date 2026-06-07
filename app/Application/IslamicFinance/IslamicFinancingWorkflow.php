@@ -102,7 +102,7 @@ final class IslamicFinancingWorkflow extends BaseController
             ], request: $request);
 
             return $this->respondUnprocessable(errors: [
-                'islamic_financing' => ['Islamic product is not usable for new financing: '.implode(' ', $usability['reasons'])],
+                'islamic_financing' => [__('islamic_finance.product_not_usable_new_financing', ['reasons' => implode(' ', $usability['reasons'])])],
                 'compliance_blockers' => $blockers,
             ]);
         }
@@ -124,7 +124,7 @@ final class IslamicFinancingWorkflow extends BaseController
                 );
                 if (! $lockedUsability['ok']) {
                     $raceBlocked = $lockedUsability;
-                    throw new InvalidArgumentException('Islamic product is not usable for new financing: '.implode(' ', $lockedUsability['reasons']));
+                    throw new InvalidArgumentException(__('islamic_finance.product_not_usable_new_financing', ['reasons' => implode(' ', $lockedUsability['reasons'])]));
                 }
 
                 $client = DB::table('clients')->where('public_id', (string) $validated['client_public_id'])->first(['id', 'agency_id']);
@@ -187,7 +187,7 @@ final class IslamicFinancingWorkflow extends BaseController
                     $this->rowString($template, 'public_id'),
                 );
                 if (! $templateUsability['ok']) {
-                    throw new InvalidArgumentException('Islamic contract template is not usable for origination: '.implode(' ', $templateUsability['reasons']));
+                    throw new InvalidArgumentException(__('islamic_finance.contract_template_not_usable_origination', ['reasons' => implode(' ', $templateUsability['reasons'])]));
                 }
                 $currency = is_string($validated['currency'] ?? null) && $validated['currency'] !== '' ? $validated['currency'] : 'XAF';
 
@@ -1162,11 +1162,11 @@ final class IslamicFinancingWorkflow extends BaseController
             }
             $value = $evidence[$key];
             if (! is_string($value) || $value === '') {
-                throw new InvalidArgumentException(sprintf('Asset transition evidence "%s" must be a non-empty document public_id.', $key));
+                throw new InvalidArgumentException(__('islamic_finance.asset_evidence_must_be_document_id', ['key' => $key]));
             }
             $exists = DB::table('documents')->where('public_id', $value)->exists();
             if (! $exists) {
-                throw new InvalidArgumentException(sprintf('Asset transition evidence "%s" references unknown document "%s".', $key, $value));
+                throw new InvalidArgumentException(__('islamic_finance.asset_evidence_unknown_document', ['key' => $key, 'value' => $value]));
             }
         }
     }
@@ -1225,10 +1225,10 @@ final class IslamicFinancingWorkflow extends BaseController
             $complianceCasePublicId = is_string($screeningOutcome['review_case_public_id'] ?? null) && $screeningOutcome['review_case_public_id'] !== '' ? $screeningOutcome['review_case_public_id'] : null;
 
             if ($screeningStatus === 'fail') {
-                throw new InvalidArgumentException(sprintf('Asset %s acceptance blocked by screening result while attaching Mourabaha purchase evidence.', $assetPublicId));
+                throw new InvalidArgumentException(__('islamic_finance.asset_screening_blocked_mourabaha_evidence', ['public_id' => $assetPublicId]));
             }
             if ($screeningStatus === 'manual_review') {
-                throw new InvalidArgumentException(sprintf('Asset %s acceptance requires manual compliance review before Mourabaha purchase evidence can advance it.', $assetPublicId));
+                throw new InvalidArgumentException(__('islamic_finance.asset_screening_manual_review_mourabaha_evidence', ['public_id' => $assetPublicId]));
             }
 
             $transitionPublicId = (string) Str::ulid();
@@ -1574,13 +1574,13 @@ final class IslamicFinancingWorkflow extends BaseController
                 $reversalMode = $reversalPolicy['reversal_mode'];
                 $reversalOperationCode = $reversalPolicy['reversal_operation_code'] ?? null;
                 if ($reversalMode === 'forbidden') {
-                    throw new InvalidArgumentException('Operation code '.$sourceOperationCode.' is configured as non-reversible.');
+                    throw new InvalidArgumentException(__('islamic_finance.operation_code_non_reversible', ['operation_code' => $sourceOperationCode]));
                 }
                 if ($reversalMode === 'requires_reason' && $this->nullableString($validated['reason'] ?? null) === null) {
                     throw new InvalidArgumentException('Reversal reason is required by operation-code policy.');
                 }
                 if ($reversalMode === 'auto_reverse' && (! is_string($reversalOperationCode) || $reversalOperationCode === '')) {
-                    throw new InvalidArgumentException('Operation code '.$sourceOperationCode.' requires configured reversal_operation_code.');
+                    throw new InvalidArgumentException(__('islamic_finance.operation_code_requires_reversal_code', ['operation_code' => $sourceOperationCode]));
                 }
                 $resolvedReversalOperationCode = is_string($reversalOperationCode) && $reversalOperationCode !== ''
                     ? $reversalOperationCode
@@ -1814,17 +1814,16 @@ final class IslamicFinancingWorkflow extends BaseController
                         ->lockForUpdate()
                         ->get(['id', 'lifecycle_status']);
                     if ($lockedAssetRows->isEmpty()) {
-                        throw new InvalidArgumentException(sprintf('%s financing requires at least one financed asset.', ucfirst($canonicalFamily)));
+                        throw new InvalidArgumentException(__('islamic_finance.family_requires_financed_asset', ['family' => ucfirst($canonicalFamily)]));
                     }
                     $eligibleAssetCount = $lockedAssetRows->filter(
                         static fn (object $row): bool => is_string($row->lifecycle_status ?? null) && in_array($row->lifecycle_status, $eligibleAssetStatuses, true)
                     )->count();
                     if ($eligibleAssetCount === 0) {
-                        throw new InvalidArgumentException(sprintf(
-                            '%s financing approval requires purchase/control evidence: at least one asset must be in %s status (IF-040 activation gate).',
-                            ucfirst($canonicalFamily),
-                            implode(' or ', $eligibleAssetStatuses),
-                        ));
+                        throw new InvalidArgumentException(__('islamic_finance.family_requires_purchase_control_evidence', [
+                            'family' => ucfirst($canonicalFamily),
+                            'statuses' => implode(' or ', $eligibleAssetStatuses),
+                        ]));
                     }
                 } elseif ($canonicalFamily === 'salam') {
                     $this->salamGoods->assertGoodsReadyForApproval($financingId);
@@ -3578,7 +3577,7 @@ final class IslamicFinancingWorkflow extends BaseController
         }
 
         if (! $allowLanguageFallback) {
-            throw new InvalidArgumentException('No approved and effective Islamic contract template is available for language '.$selectionLanguage.'. Enable allow_template_language_fallback or select an explicit template.');
+            throw new InvalidArgumentException(__('islamic_finance.contract_template_none_for_language', ['language' => $selectionLanguage]));
         }
 
         $fallbackCandidates = $query->get();
@@ -3635,7 +3634,7 @@ final class IslamicFinancingWorkflow extends BaseController
             ->values();
 
         if ($latestCandidates->count() > 1) {
-            throw new InvalidArgumentException('Multiple approved/effective Islamic contract templates are eligible for '.$scope.' at version '.$latestVersion.'. Select an explicit contract_template_public_id.');
+            throw new InvalidArgumentException(__('islamic_finance.contract_template_multiple_eligible', ['scope' => $scope, 'version' => $latestVersion]));
         }
 
         $selected = $latestCandidates->first();

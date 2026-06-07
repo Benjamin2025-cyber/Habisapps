@@ -99,7 +99,7 @@ final class IslamicMappingValidationService
                 reason: 'No approved, effective, agency/currency-compatible mapping is available.',
                 details: ['side' => $side, 'currency' => $currency, 'agency_id' => $agencyId]
             );
-            throw new InvalidArgumentException('Approved Islamic mapping is required for '.$operationCode.' ('.$side.').');
+            throw new InvalidArgumentException(__('islamic_finance.mapping_approved_required', ['operation_code' => $operationCode, 'side' => $side]));
         }
 
         $exactCurrency = $rows->filter(fn (\stdClass $row): bool => $this->rowNullableString($row, 'currency') === $currency)->values();
@@ -113,7 +113,7 @@ final class IslamicMappingValidationService
                 reason: 'Ambiguous mapping candidates overlap the same scope.',
                 details: ['side' => $side, 'currency' => $currency, 'agency_id' => $agencyId]
             );
-            throw new InvalidArgumentException('Ambiguous Islamic mapping candidates found for '.$operationCode.' ('.$side.').');
+            throw new InvalidArgumentException(__('islamic_finance.mapping_ambiguous_candidates', ['operation_code' => $operationCode, 'side' => $side]));
         }
 
         $candidate = $exactCurrency->first() ?? $fallbackCurrency->first();
@@ -125,7 +125,7 @@ final class IslamicMappingValidationService
                 reason: 'No deterministic currency match found for mapping.',
                 details: ['side' => $side, 'currency' => $currency, 'agency_id' => $agencyId]
             );
-            throw new InvalidArgumentException('Approved Islamic mapping is required for '.$operationCode.' ('.$side.').');
+            throw new InvalidArgumentException(__('islamic_finance.mapping_approved_required', ['operation_code' => $operationCode, 'side' => $side]));
         }
 
         $mappingPublicId = $this->rowString($candidate, 'public_id');
@@ -144,7 +144,7 @@ final class IslamicMappingValidationService
                     'side' => $side,
                 ]
             );
-            throw new InvalidArgumentException('Islamic mapping workflow is not approved for '.$operationCode.' ('.$side.').');
+            throw new InvalidArgumentException(__('islamic_finance.mapping_workflow_not_approved', ['operation_code' => $operationCode, 'side' => $side]));
         }
 
         $shariaRequired = (bool) (((array) $candidate)['sharia_approval_required'] ?? false);
@@ -157,7 +157,7 @@ final class IslamicMappingValidationService
                 reason: 'Sharia approval is required but missing for mapping.',
                 details: ['mapping_public_id' => $mappingPublicId, 'sharia_approval_status' => $shariaStatus]
             );
-            throw new InvalidArgumentException('Islamic mapping requires Sharia approval before posting for '.$operationCode.'.');
+            throw new InvalidArgumentException(__('islamic_finance.mapping_sharia_required', ['operation_code' => $operationCode]));
         }
 
         return [

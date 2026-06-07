@@ -17,10 +17,10 @@ final class PhysicalCashAmount
     {
         $divisor = self::minorUnitDivisor($currency);
         if ($divisor <= 1) {
-            return 'Physical cash amount is invalid.';
+            return (string) __('cash_journal.physical_cash_amount_invalid');
         }
 
-        return sprintf('Physical %s cash amounts must be whole cash units.', strtoupper($currency));
+        return (string) __('cash_journal.physical_cash_whole_units', ['currency' => strtoupper($currency)]);
     }
 
     private static function minorUnitDivisor(string $currency): int

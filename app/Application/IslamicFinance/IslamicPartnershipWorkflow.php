@@ -247,7 +247,7 @@ final class IslamicPartnershipWorkflow extends BaseController
                 $expected = $this->rowInt($partnership, 'expected_total_capital_minor');
                 $contributed = $this->rowInt($partnership, 'contributed_total_capital_minor');
                 if ($contributed < $expected) {
-                    throw new InvalidArgumentException(sprintf('Partnership activation requires contributed capital (%d) to match or exceed expected (%d) — IF-043 contribution gate.', $contributed, $expected));
+                    throw new InvalidArgumentException(__('islamic_finance.partnership_activation_contribution_gate', ['contributed' => $contributed, 'expected' => $expected]));
                 }
                 $partners = DB::table('islamic_partnership_partners')
                     ->where('islamic_partnership_id', $this->rowInt($partnership, 'id'))
@@ -401,7 +401,7 @@ final class IslamicPartnershipWorkflow extends BaseController
                 $amount = (int) $validated['amount_minor'];
                 $distributable = (int) $report->distributable_profit_minor;
                 if ($amount > $distributable) {
-                    throw new InvalidArgumentException(sprintf('Declared amount (%d) exceeds distributable profit in approved report (%d).', $amount, $distributable));
+                    throw new InvalidArgumentException(__('islamic_finance.partnership_declared_exceeds_distributable', ['amount' => $amount, 'distributable' => $distributable]));
                 }
                 $id = DB::table('islamic_partnership_profit_declarations')->insertGetId([
                     'public_id' => (string) Str::ulid(),
@@ -589,7 +589,7 @@ final class IslamicPartnershipWorkflow extends BaseController
                 }
                 $maxAmount = (int) round((float) $partner->profit_share_ratio * (int) $valuation->valuation_amount_minor);
                 if ((int) $validated['amount_minor'] > $maxAmount) {
-                    throw new InvalidArgumentException(sprintf('Buyout amount (%d) exceeds partner share of valuation (%d).', (int) $validated['amount_minor'], $maxAmount));
+                    throw new InvalidArgumentException(__('islamic_finance.partnership_buyout_exceeds_share', ['amount' => (int) $validated['amount_minor'], 'max_amount' => $maxAmount]));
                 }
                 $id = DB::table('islamic_partnership_buyouts')->insertGetId([
                     'public_id' => (string) Str::ulid(),

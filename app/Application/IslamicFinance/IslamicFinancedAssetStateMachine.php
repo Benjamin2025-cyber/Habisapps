@@ -192,11 +192,11 @@ final class IslamicFinancedAssetStateMachine
     {
         foreach (self::requiredEvidenceKeys($toStatus) as $key) {
             if (! isset($evidence[$key])) {
-                throw new InvalidArgumentException(sprintf('Asset transition to "%s" requires evidence key "%s".', $toStatus, $key));
+                throw new InvalidArgumentException(__('islamic_finance.asset_transition_requires_evidence_key', ['to_status' => $toStatus, 'key' => $key]));
             }
             $value = $evidence[$key];
             if (is_string($value) && trim($value) === '') {
-                throw new InvalidArgumentException(sprintf('Asset transition to "%s" evidence key "%s" cannot be empty.', $toStatus, $key));
+                throw new InvalidArgumentException(__('islamic_finance.asset_transition_evidence_key_empty', ['to_status' => $toStatus, 'key' => $key]));
             }
         }
     }
@@ -204,16 +204,16 @@ final class IslamicFinancedAssetStateMachine
     public static function assertTransitionAllowed(string $from, string $to): void
     {
         if (! self::isStatus($from)) {
-            throw new InvalidArgumentException(sprintf('Unknown current asset status "%s".', $from));
+            throw new InvalidArgumentException(__('islamic_finance.asset_unknown_current_status', ['from' => $from]));
         }
         if (! self::isStatus($to)) {
-            throw new InvalidArgumentException(sprintf('Unknown target asset status "%s".', $to));
+            throw new InvalidArgumentException(__('islamic_finance.asset_unknown_target_status', ['to' => $to]));
         }
         if (self::isTerminal($from)) {
-            throw new InvalidArgumentException(sprintf('Asset is in terminal status "%s" and cannot transition.', $from));
+            throw new InvalidArgumentException(__('islamic_finance.asset_terminal_cannot_transition', ['from' => $from]));
         }
         if (! self::canTransition($from, $to)) {
-            throw new InvalidArgumentException(sprintf('Asset transition from "%s" to "%s" is not allowed.', $from, $to));
+            throw new InvalidArgumentException(__('islamic_finance.asset_transition_not_allowed', ['from' => $from, 'to' => $to]));
         }
     }
 }

@@ -340,7 +340,7 @@ final class IslamicProductFamilyRegistry
                     }
                 }
 
-                throw new InvalidArgumentException('Invalid mourabaha_configuration: '.implode(' ', $messages));
+                throw new InvalidArgumentException(__('islamic_governance.invalid_mourabaha_configuration', ['reasons' => implode(' ', $messages)]));
             }
         }
 
@@ -364,7 +364,7 @@ final class IslamicProductFamilyRegistry
                     }
                 }
 
-                throw new InvalidArgumentException('Invalid Salam rules configuration: '.implode(' ', $messages));
+                throw new InvalidArgumentException(__('islamic_governance.invalid_salam_rules_configuration', ['reasons' => implode(' ', $messages)]));
             }
         }
 
@@ -378,7 +378,7 @@ final class IslamicProductFamilyRegistry
                     }
                 }
 
-                throw new InvalidArgumentException("Invalid Istisna'a rules configuration: ".implode(' ', $messages));
+                throw new InvalidArgumentException(__('islamic_governance.invalid_istisnaa_rules_configuration', ['reasons' => implode(' ', $messages)]));
             }
         }
 
@@ -400,7 +400,7 @@ final class IslamicProductFamilyRegistry
                     }
                 }
 
-                throw new InvalidArgumentException('Invalid Moudaraba rules configuration: '.implode(' ', $messages));
+                throw new InvalidArgumentException(__('islamic_governance.invalid_moudaraba_rules_configuration', ['reasons' => implode(' ', $messages)]));
             }
         }
 

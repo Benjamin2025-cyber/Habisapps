@@ -34,7 +34,6 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'api.version' => ApiVersion::class,
-            'api.locale' => SetApiLocale::class,
             'accounting.day.registration-lock' => EnforceAccountingDayRegistrationLock::class,
             'idempotency' => IdempotencyMiddleware::class,
         ]);

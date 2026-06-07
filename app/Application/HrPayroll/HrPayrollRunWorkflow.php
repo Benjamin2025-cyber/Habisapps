@@ -452,20 +452,20 @@ final class HrPayrollRunWorkflow extends BaseController
                 })
                 ->first(['map.debit_ledger_account_id', 'map.credit_ledger_account_id']);
             if (! is_object($mapping)) {
-                throw new InvalidArgumentException('Active operation mapping is required for '.$code.'.');
+                throw new InvalidArgumentException(__('reporting.hr_payroll_active_mapping_required', ['code' => $code]));
             }
             $ledgerId = match ($code) {
                 'hr_salary_expense' => is_numeric($mapping->debit_ledger_account_id) ? (int) $mapping->debit_ledger_account_id : null,
                 default => is_numeric($mapping->credit_ledger_account_id) ? (int) $mapping->credit_ledger_account_id : null,
             };
             if ($ledgerId === null) {
-                throw new InvalidArgumentException('Mapping for '.$code.' is missing required ledger.');
+                throw new InvalidArgumentException(__('reporting.hr_payroll_mapping_missing_ledger', ['code' => $code]));
             }
             $ledger = LedgerAccount::query()->whereKey($ledgerId)->first();
             if (! $ledger instanceof LedgerAccount
                 || $ledger->status !== LedgerAccount::STATUS_ACTIVE
                 || $ledger->agency_id !== $agencyId) {
-                throw new InvalidArgumentException('Mapped ledger for '.$code.' must be active and agency-scoped.');
+                throw new InvalidArgumentException(__('reporting.hr_payroll_mapped_ledger_invalid', ['code' => $code]));
             }
             $resolved[$code] = $ledgerId;
         }

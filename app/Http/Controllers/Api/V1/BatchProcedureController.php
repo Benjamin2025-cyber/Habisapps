@@ -308,7 +308,7 @@ final class BatchProcedureController extends BaseController
 
         if ($inactive !== []) {
             throw ValidationException::withMessages([
-                'operation_code_public_ids' => ['Only active operation codes can be attached. Inactive selections: '.implode(', ', $inactive).'.'],
+                'operation_code_public_ids' => [__('reporting.batch_inactive_operation_codes', ['selections' => implode(', ', $inactive)])],
             ]);
         }
 

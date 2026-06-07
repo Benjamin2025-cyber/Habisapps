@@ -71,7 +71,7 @@ final class NotificationOutbox
 
             $template = $this->templates->resolveActive($templateCode, $category, $language);
             if (! is_object($template)) {
-                throw new InvalidArgumentException('No active template found for code '.$templateCode.' in '.$language.'.');
+                throw new InvalidArgumentException(__('notifications.outbox_no_active_template', ['template_code' => $templateCode, 'language' => $language]));
             }
 
             $body = $this->templates->render($template, $variables);

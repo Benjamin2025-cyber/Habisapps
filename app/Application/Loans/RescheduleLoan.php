@@ -75,6 +75,6 @@ final class RescheduleLoan
             return (int) $value;
         }
 
-        throw new InvalidArgumentException($field.' must be an integer amount.');
+        throw new InvalidArgumentException(__('loans.amount_must_be_integer', ['field' => $field]));
     }
 }

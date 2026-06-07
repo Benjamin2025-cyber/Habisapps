@@ -106,21 +106,21 @@ final class NotificationTemplateManager
         $allowlist = $this->variablesAllowlist($template);
         $unexpectedVariables = array_values(array_diff($this->variableNames($variables), $allowlist));
         if ($unexpectedVariables !== []) {
-            throw new InvalidArgumentException('Render variables are outside the allowlist: '.implode(', ', $unexpectedVariables).'.');
+            throw new InvalidArgumentException(__('notifications.render_variables_outside_allowlist', ['variables' => implode(', ', $unexpectedVariables)]));
         }
 
         $body = $this->rowString($template, 'body_template');
         $placeholders = $this->extractPlaceholders($body);
         $unknown = array_values(array_diff($placeholders, $allowlist));
         if ($unknown !== []) {
-            throw new InvalidArgumentException('Template body references variables outside the allowlist: '.implode(', ', $unknown).'.');
+            throw new InvalidArgumentException(__('notifications.body_variables_outside_allowlist', ['variables' => implode(', ', $unknown)]));
         }
 
         $substitutions = [];
         foreach ($placeholders as $name) {
             $value = $variables[$name] ?? null;
             if ($value === null) {
-                throw new InvalidArgumentException('Missing render value for variable '.$name.'.');
+                throw new InvalidArgumentException(__('notifications.missing_render_value', ['variable' => $name]));
             }
             $substitutions['{{'.$name.'}}'] = (string) $value;
         }
@@ -136,7 +136,7 @@ final class NotificationTemplateManager
         $placeholders = $this->extractPlaceholders($bodyTemplate);
         $unknown = array_values(array_diff($placeholders, $variablesAllowlist));
         if ($unknown !== []) {
-            throw new InvalidArgumentException('Template body references variables outside the allowlist: '.implode(', ', $unknown).'.');
+            throw new InvalidArgumentException(__('notifications.body_variables_outside_allowlist', ['variables' => implode(', ', $unknown)]));
         }
     }
 

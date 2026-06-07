@@ -269,7 +269,7 @@ final class RecordLoanRepayment
     {
         $operationCode = self::COMPONENT_OPERATION_CODES[$component] ?? null;
         if ($operationCode === null) {
-            throw new InvalidArgumentException('Unsupported loan repayment component: '.$component.'.');
+            throw new InvalidArgumentException(__('loans.unsupported_repayment_component', ['component' => $component]));
         }
 
         $mapping = DB::table('operation_account_mappings')
@@ -290,7 +290,7 @@ final class RecordLoanRepayment
 
         $ledgerAccountId = is_object($mapping) ? $mapping->credit_ledger_account_id : null;
         if (! is_int($ledgerAccountId)) {
-            throw new InvalidArgumentException('Active credit ledger mapping is required for '.$operationCode.'.');
+            throw new InvalidArgumentException(__('loans.credit_ledger_mapping_required', ['code' => $operationCode]));
         }
 
         return $ledgerAccountId;

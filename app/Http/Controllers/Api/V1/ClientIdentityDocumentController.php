@@ -367,13 +367,13 @@ final class ClientIdentityDocumentController extends BaseController
             $requiredFaces = IdentityDocumentTypeCatalog::requiredFaces($identityDocument->document_type);
             if ($requiredFaces !== null && $requiredFaces >= 2 && ! $this->hasBackDocumentEvidence($identityDocument)) {
                 return $this->respondUnprocessable(errors: [
-                    'back_document_public_id' => [sprintf('A %s requires both front and back faces before it can be verified.', $identityDocument->document_type)],
+                    'back_document_public_id' => [__('crm.document_requires_both_faces', ['type' => $identityDocument->document_type])],
                 ]);
             }
 
             if (IdentityDocumentTypeCatalog::requiresExpiry($identityDocument->document_type) === true && $identityDocument->expires_on === null) {
                 return $this->respondUnprocessable(errors: [
-                    'expires_on' => [sprintf('A %s requires an expiry date before it can be verified.', $identityDocument->document_type)],
+                    'expires_on' => [__('crm.document_requires_expiry', ['type' => $identityDocument->document_type])],
                 ]);
             }
 

@@ -570,7 +570,7 @@ final class LoanSetupChargeWorkflow extends BaseController
             'dossier_fee' => 'loan_setup_dossier_fee',
             'dossier_fee_tax' => 'loan_setup_tax',
             'guarantee_deposit' => 'loan_setup_guarantee_deposit',
-            default => throw new InvalidArgumentException('Unsupported setup charge type: '.$chargeType.'.'),
+            default => throw new InvalidArgumentException(__('loans.unsupported_setup_charge_type', ['type' => $chargeType])),
         };
 
         // FBI2-031: resolve through the shared resolver so setup-charge collection

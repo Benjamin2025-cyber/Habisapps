@@ -19,6 +19,11 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- Pin API locale defaults so the suite is deterministic regardless of a
+             developer's .env (production defaults to fr via .env.example). -->
+        <env name="API_SUPPORTED_LOCALES" value="en,fr"/>
+        <env name="API_DEFAULT_LOCALE" value="en"/>
+        <env name="API_FALLBACK_LOCALE" value="en"/>
         <env name="ACCOUNTING_DAY_AUTO_OPEN_ON_MISSING" value="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

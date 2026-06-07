@@ -480,7 +480,7 @@ final class IslamicShariaAuthorityWorkflow extends BaseController
                 }
                 $previous = $this->rowString($row, 'status');
                 if (! in_array($previous, $fromStatuses, true)) {
-                    throw new InvalidArgumentException('Authority status '.$previous.' cannot transition to '.$to.'.');
+                    throw new InvalidArgumentException(__('islamic_governance.authority_status_cannot_transition', ['previous' => $previous, 'to' => $to]));
                 }
                 $update = ['status' => $to, 'updated_at' => now()];
                 if ($to === 'retired') {
@@ -544,7 +544,7 @@ final class IslamicShariaAuthorityWorkflow extends BaseController
                 }
                 $previous = $this->rowString($member, 'status');
                 if (! in_array($previous, $from, true)) {
-                    throw new InvalidArgumentException('Member status '.$previous.' cannot transition to '.$to.'.');
+                    throw new InvalidArgumentException(__('islamic_governance.authority_member_status_cannot_transition', ['previous' => $previous, 'to' => $to]));
                 }
 
                 DB::table('islamic_sharia_authority_members')->where('id', $this->rowInt($member, 'id'))->update([
@@ -684,7 +684,7 @@ final class IslamicShariaAuthorityWorkflow extends BaseController
     {
         $type = isset($scope['type']) && is_string($scope['type']) ? $scope['type'] : '';
         if (! in_array($type, IslamicShariaAuthorityService::SCOPE_TYPES, true)) {
-            throw new InvalidArgumentException('mandate_scope.type must be one of: '.implode(', ', IslamicShariaAuthorityService::SCOPE_TYPES));
+            throw new InvalidArgumentException(__('islamic_governance.mandate_scope_type_must_be_one_of', ['types' => implode(', ', IslamicShariaAuthorityService::SCOPE_TYPES)]));
         }
         if ($type === 'institution') {
             return ['type' => 'institution'];
@@ -697,7 +697,7 @@ final class IslamicShariaAuthorityWorkflow extends BaseController
             }
         }
         if ($sanitized === []) {
-            throw new InvalidArgumentException('mandate_scope.codes must contain at least one non-empty string when type is '.$type.'.');
+            throw new InvalidArgumentException(__('islamic_governance.mandate_scope_codes_required_for_type', ['type' => $type]));
         }
 
         return ['type' => $type, 'codes' => array_values(array_unique($sanitized))];

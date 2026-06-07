@@ -275,7 +275,7 @@ final class IslamicScreeningPolicyService
         );
         $resultValue = is_string($result['result'] ?? null) ? $result['result'] : 'unknown';
         if ($resultValue !== 'pass') {
-            throw new InvalidArgumentException('Screening result must be pass before action. Received '.$resultValue.'.');
+            throw new InvalidArgumentException(__('islamic_governance.screening_result_must_be_pass', ['result' => $resultValue]));
         }
 
         return $result;
@@ -476,7 +476,7 @@ final class IslamicScreeningPolicyService
     private function assertKnownContextType(string $contextType): void
     {
         if (! array_key_exists($contextType, self::CONTEXT_BLOCKER_MAP)) {
-            throw new InvalidArgumentException('Unknown screening context type: '.$contextType.'.');
+            throw new InvalidArgumentException(__('islamic_governance.screening_unknown_context_type', ['context_type' => $contextType]));
         }
     }
 

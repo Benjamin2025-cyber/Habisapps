@@ -364,7 +364,7 @@ final class ClientProxyController extends BaseController
             $requiredFaces = IdentityDocumentTypeCatalog::requiredFaces($proxy->proxy_id_document_type);
             if ($requiredFaces !== null && $requiredFaces >= 2 && ! $this->hasBackDocumentEvidence($proxy)) {
                 return $this->respondUnprocessable(errors: [
-                    'back_document_public_id' => [sprintf('A %s requires both front and back faces before it can be verified.', $proxy->proxy_id_document_type)],
+                    'back_document_public_id' => [__('crm.document_requires_both_faces', ['type' => $proxy->proxy_id_document_type])],
                 ]);
             }
         }

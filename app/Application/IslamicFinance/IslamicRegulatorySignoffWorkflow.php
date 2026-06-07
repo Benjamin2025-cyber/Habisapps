@@ -454,7 +454,7 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
                 }
                 $previous = $this->rowString($row, 'status');
                 if (! in_array($previous, $fromStatuses, true)) {
-                    throw new InvalidArgumentException('Sign-off status '.$previous.' cannot transition to '.$to.'.');
+                    throw new InvalidArgumentException(__('islamic_governance.signoff_status_cannot_transition', ['previous' => $previous, 'to' => $to]));
                 }
 
                 $update = [
@@ -540,7 +540,7 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
         if (isset($validated['restrictions']) && is_array($validated['restrictions'])) {
             foreach ($validated['restrictions'] as $key => $_value) {
                 if (! is_string($key) || ! in_array($key, self::RESTRICTION_KEYS, true)) {
-                    throw new InvalidArgumentException('restrictions may only contain keys: '.implode(', ', self::RESTRICTION_KEYS).'.');
+                    throw new InvalidArgumentException(__('islamic_governance.signoff_restrictions_allowed_keys', ['keys' => implode(', ', self::RESTRICTION_KEYS)]));
                 }
             }
         }

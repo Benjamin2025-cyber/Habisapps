@@ -323,7 +323,7 @@ final class InsuranceProductWorkflow extends BaseController
                 }
                 $failures = $this->productReadiness->activationFailures($product);
                 if ($failures !== []) {
-                    throw new InvalidArgumentException('Product readiness check failed: '.implode('; ', $failures).'.');
+                    throw new InvalidArgumentException(__('insurance.product_readiness_check_failed', ['failures' => implode('; ', $failures)]));
                 }
 
                 DB::table('insurance_products')->where('id', $this->rowInt($product, 'id'))->update([

@@ -42,10 +42,10 @@ final class MappingCompletenessGate
 
         $code = DB::table('operation_codes')->where('code', $operationCode)->first(['id', 'status']);
         if (! is_object($code)) {
-            return [...$base, 'reason' => 'Operation code does not exist: '.$operationCode.'.'];
+            return [...$base, 'reason' => __('reporting.mapping_operation_code_does_not_exist', ['code' => $operationCode])];
         }
         if ((string) (((array) $code)['status'] ?? '') !== 'active') {
-            return [...$base, 'reason' => 'Operation code is not active: '.$operationCode.'.'];
+            return [...$base, 'reason' => __('reporting.mapping_operation_code_not_active', ['code' => $operationCode])];
         }
 
         $mapping = DB::table('operation_account_mappings')
@@ -57,7 +57,7 @@ final class MappingCompletenessGate
             ->orderByRaw('currency IS NULL')
             ->first(['debit_ledger_account_id', 'credit_ledger_account_id']);
         if (! is_object($mapping)) {
-            return [...$base, 'reason' => 'No active operation mapping for '.$operationCode.'.'];
+            return [...$base, 'reason' => __('reporting.mapping_no_active_operation_mapping', ['code' => $operationCode])];
         }
 
         $debit = is_numeric($mapping->debit_ledger_account_id) ? (int) $mapping->debit_ledger_account_id : null;

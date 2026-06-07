@@ -224,7 +224,7 @@ final class DatabaseManagementConfig
             return new DatabaseManagementError(
                 Response::HTTP_SERVICE_UNAVAILABLE,
                 'database_management_disabled',
-                'Database management is disabled in this environment.',
+                __('database_management.disabled_env'),
             );
         }
 
@@ -232,7 +232,7 @@ final class DatabaseManagementConfig
             return new DatabaseManagementError(
                 Response::HTTP_UNPROCESSABLE_ENTITY,
                 'database_driver_unsupported',
-                'The configured database driver is not supported for managed backups.',
+                __('database_management.driver_unsupported'),
             );
         }
 
@@ -240,7 +240,7 @@ final class DatabaseManagementConfig
             return new DatabaseManagementError(
                 Response::HTTP_UNPROCESSABLE_ENTITY,
                 'backup_disk_missing',
-                'The configured backup disk does not exist.',
+                __('database_management.backup_disk_missing'),
             );
         }
 
@@ -248,7 +248,7 @@ final class DatabaseManagementConfig
             return new DatabaseManagementError(
                 Response::HTTP_UNPROCESSABLE_ENTITY,
                 'backup_disk_not_private',
-                'The backup disk must be a private filesystem disk.',
+                __('database_management.backup_disk_not_private'),
             );
         }
 
@@ -258,7 +258,7 @@ final class DatabaseManagementConfig
                 return new DatabaseManagementError(
                     Response::HTTP_UNPROCESSABLE_ENTITY,
                     'backup_remote_disk_missing',
-                    'The configured remote backup disk does not exist.',
+                    __('database_management.remote_disk_missing'),
                 );
             }
 
@@ -266,7 +266,7 @@ final class DatabaseManagementConfig
                 return new DatabaseManagementError(
                     Response::HTTP_UNPROCESSABLE_ENTITY,
                     'backup_remote_disk_not_private',
-                    'The remote backup disk must be private.',
+                    __('database_management.remote_disk_not_private'),
                 );
             }
 
@@ -274,7 +274,7 @@ final class DatabaseManagementConfig
                 return new DatabaseManagementError(
                     Response::HTTP_UNPROCESSABLE_ENTITY,
                     'backup_encryption_key_missing',
-                    'A backup encryption key is required when encrypted remote backup copies are enabled.',
+                    __('database_management.backup_encryption_key_required'),
                 );
             }
         }
@@ -284,7 +284,7 @@ final class DatabaseManagementConfig
                 return new DatabaseManagementError(
                     Response::HTTP_UNPROCESSABLE_ENTITY,
                     'backup_tool_missing',
-                    'Required backup tooling is not configured.',
+                    __('database_management.backup_tooling_missing'),
                 );
             }
         }
@@ -307,7 +307,7 @@ final class DatabaseManagementConfig
             return new DatabaseManagementError(
                 Response::HTTP_SERVICE_UNAVAILABLE,
                 'database_restore_disabled',
-                'Database restore is disabled in this environment.',
+                __('database_management.restore_disabled_env'),
             );
         }
 
@@ -315,7 +315,7 @@ final class DatabaseManagementConfig
             return new DatabaseManagementError(
                 Response::HTTP_UNPROCESSABLE_ENTITY,
                 'backup_disk_not_private',
-                'Restore cannot run while the backup disk is public.',
+                __('database_management.restore_disk_public'),
             );
         }
 
@@ -324,7 +324,7 @@ final class DatabaseManagementConfig
                 return new DatabaseManagementError(
                     Response::HTTP_UNPROCESSABLE_ENTITY,
                     'restore_tool_missing',
-                    'Required restore tooling is not configured.',
+                    __('database_management.restore_tooling_missing'),
                 );
             }
         }
