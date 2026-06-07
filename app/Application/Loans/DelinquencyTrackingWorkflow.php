@@ -87,7 +87,7 @@ final class DelinquencyTrackingWorkflow extends BaseController
         }
 
         if (! in_array($loan->status, [Loan::STATUS_DISBURSED, Loan::STATUS_ACTIVE, Loan::STATUS_RESCHEDULED], true)) {
-            return $this->respondUnprocessable(errors: ['loan' => ['Delinquency tracking requires a disbursed, active, or rescheduled loan.']]);
+            return $this->respondUnprocessable(errors: ['loan' => [__('Delinquency tracking requires a disbursed, active, or rescheduled loan.')]]);
         }
 
         $validated = $this->validatedPayload($request);

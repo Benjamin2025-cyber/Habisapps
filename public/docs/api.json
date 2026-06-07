@@ -30251,8 +30251,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -30318,8 +30331,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -30485,8 +30511,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Account products retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -30552,8 +30591,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Account products retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -30757,8 +30809,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -30824,8 +30889,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31044,8 +31122,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31111,8 +31202,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31322,8 +31426,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31389,8 +31506,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31598,8 +31728,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31665,8 +31808,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31928,8 +32084,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -31995,8 +32164,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -32264,8 +32446,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -32331,8 +32526,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -32406,8 +32614,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -32473,8 +32694,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -32800,8 +33034,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -32867,8 +33114,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -33130,8 +33390,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -33197,8 +33470,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -34015,8 +34301,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -34082,8 +34381,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -34248,8 +34560,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -34315,8 +34640,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -34483,8 +34821,21 @@
                         "type": "boolean"
                     },
                     "message": {
-                        "type": "string",
-                        "const": "Success"
+                        "anyOf": [
+                            {
+                                "type": "null"
+                            },
+                            {
+                                "type": "array",
+                                "items": {}
+                            },
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object"
+                            }
+                        ]
                     },
                     "data": {
                         "type": "object",
@@ -34677,8 +35028,21 @@
                         "type": "boolean"
                     },
                     "message": {
-                        "type": "string",
-                        "const": "Success"
+                        "anyOf": [
+                            {
+                                "type": "null"
+                            },
+                            {
+                                "type": "array",
+                                "items": {}
+                            },
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object"
+                            }
+                        ]
                     },
                     "data": {
                         "type": "object",
@@ -34846,8 +35210,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -34913,8 +35290,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35032,8 +35422,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35099,8 +35502,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35255,8 +35671,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "EMF ledger account mappings retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35322,8 +35751,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "EMF ledger account mappings retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35436,8 +35878,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "EMF regulatory accounts retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35503,8 +35958,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "EMF regulatory accounts retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35630,8 +36098,21 @@
                         "type": "boolean"
                     },
                     "message": {
-                        "type": "string",
-                        "const": "Executable batch-procedure codes retrieved successfully"
+                        "anyOf": [
+                            {
+                                "type": "null"
+                            },
+                            {
+                                "type": "array",
+                                "items": {}
+                            },
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object"
+                            }
+                        ]
                     },
                     "data": {
                         "type": "object",
@@ -35818,8 +36299,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -35885,8 +36379,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -36241,8 +36748,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Loan products retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -36308,8 +36828,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Loan products retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -36693,8 +37226,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Operation account mappings retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -36760,8 +37306,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Operation account mappings retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -36927,8 +37486,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Operation codes retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -36994,8 +37566,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Operation codes retrieved successfully"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -37199,8 +37784,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -37266,8 +37864,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -37670,8 +38281,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -37737,8 +38361,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -37844,8 +38481,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -37911,8 +38561,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -38101,8 +38764,21 @@
                         "type": "boolean"
                     },
                     "message": {
-                        "type": "string",
-                        "const": "Success"
+                        "anyOf": [
+                            {
+                                "type": "null"
+                            },
+                            {
+                                "type": "array",
+                                "items": {}
+                            },
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object"
+                            }
+                        ]
                     },
                     "data": {
                         "type": "object",
@@ -41067,8 +41743,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -41134,8 +41823,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -41248,8 +41950,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -41315,8 +42030,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -41529,8 +42257,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -41596,8 +42337,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -41937,8 +42691,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",
@@ -42004,8 +42771,21 @@
                                 "type": "boolean"
                             },
                             "message": {
-                                "type": "string",
-                                "const": "Success"
+                                "anyOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {}
+                                    },
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object"
+                                    }
+                                ]
                             },
                             "data": {
                                 "type": "object",

@@ -107,7 +107,7 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
 
         $row = DB::table('islamic_screening_policies')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['islamic_screening_policy' => ['Policy could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy' => [__('Policy could not be reloaded.')]]);
         }
 
         $this->approvalWorkflows->ensureWorkflow(
@@ -148,7 +148,7 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
             return $this->respondNotFound('Screening policy not found.');
         }
         if ((string) $row->status !== 'draft') {
-            return $this->respondUnprocessable(errors: ['islamic_screening_policy' => ['Only draft policies can be updated.']]);
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy' => [__('Only draft policies can be updated.')]]);
         }
         $validated = Validator::make($request->all(), [
             'name' => ['sometimes', 'string', 'max:191'],
@@ -171,7 +171,7 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
         DB::table('islamic_screening_policies')->where('id', (int) $row->id)->update($updates);
         $updated = DB::table('islamic_screening_policies')->where('id', (int) $row->id)->first();
         if (! is_object($updated)) {
-            return $this->respondUnprocessable(errors: ['islamic_screening_policy' => ['Policy could not be reloaded after update.']]);
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy' => [__('Policy could not be reloaded after update.')]]);
         }
 
         $actor = $request->user();
@@ -350,18 +350,18 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
         if ($status === 'active') {
             $ruleCount = DB::table('islamic_screening_policy_rules')->where('policy_id', (int) $policy->id)->where('is_active', true)->count();
             if ($ruleCount < 1) {
-                return $this->respondUnprocessable(errors: ['islamic_screening_policy' => ['At least one active rule is required before activation.']]);
+                return $this->respondUnprocessable(errors: ['islamic_screening_policy' => [__('At least one active rule is required before activation.')]]);
             }
             $workflow = $this->approvalWorkflows->workflowFor(IslamicApprovalStateMachine::SUBJECT_SCREENING_POLICY, $policyPublicId);
             $state = is_object($workflow) && is_string($workflow->current_state ?? null) ? $workflow->current_state : null;
             if ($state !== IslamicApprovalStateMachine::STATE_APPROVED) {
-                return $this->respondUnprocessable(errors: ['islamic_screening_policy' => ['Screening policy approval workflow must be approved before activation.']]);
+                return $this->respondUnprocessable(errors: ['islamic_screening_policy' => [__('Screening policy approval workflow must be approved before activation.')]]);
             }
             $effectiveFrom = is_string($policy->effective_from ?? null) ? $policy->effective_from : null;
             $effectiveTo = is_string($policy->effective_to ?? null) ? $policy->effective_to : null;
             $today = now()->toDateString();
             if (($effectiveFrom !== null && $effectiveFrom > $today) || ($effectiveTo !== null && $effectiveTo <= $today)) {
-                return $this->respondUnprocessable(errors: ['islamic_screening_policy' => ['Policy effective window is not active.']]);
+                return $this->respondUnprocessable(errors: ['islamic_screening_policy' => [__('Policy effective window is not active.')]]);
             }
         }
 
@@ -417,7 +417,7 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
             'metadata' => ['sometimes', 'nullable', 'array'],
         ])->validate();
         if (($validated['match_operator'] ?? 'equals') === 'regex' && @preg_match((string) $validated['match_key'], '') === false) {
-            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => ['Invalid regex pattern in match_key.']]);
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => [__('Invalid regex pattern in match_key.')]]);
         }
 
         if ($rulePublicId === null) {
@@ -457,11 +457,11 @@ final class IslamicScreeningPolicyWorkflow extends BaseController
         }
         $ruleId = is_numeric($id) ? (int) $id : null;
         if ($ruleId === null) {
-            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => ['Rule id is invalid after save.']]);
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => [__('Rule id is invalid after save.')]]);
         }
         $rule = DB::table('islamic_screening_policy_rules')->where('id', $ruleId)->first();
         if (! is_object($rule)) {
-            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => ['Rule could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['islamic_screening_policy_rule' => [__('Rule could not be reloaded.')]]);
         }
 
         return $this->respondSuccess([

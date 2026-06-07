@@ -63,7 +63,7 @@ final class LoanProductController extends BaseController
 
         $ledgerAccount = $this->resolveLedgerAccount($request->input('ledger_account_public_id'));
         if ($ledgerAccount === false) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
         }
 
         $product = LoanProduct::query()->create($this->payload($request->validated(), $ledgerAccount));
@@ -100,7 +100,7 @@ final class LoanProductController extends BaseController
         if (array_key_exists('ledger_account_public_id', $validated)) {
             $ledgerAccount = $this->resolveLedgerAccount($validated['ledger_account_public_id']);
             if ($ledgerAccount === false) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active.']]);
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
             }
         }
 
@@ -126,7 +126,7 @@ final class LoanProductController extends BaseController
         $minAmountInt = $this->nullableInt($minAmount);
         $maxAmountInt = $this->nullableInt($maxAmount);
         if ($minAmountInt !== null && $maxAmountInt !== null && $maxAmountInt < $minAmountInt) {
-            $errors['max_amount_minor'] = ['Maximum loan amount must be greater than or equal to minimum loan amount.'];
+            $errors['max_amount_minor'] = [__('Maximum loan amount must be greater than or equal to minimum loan amount.')];
         }
 
         $minTerm = array_key_exists('min_term_count', $validated) ? $validated['min_term_count'] : $loanProduct->min_term_count;
@@ -134,7 +134,7 @@ final class LoanProductController extends BaseController
         $minTermInt = $this->nullableInt($minTerm);
         $maxTermInt = $this->nullableInt($maxTerm);
         if ($minTermInt !== null && $maxTermInt !== null && $maxTermInt < $minTermInt) {
-            $errors['max_term_count'] = ['Maximum term must be greater than or equal to minimum term.'];
+            $errors['max_term_count'] = [__('Maximum term must be greater than or equal to minimum term.')];
         }
 
         $minGrace = array_key_exists('min_grace_period_days', $validated) ? $validated['min_grace_period_days'] : $loanProduct->min_grace_period_days;
@@ -142,7 +142,7 @@ final class LoanProductController extends BaseController
         $minGraceInt = $this->nullableInt($minGrace);
         $maxGraceInt = $this->nullableInt($maxGrace);
         if ($minGraceInt !== null && $maxGraceInt !== null && $maxGraceInt < $minGraceInt) {
-            $errors['max_grace_period_days'] = ['Maximum grace period must be greater than or equal to minimum grace period.'];
+            $errors['max_grace_period_days'] = [__('Maximum grace period must be greater than or equal to minimum grace period.')];
         }
 
         return $errors;

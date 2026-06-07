@@ -95,7 +95,7 @@ final class HrEmployeeWorkflow extends BaseController
 
         $row = DB::table('hr_employees')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['hr_employee' => ['Employee could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['hr_employee' => [__('Employee could not be reloaded.')]]);
         }
 
         $this->securityAudit->record('hr.employee.created', actor: $actor, properties: [

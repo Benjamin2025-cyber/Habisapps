@@ -135,7 +135,7 @@ final class CollateralController extends BaseController
         }
 
         if ($loan->status !== Loan::STATUS_CLOSED) {
-            return $this->respondUnprocessable(errors: ['loan' => ['Collateral can only be released after loan closure.']]);
+            return $this->respondUnprocessable(errors: ['loan' => [__('Collateral can only be released after loan closure.')]]);
         }
 
         if ($collateral->status === Collateral::STATUS_RELEASED) {
@@ -143,7 +143,7 @@ final class CollateralController extends BaseController
         }
 
         if ($collateral->status !== Collateral::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['collateral' => ['Only active collateral can be released.']]);
+            return $this->respondUnprocessable(errors: ['collateral' => [__('Only active collateral can be released.')]]);
         }
 
         $collateral->update(['status' => Collateral::STATUS_RELEASED]);

@@ -64,13 +64,13 @@ final class OperationAccountMappingController extends BaseController
         if (is_string($requested) && $requested !== '') {
             $agency = Agency::query()->where('public_id', $requested)->first();
             if (! $agency instanceof Agency) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
         } else {
             $currentAgencyId = $this->staffAgencyScope->currentAgencyId($actor);
             $agency = $currentAgencyId !== null ? Agency::query()->whereKey($currentAgencyId)->first() : null;
             if (! $agency instanceof Agency) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => ['An agency is required to check mapping readiness.']]);
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('An agency is required to check mapping readiness.')]]);
             }
         }
 
@@ -159,16 +159,16 @@ final class OperationAccountMappingController extends BaseController
 
         $operationCode = OperationCode::query()->where('public_id', $request->string('operation_code_public_id'))->first();
         if (! $operationCode instanceof OperationCode || $operationCode->status !== OperationCode::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['operation_code_public_id' => ['The selected operation code must be active.']]);
+            return $this->respondUnprocessable(errors: ['operation_code_public_id' => [__('The selected operation code must be active.')]]);
         }
 
         $debit = $this->resolveActiveLedgerAccount($request->input('debit_ledger_account_public_id'));
         if ($debit === false) {
-            return $this->respondUnprocessable(errors: ['debit_ledger_account_public_id' => ['The selected debit ledger account must be active.']]);
+            return $this->respondUnprocessable(errors: ['debit_ledger_account_public_id' => [__('The selected debit ledger account must be active.')]]);
         }
         $credit = $this->resolveActiveLedgerAccount($request->input('credit_ledger_account_public_id'));
         if ($credit === false) {
-            return $this->respondUnprocessable(errors: ['credit_ledger_account_public_id' => ['The selected credit ledger account must be active.']]);
+            return $this->respondUnprocessable(errors: ['credit_ledger_account_public_id' => [__('The selected credit ledger account must be active.')]]);
         }
         if ($debit instanceof LedgerAccount && $credit instanceof LedgerAccount && $debit->agency_id !== $credit->agency_id) {
             return $this->respondUnprocessable('Debit and credit ledger accounts must belong to the same agency.');
@@ -176,7 +176,7 @@ final class OperationAccountMappingController extends BaseController
 
         $agency = $this->resolveAgency($request->input('agency_public_id'));
         if ($agency === false) {
-            return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
         }
         $agencyId = $agency instanceof Agency ? $agency->id : null;
 
@@ -192,7 +192,7 @@ final class OperationAccountMappingController extends BaseController
         $effectiveTo = $this->dateInput($request->input('effective_to'));
 
         if ($this->conflictsWithActiveApproved($status, $approvalStatus, $operationCode->id, $agencyId, $currency, $effectiveFrom, $effectiveTo, null)) {
-            return $this->respondUnprocessable(errors: ['effective_from' => ['An overlapping active, approved mapping already exists for this operation code, agency, currency, and effective window.']]);
+            return $this->respondUnprocessable(errors: ['effective_from' => [__('An overlapping active, approved mapping already exists for this operation code, agency, currency, and effective window.')]]);
         }
 
         $approved = $approvalStatus === OperationAccountMapping::APPROVAL_APPROVED;
@@ -250,7 +250,7 @@ final class OperationAccountMappingController extends BaseController
         if (array_key_exists('agency_public_id', $validated)) {
             $agency = $this->resolveAgency($validated['agency_public_id']);
             if ($agency === false) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
             $changes['agency_id'] = $agency instanceof Agency ? $agency->id : null;
         }
@@ -261,7 +261,7 @@ final class OperationAccountMappingController extends BaseController
             }
             $ledger = $this->resolveActiveLedgerAccount($validated[$field]);
             if ($ledger === false) {
-                return $this->respondUnprocessable(errors: [$field => ['The selected ledger account must be active.']]);
+                return $this->respondUnprocessable(errors: [$field => [__('The selected ledger account must be active.')]]);
             }
             $changes[$column] = $ledger instanceof LedgerAccount ? $ledger->id : null;
         }
@@ -305,7 +305,7 @@ final class OperationAccountMappingController extends BaseController
         $resultingFrom = array_key_exists('effective_from', $changes) ? $changes['effective_from'] : $this->dateInput($operationAccountMapping->effective_from);
         $resultingTo = array_key_exists('effective_to', $changes) ? $changes['effective_to'] : $this->dateInput($operationAccountMapping->effective_to);
         if ($this->conflictsWithActiveApproved($resultingStatus, $resultingApproval, $operationAccountMapping->operation_code_id, $resultingAgencyId, $resultingCurrency, $resultingFrom, $resultingTo, $operationAccountMapping->id)) {
-            return $this->respondUnprocessable(errors: ['effective_from' => ['An overlapping active, approved mapping already exists for this operation code, agency, currency, and effective window.']]);
+            return $this->respondUnprocessable(errors: ['effective_from' => [__('An overlapping active, approved mapping already exists for this operation code, agency, currency, and effective window.')]]);
         }
 
         $operationAccountMapping->fill($changes)->save();
@@ -375,10 +375,10 @@ final class OperationAccountMappingController extends BaseController
 
         $errors = [];
         if ($debit instanceof LedgerAccount && $debit->agency_id !== $agencyId) {
-            $errors['debit_ledger_account_public_id'] = ['The debit ledger account must belong to the mapping agency.'];
+            $errors['debit_ledger_account_public_id'] = [__('The debit ledger account must belong to the mapping agency.')];
         }
         if ($credit instanceof LedgerAccount && $credit->agency_id !== $agencyId) {
-            $errors['credit_ledger_account_public_id'] = ['The credit ledger account must belong to the mapping agency.'];
+            $errors['credit_ledger_account_public_id'] = [__('The credit ledger account must belong to the mapping agency.')];
         }
 
         return $errors === [] ? null : $errors;

@@ -95,7 +95,7 @@ final class IslamicProductWorkflow extends BaseController
 
         $row = DB::table('islamic_products')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['islamic_product' => ['Product could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['islamic_product' => [__('Product could not be reloaded.')]]);
         }
 
         $this->securityAudit->record('islamic.product.created', actor: $actor, properties: [

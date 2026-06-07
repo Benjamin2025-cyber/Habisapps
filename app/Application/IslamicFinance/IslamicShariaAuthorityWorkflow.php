@@ -136,7 +136,7 @@ final class IslamicShariaAuthorityWorkflow extends BaseController
             return $this->respondNotFound('Sharia authority not found.');
         }
         if ($this->rowString($existingForDefaults, 'status') !== 'draft') {
-            return $this->respondUnprocessable(errors: ['islamic_sharia_authority' => ['Only draft authorities can be updated.']]);
+            return $this->respondUnprocessable(errors: ['islamic_sharia_authority' => [__('Only draft authorities can be updated.')]]);
         }
 
         try {

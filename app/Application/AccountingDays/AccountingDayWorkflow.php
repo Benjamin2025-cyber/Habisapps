@@ -79,7 +79,7 @@ final class AccountingDayWorkflow extends BaseController
             ?? $this->findLatestDay($scopeType, $agencyId);
 
         if (! $day instanceof AccountingDay) {
-            return $this->respondNotFound('No accounting day is configured for your scope. The system is in consultation-only mode.');
+            return $this->respondNotFound(__('domain.accounting_day_no_day_configured'));
         }
 
         if ($actor->cannot('view', $day)) {
@@ -120,7 +120,7 @@ final class AccountingDayWorkflow extends BaseController
         if ($existing instanceof AccountingDay) {
             return $this->respondSuccess(
                 AccountingDayResource::make($existing->loadMissing(['agency', 'openedBy', 'closedBy', 'reopenedBy'])),
-                'An accounting day is already open for this scope.',
+                __('domain.accounting_day_already_open'),
             );
         }
 
@@ -150,7 +150,7 @@ final class AccountingDayWorkflow extends BaseController
             if ($existing instanceof AccountingDay) {
                 return $this->respondSuccess(
                     AccountingDayResource::make($existing->loadMissing(['agency', 'openedBy', 'closedBy', 'reopenedBy'])),
-                    'An accounting day is already open for this scope.',
+                    __('domain.accounting_day_already_open'),
                 );
             }
 
@@ -168,7 +168,7 @@ final class AccountingDayWorkflow extends BaseController
 
         return $this->respondCreated(
             AccountingDayResource::make($day->loadMissing(['agency', 'openedBy', 'closedBy', 'reopenedBy'])),
-            'Accounting day opened successfully',
+            __('domain.accounting_day_opened_successfully'),
         );
     }
 
@@ -182,12 +182,12 @@ final class AccountingDayWorkflow extends BaseController
         if ($accountingDay->status === AccountingDay::STATUS_CLOSING) {
             return $this->respondSuccess(
                 $this->daySummaryPayload($accountingDay),
-                'Accounting day is already closing.',
+                __('domain.accounting_day_already_closing'),
             );
         }
 
         if (! in_array($accountingDay->status, [AccountingDay::STATUS_OPEN, AccountingDay::STATUS_REOPENED], true)) {
-            return $this->respondUnprocessable('Invalid accounting day transition.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_invalid_transition'), [
                 'code' => 'accounting_day_invalid_transition',
                 'status' => $accountingDay->status,
             ]);
@@ -200,7 +200,7 @@ final class AccountingDayWorkflow extends BaseController
         // rules as the cash-close control so the two can never disagree.
         $openSessions = $this->closeControls->openTellerSessionDigest($accountingDay);
         if ($openSessions !== []) {
-            return $this->respondUnprocessable('Accounting day close cannot start while teller sessions are still open.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_close_blocked_open_teller_sessions'), [
                 'code' => 'open_teller_sessions',
                 'open_teller_sessions_count' => count($openSessions),
                 'open_teller_sessions' => $openSessions,
@@ -239,7 +239,7 @@ final class AccountingDayWorkflow extends BaseController
 
         return $this->respondSuccess(
             $this->daySummaryPayload($accountingDay->refresh()),
-            'Accounting day close started. Registrations are now blocked while controls run.',
+            __('domain.accounting_day_close_started'),
         );
     }
 
@@ -253,12 +253,12 @@ final class AccountingDayWorkflow extends BaseController
         if ($accountingDay->status === AccountingDay::STATUS_CLOSED) {
             return $this->respondSuccess(
                 $this->daySummaryPayload($accountingDay),
-                'Accounting day is already closed.',
+                __('domain.accounting_day_already_closed'),
             );
         }
 
         if ($accountingDay->status !== AccountingDay::STATUS_CLOSING) {
-            return $this->respondUnprocessable('The accounting day must be in the closing state before it can be closed.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_must_be_closing_before_close'), [
                 'code' => 'accounting_day_invalid_transition',
                 'status' => $accountingDay->status,
             ]);
@@ -325,7 +325,7 @@ final class AccountingDayWorkflow extends BaseController
                 'blockers' => array_map(static fn (array $b): string => $b['control'], $readiness->blockers),
             ], request: $request);
 
-            return $this->respondUnprocessable('Accounting day cannot be closed while controls are failing.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_close_blocked_controls_failed'), [
                 'code' => 'accounting_day_close_blocked',
                 'close_summary' => $day->close_summary_payload,
             ]);
@@ -337,7 +337,7 @@ final class AccountingDayWorkflow extends BaseController
                 'blockers' => $batchSummary['failed_controls'],
             ], request: $request);
 
-            return $this->respondUnprocessable('Accounting day cannot be closed while required close-control batches are failing.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_close_blocked_required_batches'), [
                 'code' => 'accounting_day_close_blocked',
                 'close_summary' => $day->close_summary_payload,
             ]);
@@ -353,7 +353,7 @@ final class AccountingDayWorkflow extends BaseController
 
         return $this->respondSuccess(
             $this->daySummaryPayload($day->refresh()),
-            'Accounting day closed successfully',
+            __('domain.accounting_day_closed_successfully'),
         );
     }
 
@@ -365,7 +365,7 @@ final class AccountingDayWorkflow extends BaseController
         }
 
         if ($accountingDay->status !== AccountingDay::STATUS_CLOSED) {
-            return $this->respondUnprocessable('Only closed accounting days can be reopened.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_only_closed_can_be_reopened'), [
                 'code' => 'accounting_day_invalid_transition',
                 'status' => $accountingDay->status,
             ]);
@@ -374,7 +374,7 @@ final class AccountingDayWorkflow extends BaseController
         // Reopen must not race with a newly opened day for the same scope.
         $active = $this->findActiveDay($accountingDay->scope_type, $accountingDay->agency_id);
         if ($active instanceof AccountingDay) {
-            return $this->respondUnprocessable('Another accounting day is already active for this scope; close it before reopening a prior day.', [
+            return $this->respondUnprocessable(__('domain.accounting_day_another_active_exists'), [
                 'code' => 'accounting_day_active_exists',
                 'active_business_date' => $active->business_date->toDateString(),
             ]);
@@ -403,7 +403,7 @@ final class AccountingDayWorkflow extends BaseController
 
         return $this->respondSuccess(
             $this->daySummaryPayload($accountingDay->refresh()),
-            'Accounting day reopened successfully',
+            __('domain.accounting_day_reopened_successfully'),
         );
     }
 
@@ -587,7 +587,7 @@ final class AccountingDayWorkflow extends BaseController
         if (is_string($agencyPublicId) && $agencyPublicId !== '') {
             $agency = Agency::query()->where('public_id', $agencyPublicId)->first();
             if (! $agency instanceof Agency) {
-                return ['', null, $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']])];
+                return ['', null, $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]])];
             }
 
             if (! $actor->hasRole('platform-admin') && $this->staffAgencyScope->currentAgencyId($actor) !== $agency->id) {
@@ -599,7 +599,7 @@ final class AccountingDayWorkflow extends BaseController
 
         $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
         if ($agencyId === null) {
-            return ['', null, $this->respondUnprocessable(errors: ['agency_public_id' => ['An agency is required to resolve the accounting day scope.']])];
+            return ['', null, $this->respondUnprocessable(errors: ['agency_public_id' => [__('An agency is required to resolve the accounting day scope.')]])];
         }
 
         return [AccountingDay::SCOPE_AGENCY, $agencyId, null];

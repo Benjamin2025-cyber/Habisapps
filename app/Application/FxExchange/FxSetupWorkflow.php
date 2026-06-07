@@ -124,7 +124,7 @@ final class FxSetupWorkflow extends BaseController
 
         $row = DB::table('currencies')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['currency' => ['Currency row could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['currency' => [__('Currency row could not be reloaded.')]]);
         }
 
         return $this->respondCreated($this->currencyPayload($row), 'Currency reference recorded successfully');

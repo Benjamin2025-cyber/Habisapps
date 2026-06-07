@@ -29,7 +29,7 @@ final class EnforceAccountingDayRegistrationLock
         $classification = $this->routeClassification->classify($request);
         if ($classification === RouteClassification::UNCLASSIFIED) {
             return ApiResponse::error(
-                'Mutating route is missing accounting-day classification.',
+                __('system.accounting_day_route_unclassified'),
                 [
                     'code' => 'accounting_day_route_unclassified',
                     'method' => strtoupper($request->method()),

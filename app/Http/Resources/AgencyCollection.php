@@ -28,7 +28,7 @@ final class AgencyCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'agencies' => $this->collection,
                 ],
@@ -46,7 +46,7 @@ final class AgencyCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'agencies' => $this->collection,
             ],

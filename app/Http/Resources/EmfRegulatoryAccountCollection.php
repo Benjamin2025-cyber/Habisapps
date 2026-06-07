@@ -25,7 +25,7 @@ final class EmfRegulatoryAccountCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'EMF regulatory accounts retrieved successfully',
+                'message' => __('EMF regulatory accounts retrieved successfully'),
                 'data' => [
                     'emf_regulatory_accounts' => $this->collection,
                 ],
@@ -43,7 +43,7 @@ final class EmfRegulatoryAccountCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'EMF regulatory accounts retrieved successfully',
+            'message' => __('EMF regulatory accounts retrieved successfully'),
             'data' => [
                 'emf_regulatory_accounts' => $this->collection,
             ],

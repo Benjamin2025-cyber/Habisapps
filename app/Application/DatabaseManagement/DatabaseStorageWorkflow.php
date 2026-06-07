@@ -55,6 +55,12 @@ final class DatabaseStorageWorkflow extends BaseController
         $lastSuccessfulQuery->getQuery()->whereIn('status', $completedStatuses);
         $lastSuccessful = $lastSuccessfulQuery->first();
 
+        // The lock stores its reason as a translation key; localize it for display.
+        $maintenanceLock = $this->lock->current();
+        if ($maintenanceLock !== null) {
+            $maintenanceLock['reason'] = __($maintenanceLock['reason']);
+        }
+
         return $this->respondSuccess([
             'storage' => [
                 'enabled' => $this->config->isEnabled(),
@@ -74,7 +80,7 @@ final class DatabaseStorageWorkflow extends BaseController
                     'keep_last_verified' => $this->config->retentionKeepLastVerified(),
                 ],
                 'restore_enabled' => $this->config->restoreEnabled(),
-                'maintenance_lock' => $this->lock->current(),
+                'maintenance_lock' => $maintenanceLock,
             ],
         ]);
     }
@@ -87,7 +93,7 @@ final class DatabaseStorageWorkflow extends BaseController
         }
 
         if (! $this->config->isEnabled()) {
-            return $this->respondError('Database management is disabled in this environment.', [
+            return $this->respondError(__('database_management.disabled_env'), [
                 'code' => 'database_management_disabled',
             ], Response::HTTP_SERVICE_UNAVAILABLE);
         }
@@ -108,7 +114,7 @@ final class DatabaseStorageWorkflow extends BaseController
                 'candidate_count' => $candidates->count(),
                 'candidates' => $summary,
                 'reclaimable_bytes' => $totalBytes,
-            ], 'Retention dry-run complete.');
+            ], __('database_management.retention_dry_run_complete'));
         }
 
         $deletedPublicIds = [];
@@ -132,7 +138,7 @@ final class DatabaseStorageWorkflow extends BaseController
             'deleted_count' => count($deletedPublicIds),
             'deleted_public_ids' => $deletedPublicIds,
             'reclaimed_bytes' => $totalBytes,
-        ], 'Retention run complete.');
+        ], __('database_management.retention_run_complete'));
     }
 
     private function diskReachable(string $disk): bool

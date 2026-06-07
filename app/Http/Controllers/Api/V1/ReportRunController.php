@@ -92,14 +92,14 @@ final class ReportRunController extends BaseController
             ->where('status', ReportDefinition::STATUS_ACTIVE)
             ->first();
         if (! $definition instanceof ReportDefinition) {
-            return $this->respondUnprocessable(errors: ['report_definition_public_id' => ['The selected report definition must be active.']]);
+            return $this->respondUnprocessable(errors: ['report_definition_public_id' => [__('The selected report definition must be active.')]]);
         }
         if (! in_array($definition->report_type, $this->supportedReportTypes(), true)) {
-            return $this->respondUnprocessable(errors: ['report_definition_public_id' => ['Selected report type is not supported.']]);
+            return $this->respondUnprocessable(errors: ['report_definition_public_id' => [__('Selected report type is not supported.')]]);
         }
         $sourceSnapshot = $this->sourceVersionSnapshot($definition);
         if ($definition->report_type === ReportDefinition::TYPE_EMF_TRIAL_BALANCE && $sourceSnapshot === null) {
-            return $this->respondUnprocessable(errors: ['report_definition_public_id' => ['EMF/COBAC reports require a regulatory source snapshot.']]);
+            return $this->respondUnprocessable(errors: ['report_definition_public_id' => [__('EMF/COBAC reports require a regulatory source snapshot.')]]);
         }
 
         $agency = isset($validated['agency_public_id'])
@@ -120,7 +120,7 @@ final class ReportRunController extends BaseController
             ? Document::query()->where('public_id', $validated['document_public_id'])->first()
             : null;
         if ($document instanceof Document && $agency instanceof Agency && $document->agency_id !== $agency->id) {
-            return $this->respondUnprocessable(errors: ['document_public_id' => ['Report export document must belong to the selected agency.']]);
+            return $this->respondUnprocessable(errors: ['document_public_id' => [__('Report export document must belong to the selected agency.')]]);
         }
 
         $currency = strtoupper($validated['currency'] ?? 'XAF');

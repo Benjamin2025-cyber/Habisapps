@@ -16,7 +16,7 @@ Route::prefix('v1')->middleware('api')->group(function (): void {
             'status' => 'ok',
             'service' => config('app.name'),
             'version' => '1.0.0',
-        ], 'Service is healthy', [
+        ], __('api.service_healthy'), [
             'pagination' => [
                 'current_page' => $page,
                 'per_page' => $perPage,

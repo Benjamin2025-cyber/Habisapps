@@ -22,7 +22,7 @@ final class OperationAccountMappingCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Operation account mappings retrieved successfully',
+                'message' => __('Operation account mappings retrieved successfully'),
                 'data' => ['operation_account_mappings' => $this->collection],
                 'errors' => null,
                 'meta' => [
@@ -38,7 +38,7 @@ final class OperationAccountMappingCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Operation account mappings retrieved successfully',
+            'message' => __('Operation account mappings retrieved successfully'),
             'data' => ['operation_account_mappings' => $this->collection],
             'errors' => null,
             'meta' => [

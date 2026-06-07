@@ -19,7 +19,7 @@ Route::prefix('v1')->middleware(['api', 'api.version'])->group(function (): void
                 'version' => '1.0.0',
                 'timestamp' => now()->toIso8601String(),
             ],
-            message: 'Service is healthy',
+            message: __('api.service_healthy'),
             meta: [
                 'pagination' => [
                     'current_page' => $page,

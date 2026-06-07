@@ -25,7 +25,7 @@ final class DatabaseBackupCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'backups' => $this->collection,
             ],

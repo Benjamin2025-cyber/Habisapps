@@ -40,19 +40,19 @@ final class BackupVerificationWorkflow extends BaseController
         }
 
         if (! $this->config->isEnabled()) {
-            return $this->respondError('Database management is disabled in this environment.', [
+            return $this->respondError(__('database_management.disabled_env'), [
                 'code' => 'database_management_disabled',
             ], Response::HTTP_SERVICE_UNAVAILABLE);
         }
 
         if ($databaseBackup->isDeleted()) {
-            return $this->respondUnprocessable('A deleted backup cannot be verified.', [
+            return $this->respondUnprocessable(__('database_management.deleted_backup_cannot_be_verified'), [
                 'code' => 'backup_deleted',
             ]);
         }
 
         if (! in_array($databaseBackup->status, DatabaseBackup::DOWNLOADABLE_STATUSES, true)) {
-            return $this->respondUnprocessable('Only a completed or verified backup can be verified.', [
+            return $this->respondUnprocessable(__('database_management.only_completed_or_verified_backup_can_be_verified'), [
                 'code' => 'backup_not_verifiable',
                 'status' => $databaseBackup->status,
             ]);
@@ -102,6 +102,6 @@ final class BackupVerificationWorkflow extends BaseController
                 'file_exists' => $fileExists,
                 'checksum_matches' => $checksumMatches,
             ],
-        ], $passed ? 'Backup verified.' : 'Backup verification failed.');
+        ], $passed ? __('database_management.backup_verified') : __('database_management.backup_verification_failed'));
     }
 }

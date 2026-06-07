@@ -127,7 +127,7 @@ final class TillReconciliationController extends BaseController
         $tellerSession->loadMissing(['till']);
         $till = $tellerSession->till;
         if (! $till instanceof Till) {
-            return $this->respondUnprocessable(errors: ['till' => ['The teller session must be linked to a valid till.']]);
+            return $this->respondUnprocessable(errors: ['till' => [__('The teller session must be linked to a valid till.')]]);
         }
 
         if ($this->hasPendingTransactions($tellerSession->id)) {
@@ -145,12 +145,12 @@ final class TillReconciliationController extends BaseController
                 ],
             );
 
-            return $this->respondUnprocessable(errors: ['transactions' => ['Pending teller transactions must be posted or cancelled before reconciliation.']]);
+            return $this->respondUnprocessable(errors: ['transactions' => [__('Pending teller transactions must be posted or cancelled before reconciliation.')]]);
         }
 
         $currency = $this->normalizedCurrency($request->input('currency', $tellerSession->currency ?? $till->currency));
         if ($currency !== $tellerSession->currency) {
-            return $this->respondUnprocessable(errors: ['currency' => ['Reconciliation currency must match the teller session currency.']]);
+            return $this->respondUnprocessable(errors: ['currency' => [__('Reconciliation currency must match the teller session currency.')]]);
         }
 
         $counts = $this->validatedDenominationCounts($request->input('denomination_counts'), $currency);
@@ -180,7 +180,7 @@ final class TillReconciliationController extends BaseController
                 ],
             );
 
-            return $this->respondUnprocessable(errors: ['difference_minor' => ['Reconciliation difference must be zero before it can be recorded.']]);
+            return $this->respondUnprocessable(errors: ['difference_minor' => [__('Reconciliation difference must be zero before it can be recorded.')]]);
         }
 
         $reconciliation = DB::transaction(function () use ($request, $actor, $tellerSession, $currency, $counts, $actualBalanceMinor, $theoreticalBalanceMinor, $differenceMinor): TillReconciliation {
@@ -258,7 +258,7 @@ final class TillReconciliationController extends BaseController
             if ($requestedAgencyPublicId !== null) {
                 $agencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
                 if (! is_numeric($agencyId)) {
-                    return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+                    return $this->respondUnprocessable(errors: ['filter.agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
                 }
 
                 $this->whereSession($query, static function (Builder $builder) use ($agencyId): void {
@@ -277,7 +277,7 @@ final class TillReconciliationController extends BaseController
         if ($requestedAgencyPublicId !== null) {
             $requestedAgencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
             if (! is_numeric($requestedAgencyId)) {
-                return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['filter.agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
 
             if ((int) $requestedAgencyId !== $agencyId) {
@@ -305,8 +305,8 @@ final class TillReconciliationController extends BaseController
         $unknown = array_diff(array_keys($filter), self::ALLOWED_FILTERS);
         if ($unknown !== []) {
             return $this->respondUnprocessable(
-                message: 'Unsupported filter parameters.',
-                errors: ['filter' => ['The following filter keys are not supported: '.implode(', ', $unknown)]]
+                message: __('Unsupported filter parameters.'),
+                errors: ['filter' => [__('domain.unsupported_filter_keys', ['keys' => implode(', ', $unknown)])]]
             );
         }
 

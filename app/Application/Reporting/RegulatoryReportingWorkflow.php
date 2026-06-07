@@ -96,11 +96,11 @@ final class RegulatoryReportingWorkflow extends BaseController
 
         $sourceRow = DB::table('regulatory_sources')->where('public_id', $validated['regulatory_source_public_id'])->first(['id', 'authority']);
         if (! is_object($sourceRow)) {
-            return $this->respondUnprocessable(errors: ['regulatory_source_public_id' => ['The selected regulatory source is invalid.']]);
+            return $this->respondUnprocessable(errors: ['regulatory_source_public_id' => [__('The selected regulatory source is invalid.')]]);
         }
         if (in_array($reportType, self::REGULATORY_REPORT_TYPES, true)
             && ! in_array($this->rowString($sourceRow, 'authority'), ['cobac', 'beac'], true)) {
-            return $this->respondUnprocessable(errors: ['regulatory_source_public_id' => ['EMF/COBAC report definitions require a COBAC or BEAC source.']]);
+            return $this->respondUnprocessable(errors: ['regulatory_source_public_id' => [__('EMF/COBAC report definitions require a COBAC or BEAC source.')]]);
         }
 
         $id = DB::table('report_definitions')->insertGetId([
@@ -121,7 +121,7 @@ final class RegulatoryReportingWorkflow extends BaseController
 
         $row = DB::table('report_definitions')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['report_definition' => ['Definition could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['report_definition' => [__('Definition could not be reloaded.')]]);
         }
 
         return $this->respondCreated([

@@ -166,7 +166,7 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
             return $this->respondNotFound('Regulatory sign-off not found.');
         }
         if ($this->rowString($existingForDefaults, 'status') !== 'draft') {
-            return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff' => ['Only draft sign-offs can be updated; active sign-offs must be suspended/revoked.']]);
+            return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff' => [__('Only draft sign-offs can be updated; active sign-offs must be suspended/revoked.')]]);
         }
 
         try {
@@ -316,10 +316,10 @@ final class IslamicRegulatorySignoffWorkflow extends BaseController
         $mode = isset($validated['restriction_mode']) && is_string($validated['restriction_mode']) ? $validated['restriction_mode'] : 'allow';
 
         if ($type === 'product_family' && $this->productFamilies->familyKindFor($code) !== 'financing') {
-            return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff_link' => ['Unknown product family code.']]);
+            return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff_link' => [__('Unknown product family code.')]]);
         }
         if ($type === 'account_type' && $this->productFamilies->familyKindFor($code) !== 'account') {
-            return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff_link' => ['Unknown account type code.']]);
+            return $this->respondUnprocessable(errors: ['islamic_regulatory_signoff_link' => [__('Unknown account type code.')]]);
         }
 
         try {

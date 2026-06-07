@@ -50,7 +50,7 @@ final class RegulatorySourceWorkflow extends BaseController
             ->where('effective_date', $validated['effective_date'] ?? null)
             ->first();
         if (is_object($existing)) {
-            return $this->respondUnprocessable(errors: ['regulatory_source' => ['A source with this authority/reference/effective_date triple already exists.']]);
+            return $this->respondUnprocessable(errors: ['regulatory_source' => [__('A source with this authority/reference/effective_date triple already exists.')]]);
         }
 
         $id = DB::table('regulatory_sources')->insertGetId([
@@ -69,7 +69,7 @@ final class RegulatorySourceWorkflow extends BaseController
 
         $row = DB::table('regulatory_sources')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['regulatory_source' => ['Source could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['regulatory_source' => [__('Source could not be reloaded.')]]);
         }
 
         $this->securityAudit->record('regulatory.source.created', actor: $actor, properties: [

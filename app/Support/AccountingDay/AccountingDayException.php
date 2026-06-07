@@ -45,7 +45,7 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_MISSING,
-            'No accounting day is currently open. The system is in consultation-only mode; open an accounting day before registering operations.',
+            __('accounting_day.missing'),
             Response::HTTP_LOCKED,
             array_filter(['agency_id_scope' => $agencyId], static fn (mixed $v): bool => $v !== null),
         );
@@ -55,7 +55,7 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_CLOSED,
-            'The accounting day '.$day->business_date->toDateString().' is closed. You may consult data but registration rights are blocked.',
+            __('accounting_day.closed', ['date' => $day->business_date->toDateString()]),
             Response::HTTP_LOCKED,
             self::dayContext($day),
         );
@@ -65,7 +65,7 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_CLOSING,
-            'The accounting day '.$day->business_date->toDateString().' is closing. Registrations are blocked while end-of-day controls run.',
+            __('accounting_day.closing', ['date' => $day->business_date->toDateString()]),
             Response::HTTP_LOCKED,
             self::dayContext($day),
         );
@@ -75,7 +75,10 @@ final class AccountingDayException extends RuntimeException
     {
         return new self(
             self::CODE_MISMATCH,
-            'The supplied business date '.$requestedDate.' does not match the open accounting day '.$day->business_date->toDateString().'.',
+            __('accounting_day.mismatch', [
+                'requested_date' => $requestedDate,
+                'date' => $day->business_date->toDateString(),
+            ]),
             Response::HTTP_UNPROCESSABLE_ENTITY,
             self::dayContext($day) + ['requested_business_date' => $requestedDate],
         );

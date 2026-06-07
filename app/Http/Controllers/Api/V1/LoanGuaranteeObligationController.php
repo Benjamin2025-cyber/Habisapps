@@ -73,7 +73,7 @@ final class LoanGuaranteeObligationController extends BaseController
         $errors = [];
         $guarantorPublicId = $validated['client_guarantor_public_id'] ?? null;
         if (! is_string($guarantorPublicId)) {
-            return $this->respondUnprocessable(errors: ['client_guarantor_public_id' => ['Selected guarantor is invalid.']]);
+            return $this->respondUnprocessable(errors: ['client_guarantor_public_id' => [__('Selected guarantor is invalid.')]]);
         }
 
         $guarantor = $this->resolveGuarantor($loan, $guarantorPublicId, $errors);
@@ -130,7 +130,7 @@ final class LoanGuaranteeObligationController extends BaseController
         }
 
         if (($validated['status'] ?? null) === LoanGuaranteeObligation::STATUS_RELEASED) {
-            return $this->respondUnprocessable(errors: ['status' => ['Use the release endpoint to release a guarantee obligation.']]);
+            return $this->respondUnprocessable(errors: ['status' => [__('Use the release endpoint to release a guarantee obligation.')]]);
         }
 
         $obligation->fill($validated)->save();
@@ -150,11 +150,11 @@ final class LoanGuaranteeObligationController extends BaseController
         }
 
         if ($loan->status !== Loan::STATUS_CLOSED) {
-            return $this->respondUnprocessable(errors: ['loan' => ['Guarantee obligations can only be released after loan closure.']]);
+            return $this->respondUnprocessable(errors: ['loan' => [__('Guarantee obligations can only be released after loan closure.')]]);
         }
 
         if ($obligation->status === LoanGuaranteeObligation::STATUS_CANCELLED) {
-            return $this->respondUnprocessable(errors: ['status' => ['Cancelled guarantee obligations cannot be released.']]);
+            return $this->respondUnprocessable(errors: ['status' => [__('Cancelled guarantee obligations cannot be released.')]]);
         }
 
         $obligation->update([

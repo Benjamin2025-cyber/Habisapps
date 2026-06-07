@@ -64,10 +64,10 @@ final class AccountHoldController extends BaseController
     {
         $customerAccount = CustomerAccount::query()->where('public_id', $request->string('customer_account_public_id'))->first();
         if (! $customerAccount instanceof CustomerAccount) {
-            return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account is invalid.']]);
+            return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('The selected customer account is invalid.')]]);
         }
         if ($customerAccount->status === CustomerAccount::STATUS_CLOSED || $customerAccount->status === CustomerAccount::STATUS_ARCHIVED) {
-            return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['Holds cannot be placed on closed or archived customer accounts.']]);
+            return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('Holds cannot be placed on closed or archived customer accounts.')]]);
         }
 
         $hold = AccountHold::query()->create([
@@ -105,7 +105,7 @@ final class AccountHoldController extends BaseController
     public function update(UpdateAccountHoldRequest $request, AccountHold $accountHold): JsonResponse
     {
         if ($accountHold->status !== AccountHold::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['account_hold' => ['Only active holds can be updated.']]);
+            return $this->respondUnprocessable(errors: ['account_hold' => [__('Only active holds can be updated.')]]);
         }
 
         $accountHold->fill($request->validated())->save();

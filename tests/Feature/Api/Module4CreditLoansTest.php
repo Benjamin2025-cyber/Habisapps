@@ -114,7 +114,7 @@ final class Module4CreditLoansTest extends TestCase
         $agencyId = $this->createAgency('CR02');
         $inactiveLedger = $this->createLedgerAccount($agencyId, LedgerAccount::STATUS_INACTIVE);
 
-        $invalidRange = $this->withApiHeaders()
+        $invalidRange = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loan-products', [
                 'code' => 'LP-BAD-RANGE',
@@ -126,7 +126,18 @@ final class Module4CreditLoansTest extends TestCase
         $invalidRange->assertStatus(422);
         $invalidRange->assertJsonValidationErrors(['max_amount_minor', 'due_date_day']);
 
-        $inactiveLedgerResponse = $this->withApiHeaders()
+        $product = $this->createLoanProduct($agencyId);
+        $invalidUpdateRange = $this->withApiHeaders(['X-Locale' => 'fr'])
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loan-products/'.$product->public_id, [
+                'min_amount_minor' => 500000,
+                'max_amount_minor' => 100000,
+            ]);
+        $invalidUpdateRange->assertStatus(422);
+        $invalidUpdateRange->assertJsonValidationErrors(['max_amount_minor']);
+        $invalidUpdateRange->assertJsonPath('errors.max_amount_minor.0', 'Le montant maximum du prêt doit être supérieur ou égal au montant minimum du prêt.');
+
+        $inactiveLedgerResponse = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loan-products', [
                 'ledger_account_public_id' => $inactiveLedger['public_id'],
@@ -135,6 +146,7 @@ final class Module4CreditLoansTest extends TestCase
             ]);
         $inactiveLedgerResponse->assertStatus(422);
         $inactiveLedgerResponse->assertJsonValidationErrors(['ledger_account_public_id']);
+        $inactiveLedgerResponse->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être actif.');
 
         $forbidden = $this->withApiHeaders()
             ->actingAsSanctum($reader)

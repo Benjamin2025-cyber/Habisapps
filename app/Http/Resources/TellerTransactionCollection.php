@@ -22,7 +22,7 @@ final class TellerTransactionCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'teller_transactions' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class TellerTransactionCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'teller_transactions' => $this->collection,
             ],

@@ -159,7 +159,7 @@ final class BatchRunWorkflow extends BaseController
                 ->where('public_id', $validated['accounting_day_public_id'])
                 ->first();
             if (! $accountingDay instanceof AccountingDay) {
-                return $this->respondUnprocessable(errors: ['accounting_day_public_id' => ['The selected accounting day is invalid.']]);
+                return $this->respondUnprocessable(errors: ['accounting_day_public_id' => [__('The selected accounting day is invalid.')]]);
             }
         } else {
             $accountingDay = $this->resolveAccountingDayLink($agency?->id, $validated['business_date']);
@@ -167,13 +167,13 @@ final class BatchRunWorkflow extends BaseController
 
         if ($accountingDay instanceof AccountingDay) {
             if ($accountingDay->business_date->toDateString() !== $validated['business_date']) {
-                return $this->respondUnprocessable(errors: ['business_date' => ['Business date must match the linked accounting day.']]);
+                return $this->respondUnprocessable(errors: ['business_date' => [__('Business date must match the linked accounting day.')]]);
             }
             if ($accountingDay->scope_type === AccountingDay::SCOPE_AGENCY && $accountingDay->agency_id !== $agency?->id) {
-                return $this->respondUnprocessable(errors: ['agency_code' => ['Agency must match the linked accounting day scope.']]);
+                return $this->respondUnprocessable(errors: ['agency_code' => [__('Agency must match the linked accounting day scope.')]]);
             }
             if ($accountingDay->scope_type === AccountingDay::SCOPE_INSTITUTION && $agency !== null) {
-                return $this->respondUnprocessable(errors: ['agency_code' => ['Institution accounting days cannot be linked to agency-scoped batch runs.']]);
+                return $this->respondUnprocessable(errors: ['agency_code' => [__('Institution accounting days cannot be linked to agency-scoped batch runs.')]]);
             }
         }
 
@@ -307,7 +307,7 @@ final class BatchRunWorkflow extends BaseController
         ];
 
         if ($batchRun->status !== $requestedStatus && ! in_array($requestedStatus, $allowedTransitions[$batchRun->status] ?? [], true)) {
-            return $this->respondUnprocessable('Invalid batch run status transition.');
+            return $this->respondUnprocessable(__('domain.batch_run_invalid_status_transition'));
         }
 
         $batchRun->loadMissing('batchProcedure');
@@ -316,7 +316,7 @@ final class BatchRunWorkflow extends BaseController
             && $batchRun->batchProcedure instanceof BatchProcedure
             && $this->isCloseControlProcedure($batchRun->batchProcedure)
         ) {
-            return $this->respondUnprocessable('Close-control batch runs linked to an accounting day must be executed, not manually marked succeeded.');
+            return $this->respondUnprocessable(__('domain.batch_run_close_control_must_be_executed'));
         }
 
         $updates = [
@@ -334,7 +334,7 @@ final class BatchRunWorkflow extends BaseController
         }
 
         if ($requestedStatus === BatchRun::STATUS_FAILED && ! array_key_exists('failure_reason', $validated)) {
-            throw ValidationException::withMessages(['failure_reason' => ['A failure reason is required for failed runs.']]);
+            throw ValidationException::withMessages(['failure_reason' => [__('domain.batch_run_failure_reason_required')]]);
         }
 
         $run = $this->updateBatchRunStatus->execute($batchRun, $updates);

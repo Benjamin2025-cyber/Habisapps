@@ -77,7 +77,7 @@ final class LedgerAccountController extends BaseController
         if ($request->filled('agency_public_id')) {
             $agency = Agency::query()->where('public_id', $request->string('agency_public_id'))->first();
             if (! $agency instanceof Agency) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
         } elseif (! $actor->hasRole('platform-admin')) {
             $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
@@ -85,17 +85,17 @@ final class LedgerAccountController extends BaseController
         }
 
         if (! $agency instanceof Agency) {
-            return $this->respondUnprocessable(errors: ['agency_public_id' => ['Ledger accounts must be attached to an agency in this safe slice.']]);
+            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('Ledger accounts must be attached to an agency in this safe slice.')]]);
         }
 
         $parent = null;
         if ($request->filled('parent_account_public_id')) {
             $parent = LedgerAccount::query()->where('public_id', $request->string('parent_account_public_id'))->first();
             if (! $parent instanceof LedgerAccount) {
-                return $this->respondUnprocessable(errors: ['parent_account_public_id' => ['The selected parent account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account is invalid.')]]);
             }
             if ($parent->agency_id !== null && $agency->id !== $parent->agency_id) {
-                return $this->respondUnprocessable(errors: ['parent_account_public_id' => ['The selected parent account must belong to the same agency scope.']]);
+                return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account must belong to the same agency scope.')]]);
             }
         }
 
@@ -143,19 +143,19 @@ final class LedgerAccountController extends BaseController
             if ($validated['parent_account_public_id'] !== null) {
                 $parent = LedgerAccount::query()->where('public_id', $validated['parent_account_public_id'])->first();
                 if (! $parent instanceof LedgerAccount) {
-                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => ['The selected parent account is invalid.']]);
+                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account is invalid.')]]);
                 }
                 if ($parent->id === $ledgerAccount->id) {
-                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => ['The parent account cannot reference itself.']]);
+                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The parent account cannot reference itself.')]]);
                 }
                 if ($ledgerAccount->agency_id !== null && $parent->agency_id !== null && $ledgerAccount->agency_id !== $parent->agency_id) {
-                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => ['The selected parent account must belong to the same agency scope.']]);
+                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account must belong to the same agency scope.')]]);
                 }
 
                 $ancestor = $parent->parentAccount;
                 while ($ancestor instanceof LedgerAccount) {
                     if ($ancestor->id === $ledgerAccount->id) {
-                        return $this->respondUnprocessable(errors: ['parent_account_public_id' => ['The selected parent account would create a cycle.']]);
+                        return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account would create a cycle.')]]);
                     }
                     $ancestor = $ancestor->parentAccount;
                 }

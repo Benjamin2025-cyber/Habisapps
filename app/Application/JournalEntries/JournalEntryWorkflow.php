@@ -58,7 +58,7 @@ final class JournalEntryWorkflow extends BaseController
         if ($request->filled('agency_public_id')) {
             $agency = Agency::query()->where('public_id', $request->string('agency_public_id'))->first();
             if (! $agency instanceof Agency) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
         }
 
@@ -116,7 +116,7 @@ final class JournalEntryWorkflow extends BaseController
         }
 
         if ($journalEntry->status !== JournalEntry::STATUS_DRAFT) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Only draft journal entries can be updated.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Only draft journal entries can be updated.')]]);
         }
 
         $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.update', $request);
@@ -138,20 +138,20 @@ final class JournalEntryWorkflow extends BaseController
         }
 
         if ($journalEntry->status !== JournalEntry::STATUS_DRAFT) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Only draft journal entries can be submitted for review.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Only draft journal entries can be submitted for review.')]]);
         }
 
         $this->assertJournalDayRegisterable($actor, $journalEntry, 'journal.submit', $request);
 
         $journalEntry->loadMissing('lines');
         if ($journalEntry->lines->count() < 2) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Draft journal entries must contain at least two lines before review.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Draft journal entries must contain at least two lines before review.')]]);
         }
 
         $debitTotal = $journalEntry->lines->sum('debit_minor');
         $creditTotal = $journalEntry->lines->sum('credit_minor');
         if ($debitTotal !== $creditTotal) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Draft journal entries must be balanced before review.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Draft journal entries must be balanced before review.')]]);
         }
 
         $journalEntry->update([
@@ -172,7 +172,7 @@ final class JournalEntryWorkflow extends BaseController
         }
 
         if ($journalEntry->status !== JournalEntry::STATUS_SUBMITTED) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Only submitted journal entries can be approved.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Only submitted journal entries can be approved.')]]);
         }
 
         if ($journalEntry->created_by_user_id === $actor->id || $journalEntry->submitted_by_user_id === $actor->id) {
@@ -209,7 +209,7 @@ final class JournalEntryWorkflow extends BaseController
         }
 
         if ($journalEntry->status !== JournalEntry::STATUS_SUBMITTED) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Only submitted journal entries can be rejected.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Only submitted journal entries can be rejected.')]]);
         }
 
         if ($journalEntry->created_by_user_id === $actor->id || $journalEntry->submitted_by_user_id === $actor->id) {
@@ -266,10 +266,10 @@ final class JournalEntryWorkflow extends BaseController
                 }
 
                 if ($entry->status !== JournalEntry::STATUS_APPROVED) {
-                    throw new \DomainException('Only approved journal entries can be posted.');
+                    throw new \DomainException(__('Only approved journal entries can be posted.'));
                 }
 
-                $this->assertBalancedForWorkflow($entry, 'Approved journal entries');
+                $this->assertBalancedForWorkflow($entry);
 
                 $entry->update([
                     'status' => JournalEntry::STATUS_POSTED,
@@ -310,7 +310,7 @@ final class JournalEntryWorkflow extends BaseController
         }
 
         if ($journalEntry->status !== JournalEntry::STATUS_POSTED) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Only posted journal entries can be reversed.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Only posted journal entries can be reversed.')]]);
         }
 
         $reversal = $this->createJournalEntryReversal->execute($actor, $journalEntry);
@@ -330,7 +330,7 @@ final class JournalEntryWorkflow extends BaseController
         }
 
         if (! in_array($journalEntry->status, [JournalEntry::STATUS_DRAFT, JournalEntry::STATUS_SUBMITTED, JournalEntry::STATUS_REJECTED], true)) {
-            return $this->respondUnprocessable(errors: ['journal_entry' => ['Only draft, submitted, or rejected journal entries can be cancelled.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry' => [__('Only draft, submitted, or rejected journal entries can be cancelled.')]]);
         }
 
         $journalEntry->update(['status' => JournalEntry::STATUS_CANCELLED]);
@@ -375,16 +375,16 @@ final class JournalEntryWorkflow extends BaseController
         return (bool) config('security.accounting_day.auto_open_on_missing', false);
     }
 
-    private function assertBalancedForWorkflow(JournalEntry $journalEntry, string $label): void
+    private function assertBalancedForWorkflow(JournalEntry $journalEntry): void
     {
         if ($journalEntry->lines->count() < 2) {
-            throw new \DomainException($label.' must contain at least two lines.');
+            throw new \DomainException(__('Approved journal entries must contain at least two lines.'));
         }
 
         $debitTotal = $journalEntry->lines->sum('debit_minor');
         $creditTotal = $journalEntry->lines->sum('credit_minor');
         if ($debitTotal !== $creditTotal) {
-            throw new \DomainException($label.' must be balanced.');
+            throw new \DomainException(__('Approved journal entries must be balanced.'));
         }
     }
 

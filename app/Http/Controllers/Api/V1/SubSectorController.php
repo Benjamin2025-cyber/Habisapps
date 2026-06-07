@@ -58,7 +58,7 @@ final class SubSectorController extends BaseController
     {
         $sector = Sector::query()->where('public_id', $request->string('sector_public_id'))->first();
         if (! $sector instanceof Sector) {
-            return $this->respondUnprocessable(errors: ['sector_public_id' => ['The selected sector is invalid.']]);
+            return $this->respondUnprocessable(errors: ['sector_public_id' => [__('The selected sector is invalid.')]]);
         }
 
         $subSector = SubSector::query()->create([
@@ -93,7 +93,7 @@ final class SubSectorController extends BaseController
         if (array_key_exists('sector_public_id', $validated)) {
             $sector = Sector::query()->where('public_id', $validated['sector_public_id'])->first();
             if (! $sector instanceof Sector) {
-                return $this->respondUnprocessable(errors: ['sector_public_id' => ['The selected sector is invalid.']]);
+                return $this->respondUnprocessable(errors: ['sector_public_id' => [__('The selected sector is invalid.')]]);
             }
 
             $validated['sector_id'] = $sector->id;

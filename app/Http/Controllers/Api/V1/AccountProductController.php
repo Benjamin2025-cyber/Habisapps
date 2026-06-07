@@ -85,16 +85,16 @@ final class AccountProductController extends BaseController
 
         $agency = $this->resolveAgency($request, $actor);
         if ($agency === false) {
-            return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
         }
 
         $ledgerAccount = $this->resolveLedgerAccount($request->input('ledger_account_public_id'));
         if ($ledgerAccount === false) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account is invalid.')]]);
         }
 
         if ($ledgerAccount instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($ledgerAccount, $agency)) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active and match the account product agency scope.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active and match the account product agency scope.')]]);
         }
 
         $agencyId = $agency instanceof Agency ? $agency->id : null;
@@ -162,11 +162,11 @@ final class AccountProductController extends BaseController
         if (array_key_exists('ledger_account_public_id', $validated)) {
             $ledgerAccount = $this->resolveLedgerAccount($validated['ledger_account_public_id']);
             if ($ledgerAccount === false) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account is invalid.')]]);
             }
 
             if ($ledgerAccount instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($ledgerAccount, $accountProduct->agency)) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active and match the account product agency scope.']]);
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active and match the account product agency scope.')]]);
             }
 
             $validated['ledger_account_id'] = $ledgerAccount instanceof LedgerAccount ? $ledgerAccount->id : null;

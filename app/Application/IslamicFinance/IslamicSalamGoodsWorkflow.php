@@ -358,7 +358,7 @@ final class IslamicSalamGoodsWorkflow extends BaseController
         $inventoryRef = is_string($validated['inventory_reference'] ?? null) && $validated['inventory_reference'] !== '' ? $validated['inventory_reference'] : null;
         $settlementRef = is_string($validated['settlement_reference'] ?? null) && $validated['settlement_reference'] !== '' ? $validated['settlement_reference'] : null;
         if ($inventoryRef === null && $settlementRef === null) {
-            return $this->respondUnprocessable(errors: ['islamic_salam_goods_delivery' => ['Delivery requires inventory_reference or settlement_reference (IF-041 Phase 4).']]);
+            return $this->respondUnprocessable(errors: ['islamic_salam_goods_delivery' => [__('Delivery requires inventory_reference or settlement_reference (IF-041 Phase 4).')]]);
         }
 
         try {

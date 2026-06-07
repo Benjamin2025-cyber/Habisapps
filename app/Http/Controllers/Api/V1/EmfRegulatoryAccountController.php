@@ -64,7 +64,7 @@ final class EmfRegulatoryAccountController extends BaseController
     {
         $parent = $this->resolveParent($request->input('parent_public_id'));
         if ($parent === false) {
-            return $this->respondUnprocessable(errors: ['parent_public_id' => ['The selected parent account is invalid.']]);
+            return $this->respondUnprocessable(errors: ['parent_public_id' => [__('The selected parent account is invalid.')]]);
         }
 
         $account = EmfRegulatoryAccount::query()->create([
@@ -106,7 +106,7 @@ final class EmfRegulatoryAccountController extends BaseController
         if (array_key_exists('parent_public_id', $validated)) {
             $parent = $this->resolveParent($validated['parent_public_id']);
             if ($parent === false || ($parent instanceof EmfRegulatoryAccount && $this->wouldCreateCycle($emfRegulatoryAccount, $parent))) {
-                return $this->respondUnprocessable(errors: ['parent_public_id' => ['The selected parent account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['parent_public_id' => [__('The selected parent account is invalid.')]]);
             }
 
             $validated['parent_emf_regulatory_account_id'] = $parent instanceof EmfRegulatoryAccount ? $parent->id : null;

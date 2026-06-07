@@ -7,6 +7,7 @@ use App\Http\Middleware\EnforceAccountingDayRegistrationLock;
 use App\Http\Middleware\EnforceDatabaseRestoreLock;
 use App\Http\Middleware\IdempotencyMiddleware;
 use App\Http\Middleware\RemoveServerDisclosureHeaders;
+use App\Http\Middleware\SetApiLocale;
 use App\Support\AccountingDay\AccountingDayException;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
@@ -33,11 +34,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'api.version' => ApiVersion::class,
+            'api.locale' => SetApiLocale::class,
             'accounting.day.registration-lock' => EnforceAccountingDayRegistrationLock::class,
             'idempotency' => IdempotencyMiddleware::class,
         ]);
 
         $middleware->redirectGuestsTo(fn (): ?string => null);
+
+        // Global so locale negotiation also applies to pre-routing exceptions
+        // (e.g. unmatched-route 404s) that render as JSON. The middleware only
+        // mutates the locale for API/JSON requests, leaving web rendering alone.
+        $middleware->prepend(SetApiLocale::class);
 
         $middleware->api(
             append: [
@@ -80,7 +87,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            return ApiResponse::unprocessable('Validation failed', $e->errors());
+            return ApiResponse::unprocessable(__('api.validation_failed'), $e->errors());
         });
 
         $exceptions->render(function (ModelNotFoundException $e, Request $request) {
@@ -96,7 +103,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            return ApiResponse::notFound($e->getMessage() ?: 'Resource not found');
+            return ApiResponse::notFound();
         });
 
         $exceptions->render(function (MethodNotAllowedHttpException $e, Request $request) {
@@ -104,11 +111,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            return ApiResponse::error(
-                $e->getMessage() ?: 'The requested method is not allowed for this resource.',
-                null,
-                Response::HTTP_METHOD_NOT_ALLOWED
-            );
+            return ApiResponse::error(__('api.method_not_allowed'), null, Response::HTTP_METHOD_NOT_ALLOWED);
         });
 
         $exceptions->render(function (AuthenticationException $e, Request $request) {
@@ -116,7 +119,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            return ApiResponse::unauthorized($e->getMessage() ?: 'Unauthenticated');
+            return ApiResponse::unauthorized(__('api.unauthenticated'));
         });
 
         $exceptions->render(function (AccessDeniedHttpException $e, Request $request) {
@@ -124,7 +127,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            return ApiResponse::forbidden($e->getMessage() ?: 'Access denied');
+            return ApiResponse::forbidden();
         });
 
         // Tampered or expired signed URLs (e.g. profile-photo thumbnails) are a
@@ -134,7 +137,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            return ApiResponse::forbidden('Invalid or expired signature.');
+            return ApiResponse::forbidden(__('api.invalid_signature'));
         });
 
         $exceptions->render(function (TooManyRequestsHttpException $e, Request $request) {
@@ -145,7 +148,7 @@ return Application::configure(basePath: dirname(__DIR__))
             $retryAfter = $e->getHeaders()['Retry-After'] ?? 60;
 
             return ApiResponse::tooManyRequests(
-                'Rate limit exceeded. Try again in '.$retryAfter.' seconds.',
+                __('api.rate_limit_exceeded', ['seconds' => (int) $retryAfter]),
                 (int) $retryAfter
             );
         });
@@ -164,11 +167,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             if (app()->isProduction()) {
-                return ApiResponse::error(
-                    'Internal server error',
-                    null,
-                    Response::HTTP_INTERNAL_SERVER_ERROR
-                );
+                return ApiResponse::error(__('api.internal_server_error'), null, Response::HTTP_INTERNAL_SERVER_ERROR);
             }
 
             return ApiResponse::error(

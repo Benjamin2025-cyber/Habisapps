@@ -345,7 +345,7 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $row = DB::table('islamic_financings')->where('public_id', $financingPublicId)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['islamic_financing' => ['Financing could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['islamic_financing' => [__('Financing could not be reloaded.')]]);
         }
 
         $this->securityAudit->record('islamic.financing.created', actor: $actor, properties: [
@@ -862,10 +862,10 @@ final class IslamicFinancingWorkflow extends BaseController
         $product = DB::table('islamic_products')->where('public_id', (string) $validated['product_public_id'])->first(['id', 'contract_type']);
         $agencyId = $this->idByPublicId('agencies', $validated['agency_public_id']);
         if (! is_object($client) || ! is_numeric($client->id) || ! is_numeric($client->agency_id) || $agencyId === null || (int) $client->agency_id !== $agencyId) {
-            return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => ['Client must belong to request agency.']]);
+            return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => [__('Client must belong to request agency.')]]);
         }
         if (! is_object($product) || ! is_numeric($product->id) || ! is_string($product->contract_type) || IslamicProductFamilyRegistry::familyForContractType($product->contract_type) !== 'mourabaha') {
-            return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => ['Mourabaha request requires a Mourabaha product.']]);
+            return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => [__('Mourabaha request requires a Mourabaha product.')]]);
         }
 
         $financingId = null;
@@ -873,10 +873,10 @@ final class IslamicFinancingWorkflow extends BaseController
         if ($financingPublicId !== null && $financingPublicId !== '') {
             $financing = DB::table('islamic_financings')->where('public_id', $financingPublicId)->first(['id', 'client_id', 'agency_id', 'islamic_product_id']);
             if (! is_object($financing) || ! is_numeric($financing->id)) {
-                return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => ['Financing is invalid.']]);
+                return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => [__('Financing is invalid.')]]);
             }
             if ((int) $financing->client_id !== (int) $client->id || (int) $financing->agency_id !== $agencyId || (int) $financing->islamic_product_id !== (int) $product->id) {
-                return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => ['Financing does not align with request client/agency/product.']]);
+                return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => [__('Financing does not align with request client/agency/product.')]]);
             }
             $financingId = (int) $financing->id;
         }
@@ -899,7 +899,7 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $row = DB::table('islamic_mourabaha_requests')->where('id', $id)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => ['Request could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['islamic_mourabaha_request' => [__('Request could not be reloaded.')]]);
         }
 
         return $this->respondCreated($this->mourabahaRequestPayload($row), 'Mourabaha request captured');
@@ -923,7 +923,7 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $requestRow = DB::table('islamic_mourabaha_requests')->where('public_id', $requestPublicId)->first(['id']);
         if (! is_object($requestRow) || ! is_numeric($requestRow->id)) {
-            return $this->respondUnprocessable(errors: ['islamic_mourabaha_quote' => ['Mourabaha request is invalid.']]);
+            return $this->respondUnprocessable(errors: ['islamic_mourabaha_quote' => [__('Mourabaha request is invalid.')]]);
         }
         $requestId = (int) $requestRow->id;
 
@@ -954,7 +954,7 @@ final class IslamicFinancingWorkflow extends BaseController
 
         $row = DB::table('islamic_mourabaha_supplier_quotes')->where('id', $quoteId)->first();
         if (! is_object($row)) {
-            return $this->respondUnprocessable(errors: ['islamic_mourabaha_quote' => ['Quote could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['islamic_mourabaha_quote' => [__('Quote could not be reloaded.')]]);
         }
 
         return $this->respondCreated($this->mourabahaQuotePayload($row), 'Mourabaha supplier quote captured');
@@ -2411,7 +2411,7 @@ final class IslamicFinancingWorkflow extends BaseController
         $residual = (int) $validated['residual_amount_minor'];
         $waiver = (int) ($validated['waiver_amount_minor'] ?? 0);
         if ($waiver > $residual) {
-            return $this->respondUnprocessable(errors: ['islamic_ijara_transfer' => ['Waiver amount cannot exceed residual amount.']]);
+            return $this->respondUnprocessable(errors: ['islamic_ijara_transfer' => [__('Waiver amount cannot exceed residual amount.')]]);
         }
 
         try {

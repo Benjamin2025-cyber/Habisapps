@@ -845,7 +845,7 @@ final class AdminDatabaseManagementTest extends TestCase
         app(DatabaseMaintenanceLock::class)->engage(
             ownerPublicId: $actor->public_id,
             ownerName: $actor->name,
-            reason: 'Database restore in progress',
+            reason: 'system.database_restore_in_progress_reason',
             restorePublicId: 'restore-lock-public-id',
         );
 
@@ -924,7 +924,7 @@ final class AdminDatabaseManagementTest extends TestCase
         app(DatabaseMaintenanceLock::class)->engage(
             ownerPublicId: $actor->public_id,
             ownerName: $actor->name,
-            reason: 'Database restore in progress',
+            reason: 'system.database_restore_in_progress_reason',
             restorePublicId: 'restore-test',
         );
 

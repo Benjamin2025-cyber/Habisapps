@@ -66,7 +66,7 @@ final class StaffUserCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'users' => $this->collection,
             ],

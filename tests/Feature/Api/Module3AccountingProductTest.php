@@ -137,7 +137,10 @@ final class Module3AccountingProductTest extends TestCase
             'status' => AccountProduct::STATUS_INACTIVE,
         ]);
 
-        $inactive = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('customer-account-inactive')->plainTextToken])
+        $inactive = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('customer-account-inactive')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/customer-accounts', [
                 'client_public_id' => $client['public_id'],
                 'agency_public_id' => $agency['public_id'],
@@ -148,6 +151,7 @@ final class Module3AccountingProductTest extends TestCase
 
         $inactive->assertStatus(422);
         $inactive->assertJsonValidationErrors(['account_product_public_id']);
+        $inactive->assertJsonPath('errors.account_product_public_id.0', 'Le produit de compte sélectionné doit être actif et disponible pour l’agence du compte.');
     }
 
     public function test_customer_account_number_is_auto_generated_when_omitted(): void

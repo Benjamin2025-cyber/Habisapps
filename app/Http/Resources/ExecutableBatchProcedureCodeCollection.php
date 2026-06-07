@@ -23,7 +23,7 @@ final class ExecutableBatchProcedureCodeCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Executable batch-procedure codes retrieved successfully',
+            'message' => __('Executable batch-procedure codes retrieved successfully'),
             'data' => [
                 'executable_codes' => $this->collection,
             ],

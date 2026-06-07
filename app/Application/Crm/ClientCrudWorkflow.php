@@ -310,11 +310,11 @@ final class ClientCrudWorkflow extends BaseController
 
         $user = User::query()->where('public_id', $publicId)->first();
         if (! $user instanceof User) {
-            throw ValidationException::withMessages([$field => 'Selected staff reference is invalid.']);
+            throw ValidationException::withMessages([$field => [__('domain.client_selected_staff_reference_invalid')]]);
         }
 
         if ($user->status !== User::STATUS_ACTIVE || $this->staffAgencyScope->currentAgencyId($user) !== $agencyId) {
-            throw ValidationException::withMessages([$field => 'Selected staff must be active in the same agency.']);
+            throw ValidationException::withMessages([$field => [__('domain.client_selected_staff_active_same_agency')]]);
         }
 
         return $user->id;
@@ -336,7 +336,7 @@ final class ClientCrudWorkflow extends BaseController
             || $document->category !== 'profile_photo'
             || ! $document->hasMedia('kyc_documents')) {
             throw ValidationException::withMessages([
-                'profile_photo_document_public_id' => 'Selected profile photo document must be an active profile_photo document in the same agency.',
+                'profile_photo_document_public_id' => [__('domain.client_selected_profile_photo_document_invalid')],
             ]);
         }
 
@@ -357,7 +357,7 @@ final class ClientCrudWorkflow extends BaseController
 
             if (! $sector instanceof Sector) {
                 throw ValidationException::withMessages([
-                    'sector_public_id' => 'Selected sector must be active.',
+                    'sector_public_id' => [__('domain.client_selected_sector_must_be_active')],
                 ]);
             }
         }
@@ -372,13 +372,13 @@ final class ClientCrudWorkflow extends BaseController
 
             if (! $subSector instanceof SubSector || ! $subSector->sector instanceof Sector || $subSector->sector->status !== Sector::STATUS_ACTIVE) {
                 throw ValidationException::withMessages([
-                    'sub_sector_public_id' => 'Selected sub-sector must be active and belong to an active sector.',
+                    'sub_sector_public_id' => [__('domain.client_selected_sub_sector_must_be_active_and_belong_active_sector')],
                 ]);
             }
 
             if ($sector instanceof Sector && $subSector->sector_id !== $sector->id) {
                 throw ValidationException::withMessages([
-                    'sub_sector_public_id' => 'Selected sub-sector must belong to the selected sector.',
+                    'sub_sector_public_id' => [__('domain.client_selected_sub_sector_must_belong_to_selected_sector')],
                 ]);
             }
 

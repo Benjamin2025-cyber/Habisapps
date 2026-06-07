@@ -112,7 +112,7 @@ final class AppServiceProvider extends ServiceProvider
             $specPath = public_path('docs/api.json');
 
             if (! File::exists($specPath)) {
-                abort(503, 'API documentation is not generated yet.');
+                abort(503, __('api.documentation_not_generated'));
             }
 
             $spec = json_decode(File::get($specPath), true, 512, JSON_THROW_ON_ERROR);
@@ -127,7 +127,7 @@ final class AppServiceProvider extends ServiceProvider
             $specPath = public_path('docs/api.json');
 
             if (! File::exists($specPath)) {
-                abort(503, 'API documentation is not generated yet.');
+                abort(503, __('api.documentation_not_generated'));
             }
 
             return response()->file($specPath, [

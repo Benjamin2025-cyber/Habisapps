@@ -49,23 +49,23 @@ final class TellerManualJournalWorkflow extends BaseController
         $tellerSession->loadMissing(['till']);
         $till = $tellerSession->till;
         if (! $till instanceof Till || $till->ledger_account_id === null) {
-            return $this->respondUnprocessable(errors: ['till' => ['The teller session till must have a cash ledger account before creating manual cash journals.']]);
+            return $this->respondUnprocessable(errors: ['till' => [__('The teller session till must have a cash ledger account before creating manual cash journals.')]]);
         }
 
         if ($tellerSession->status !== TellerSession::STATUS_OPEN || $till->daily_state !== Till::DAILY_STATE_OPEN) {
-            return $this->respondUnprocessable(errors: ['teller_session' => ['Manual cash journals require an open teller session and open till.']]);
+            return $this->respondUnprocessable(errors: ['teller_session' => [__('Manual cash journals require an open teller session and open till.')]]);
         }
 
         $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.manual_journal', $request);
 
         $currency = $this->normalizedCurrency($request->input('currency', $tellerSession->currency ?? $till->currency));
         if ($currency !== $tellerSession->currency) {
-            return $this->respondUnprocessable(errors: ['currency' => ['Manual cash journal currency must match the teller session currency.']]);
+            return $this->respondUnprocessable(errors: ['currency' => [__('Manual cash journal currency must match the teller session currency.')]]);
         }
 
         $operationCode = $this->resolveCashOperationCode($request->input('operation_code_public_id'));
         if ($operationCode === false) {
-            return $this->respondUnprocessable(errors: ['operation_code_public_id' => ['The selected operation code must be active and belong to the cash module.']]);
+            return $this->respondUnprocessable(errors: ['operation_code_public_id' => [__('The selected operation code must be active and belong to the cash module.')]]);
         }
 
         $prepared = $this->prepareManualJournalLines($request->input('lines'), $tellerSession->agency_id, $currency, $till->ledger_account_id);

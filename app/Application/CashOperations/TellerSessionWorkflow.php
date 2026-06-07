@@ -121,7 +121,7 @@ final class TellerSessionWorkflow extends BaseController
             ->where('public_id', $request->string('till_public_id')->toString())
             ->first();
         if (! $till instanceof Till || ! $till->agency instanceof Agency) {
-            return $this->respondUnprocessable(errors: ['till_public_id' => ['The selected till is invalid.']]);
+            return $this->respondUnprocessable(errors: ['till_public_id' => [__('The selected till is invalid.')]]);
         }
 
         if (! $this->canAccessAgency($actor, $till->agency_id)) {
@@ -129,20 +129,20 @@ final class TellerSessionWorkflow extends BaseController
         }
 
         if ($till->status !== Till::STATUS_ACTIVE || $till->daily_state !== Till::DAILY_STATE_CLOSED) {
-            return $this->respondUnprocessable(errors: ['till_public_id' => ['The selected till must be active and closed before opening a teller session.']]);
+            return $this->respondUnprocessable(errors: ['till_public_id' => [__('The selected till must be active and closed before opening a teller session.')]]);
         }
 
         $teller = $this->resolveTeller($request, $actor);
         if (! $teller instanceof User || ! $this->canBeAssignedToTill($teller, $till->agency_id)) {
-            return $this->respondUnprocessable(errors: ['teller_user_public_id' => ['The selected teller must be an active teller or cashier in the till agency.']]);
+            return $this->respondUnprocessable(errors: ['teller_user_public_id' => [__('The selected teller must be an active teller or cashier in the till agency.')]]);
         }
 
         if ($till->assigned_user_id !== null && $till->assigned_user_id !== $teller->id) {
-            return $this->respondUnprocessable(errors: ['teller_user_public_id' => ['The selected teller is not assigned to this till.']]);
+            return $this->respondUnprocessable(errors: ['teller_user_public_id' => [__('The selected teller is not assigned to this till.')]]);
         }
 
         if ($this->hasOpenSessionForTill($till->id) || $this->hasOpenSessionForTeller($teller->id)) {
-            return $this->respondUnprocessable(errors: ['session' => ['The till or teller already has an open session.']]);
+            return $this->respondUnprocessable(errors: ['session' => [__('The till or teller already has an open session.')]]);
         }
 
         $openingDeclarationMinor = $request->integer('opening_declaration_minor');
@@ -245,7 +245,7 @@ final class TellerSessionWorkflow extends BaseController
         $tellerSession->loadMissing(['till']);
         $till = $tellerSession->till;
         if (! $till instanceof Till) {
-            return $this->respondUnprocessable(errors: ['till' => ['The teller session must be linked to a valid till.']]);
+            return $this->respondUnprocessable(errors: ['till' => [__('The teller session must be linked to a valid till.')]]);
         }
 
         if ($actor->hasRole('teller') && $actor->id !== $tellerSession->teller_user_id) {
@@ -253,11 +253,11 @@ final class TellerSessionWorkflow extends BaseController
         }
 
         if ($tellerSession->status !== TellerSession::STATUS_OPEN) {
-            return $this->respondUnprocessable(errors: ['status' => ['Only open teller sessions can be closed.']]);
+            return $this->respondUnprocessable(errors: ['status' => [__('Only open teller sessions can be closed.')]]);
         }
 
         if ($this->hasPendingTransactions($tellerSession->id)) {
-            return $this->respondUnprocessable(errors: ['transactions' => ['Pending teller transactions must be posted or cancelled before closing the session.']]);
+            return $this->respondUnprocessable(errors: ['transactions' => [__('Pending teller transactions must be posted or cancelled before closing the session.')]]);
         }
 
         $closingDeclarationMinor = $request->integer('closing_declaration_minor');
@@ -274,7 +274,7 @@ final class TellerSessionWorkflow extends BaseController
 
         $theoreticalBalanceMinor = $this->theoreticalBalanceMinor($tellerSession);
         if ($closingDeclarationMinor !== $theoreticalBalanceMinor) {
-            return $this->respondUnprocessable(errors: ['closing_declaration_minor' => ['Closing declaration must equal the posted theoretical till balance.']]);
+            return $this->respondUnprocessable(errors: ['closing_declaration_minor' => [__('Closing declaration must equal the posted theoretical till balance.')]]);
         }
 
         DB::transaction(function () use ($tellerSession, $till, $closingDeclarationMinor, $currency): void {
@@ -345,7 +345,7 @@ final class TellerSessionWorkflow extends BaseController
             if ($requestedAgencyPublicId !== null) {
                 $agencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
                 if (! is_numeric($agencyId)) {
-                    return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+                    return $this->respondUnprocessable(errors: ['filter.agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
                 }
 
                 $query->where('agency_id', (int) $agencyId);
@@ -362,7 +362,7 @@ final class TellerSessionWorkflow extends BaseController
         if ($requestedAgencyPublicId !== null) {
             $requestedAgencyId = Agency::query()->where('public_id', $requestedAgencyPublicId)->value('id');
             if (! is_numeric($requestedAgencyId)) {
-                return $this->respondUnprocessable(errors: ['filter.agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['filter.agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
 
             if ((int) $requestedAgencyId !== $agencyId) {
@@ -388,8 +388,8 @@ final class TellerSessionWorkflow extends BaseController
         $unknown = array_diff(array_keys($filter), self::ALLOWED_FILTERS);
         if ($unknown !== []) {
             return $this->respondUnprocessable(
-                message: 'Unsupported filter parameters.',
-                errors: ['filter' => ['The following filter keys are not supported: '.implode(', ', $unknown)]]
+                message: __('Unsupported filter parameters.'),
+                errors: ['filter' => [__('domain.unsupported_filter_keys', ['keys' => implode(', ', $unknown)])]]
             );
         }
 

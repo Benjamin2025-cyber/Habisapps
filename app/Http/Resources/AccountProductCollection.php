@@ -25,7 +25,7 @@ final class AccountProductCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Account products retrieved successfully',
+                'message' => __('Account products retrieved successfully'),
                 'data' => [
                     'account_products' => $this->collection,
                 ],
@@ -43,7 +43,7 @@ final class AccountProductCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Account products retrieved successfully',
+            'message' => __('Account products retrieved successfully'),
             'data' => [
                 'account_products' => $this->collection,
             ],

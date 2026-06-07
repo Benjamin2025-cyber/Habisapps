@@ -237,15 +237,22 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($create, 201);
         $tillPublicId = $this->requireStringJsonPath($create, 'data.public_id');
 
-        $duplicate = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-duplicate')->plainTextToken])
+        $duplicate = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('till-duplicate')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/tills', [
                 'code' => 'TILL-DUP',
                 'name' => 'Till Duplicate B',
             ]);
         $duplicate->assertStatus(422);
         $duplicate->assertJsonValidationErrors(['code']);
+        $duplicate->assertJsonPath('errors.code.0', 'Le code est déjà utilisé pour cette agence.');
 
-        $invalidLedgerClass = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-invalid-ledger')->plainTextToken])
+        $invalidLedgerClass = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('till-invalid-ledger')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/tills', [
                 'code' => 'TILL-BAL',
                 'name' => 'Invalid Ledger Till',
@@ -253,6 +260,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $invalidLedgerClass->assertStatus(422);
         $invalidLedgerClass->assertJsonValidationErrors(['ledger_account_public_id']);
+        $invalidLedgerClass->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être un compte du grand livre d\'actif actif dans l\'agence de la caisse.');
 
         $crossAgencyLedgerResponse = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-cross-ledger')->plainTextToken])
             ->postJson('/api/v1/tills', [
@@ -309,7 +317,10 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $this->assertJsonSuccess($first, 201);
 
-        $duplicateActive = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-duplicate-active')->plainTextToken])
+        $duplicateActive = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('till-duplicate-active')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/tills', [
                 'code' => 'TILL-DUP-ACTIVE',
                 'name' => 'Duplicate Active Till',
@@ -317,6 +328,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $duplicateActive->assertStatus(422);
         $duplicateActive->assertJsonValidationErrors(['assigned_user_public_id']);
+        $duplicateActive->assertJsonPath('errors.assigned_user_public_id.0', 'Le guichetier sélectionné est déjà affecté à une autre caisse active.');
 
         $inactive = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-inactive-assigned')->plainTextToken])
             ->postJson('/api/v1/tills', [
@@ -461,7 +473,10 @@ final class Module5CashInfrastructureTest extends TestCase
         $sessionId = DB::table('teller_sessions')->where('public_id', $sessionPublicId)->value('id');
         self::assertIsInt($sessionId);
 
-        $difference = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('close-difference')->plainTextToken])
+        $difference = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('close-difference')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
                 'closing_declaration_minor' => 1000,
                 'currency' => 'XAF',
@@ -471,6 +486,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $difference->assertStatus(422);
         $difference->assertJsonValidationErrors(['closing_declaration_minor']);
+        $difference->assertJsonPath('errors.closing_declaration_minor.0', 'La déclaration de clôture doit être égale au solde théorique de caisse enregistré.');
 
         DB::table('teller_transactions')->insert([
             'public_id' => (string) Str::ulid(),
@@ -485,7 +501,10 @@ final class Module5CashInfrastructureTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $pending = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('close-pending')->plainTextToken])
+        $pending = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('close-pending')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
                 'closing_declaration_minor' => 1500,
                 'currency' => 'XAF',
@@ -496,6 +515,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $pending->assertStatus(422);
         $pending->assertJsonValidationErrors(['transactions']);
+        $pending->assertJsonPath('errors.transactions.0', 'Les opérations de guichet en attente doivent être validées ou annulées avant la fermeture de la session.');
 
         DB::table('teller_transactions')
             ->where('reference', 'PENDING-CLOSE-1')
@@ -571,7 +591,10 @@ final class Module5CashInfrastructureTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $pending = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('recon-pending')->plainTextToken])
+        $pending = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('recon-pending')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/reconciliations', [
                 'currency' => 'XAF',
                 'denomination_counts' => [
@@ -581,6 +604,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $pending->assertStatus(422);
         $pending->assertJsonValidationErrors(['transactions']);
+        $pending->assertJsonPath('errors.transactions.0', 'Les transactions de guichetier en attente doivent être comptabilisées ou annulées avant le rapprochement.');
         $this->assertDatabaseHas('user_notifications', [
             'recipient_type' => 'agency',
             'recipient_id' => $agency['id'],
@@ -590,7 +614,10 @@ final class Module5CashInfrastructureTest extends TestCase
 
         DB::table('teller_transactions')->where('reference', 'PENDING-RECON-1')->update(['status' => 'cancelled']);
 
-        $difference = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('recon-difference')->plainTextToken])
+        $difference = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('recon-difference')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/reconciliations', [
                 'currency' => 'XAF',
                 'denomination_counts' => [
@@ -599,6 +626,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $difference->assertStatus(422);
         $difference->assertJsonValidationErrors(['difference_minor']);
+        $difference->assertJsonPath('errors.difference_minor.0', 'L\'écart de rapprochement doit être nul avant de pouvoir être enregistré.');
         $this->assertDatabaseHas('user_notifications', [
             'recipient_type' => 'agency',
             'recipient_id' => $agency['id'],
@@ -824,7 +852,10 @@ final class Module5CashInfrastructureTest extends TestCase
 
         $signature = $this->createVerifiedAccountSignature($agency['id'], $customerAccount['id']);
 
-        $overLimit = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('withdraw-over-limit')->plainTextToken])
+        $overLimit = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('withdraw-over-limit')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
                 'customer_account_public_id' => $customerAccount['public_id'],
                 'amount_minor' => 6000,
@@ -835,6 +866,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $overLimit->assertStatus(422);
         $overLimit->assertJsonValidationErrors(['amount_minor']);
+        $overLimit->assertJsonPath('errors.amount_minor.0', 'Le montant du retrait dépasse la limite maximale de retrait de la caisse.');
 
         $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('withdraw-limit-update')->plainTextToken])
             ->patchJson('/api/v1/tills/'.$tillPublicId, [
@@ -1170,7 +1202,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $this->assertJsonSuccess($allowed, 201);
 
-        $overLimit = $this->withApiHeaders()
+        $overLimit = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
                 'customer_account_public_id' => $customerAccount['public_id'],
@@ -1180,6 +1212,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $overLimit->assertStatus(422);
         $overLimit->assertJsonValidationErrors(['amount_minor']);
+        $overLimit->assertJsonPath('errors.amount_minor.0', 'Le dépôt ferait dépasser à la caisse sa limite de solde maximale.');
 
         self::assertSame(1, DB::table('teller_transactions')->where('teller_session_id', DB::table('teller_sessions')->where('public_id', $sessionPublicId)->value('id'))->count());
     }
@@ -1216,13 +1249,14 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($session, 201);
         $sessionPublicId = $this->requireStringJsonPath($session, 'data.public_id');
 
-        $blocked = $this->withApiHeaders()
+        $blocked = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($manager)
             ->patchJson('/api/v1/tills/'.$tillPublicId, [
                 'assigned_user_public_id' => $secondTeller->public_id,
             ]);
         $blocked->assertStatus(422);
         $blocked->assertJsonValidationErrors(['till']);
+        $blocked->assertJsonPath('errors.till.0', 'Fermez toutes les sessions de caisse ouvertes avant de modifier l\'affectation, l\'agence, le compte du grand livre ou la devise de la caisse.');
 
         // Close the session to unlock the till.
         $close = $this->withApiHeaders()
@@ -1692,9 +1726,11 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($range);
         self::assertSame(3, $range->json('meta.pagination.total'));
 
-        $unknownFilter = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+        $unknownFilter = $this->withApiHeaders(['X-Locale' => 'fr'])->actingAsSanctum($ctx['manager'])
             ->getJson('/api/v1/teller-sessions?filter[agency_id]=1');
         $this->assertJsonError($unknownFilter, 422);
+        $unknownFilter->assertJsonPath('message', 'Paramètres de filtre non pris en charge.');
+        $unknownFilter->assertJsonPath('errors.filter.0', 'Les clés de filtre suivantes ne sont pas prises en charge : agency_id');
 
         $unknownSort = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
             ->getJson('/api/v1/teller-sessions?sort=created_at');
@@ -1751,9 +1787,11 @@ final class Module5CashInfrastructureTest extends TestCase
         self::assertSame(1, $standalone->json('meta.pagination.total'));
         $standalone->assertJsonPath('data.till_reconciliations.0.public_id', $reconciliationPublicId);
 
-        $unknownFilter = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+        $unknownFilter = $this->withApiHeaders(['X-Locale' => 'fr'])->actingAsSanctum($ctx['manager'])
             ->getJson('/api/v1/till-reconciliations?filter[session_id]=1');
         $this->assertJsonError($unknownFilter, 422);
+        $unknownFilter->assertJsonPath('message', 'Paramètres de filtre non pris en charge.');
+        $unknownFilter->assertJsonPath('errors.filter.0', 'Les clés de filtre suivantes ne sont pas prises en charge : session_id');
     }
 
     // ─── Deposit / withdrawal tender payload contract (FBI2-025) ──────────
@@ -1931,7 +1969,7 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertJsonSuccess($cheque, 201);
         $cheque->assertJsonPath('data.teller_transaction.cash_amount_minor', 0);
 
-        $replay = $this->withApiHeaders(['Idempotency-Key' => 'wd-cheque-1'])->actingAsSanctum($ctx['teller'])
+        $replay = $this->withApiHeaders(['Idempotency-Key' => 'wd-cheque-1', 'X-Locale' => 'fr'])->actingAsSanctum($ctx['teller'])
             ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/withdrawals', [
                 'customer_account_public_id' => $ctx['account_public_id'],
                 'amount_minor' => 2000,
@@ -1944,6 +1982,7 @@ final class Module5CashInfrastructureTest extends TestCase
             ]);
         $replay->assertStatus(422);
         $replay->assertJsonValidationErrors(['idempotency_key']);
+        $replay->assertJsonPath('errors.idempotency_key.0', 'La clé Idempotency-Key a déjà été utilisée pour une autre répartition de paiement.');
 
         $transfer = $this->withApiHeaders(['Idempotency-Key' => 'wd-transfer-1'])->actingAsSanctum($ctx['teller'])
             ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/withdrawals', [

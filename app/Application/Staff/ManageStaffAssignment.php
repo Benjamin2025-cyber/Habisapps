@@ -25,11 +25,11 @@ final class ManageStaffAssignment
             $staffUser,
         );
         if ($agency === null) {
-            throw ValidationException::withMessages(['agency_code' => ['The selected agency is invalid.']]);
+            throw ValidationException::withMessages(['agency_code' => [__('domain.staff_selected_agency_invalid')]]);
         }
 
         if (! $this->canManageAgency($actor, $agency->id)) {
-            throw ValidationException::withMessages(['agency_code' => ['Staff can only be created inside your agency scope.']]);
+            throw ValidationException::withMessages(['agency_code' => [__('domain.staff_within_agency_scope')]]);
         }
 
         $roleAtAgency = is_string($validated['role_at_agency']) ? $validated['role_at_agency'] : 'staff';
@@ -51,7 +51,7 @@ final class ManageStaffAssignment
                     $existingStartsOn = Carbon::parse($existingPrimary->starts_on)->startOfDay();
                     if ($newStartsOn->lessThanOrEqualTo($existingStartsOn)) {
                         throw ValidationException::withMessages([
-                            'starts_on' => ['Primary assignment transfers must start after the current primary assignment starts.'],
+                            'starts_on' => [__('domain.staff_primary_assignment_transfer_after_current')],
                         ]);
                     }
 
@@ -95,7 +95,7 @@ final class ManageStaffAssignment
         $startsOn = Carbon::parse($assignment->starts_on)->startOfDay();
         if ($endsOn->lessThan($startsOn)) {
             throw ValidationException::withMessages([
-                'ends_on' => ['Assignment end date must be on or after the start date.'],
+                'ends_on' => [__('domain.staff_assignment_end_date_after_start')],
             ]);
         }
 

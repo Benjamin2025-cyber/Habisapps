@@ -95,20 +95,20 @@ final class CustomerAccountSignatureController extends BaseController
 
         $document = Document::query()->where('public_id', $validated['document_public_id'])->first();
         if (! $document instanceof Document || ! $this->documentCanBackSignature($document, $customerAccount)) {
-            return $this->respondUnprocessable(errors: ['document_public_id' => ['The selected document must be an active signature document in the same agency scope.']]);
+            return $this->respondUnprocessable(errors: ['document_public_id' => [__('The selected document must be an active signature document in the same agency scope.')]]);
         }
 
         if (DB::table('customer_account_signatures')->where('document_id', $document->id)->exists()) {
-            return $this->respondUnprocessable(errors: ['document_public_id' => ['The selected document is already linked to an account signature.']]);
+            return $this->respondUnprocessable(errors: ['document_public_id' => [__('The selected document is already linked to an account signature.')]]);
         }
 
         $proxy = $this->resolveProxy($validated['client_proxy_public_id'] ?? null, $customerAccount);
         if (($validated['client_proxy_public_id'] ?? null) !== null && ! $proxy instanceof ClientProxy) {
-            return $this->respondUnprocessable(errors: ['client_proxy_public_id' => ['The selected proxy must be active, verified, and tied to this account or client scope.']]);
+            return $this->respondUnprocessable(errors: ['client_proxy_public_id' => [__('The selected proxy must be active, verified, and tied to this account or client scope.')]]);
         }
 
         if (in_array($validated['signature_type'], [CustomerAccountSignature::TYPE_PROXY, CustomerAccountSignature::TYPE_MANDATE], true) && ! $proxy instanceof ClientProxy) {
-            return $this->respondUnprocessable(errors: ['client_proxy_public_id' => ['Proxy and mandate signatures require a verified proxy mandate.']]);
+            return $this->respondUnprocessable(errors: ['client_proxy_public_id' => [__('Proxy and mandate signatures require a verified proxy mandate.')]]);
         }
 
         if ($validated['signature_type'] === CustomerAccountSignature::TYPE_PRIMARY_HOLDER
@@ -117,7 +117,7 @@ final class CustomerAccountSignatureController extends BaseController
                 ->where('signature_type', CustomerAccountSignature::TYPE_PRIMARY_HOLDER)
                 ->where('status', CustomerAccountSignature::STATUS_ACTIVE)
                 ->exists()) {
-            return $this->respondUnprocessable(errors: ['signature_type' => ['This account already has an active primary-holder signature.']]);
+            return $this->respondUnprocessable(errors: ['signature_type' => [__('This account already has an active primary-holder signature.')]]);
         }
 
         $signature = DB::transaction(function () use ($actor, $customerAccount, $document, $proxy, $validated): CustomerAccountSignature {
@@ -182,7 +182,7 @@ final class CustomerAccountSignatureController extends BaseController
         }
 
         if ($signature->status !== CustomerAccountSignature::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['signature' => ['Only active signatures can be verified.']]);
+            return $this->respondUnprocessable(errors: ['signature' => [__('Only active signatures can be verified.')]]);
         }
 
         $signature->forceFill([
@@ -213,7 +213,7 @@ final class CustomerAccountSignatureController extends BaseController
         ])->validate();
 
         if ($signature->status === CustomerAccountSignature::STATUS_REVOKED) {
-            return $this->respondUnprocessable(errors: ['signature' => ['This signature has already been revoked.']]);
+            return $this->respondUnprocessable(errors: ['signature' => [__('This signature has already been revoked.')]]);
         }
 
         $signature->forceFill([

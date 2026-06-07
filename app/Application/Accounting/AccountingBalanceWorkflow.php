@@ -93,7 +93,7 @@ final class AccountingBalanceWorkflow extends BaseController
         $validated = $this->validatedStatementQuery($request);
         $accountingDay = $this->resolveAccountingDayFilter($validated['accounting_day_public_id'] ?? null);
         if ($accountingDay instanceof AccountingDay && ! $this->accountingDayMatchesAgency($accountingDay, $ledgerAccount->agency_id)) {
-            return $this->respondUnprocessable(errors: ['accounting_day_public_id' => ['The selected accounting day is outside the ledger account agency scope.']]);
+            return $this->respondUnprocessable(errors: ['accounting_day_public_id' => [__('domain.accounting_day_outside_ledger_scope')]]);
         }
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $page = max($request->integer('page', 1), 1);
@@ -141,7 +141,7 @@ final class AccountingBalanceWorkflow extends BaseController
         $validated = $this->validatedStatementQuery($request);
         $accountingDay = $this->resolveAccountingDayFilter($validated['accounting_day_public_id'] ?? null);
         if ($accountingDay instanceof AccountingDay && ! $this->accountingDayMatchesAgency($accountingDay, $customerAccount->agency_id)) {
-            return $this->respondUnprocessable(errors: ['accounting_day_public_id' => ['The selected accounting day is outside the customer account agency scope.']]);
+            return $this->respondUnprocessable(errors: ['accounting_day_public_id' => [__('domain.accounting_day_outside_customer_scope')]]);
         }
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $page = max($request->integer('page', 1), 1);

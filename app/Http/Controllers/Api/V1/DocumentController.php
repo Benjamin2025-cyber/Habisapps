@@ -284,7 +284,7 @@ final class DocumentController extends BaseController
         if (is_string($requestedPublicId) && $requestedPublicId !== '') {
             $agency = Agency::query()->where('public_id', $requestedPublicId)->first();
             if (! $agency instanceof Agency) {
-                $error = $this->respondUnprocessable(errors: ['agency_public_id' => ['Selected agency does not exist.']]);
+                $error = $this->respondUnprocessable(errors: ['agency_public_id' => [__('Selected agency does not exist.')]]);
 
                 return null;
             }
@@ -303,7 +303,7 @@ final class DocumentController extends BaseController
         }
 
         if ($canTargetAnyAgency) {
-            $error = $this->respondUnprocessable(errors: ['agency_public_id' => ['Agency is required. Provide agency_public_id to select the target agency.']]);
+            $error = $this->respondUnprocessable(errors: ['agency_public_id' => [__('Agency is required. Provide agency_public_id to select the target agency.')]]);
 
             return null;
         }

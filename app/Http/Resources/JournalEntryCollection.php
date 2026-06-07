@@ -22,7 +22,7 @@ final class JournalEntryCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'journal_entries' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class JournalEntryCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'journal_entries' => $this->collection,
             ],

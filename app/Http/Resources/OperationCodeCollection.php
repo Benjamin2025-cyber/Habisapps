@@ -22,7 +22,7 @@ final class OperationCodeCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Operation codes retrieved successfully',
+                'message' => __('Operation codes retrieved successfully'),
                 'data' => ['operation_codes' => $this->collection],
                 'errors' => null,
                 'meta' => [
@@ -38,7 +38,7 @@ final class OperationCodeCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Operation codes retrieved successfully',
+            'message' => __('Operation codes retrieved successfully'),
             'data' => ['operation_codes' => $this->collection],
             'errors' => null,
             'meta' => [

@@ -66,7 +66,10 @@ final class Module3AccountingArchitectureTest extends TestCase
     {
         $actor = $this->createUserWithRole('platform-admin');
 
-        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-no-agency')->plainTextToken])
+        $response = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('ledger-no-agency')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/ledger-accounts', [
                 'code' => '1001',
                 'name' => 'Global Ledger Attempt',
@@ -76,6 +79,7 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['agency_public_id']);
+        $response->assertJsonPath('errors.agency_public_id.0', 'Les comptes du grand livre doivent être rattachés à une agence dans ce périmètre sécurisé.');
     }
 
     public function test_parent_account_must_exist_before_linking(): void
@@ -83,7 +87,10 @@ final class Module3AccountingArchitectureTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agency = $this->createAgency('ACCT-02');
 
-        $response = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('ledger-parent')->plainTextToken])
+        $response = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('ledger-parent')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/ledger-accounts', [
                 'agency_public_id' => $agency['public_id'],
                 'code' => '2000',
@@ -95,6 +102,7 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['parent_account_public_id']);
+        $response->assertJsonPath('errors.parent_account_public_id.0', 'La valeur sélectionnée pour parent account public id est invalide.');
     }
 
     public function test_parent_account_is_persisted_when_creating_ledger_account(): void
@@ -124,6 +132,18 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $this->assertJsonSuccess($child, 201);
         $child->assertJsonPath('data.parent_account_public_id', $parentPublicId);
+
+        $selfReference = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('ledger-parent-self-reference')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
+            ->patchJson('/api/v1/ledger-accounts/'.$parentPublicId, [
+                'parent_account_public_id' => $parentPublicId,
+            ]);
+
+        $selfReference->assertStatus(422);
+        $selfReference->assertJsonValidationErrors(['parent_account_public_id']);
+        $selfReference->assertJsonPath('errors.parent_account_public_id.0', 'Le compte parent ne peut pas se référencer lui-même.');
     }
 
     public function test_platform_admin_can_create_sector_and_sub_sector(): void
@@ -398,7 +418,10 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $client = $this->createClient($agency['id'], Client::KYC_STATUS_VERIFIED);
 
-        $inactiveAccount = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-account')->plainTextToken])
+        $inactiveAccount = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-account')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/customer-accounts', [
                 'client_public_id' => $client,
                 'agency_public_id' => $agency['public_id'],
@@ -408,6 +431,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ]);
         $inactiveAccount->assertStatus(422);
         $inactiveAccount->assertJsonValidationErrors(['ledger_account_public_id']);
+        $inactiveAccount->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être actif.');
 
         $account = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('active-ledger-account')->plainTextToken])
             ->postJson('/api/v1/customer-accounts', [
@@ -419,12 +443,16 @@ final class Module3AccountingArchitectureTest extends TestCase
             ]);
         $accountPublicId = $this->requireStringJsonPath($account, 'data.public_id');
 
-        $inactiveUpdate = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-account-update')->plainTextToken])
+        $inactiveUpdate = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-account-update')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->patchJson('/api/v1/customer-accounts/'.$accountPublicId, [
                 'ledger_account_public_id' => $inactiveLedgerPublicId,
             ]);
         $inactiveUpdate->assertStatus(422);
         $inactiveUpdate->assertJsonValidationErrors(['ledger_account_public_id']);
+        $inactiveUpdate->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être actif.');
 
         $entry = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-entry')->plainTextToken])
             ->postJson('/api/v1/journal-entries', [
@@ -434,7 +462,10 @@ final class Module3AccountingArchitectureTest extends TestCase
             ]);
         $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
 
-        $line = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-line')->plainTextToken])
+        $line = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('inactive-ledger-line')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])
             ->postJson('/api/v1/journal-lines', [
                 'journal_entry_public_id' => $entryPublicId,
                 'ledger_account_public_id' => $inactiveLedgerPublicId,
@@ -444,6 +475,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ]);
         $line->assertStatus(422);
         $line->assertJsonValidationErrors(['ledger_account_public_id']);
+        $line->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être actif.');
     }
 
     public function test_customer_account_list_supports_filters(): void
@@ -632,14 +664,15 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->assertJsonSuccess($post);
         $post->assertJsonPath('data.status', JournalEntry::STATUS_POSTED);
 
-        $editPosted = $this->withApiHeaders()
+        $editPosted = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($reviewer)
             ->patchJson('/api/v1/journal-entries/'.$entryPublicId, [
                 'description' => 'Edited after posting',
             ]);
         $editPosted->assertStatus(422);
+        $editPosted->assertJsonPath('errors.journal_entry.0', 'Seules les écritures comptables brouillon peuvent être modifiées.');
 
-        $addPostedLine = $this->withApiHeaders()
+        $addPostedLine = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($reviewer)
             ->postJson('/api/v1/journal-lines', [
                 'journal_entry_public_id' => $entryPublicId,
@@ -649,6 +682,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'currency' => 'XAF',
             ]);
         $addPostedLine->assertStatus(422);
+        $addPostedLine->assertJsonPath('errors.journal_entry_public_id.0', 'Seules les écritures comptables en brouillon peuvent recevoir des lignes d\'écriture.');
 
         $duplicatePost = $this->withApiHeaders()
             ->actingAsSanctum($reviewer)
@@ -754,12 +788,13 @@ final class Module3AccountingArchitectureTest extends TestCase
         $approval->assertJsonPath('data.reviewed_by_user_public_id', $reviewer->public_id);
         $approval->assertJsonPath('data.review_comment', 'Approved for posting.');
 
-        $rejectApproved = $this->withApiHeaders()
+        $rejectApproved = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($reviewer)
             ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/reject', [
                 'reason' => 'Too late.',
             ]);
         $rejectApproved->assertStatus(422);
+        $rejectApproved->assertJsonPath('errors.journal_entry.0', 'Seules les écritures comptables soumises peuvent être rejetées.');
 
         $rejectedEntryPublicId = $this->createBalancedJournalEntry($maker, $agency['public_id'], $ledgerPublicId, 'JE-4002');
         $this->withApiHeaders(['Authorization' => 'Bearer '.$maker->createToken('journal-review-submit-reject')->plainTextToken])

@@ -91,11 +91,11 @@ final class TellerCashTransactionWorkflow extends BaseController
         $tellerSession->loadMissing(['till']);
         $till = $tellerSession->till;
         if (! $till instanceof Till || $till->ledger_account_id === null) {
-            return $this->respondUnprocessable(errors: ['till' => ['The teller session till must have a cash ledger account before posting deposits.']]);
+            return $this->respondUnprocessable(errors: ['till' => [__('The teller session till must have a cash ledger account before posting deposits.')]]);
         }
 
         if ($tellerSession->status !== TellerSession::STATUS_OPEN || $till->daily_state !== Till::DAILY_STATE_OPEN) {
-            return $this->respondUnprocessable(errors: ['teller_session' => ['Cash deposits require an open teller session and open till.']]);
+            return $this->respondUnprocessable(errors: ['teller_session' => [__('Cash deposits require an open teller session and open till.')]]);
         }
 
         $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.deposit', $request);
@@ -105,30 +105,30 @@ final class TellerCashTransactionWorkflow extends BaseController
             ->where('public_id', $request->string('customer_account_public_id')->toString())
             ->first();
         if (! $customerAccount instanceof CustomerAccount) {
-            return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account is invalid.']]);
+            return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('The selected customer account is invalid.')]]);
         }
 
         if ($customerAccount->status !== CustomerAccount::STATUS_ACTIVE
             || $customerAccount->agency_id !== $tellerSession->agency_id
             || $customerAccount->ledger_account_id === null) {
-            return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account must be active, agency-scoped, and mapped to a ledger account.']]);
+            return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('The selected customer account must be active, agency-scoped, and mapped to a ledger account.')]]);
         }
 
         $customerLedger = $customerAccount->ledgerAccount;
         $tillLedger = LedgerAccount::query()->whereKey($till->ledger_account_id)->first();
         if (! $customerLedger instanceof LedgerAccount || ! $tillLedger instanceof LedgerAccount) {
-            return $this->respondUnprocessable(errors: ['ledger_account' => ['Both till and customer account ledger mappings are required.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account' => [__('Both till and customer account ledger mappings are required.')]]);
         }
 
         if (! $this->ledgerIsActiveInAgency($customerLedger, $tellerSession->agency_id)
             || ! $this->ledgerIsActiveInAgency($tillLedger, $tellerSession->agency_id)) {
-            return $this->respondUnprocessable(errors: ['ledger_account' => ['Ledger accounts must be active and match the teller session agency.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account' => [__('Ledger accounts must be active and match the teller session agency.')]]);
         }
 
         $amountMinor = $request->integer('amount_minor');
         $currency = $this->normalizedCurrency($request->input('currency', $tellerSession->currency ?? $till->currency));
         if ($currency !== $customerAccount->currency || $currency !== $tellerSession->currency) {
-            return $this->respondUnprocessable(errors: ['currency' => ['Deposit currency must match the teller session and customer account currency.']]);
+            return $this->respondUnprocessable(errors: ['currency' => [__('Deposit currency must match the teller session and customer account currency.')]]);
         }
         if (! PhysicalCashAmount::validMinorAmount($amountMinor, $currency)) {
             return $this->respondUnprocessable(errors: ['amount_minor' => [PhysicalCashAmount::validationMessage($currency)]]);
@@ -150,7 +150,7 @@ final class TellerCashTransactionWorkflow extends BaseController
 
         if ($till->max_balance_limit_minor !== null
             && $this->postedTillBalanceMinor($tellerSession) + $tender['cash_amount_minor'] > $till->max_balance_limit_minor) {
-            return $this->respondUnprocessable(errors: ['amount_minor' => ['Deposit would push till balance above its maximum balance limit.']]);
+            return $this->respondUnprocessable(errors: ['amount_minor' => [__('Deposit would push till balance above its maximum balance limit.')]]);
         }
 
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
@@ -161,7 +161,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 ->first();
             if ($existing instanceof TellerTransaction) {
                 if (! $this->idempotentTenderMatches($existing, $tender)) {
-                    return $this->respondUnprocessable(errors: ['idempotency_key' => ['Idempotency-Key has already been used for a different tender breakdown.']]);
+                    return $this->respondUnprocessable(errors: ['idempotency_key' => [__('Idempotency-Key has already been used for a different tender breakdown.')]]);
                 }
 
                 return $this->transactionResponse($existing, 'Cash deposit already posted successfully');
@@ -289,11 +289,11 @@ final class TellerCashTransactionWorkflow extends BaseController
         $tellerSession->loadMissing(['till']);
         $till = $tellerSession->till;
         if (! $till instanceof Till || $till->ledger_account_id === null) {
-            return $this->respondUnprocessable(errors: ['till' => ['The teller session till must have a cash ledger account before posting withdrawals.']]);
+            return $this->respondUnprocessable(errors: ['till' => [__('The teller session till must have a cash ledger account before posting withdrawals.')]]);
         }
 
         if ($tellerSession->status !== TellerSession::STATUS_OPEN || $till->daily_state !== Till::DAILY_STATE_OPEN) {
-            return $this->respondUnprocessable(errors: ['teller_session' => ['Cash withdrawals require an open teller session and open till.']]);
+            return $this->respondUnprocessable(errors: ['teller_session' => [__('Cash withdrawals require an open teller session and open till.')]]);
         }
 
         $accountingDay = $this->resolveSessionAccountingDay($tellerSession, $actor, 'cash.withdrawal', $request);
@@ -303,30 +303,30 @@ final class TellerCashTransactionWorkflow extends BaseController
             ->where('public_id', $request->string('customer_account_public_id')->toString())
             ->first();
         if (! $customerAccount instanceof CustomerAccount) {
-            return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account is invalid.']]);
+            return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('The selected customer account is invalid.')]]);
         }
 
         if ($customerAccount->status !== CustomerAccount::STATUS_ACTIVE
             || $customerAccount->agency_id !== $tellerSession->agency_id
             || $customerAccount->ledger_account_id === null) {
-            return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account must be active, agency-scoped, and mapped to a ledger account.']]);
+            return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('The selected customer account must be active, agency-scoped, and mapped to a ledger account.')]]);
         }
 
         $customerLedger = $customerAccount->ledgerAccount;
         $tillLedger = LedgerAccount::query()->whereKey($till->ledger_account_id)->first();
         if (! $customerLedger instanceof LedgerAccount || ! $tillLedger instanceof LedgerAccount) {
-            return $this->respondUnprocessable(errors: ['ledger_account' => ['Both till and customer account ledger mappings are required.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account' => [__('Both till and customer account ledger mappings are required.')]]);
         }
 
         if (! $this->ledgerIsActiveInAgency($customerLedger, $tellerSession->agency_id)
             || ! $this->ledgerIsActiveInAgency($tillLedger, $tellerSession->agency_id)) {
-            return $this->respondUnprocessable(errors: ['ledger_account' => ['Ledger accounts must be active and match the teller session agency.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account' => [__('Ledger accounts must be active and match the teller session agency.')]]);
         }
 
         $amountMinor = $request->integer('amount_minor');
         $currency = $this->normalizedCurrency($request->input('currency', $tellerSession->currency ?? $till->currency));
         if ($currency !== $customerAccount->currency || $currency !== $tellerSession->currency) {
-            return $this->respondUnprocessable(errors: ['currency' => ['Withdrawal currency must match the teller session and customer account currency.']]);
+            return $this->respondUnprocessable(errors: ['currency' => [__('Withdrawal currency must match the teller session and customer account currency.')]]);
         }
         if (! PhysicalCashAmount::validMinorAmount($amountMinor, $currency)) {
             return $this->respondUnprocessable(errors: ['amount_minor' => [PhysicalCashAmount::validationMessage($currency)]]);
@@ -342,11 +342,11 @@ final class TellerCashTransactionWorkflow extends BaseController
         }
 
         if ($till->max_withdrawal_limit_minor !== null && $tender['cash_amount_minor'] > $till->max_withdrawal_limit_minor) {
-            return $this->respondUnprocessable(errors: ['amount_minor' => ['Withdrawal amount exceeds the till maximum withdrawal limit.']]);
+            return $this->respondUnprocessable(errors: ['amount_minor' => [__('Withdrawal amount exceeds the till maximum withdrawal limit.')]]);
         }
 
         if ($tender['cash_amount_minor'] > $this->postedTillBalanceMinor($tellerSession)) {
-            return $this->respondUnprocessable(errors: ['amount_minor' => ['Withdrawal amount exceeds the posted till cash balance.']]);
+            return $this->respondUnprocessable(errors: ['amount_minor' => [__('Withdrawal amount exceeds the posted till cash balance.')]]);
         }
 
         $initiator = $this->resolveInitiator($request, $customerAccount, TellerTransaction::TYPE_CASH_WITHDRAWAL, $amountMinor, $currency);
@@ -367,7 +367,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 ->first();
             if ($existing instanceof TellerTransaction) {
                 if (! $this->idempotentTenderMatches($existing, $tender)) {
-                    return $this->respondUnprocessable(errors: ['idempotency_key' => ['Idempotency-Key has already been used for a different tender breakdown.']]);
+                    return $this->respondUnprocessable(errors: ['idempotency_key' => [__('Idempotency-Key has already been used for a different tender breakdown.')]]);
                 }
 
                 return $this->transactionResponse($existing, 'Cash withdrawal already posted successfully');
@@ -380,7 +380,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 $lockedAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
                 $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedAccount, $currency)['available_balance_minor'];
                 if ($amountMinor > $availableBalance) {
-                    throw new DomainException('Withdrawal amount exceeds the customer account available balance.');
+                    throw new DomainException(__('domain.withdrawal_amount_exceeds_available_balance'));
                 }
 
                 $reference = 'CW-'.Str::upper(Str::random(10));
@@ -509,7 +509,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         }
 
         if ($tellerTransaction->status !== TellerTransaction::STATUS_POSTED || $tellerTransaction->journal_entry_id === null) {
-            return $this->respondUnprocessable(errors: ['teller_transaction' => ['Only posted teller transactions linked to a journal entry can be reversed.']]);
+            return $this->respondUnprocessable(errors: ['teller_transaction' => [__('Only posted teller transactions linked to a journal entry can be reversed.')]]);
         }
 
         $reversalResult = DB::transaction(function () use ($actor, $tellerTransaction): array {

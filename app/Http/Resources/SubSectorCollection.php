@@ -22,7 +22,7 @@ final class SubSectorCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'sub_sectors' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class SubSectorCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'sub_sectors' => $this->collection,
             ],

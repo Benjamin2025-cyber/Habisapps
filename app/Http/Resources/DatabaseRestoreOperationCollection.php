@@ -25,7 +25,7 @@ final class DatabaseRestoreOperationCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'restore_operations' => $this->collection,
             ],

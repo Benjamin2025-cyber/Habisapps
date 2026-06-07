@@ -39,7 +39,7 @@ final class CreateAgency
             if (isset($validated['manager_public_id'])) {
                 $manager = User::query()->where('public_id', $validated['manager_public_id'])->first();
                 if ($manager === null) {
-                    throw ValidationException::withMessages(['manager_public_id' => ['The selected manager is invalid.']]);
+                    throw ValidationException::withMessages(['manager_public_id' => [__('domain.agency_selected_manager_invalid')]]);
                 }
 
                 app(AssignAgencyManager::class)->execute($agency, $manager, 'agency-manager');

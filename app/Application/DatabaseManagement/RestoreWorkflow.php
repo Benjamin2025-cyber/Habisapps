@@ -53,7 +53,7 @@ final class RestoreWorkflow extends BaseController
         $validated = $request->validated();
         $backup = DatabaseBackup::query()->where('public_id', $validated['backup_public_id'])->first();
         if (! $backup instanceof DatabaseBackup) {
-            return $this->respondUnprocessable('The selected backup could not be found.', [
+            return $this->respondUnprocessable(__('database_management.restore_selected_backup_not_found'), [
                 'code' => 'backup_not_found',
             ]);
         }
@@ -65,14 +65,14 @@ final class RestoreWorkflow extends BaseController
             && $mode === DatabaseRestoreOperation::MODE_REPLACE
             && $this->config->isProduction()
             && ! $this->config->allowSameDatabaseInProduction()) {
-            return $this->respondUnprocessable('Same-database replacement is disabled in production.', [
+            return $this->respondUnprocessable(__('database_management.restore_same_database_disabled_production'), [
                 'code' => 'same_database_restore_disabled',
             ]);
         }
 
         if ($mode === DatabaseRestoreOperation::MODE_REPLACE
             && $target !== DatabaseRestoreOperation::TARGET_SAME_DATABASE) {
-            return $this->respondUnprocessable('Replacement restore is currently supported only for the same database target.', [
+            return $this->respondUnprocessable(__('database_management.restore_target_unsupported'), [
                 'code' => 'restore_target_unsupported',
                 'target' => $target,
                 'mode' => $mode,
@@ -87,7 +87,7 @@ final class RestoreWorkflow extends BaseController
         if ($this->config->requireConfirmationPhrase()) {
             $phrase = $validated['confirmation_phrase'] ?? null;
             if (! is_string($phrase) || ! hash_equals($this->config->confirmationPhrase(), $phrase)) {
-                return $this->respondUnprocessable('A valid confirmation phrase is required to plan this restore.', [
+                return $this->respondUnprocessable(__('database_management.restore_confirmation_phrase_required'), [
                     'confirmation_phrase' => ['The confirmation phrase is incorrect.'],
                 ]);
             }
@@ -132,7 +132,7 @@ final class RestoreWorkflow extends BaseController
                 // requires step-up re-authentication.
                 'execution_token' => $operation->public_id,
             ],
-        ], 'Restore plan created.', [], Response::HTTP_CREATED);
+        ], __('database_management.restore_plan_created'), [], Response::HTTP_CREATED);
     }
 
     public function execute(ExecuteDatabaseRestoreRequest $request, DatabaseRestoreOperation $restoreOperation): JsonResponse
@@ -148,21 +148,21 @@ final class RestoreWorkflow extends BaseController
         }
 
         if ($restoreOperation->status !== DatabaseRestoreOperation::STATUS_PLANNED) {
-            return $this->respondUnprocessable('This restore operation has no valid plan to execute.', [
+            return $this->respondUnprocessable(__('database_management.restore_not_planned'), [
                 'code' => 'restore_not_planned',
                 'status' => $restoreOperation->status,
             ]);
         }
 
         if ($restoreOperation->isExpired()) {
-            return $this->respondUnprocessable('The restore plan has expired. Create a new plan.', [
+            return $this->respondUnprocessable(__('database_management.restore_plan_expired'), [
                 'code' => 'restore_plan_expired',
             ]);
         }
 
         $backup = $restoreOperation->backup;
         if (! $backup instanceof DatabaseBackup) {
-            return $this->respondUnprocessable('The planned backup could not be found.', [
+            return $this->respondUnprocessable(__('database_management.restore_planned_backup_not_found'), [
                 'code' => 'backup_not_found',
             ]);
         }
@@ -178,14 +178,14 @@ final class RestoreWorkflow extends BaseController
             && $restoreOperation->mode === DatabaseRestoreOperation::MODE_REPLACE
             && $this->config->isProduction()
             && ! $this->config->allowSameDatabaseInProduction()) {
-            return $this->respondUnprocessable('Same-database replacement is disabled in production.', [
+            return $this->respondUnprocessable(__('database_management.restore_same_database_disabled_production'), [
                 'code' => 'same_database_restore_disabled',
             ]);
         }
 
         if ($restoreOperation->mode === DatabaseRestoreOperation::MODE_REPLACE
             && $restoreOperation->target !== DatabaseRestoreOperation::TARGET_SAME_DATABASE) {
-            return $this->respondUnprocessable('Replacement restore is currently supported only for the same database target.', [
+            return $this->respondUnprocessable(__('database_management.restore_target_unsupported'), [
                 'code' => 'restore_target_unsupported',
                 'target' => $restoreOperation->target,
                 'mode' => $restoreOperation->mode,
@@ -201,7 +201,7 @@ final class RestoreWorkflow extends BaseController
                 'step_up' => 'failed',
             ], request: $request);
 
-            return $this->respondUnprocessable('Re-authentication failed.', [
+            return $this->respondUnprocessable(__('database_management.restore_reauthentication_failed'), [
                 'password' => ['The password is incorrect.'],
             ]);
         }
@@ -213,7 +213,7 @@ final class RestoreWorkflow extends BaseController
 
         try {
             if ($this->anotherOperationActive($restoreOperation)) {
-                return $this->respondError('Another database backup or restore is currently active.', [
+                return $this->respondError(__('database_management.database_operation_active'), [
                     'code' => 'database_operation_active',
                 ], Response::HTTP_CONFLICT);
             }
@@ -242,7 +242,7 @@ final class RestoreWorkflow extends BaseController
 
         return $this->respondSuccess(
             ['restore_operation' => DatabaseRestoreOperationResource::make($restoreOperation->refresh()->loadMissing(['backup', 'preRestoreBackup']))],
-            'Restore execution accepted.',
+            __('database_management.restore_execution_accepted'),
             [],
             Response::HTTP_ACCEPTED,
         );
@@ -296,7 +296,7 @@ final class RestoreWorkflow extends BaseController
             DatabaseRestoreOperation::STATUS_PLANNED,
             DatabaseRestoreOperation::STATUS_PENDING,
         ], true)) {
-            return $this->respondUnprocessable('Only a planned or pending restore can be cancelled.', [
+            return $this->respondUnprocessable(__('database_management.restore_not_cancellable'), [
                 'code' => 'restore_not_cancellable',
                 'status' => $restoreOperation->status,
             ]);
@@ -313,54 +313,54 @@ final class RestoreWorkflow extends BaseController
 
         return $this->respondSuccess([
             'restore_operation' => DatabaseRestoreOperationResource::make($restoreOperation->loadMissing(['backup', 'preRestoreBackup'])),
-        ], 'Restore operation cancelled.');
+        ], __('database_management.restore_cancelled'));
     }
 
     private function assertBackupRestorable(DatabaseBackup $backup, bool $verifyArtifact): ?JsonResponse
     {
         if (! in_array($backup->status, DatabaseBackup::DOWNLOADABLE_STATUSES, true)) {
-            return $this->respondUnprocessable('Only a completed or verified backup can be restored.', [
+            return $this->respondUnprocessable(__('database_management.backup_not_restorable'), [
                 'code' => 'backup_not_restorable',
                 'status' => $backup->status,
             ]);
         }
 
         if (! $this->config->isDriverSupported($backup->database_driver)) {
-            return $this->respondUnprocessable('The selected backup uses an unsupported database driver.', [
+            return $this->respondUnprocessable(__('database_management.backup_driver_unsupported'), [
                 'code' => 'backup_driver_unsupported',
                 'database_driver' => $backup->database_driver,
             ]);
         }
 
         if ($backup->database_connection !== $this->config->connection()) {
-            return $this->respondUnprocessable('The selected backup was created for a different database connection.', [
+            return $this->respondUnprocessable(__('database_management.backup_connection_mismatch'), [
                 'code' => 'backup_connection_mismatch',
             ]);
         }
 
         if ($backup->encrypted) {
-            return $this->respondUnprocessable('Encrypted backup restore is not supported by this runner.', [
+            return $this->respondUnprocessable(__('database_management.backup_encryption_unsupported'), [
                 'code' => 'backup_encryption_unsupported',
             ]);
         }
 
         if ($this->config->strictVerification()
             && $backup->verification_status !== DatabaseBackup::VERIFICATION_PASSED) {
-            return $this->respondUnprocessable('The backup must pass verification before it can be restored.', [
+            return $this->respondUnprocessable(__('database_management.backup_verification_required_for_restore'), [
                 'code' => 'backup_verification_required',
             ]);
         }
 
         if ($verifyArtifact) {
             if (! $this->store->exists($backup)) {
-                return $this->respondUnprocessable('The backup artifact could not be found on the configured disk.', [
+                return $this->respondUnprocessable(__('database_management.backup_artifact_missing'), [
                     'code' => 'backup_artifact_missing',
                 ]);
             }
 
             $checksum = $this->store->checksum($backup);
             if ($checksum === null || $backup->checksum_sha256 === null || ! hash_equals($backup->checksum_sha256, $checksum)) {
-                return $this->respondUnprocessable('The backup failed checksum verification and cannot be restored.', [
+                return $this->respondUnprocessable(__('database_management.backup_checksum_mismatch'), [
                     'code' => 'backup_checksum_mismatch',
                 ]);
             }
@@ -368,7 +368,7 @@ final class RestoreWorkflow extends BaseController
             $size = $this->store->size($backup);
             $maxBytes = $this->config->maxArtifactBytes();
             if ($maxBytes > 0 && $size !== null && $size > $maxBytes) {
-                return $this->respondUnprocessable('The backup artifact exceeds the maximum restorable size.', [
+                return $this->respondUnprocessable(__('database_management.backup_too_large_restorable'), [
                     'code' => 'backup_too_large',
                 ]);
             }
@@ -408,7 +408,7 @@ final class RestoreWorkflow extends BaseController
 
     private function respondOperationConflict(): JsonResponse
     {
-        return $this->respondError('Another database backup or restore is currently being scheduled.', [
+        return $this->respondError(__('database_management.another_operation_scheduling_locked_conflict'), [
             'code' => 'database_operation_scheduling_locked',
         ], Response::HTTP_CONFLICT);
     }

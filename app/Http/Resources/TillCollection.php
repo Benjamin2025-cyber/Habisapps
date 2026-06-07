@@ -22,7 +22,7 @@ final class TillCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'tills' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class TillCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'tills' => $this->collection,
             ],

@@ -203,7 +203,7 @@ final class LoanRepaymentWorkflow extends BaseController
             ? $this->intValue($validated['direction_negotiated_total_interest_minor'])
             : null;
         if ($directionInterestWaiver && $directionNegotiatedTotalInterest !== null) {
-            return $this->respondUnprocessable(errors: ['early_repayment' => ['Use either a full future-interest waiver or a negotiated total interest amount, not both.']]);
+            return $this->respondUnprocessable(errors: ['early_repayment' => [__('Use either a full future-interest waiver or a negotiated total interest amount, not both.')]]);
         }
         if (($directionInterestWaiver || $directionNegotiatedTotalInterest !== null) && ! $actor->hasRole('platform-admin') && ! $actor->can('loans.approvals.direction')) {
             return $this->respondForbidden('Direction approval is required to waive future interest.');

@@ -155,7 +155,7 @@ final class LoanSetupChargeWorkflow extends BaseController
         });
 
         if (! is_object($charge)) {
-            return $this->respondUnprocessable(errors: ['setup_charge' => ['Direction setup charge decisions apply only to assessed dossier fee or dossier fee tax charges on this loan.']]);
+            return $this->respondUnprocessable(errors: ['setup_charge' => [__('Direction setup charge decisions apply only to assessed dossier fee or dossier fee tax charges on this loan.')]]);
         }
 
         $this->securityAudit->record('loan.setup_charge_exception.decided', actor: $actor, subject: $loan, properties: [

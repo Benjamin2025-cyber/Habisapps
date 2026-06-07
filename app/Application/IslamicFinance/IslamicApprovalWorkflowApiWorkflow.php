@@ -113,7 +113,7 @@ final class IslamicApprovalWorkflowApiWorkflow extends BaseController
         if (isset($validated['requester_user_public_id']) && is_string($validated['requester_user_public_id']) && $validated['requester_user_public_id'] !== '') {
             $row = DB::table('users')->where('public_id', $validated['requester_user_public_id'])->first(['id']);
             if (! is_object($row) || ! is_numeric($row->id)) {
-                return $this->respondUnprocessable(errors: ['requester_user_public_id' => ['Requester user not found.']]);
+                return $this->respondUnprocessable(errors: ['requester_user_public_id' => [__('Requester user not found.')]]);
             }
             $requesterUserId = (int) $row->id;
         }

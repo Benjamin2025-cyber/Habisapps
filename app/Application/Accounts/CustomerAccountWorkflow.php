@@ -60,7 +60,7 @@ final class CustomerAccountWorkflow extends BaseController
         if ($request->filled('client_public_id')) {
             $client = Client::query()->where('public_id', $request->string('client_public_id'))->first();
             if (! $client instanceof Client) {
-                return $this->respondUnprocessable(errors: ['client_public_id' => ['The selected client is invalid.']]);
+                return $this->respondUnprocessable(errors: ['client_public_id' => [__('The selected client is invalid.')]]);
             }
 
             $query->where('client_id', $client->id);
@@ -73,7 +73,7 @@ final class CustomerAccountWorkflow extends BaseController
         if ($request->filled('account_product_public_id')) {
             $product = AccountProduct::query()->where('public_id', $request->string('account_product_public_id'))->first();
             if (! $product instanceof AccountProduct) {
-                return $this->respondUnprocessable(errors: ['account_product_public_id' => ['The selected account product is invalid.']]);
+                return $this->respondUnprocessable(errors: ['account_product_public_id' => [__('The selected account product is invalid.')]]);
             }
 
             $query->where('account_product_id', $product->id);
@@ -112,14 +112,14 @@ final class CustomerAccountWorkflow extends BaseController
     {
         $client = Client::query()->where('public_id', $request->string('client_public_id'))->first();
         if (! $client instanceof Client) {
-            return $this->respondUnprocessable(errors: ['client_public_id' => ['The selected client is invalid.']]);
+            return $this->respondUnprocessable(errors: ['client_public_id' => [__('The selected client is invalid.')]]);
         }
 
         $agency = null;
         if ($request->filled('agency_public_id')) {
             $agency = Agency::query()->where('public_id', $request->string('agency_public_id'))->first();
             if (! $agency instanceof Agency) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency is invalid.']]);
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
         } else {
             $agency = $client->agency;
@@ -129,29 +129,29 @@ final class CustomerAccountWorkflow extends BaseController
         if ($request->filled('ledger_account_public_id')) {
             $ledgerAccount = LedgerAccount::query()->where('public_id', $request->string('ledger_account_public_id'))->first();
             if (! $ledgerAccount instanceof LedgerAccount) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account is invalid.')]]);
             }
         }
 
         if ($agency === null || $agency->id !== $client->agency_id) {
-            return $this->respondUnprocessable(errors: ['agency_public_id' => ['The selected agency must match the client agency.']]);
+            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('The selected agency must match the client agency.')]]);
         }
         if ($ledgerAccount instanceof LedgerAccount && $ledgerAccount->agency_id !== $agency->id) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must belong to the same agency scope.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must belong to the same agency scope.')]]);
         }
         if ($ledgerAccount instanceof LedgerAccount && $ledgerAccount->status !== LedgerAccount::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
         }
         if ($client->status !== Client::STATUS_ACTIVE || $client->kyc_status !== Client::KYC_STATUS_VERIFIED) {
-            return $this->respondUnprocessable(errors: ['client_public_id' => ['The selected client must be active and KYC-verified.']]);
+            return $this->respondUnprocessable(errors: ['client_public_id' => [__('The selected client must be active and KYC-verified.')]]);
         }
 
         $accountProduct = $this->resolveAccountProduct($request->input('account_product_public_id'));
         if ($accountProduct === false) {
-            return $this->respondUnprocessable(errors: ['account_product_public_id' => ['The selected account product is invalid.']]);
+            return $this->respondUnprocessable(errors: ['account_product_public_id' => [__('The selected account product is invalid.')]]);
         }
         if ($accountProduct instanceof AccountProduct && ! $this->accountProductIsCompatible($accountProduct, $agency->id)) {
-            return $this->respondUnprocessable(errors: ['account_product_public_id' => ['The selected account product must be active and available to the account agency.']]);
+            return $this->respondUnprocessable(errors: ['account_product_public_id' => [__('The selected account product must be active and available to the account agency.')]]);
         }
         if (! $ledgerAccount instanceof LedgerAccount && $accountProduct instanceof AccountProduct && $accountProduct->ledgerAccount instanceof LedgerAccount) {
             $ledgerAccount = $accountProduct->ledgerAccount;
@@ -201,13 +201,13 @@ final class CustomerAccountWorkflow extends BaseController
             if ($validated['ledger_account_public_id'] !== null) {
                 $ledgerAccount = LedgerAccount::query()->where('public_id', $validated['ledger_account_public_id'])->first();
                 if (! $ledgerAccount instanceof LedgerAccount) {
-                    return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+                    return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account is invalid.')]]);
                 }
                 if ($ledgerAccount->agency_id !== $customerAccount->agency_id) {
-                    return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must belong to the same agency scope.']]);
+                    return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must belong to the same agency scope.')]]);
                 }
                 if ($ledgerAccount->status !== LedgerAccount::STATUS_ACTIVE) {
-                    return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active.']]);
+                    return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
                 }
             }
 
@@ -222,10 +222,10 @@ final class CustomerAccountWorkflow extends BaseController
         if (array_key_exists('account_product_public_id', $validated)) {
             $accountProduct = $this->resolveAccountProduct($validated['account_product_public_id']);
             if ($accountProduct === false) {
-                return $this->respondUnprocessable(errors: ['account_product_public_id' => ['The selected account product is invalid.']]);
+                return $this->respondUnprocessable(errors: ['account_product_public_id' => [__('The selected account product is invalid.')]]);
             }
             if ($accountProduct instanceof AccountProduct && ! $this->accountProductIsCompatible($accountProduct, $customerAccount->agency_id)) {
-                return $this->respondUnprocessable(errors: ['account_product_public_id' => ['The selected account product must be active and available to the account agency.']]);
+                return $this->respondUnprocessable(errors: ['account_product_public_id' => [__('The selected account product must be active and available to the account agency.')]]);
             }
 
             $validated['account_product_id'] = $accountProduct instanceof AccountProduct ? $accountProduct->id : null;

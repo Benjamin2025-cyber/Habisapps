@@ -25,7 +25,7 @@ final class EmfLedgerAccountMappingCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'EMF ledger account mappings retrieved successfully',
+                'message' => __('EMF ledger account mappings retrieved successfully'),
                 'data' => [
                     'emf_ledger_account_mappings' => $this->collection,
                 ],
@@ -43,7 +43,7 @@ final class EmfLedgerAccountMappingCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'EMF ledger account mappings retrieved successfully',
+            'message' => __('EMF ledger account mappings retrieved successfully'),
             'data' => [
                 'emf_ledger_account_mappings' => $this->collection,
             ],

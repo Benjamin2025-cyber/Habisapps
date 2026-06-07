@@ -86,11 +86,11 @@ final class LoanTransferWorkflow extends BaseController
         }
 
         if (in_array($loan->status, [Loan::STATUS_REJECTED, Loan::STATUS_CLOSED, Loan::STATUS_WRITTEN_OFF], true)) {
-            return $this->respondUnprocessable(errors: ['loan' => ['Closed, rejected, or written-off loans cannot be transferred.']]);
+            return $this->respondUnprocessable(errors: ['loan' => [__('Closed, rejected, or written-off loans cannot be transferred.')]]);
         }
 
         if ($loan->credit_agent_id === null) {
-            return $this->respondUnprocessable(errors: ['loan' => ['Loan must have a current manager before transfer.']]);
+            return $this->respondUnprocessable(errors: ['loan' => [__('Loan must have a current manager before transfer.')]]);
         }
 
         $validated = Validator::make($request->all(), [
@@ -105,11 +105,11 @@ final class LoanTransferWorkflow extends BaseController
         if (! $newManager instanceof User
             || $newManager->status !== User::STATUS_ACTIVE
             || ! in_array($newManager->id, $this->staffAgencyScope->currentAgencyStaffIdList($loan->agency_id), true)) {
-            return $this->respondUnprocessable(errors: ['new_manager_public_id' => ['New manager must be active and assigned to the loan agency.']]);
+            return $this->respondUnprocessable(errors: ['new_manager_public_id' => [__('New manager must be active and assigned to the loan agency.')]]);
         }
 
         if ($newManager->id === $loan->credit_agent_id) {
-            return $this->respondUnprocessable(errors: ['new_manager_public_id' => ['New manager must be different from the current manager.']]);
+            return $this->respondUnprocessable(errors: ['new_manager_public_id' => [__('New manager must be different from the current manager.')]]);
         }
 
         $transfer = DB::transaction(function () use ($actor, $loan, $newManager, $validated): LoanTransfer {

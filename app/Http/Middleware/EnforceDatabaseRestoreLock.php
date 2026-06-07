@@ -44,10 +44,10 @@ final class EnforceDatabaseRestoreLock
         $current = $this->lock->current();
 
         return ApiResponse::error(
-            'A database restore is in progress. Registration writes are temporarily unavailable.',
+            __('system.database_restore_in_progress'),
             [
                 'code' => 'database_restore_in_progress',
-                'reason' => $current['reason'] ?? 'Database restore in progress',
+                'reason' => __($current['reason'] ?? 'system.database_restore_in_progress_reason'),
                 'expires_at' => $current['expires_at'] ?? null,
             ],
             Response::HTTP_SERVICE_UNAVAILABLE,

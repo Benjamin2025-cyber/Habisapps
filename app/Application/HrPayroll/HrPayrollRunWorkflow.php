@@ -196,7 +196,7 @@ final class HrPayrollRunWorkflow extends BaseController
 
         $run = DB::table('hr_payroll_runs')->where('public_id', $runPublicId)->first();
         if (! is_object($run)) {
-            return $this->respondUnprocessable(errors: ['hr_payroll_run' => ['Run could not be reloaded.']]);
+            return $this->respondUnprocessable(errors: ['hr_payroll_run' => [__('Run could not be reloaded.')]]);
         }
 
         return $this->respondCreated($this->payrollRunPayload($run), 'Payroll run draft created');
@@ -357,7 +357,7 @@ final class HrPayrollRunWorkflow extends BaseController
             return $this->respondNotFound('Payroll run not found.');
         }
         if ($this->rowString($run, 'status') !== 'approved') {
-            return $this->respondUnprocessable(errors: ['hr_payroll_run' => ['Only approved payroll runs can produce a final declaration export.']]);
+            return $this->respondUnprocessable(errors: ['hr_payroll_run' => [__('Only approved payroll runs can produce a final declaration export.')]]);
         }
 
         $slips = DB::table('hr_payroll_slips as slip')

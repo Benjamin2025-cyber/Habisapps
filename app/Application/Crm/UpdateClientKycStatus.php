@@ -26,7 +26,7 @@ final class UpdateClientKycStatus
 
         if (! $this->isTransitionAllowed($client->kyc_status, $targetStatus)) {
             throw ValidationException::withMessages([
-                'kyc_status' => ['Invalid KYC transition.'],
+                'kyc_status' => [__('domain.client_kyc_invalid_transition')],
             ]);
         }
 

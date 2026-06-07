@@ -21,7 +21,7 @@ abstract class BaseController extends Controller
     /** @param array<array-key, mixed> $meta */
     protected function respondSuccess(
         mixed $data = null,
-        string $message = 'Success',
+        ?string $message = null,
         array $meta = [],
         int $status = 200,
     ): JsonResponse {
@@ -30,13 +30,13 @@ abstract class BaseController extends Controller
 
     protected function respondCreated(
         mixed $data = null,
-        string $message = 'Resource created successfully',
+        ?string $message = null,
     ): JsonResponse {
         return ApiResponse::created($data, $message);
     }
 
     protected function respondError(
-        string $message = 'An error occurred',
+        ?string $message = null,
         mixed $errors = null,
         int $status = 400,
     ): JsonResponse {
@@ -44,25 +44,25 @@ abstract class BaseController extends Controller
     }
 
     protected function respondNotFound(
-        string $message = 'Resource not found',
+        ?string $message = null,
     ): JsonResponse {
         return ApiResponse::notFound($message);
     }
 
     protected function respondUnauthorized(
-        string $message = 'Unauthorized',
+        ?string $message = null,
     ): JsonResponse {
         return ApiResponse::unauthorized($message);
     }
 
     protected function respondForbidden(
-        string $message = 'Forbidden',
+        ?string $message = null,
     ): JsonResponse {
         return ApiResponse::forbidden($message);
     }
 
     protected function respondUnprocessable(
-        string $message = 'Validation failed',
+        ?string $message = null,
         mixed $errors = null,
     ): JsonResponse {
         return ApiResponse::unprocessable($message, $errors);

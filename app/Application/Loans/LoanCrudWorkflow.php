@@ -155,7 +155,7 @@ final class LoanCrudWorkflow extends BaseController
         }
 
         if ($loan->status !== Loan::STATUS_APPLICATION) {
-            return $this->respondUnprocessable(errors: ['status' => ['Only application-stage loans can be updated through this endpoint.']]);
+            return $this->respondUnprocessable(errors: ['status' => [__('Only application-stage loans can be updated through this endpoint.')]]);
         }
 
         $validated = $request->validated();
@@ -188,13 +188,13 @@ final class LoanCrudWorkflow extends BaseController
         }
 
         if (in_array($loan->status, [Loan::STATUS_CLOSED, Loan::STATUS_REJECTED, Loan::STATUS_WRITTEN_OFF], true)) {
-            return $this->respondUnprocessable(errors: ['status' => ['Linked accounts cannot be changed once the loan is closed, rejected, or written off.']]);
+            return $this->respondUnprocessable(errors: ['status' => [__('Linked accounts cannot be changed once the loan is closed, rejected, or written off.')]]);
         }
 
         $loan->loadMissing('client');
         $client = $loan->client;
         if (! $client instanceof Client) {
-            return $this->respondUnprocessable(errors: ['client_public_id' => ['Loan client is missing.']]);
+            return $this->respondUnprocessable(errors: ['client_public_id' => [__('Loan client is missing.')]]);
         }
 
         // Reject no-op payloads: an empty body, or a body whose keys are all

@@ -43,7 +43,7 @@ final class IdempotencyMiddleware
         if (strlen($keyString) > 255) {
             return response()->json([
                 'success' => false,
-                'message' => 'Idempotency-Key must be 255 characters or fewer.',
+                'message' => __('api.idempotency_key_too_long'),
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -108,13 +108,13 @@ final class IdempotencyMiddleware
             }
 
             return ApiResponse::error(
-                'Internal server error',
+                __('api.internal_server_error'),
                 null,
                 Response::HTTP_INTERNAL_SERVER_ERROR
             );
         } catch (LockTimeoutException) {
             return ApiResponse::error(
-                'A request with this Idempotency-Key is already being processed.',
+                __('api.idempotency_processing'),
                 null,
                 Response::HTTP_CONFLICT
             );
@@ -128,7 +128,7 @@ final class IdempotencyMiddleware
     {
         if (! hash_equals($record->request_fingerprint, $fingerprint)) {
             return ApiResponse::error(
-                'Idempotency-Key has already been used for a different request.',
+                __('api.idempotency_reused_different_request'),
                 null,
                 Response::HTTP_CONFLICT
             );

@@ -97,7 +97,7 @@ final class RunDatabaseRestore implements ShouldQueue
             $lock->engage(
                 ownerPublicId: $actor?->public_id,
                 ownerName: $actor?->name,
-                reason: 'Database restore in progress',
+                reason: 'system.database_restore_in_progress_reason',
                 restorePublicId: $operation->public_id,
             );
             $audit->record('database.maintenance.locked', actor: $actor, subject: $operation, properties: [

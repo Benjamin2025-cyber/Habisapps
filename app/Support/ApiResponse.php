@@ -17,64 +17,64 @@ final class ApiResponse
      */
     public static function success(
         mixed $data = null,
-        string $message = 'Success',
+        ?string $message = null,
         array $meta = [],
         int $status = Response::HTTP_OK,
         array $headers = [],
     ): JsonResponse {
-        return self::build(true, $message, $data, null, $meta, $status, $headers);
+        return self::build(true, $message ?? __('api.success'), $data, null, $meta, $status, $headers);
     }
 
     /** @param array<array-key, mixed> $meta */
     public static function created(
         mixed $data = null,
-        string $message = 'Resource created successfully',
+        ?string $message = null,
         array $meta = [],
     ): JsonResponse {
-        return self::success($data, $message, $meta, Response::HTTP_CREATED);
+        return self::success($data, $message ?? __('api.created'), $meta, Response::HTTP_CREATED);
     }
 
     /** @param array<array-key, mixed> $meta */
     public static function error(
-        string $message = 'An error occurred',
+        ?string $message = null,
         mixed $errors = null,
         int $status = Response::HTTP_BAD_REQUEST,
         array $meta = [],
     ): JsonResponse {
-        return self::build(false, $message, null, $errors, $meta, $status);
+        return self::build(false, $message ?? __('api.error'), null, $errors, $meta, $status);
     }
 
     public static function notFound(
-        string $message = 'Resource not found',
+        ?string $message = null,
         mixed $errors = null,
     ): JsonResponse {
-        return self::error($message, $errors, Response::HTTP_NOT_FOUND);
+        return self::error($message ?? __('api.not_found'), $errors, Response::HTTP_NOT_FOUND);
     }
 
     public static function unauthorized(
-        string $message = 'Unauthorized',
+        ?string $message = null,
     ): JsonResponse {
-        return self::error($message, null, Response::HTTP_UNAUTHORIZED);
+        return self::error($message ?? __('api.unauthorized'), null, Response::HTTP_UNAUTHORIZED);
     }
 
     public static function forbidden(
-        string $message = 'Forbidden',
+        ?string $message = null,
     ): JsonResponse {
-        return self::error($message, null, Response::HTTP_FORBIDDEN);
+        return self::error($message ?? __('api.forbidden'), null, Response::HTTP_FORBIDDEN);
     }
 
     public static function unprocessable(
-        string $message = 'Validation failed',
+        ?string $message = null,
         mixed $errors = null,
     ): JsonResponse {
-        return self::error($message, $errors, Response::HTTP_UNPROCESSABLE_ENTITY);
+        return self::error($message ?? __('api.validation_failed'), $errors, Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     public static function tooManyRequests(
-        string $message = 'Too many requests',
+        ?string $message = null,
         int $retryAfter = 60,
     ): JsonResponse {
-        return self::error($message, null, Response::HTTP_TOO_MANY_REQUESTS, ['retry_after' => $retryAfter])
+        return self::error($message ?? __('api.too_many_requests'), null, Response::HTTP_TOO_MANY_REQUESTS, ['retry_after' => $retryAfter])
             ->withHeaders(['Retry-After' => (string) $retryAfter]);
     }
 
@@ -92,10 +92,11 @@ final class ApiResponse
         array $headers = [],
     ): JsonResponse {
         $resolvedMeta = self::resolveMeta($meta, $data, $status);
+        $resolvedMessage = __($message);
 
         $payload = array_filter([
             'success' => $success,
-            'message' => $message,
+            'message' => $resolvedMessage,
             'data' => $data,
             'errors' => $errors,
             'meta' => $resolvedMeta,
@@ -111,8 +112,11 @@ final class ApiResponse
     private static function resolveMeta(array $meta, mixed $data, int $status): ?array
     {
         $resolved = $meta;
+        $pagination = null;
 
-        if ($resolved === [] && $status >= 200 && $status < 300) {
+        // Only synthesize default pagination when the caller supplied no meta of
+        // its own; otherwise we would clobber controller-provided pagination.
+        if ($meta === [] && $status >= 200 && $status < 300) {
             $request = function_exists('request') ? request() : null;
             if ($request !== null && $request->isMethod('get')) {
                 $page = max($request->integer('page', 1), 1);
@@ -123,13 +127,21 @@ final class ApiResponse
                     $total = count($data);
                 }
 
-                $resolved['pagination'] = [
+                $pagination = [
                     'current_page' => $page,
                     'per_page' => $perPage,
                     'total' => $total,
                     'last_page' => max((int) ceil($total / $perPage), 1),
                 ];
             }
+        }
+
+        if ($pagination !== null) {
+            $resolved['pagination'] = $pagination;
+        }
+
+        if (config('localization.meta_enabled', false) === true) {
+            $resolved['locale'] = app()->getLocale();
         }
 
         return $resolved === [] ? null : $resolved;

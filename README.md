@@ -81,6 +81,8 @@ API documentation is generated from Laravel routes, Form Requests, controller si
 - OpenAPI JSON: `http://localhost:8000/docs/api.json`
 - Module 3 architecture notes: `docs/domain/module-3-accounting-architecture.md`
 - Export command: `php artisan scramble:export`
+- Localization: API-owned messages honor `X-Locale` / `Accept-Language` for supported locales (`en`, `fr`) while response keys, machine values, and database-backed content remain unchanged. See `docs/api-localization.md`.
+- Database content is not localized in this phase.
 
 Scramble restricts docs to the `local` environment by default unless a `viewApiDocs` gate is explicitly defined.
 

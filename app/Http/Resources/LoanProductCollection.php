@@ -22,7 +22,7 @@ final class LoanProductCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Loan products retrieved successfully',
+                'message' => __('Loan products retrieved successfully'),
                 'data' => [
                     'loan_products' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class LoanProductCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Loan products retrieved successfully',
+            'message' => __('Loan products retrieved successfully'),
             'data' => [
                 'loan_products' => $this->collection,
             ],

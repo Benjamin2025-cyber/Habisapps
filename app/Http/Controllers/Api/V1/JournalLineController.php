@@ -65,42 +65,42 @@ final class JournalLineController extends BaseController
     {
         $journalEntry = JournalEntry::query()->where('public_id', $request->string('journal_entry_public_id'))->first();
         if (! $journalEntry instanceof JournalEntry) {
-            return $this->respondUnprocessable(errors: ['journal_entry_public_id' => ['The selected journal entry is invalid.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry_public_id' => [__('The selected journal entry is invalid.')]]);
         }
 
         if ($journalEntry->agency_id === null) {
-            return $this->respondUnprocessable(errors: ['journal_entry_public_id' => ['The selected journal entry must be attached to an agency.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry_public_id' => [__('The selected journal entry must be attached to an agency.')]]);
         }
         if ($journalEntry->status !== JournalEntry::STATUS_DRAFT) {
-            return $this->respondUnprocessable(errors: ['journal_entry_public_id' => ['Only draft journal entries can receive journal lines.']]);
+            return $this->respondUnprocessable(errors: ['journal_entry_public_id' => [__('Only draft journal entries can receive journal lines.')]]);
         }
 
         $ledgerAccount = LedgerAccount::query()->where('public_id', $request->string('ledger_account_public_id'))->first();
         if (! $ledgerAccount instanceof LedgerAccount) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account is invalid.')]]);
         }
         if ($ledgerAccount->agency_id !== null && $ledgerAccount->agency_id !== $journalEntry->agency_id) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must belong to the same agency scope.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must belong to the same agency scope.')]]);
         }
         if ($ledgerAccount->status !== LedgerAccount::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
         }
 
         $customerAccount = null;
         if ($request->filled('customer_account_public_id')) {
             $customerAccount = CustomerAccount::query()->where('public_id', $request->string('customer_account_public_id'))->first();
             if (! $customerAccount instanceof CustomerAccount) {
-                return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('The selected customer account is invalid.')]]);
             }
             if ($customerAccount->agency_id !== $journalEntry->agency_id) {
-                return $this->respondUnprocessable(errors: ['customer_account_public_id' => ['The selected customer account must belong to the same agency scope.']]);
+                return $this->respondUnprocessable(errors: ['customer_account_public_id' => [__('domain.selected_customer_account_same_agency_scope')]]);
             }
         }
 
         $debit = $request->integer('debit_minor');
         $credit = $request->integer('credit_minor');
         if (($debit > 0 && $credit > 0) || ($debit === 0 && $credit === 0)) {
-            return $this->respondUnprocessable(errors: ['debit_minor' => ['Exactly one side must be positive.'], 'credit_minor' => ['Exactly one side must be positive.']]);
+            return $this->respondUnprocessable(errors: ['debit_minor' => [__('Exactly one side must be positive.')], 'credit_minor' => [__('Exactly one side must be positive.')]]);
         }
 
         $journalLine = JournalLine::query()->create([
@@ -137,14 +137,14 @@ final class JournalLineController extends BaseController
     {
         $journalLine->loadMissing('journalEntry');
         if ($journalLine->journalEntry?->status !== JournalEntry::STATUS_DRAFT) {
-            return $this->respondUnprocessable(errors: ['journal_line' => ['Only draft journal lines can be updated.']]);
+            return $this->respondUnprocessable(errors: ['journal_line' => [__('Only draft journal lines can be updated.')]]);
         }
 
         $validated = $request->validated();
         $debit = array_key_exists('debit_minor', $validated) ? $request->integer('debit_minor') : $journalLine->debit_minor;
         $credit = array_key_exists('credit_minor', $validated) ? $request->integer('credit_minor') : $journalLine->credit_minor;
         if (($debit > 0 && $credit > 0) || ($debit === 0 && $credit === 0)) {
-            return $this->respondUnprocessable(errors: ['debit_minor' => ['Exactly one side must be positive.'], 'credit_minor' => ['Exactly one side must be positive.']]);
+            return $this->respondUnprocessable(errors: ['debit_minor' => [__('Exactly one side must be positive.')], 'credit_minor' => [__('Exactly one side must be positive.')]]);
         }
 
         $journalLine->fill($validated)->save();
@@ -165,7 +165,7 @@ final class JournalLineController extends BaseController
 
         $journalLine->loadMissing('journalEntry');
         if ($journalLine->journalEntry?->status !== JournalEntry::STATUS_DRAFT) {
-            return $this->respondUnprocessable(errors: ['journal_line' => ['Only draft journal lines can be deleted.']]);
+            return $this->respondUnprocessable(errors: ['journal_line' => [__('Only draft journal lines can be deleted.')]]);
         }
 
         $journalLine->delete();

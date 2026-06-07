@@ -68,7 +68,7 @@ final class DatabaseMaintenanceLock
         return [
             'owner_public_id' => is_string($payload['owner_public_id'] ?? null) ? $payload['owner_public_id'] : null,
             'owner_name' => is_string($payload['owner_name'] ?? null) ? $payload['owner_name'] : null,
-            'reason' => is_string($payload['reason'] ?? null) ? $payload['reason'] : 'Database restore in progress',
+            'reason' => is_string($payload['reason'] ?? null) ? $payload['reason'] : 'system.database_restore_in_progress_reason',
             'restore_public_id' => is_string($payload['restore_public_id'] ?? null) ? $payload['restore_public_id'] : null,
             'expires_at' => is_string($payload['expires_at'] ?? null) ? $payload['expires_at'] : null,
         ];

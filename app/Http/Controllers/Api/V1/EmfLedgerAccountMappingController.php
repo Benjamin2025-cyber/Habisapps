@@ -45,7 +45,7 @@ final class EmfLedgerAccountMappingController extends BaseController
         if ($request->filled('ledger_account_public_id')) {
             $ledgerAccount = LedgerAccount::query()->where('public_id', $request->string('ledger_account_public_id'))->first();
             if (! $ledgerAccount instanceof LedgerAccount) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account is invalid.')]]);
             }
 
             $query->where('ledger_account_id', $ledgerAccount->id);
@@ -54,7 +54,7 @@ final class EmfLedgerAccountMappingController extends BaseController
         if ($request->filled('emf_regulatory_account_public_id')) {
             $emfAccount = EmfRegulatoryAccount::query()->where('public_id', $request->string('emf_regulatory_account_public_id'))->first();
             if (! $emfAccount instanceof EmfRegulatoryAccount) {
-                return $this->respondUnprocessable(errors: ['emf_regulatory_account_public_id' => ['The selected EMF regulatory account is invalid.']]);
+                return $this->respondUnprocessable(errors: ['emf_regulatory_account_public_id' => [__('The selected EMF regulatory account is invalid.')]]);
             }
 
             $query->where('emf_regulatory_account_id', $emfAccount->id);
@@ -90,10 +90,10 @@ final class EmfLedgerAccountMappingController extends BaseController
             ->first();
 
         if (! $emfAccount instanceof EmfRegulatoryAccount || $emfAccount->status !== EmfRegulatoryAccount::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['emf_regulatory_account_public_id' => ['The selected EMF regulatory account must be active.']]);
+            return $this->respondUnprocessable(errors: ['emf_regulatory_account_public_id' => [__('The selected EMF regulatory account must be active.')]]);
         }
         if (! $ledgerAccount instanceof LedgerAccount || $ledgerAccount->status !== LedgerAccount::STATUS_ACTIVE) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => ['The selected ledger account must be active.']]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
         }
 
         $duplicateExists = DB::table('emf_ledger_account_mappings')

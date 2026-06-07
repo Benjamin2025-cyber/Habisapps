@@ -118,7 +118,7 @@ final class UserNotificationController extends BaseController
         if ($read !== null && $read !== '') {
             $readBool = filter_var($read, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             if ($readBool === null) {
-                return $this->respondUnprocessable(errors: ['filter.read' => ['Read filter must be true or false.']]);
+                return $this->respondUnprocessable(errors: ['filter.read' => [__('Read filter must be true or false.')]]);
             }
 
             $readBool

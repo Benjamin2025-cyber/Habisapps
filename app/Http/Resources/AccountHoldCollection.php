@@ -22,7 +22,7 @@ final class AccountHoldCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'account_holds' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class AccountHoldCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'account_holds' => $this->collection,
             ],

@@ -108,7 +108,7 @@ final class BackupWorkflow extends BaseController
             $existing = $this->activeBackupForConnection();
             if ($existing instanceof DatabaseBackup) {
                 return $this->respondError(
-                    'A backup is already in progress for this database connection.',
+                    __('database_management.backup_already_running'),
                     [
                         'code' => 'backup_already_running',
                         'backup_public_id' => $existing->public_id,
@@ -120,7 +120,7 @@ final class BackupWorkflow extends BaseController
 
             if ($this->activeRestoreExists()) {
                 return $this->respondError(
-                    'A database restore is currently active.',
+                    __('database_management.database_restore_active'),
                     ['code' => 'database_restore_active'],
                     Response::HTTP_CONFLICT,
                 );
@@ -149,7 +149,7 @@ final class BackupWorkflow extends BaseController
 
         return $this->respondSuccess(
             ['backup' => DatabaseBackupResource::make($backup->refresh())],
-            'Backup requested.',
+            __('database_management.backup_requested'),
             [],
             Response::HTTP_ACCEPTED,
         );
@@ -163,28 +163,28 @@ final class BackupWorkflow extends BaseController
         }
 
         if (! $databaseBackup->isDownloadable()) {
-            return $this->respondUnprocessable('This backup is not available for download.', [
+            return $this->respondUnprocessable(__('database_management.backup_not_downloadable'), [
                 'code' => 'backup_not_downloadable',
                 'status' => $databaseBackup->status,
             ]);
         }
 
         if (! $this->store->exists($databaseBackup)) {
-            return $this->respondUnprocessable('The backup artifact could not be found on the configured disk.', [
+            return $this->respondUnprocessable(__('database_management.backup_artifact_missing'), [
                 'code' => 'backup_artifact_missing',
             ]);
         }
 
         if ($this->config->strictVerification()
             && $databaseBackup->verification_status !== DatabaseBackup::VERIFICATION_PASSED) {
-            return $this->respondUnprocessable('The backup must pass verification before it can be downloaded.', [
+            return $this->respondUnprocessable(__('database_management.backup_verification_required'), [
                 'code' => 'backup_verification_required',
             ]);
         }
 
         $recomputed = $this->store->checksum($databaseBackup);
         if ($recomputed === null || $databaseBackup->checksum_sha256 === null || ! hash_equals($databaseBackup->checksum_sha256, $recomputed)) {
-            return $this->respondUnprocessable('The backup failed checksum verification and cannot be downloaded.', [
+            return $this->respondUnprocessable(__('database_management.backup_checksum_mismatch'), [
                 'code' => 'backup_checksum_mismatch',
             ]);
         }
@@ -192,7 +192,7 @@ final class BackupWorkflow extends BaseController
         $maxBytes = $this->config->maxArtifactBytes();
         $size = $this->store->size($databaseBackup);
         if ($maxBytes > 0 && $size !== null && $size > $maxBytes) {
-            return $this->respondUnprocessable('The backup artifact exceeds the maximum downloadable size.', [
+            return $this->respondUnprocessable(__('database_management.backup_too_large'), [
                 'code' => 'backup_too_large',
             ]);
         }
@@ -214,19 +214,19 @@ final class BackupWorkflow extends BaseController
         }
 
         if (! $this->config->isEnabled()) {
-            return $this->respondError('Database management is disabled in this environment.', [
+            return $this->respondError(__('database_management.disabled_env'), [
                 'code' => 'database_management_disabled',
             ], Response::HTTP_SERVICE_UNAVAILABLE);
         }
 
         if ($databaseBackup->status === DatabaseBackup::STATUS_RUNNING) {
-            return $this->respondUnprocessable('A running backup cannot be deleted.', [
+            return $this->respondUnprocessable(__('database_management.backup_running_cannot_be_deleted'), [
                 'code' => 'backup_running',
             ]);
         }
 
         if ($databaseBackup->isDeleted()) {
-            return $this->respondUnprocessable('This backup has already been deleted.', [
+            return $this->respondUnprocessable(__('database_management.backup_already_deleted'), [
                 'code' => 'backup_already_deleted',
             ]);
         }
@@ -250,7 +250,7 @@ final class BackupWorkflow extends BaseController
 
         return $this->respondSuccess(
             ['backup' => DatabaseBackupResource::make($databaseBackup)],
-            'Backup deleted.',
+            __('database_management.backup_deleted'),
         );
     }
 
@@ -279,7 +279,7 @@ final class BackupWorkflow extends BaseController
 
     private function respondOperationConflict(): JsonResponse
     {
-        return $this->respondError('Another database backup or restore is currently being scheduled.', [
+        return $this->respondError(__('database_management.another_operation_scheduling_locked'), [
             'code' => 'database_operation_scheduling_locked',
         ], Response::HTTP_CONFLICT);
     }

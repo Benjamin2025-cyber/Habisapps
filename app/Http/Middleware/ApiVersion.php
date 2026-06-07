@@ -21,15 +21,10 @@ final class ApiVersion
         $versionStr = $version;
 
         if (! in_array($versionStr, self::SUPPORTED_VERSIONS, true)) {
-            return ApiResponse::error(
-                sprintf(
-                    'Unsupported API version: %s. Supported versions: %s',
-                    $versionStr,
-                    implode(', ', self::SUPPORTED_VERSIONS)
-                ),
-                null,
-                Response::HTTP_BAD_REQUEST
-            );
+            return ApiResponse::error(__('api.unsupported_api_version', [
+                'version' => $versionStr,
+                'supported' => implode(', ', self::SUPPORTED_VERSIONS),
+            ]), null, Response::HTTP_BAD_REQUEST);
         }
 
         $request->attributes->set('api_version', (int) $versionStr);

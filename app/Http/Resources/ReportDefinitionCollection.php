@@ -22,7 +22,7 @@ final class ReportDefinitionCollection extends ResourceCollection
         if (! $paginator instanceof LengthAwarePaginator) {
             return [
                 'success' => true,
-                'message' => 'Success',
+                'message' => __('api.success'),
                 'data' => [
                     'report_definitions' => $this->collection,
                 ],
@@ -40,7 +40,7 @@ final class ReportDefinitionCollection extends ResourceCollection
 
         return [
             'success' => true,
-            'message' => 'Success',
+            'message' => __('api.success'),
             'data' => [
                 'report_definitions' => $this->collection,
             ],

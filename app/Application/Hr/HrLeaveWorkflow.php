@@ -36,7 +36,7 @@ final class HrLeaveWorkflow extends BaseController
 
         $employee = DB::table('hr_employees')->where('public_id', $employeePublicId)->first(['id']);
         if (! is_object($employee)) {
-            return $this->respondUnprocessable(errors: ['hr_employee' => ['Employee is invalid.']]);
+            return $this->respondUnprocessable(errors: ['hr_employee' => [__('Employee is invalid.')]]);
         }
 
         $publicId = (string) Str::ulid();
