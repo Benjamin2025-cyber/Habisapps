@@ -12,6 +12,11 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # Persist database-management backup artifacts across image rebuilds.
+      # The backup runner writes to the `local` disk (storage/app/private);
+      # without this volume every `docker compose up --build` deploy wipes them.
+      - app_storage:/var/www/html/storage/app
     networks:
       - default
       - proxy
@@ -22,6 +27,30 @@ services:
       - traefik.http.routers.habis-finance-api.tls=true
       - traefik.http.routers.habis-finance-api.tls.certresolver=letsencrypt
       - traefik.http.services.habis-finance-api.loadbalancer.server.port=8000
+
+  # Processes queued jobs, including the database-management backup/restore jobs.
+  # Reuses the image built by the `api` service. Requires QUEUE_CONNECTION to be
+  # a real queue (e.g. database/redis) in .env — with QUEUE_CONNECTION=sync this
+  # worker is idle and jobs run inline in the request instead.
+  queue:
+    image: habis-finance-api:latest
+    container_name: habis-finance-api-queue
+    restart: unless-stopped
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_storage:/var/www/html/storage/app
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - default
+
+volumes:
+  app_storage:
 
 networks:
   proxy:

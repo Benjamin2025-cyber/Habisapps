@@ -6,14 +6,27 @@ ENV COMPOSER_ALLOW_SUPERUSER=1 \
 
 WORKDIR /var/www/html
 
+# Use the PGDG apt repo so the bundled client (pg_dump/pg_restore/psql) matches
+# the production server major version. Debian bookworm ships client 15, which
+# refuses to dump a >= 16 server; the database-management backup runner needs a
+# client >= the live server (currently 16).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         git \
+        gnupg \
         libpq-dev \
-        postgresql-client \
         libzip-dev \
         unzip \
         zip \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
     && docker-php-ext-install pdo_pgsql pgsql zip exif \
     && rm -rf /var/lib/apt/lists/*
 

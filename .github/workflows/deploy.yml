@@ -33,3 +33,4 @@ jobs:
             docker compose exec -T api php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force --ansi
             docker compose exec -T api php artisan db:seed --class=Database\\Seeders\\BootstrapAdminSeeder --force --ansi
             docker compose exec -T api php -d memory_limit=512M artisan scramble:export --path=public/docs/api.json
+            docker compose exec -T api php artisan queue:restart --ansi
