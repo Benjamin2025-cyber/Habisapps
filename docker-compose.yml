@@ -43,6 +43,11 @@ services:
     volumes:
       - app_storage:/var/www/html/storage/app
     command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    # The image's HEALTHCHECK probes the HTTP port (8000); the worker serves no
+    # HTTP, so the inherited check would never pass and `up --wait` would mark
+    # the deploy failed. Disable it; `restart: unless-stopped` handles crashes.
+    healthcheck:
+      disable: true
     depends_on:
       api:
         condition: service_healthy
