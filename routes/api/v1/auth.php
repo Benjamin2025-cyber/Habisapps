@@ -41,13 +41,24 @@ Route::post('logout', [AuthController::class, 'logout'])
 Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     Route::get('me', [AuthController::class, 'me']);
 
+    // Agency administration: institution-structure configuration, not a
+    // financial registration. These writes carry no accounting_day_id and have
+    // no accounting-integrity stake, so they are allowlisted out of the
+    // registration lock (same class as staff-user/role administration below).
+    // Without this, agency creation is impossible on a fresh install: an open
+    // accounting day requires an agency, and an agency required an open day.
     Route::get('agencies', [AgencyController::class, 'index']);
-    Route::post('agencies', [AgencyController::class, 'store']);
+    Route::post('agencies', [AgencyController::class, 'store'])
+        ->defaults('accounting_day_classification', 'administration');
     Route::get('agencies/{agency}', [AgencyController::class, 'show']);
-    Route::patch('agencies/{agency}', [AgencyController::class, 'update']);
-    Route::patch('agencies/{agency}/status', [AgencyController::class, 'updateStatus']);
-    Route::delete('agencies/{agency}', [AgencyController::class, 'destroy']);
-    Route::put('agencies/{agency}/manager', [AgencyController::class, 'updateManager']);
+    Route::patch('agencies/{agency}', [AgencyController::class, 'update'])
+        ->defaults('accounting_day_classification', 'administration');
+    Route::patch('agencies/{agency}/status', [AgencyController::class, 'updateStatus'])
+        ->defaults('accounting_day_classification', 'administration');
+    Route::delete('agencies/{agency}', [AgencyController::class, 'destroy'])
+        ->defaults('accounting_day_classification', 'administration');
+    Route::put('agencies/{agency}/manager', [AgencyController::class, 'updateManager'])
+        ->defaults('accounting_day_classification', 'administration');
 
     // Identity & access administration. These writes carry no accounting_day_id
     // and have no accounting-integrity stake, so they are allowlisted out of the
