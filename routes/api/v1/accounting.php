@@ -35,6 +35,9 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::post('accounting-days/{accountingDay}/start-close', [AccountingDayController::class, 'startClose'])
         ->middleware('throttle:accounting.lifecycle')
         ->defaults('accounting_day_classification', 'day_lifecycle');
+    Route::post('accounting-days/{accountingDay}/cancel-close', [AccountingDayController::class, 'cancelClose'])
+        ->middleware('throttle:accounting.lifecycle')
+        ->defaults('accounting_day_classification', 'day_lifecycle');
     Route::post('accounting-days/{accountingDay}/close', [AccountingDayController::class, 'close'])
         ->middleware('throttle:accounting.lifecycle')
         ->defaults('accounting_day_classification', 'day_lifecycle');

@@ -45,6 +45,11 @@ final class AccountingDayController extends BaseController
         return $this->workflow->startClose($request, $accountingDay);
     }
 
+    public function cancelClose(Request $request, AccountingDay $accountingDay): JsonResponse
+    {
+        return $this->workflow->cancelClose($request, $accountingDay);
+    }
+
     public function close(CloseAccountingDayRequest $request, AccountingDay $accountingDay): JsonResponse
     {
         return $this->workflow->close($request, $accountingDay);

@@ -31,6 +31,16 @@ use InvalidArgumentException;
 
 final class AccountingDayWorkflow extends BaseController
 {
+    /**
+     * Batch procedure codes the close lifecycle hard-requires as active rows.
+     *
+     * @var array<int, string>
+     */
+    private const array CLOSE_CONTROL_PROCEDURE_CODES = [
+        'accounting_close_verification',
+        'cash_close_verification',
+    ];
+
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
@@ -207,6 +217,18 @@ final class AccountingDayWorkflow extends BaseController
             ]);
         }
 
+        // Same trap-avoidance rule for every remaining close control: while the
+        // day is `closing` the registration lock forbids the writes that clear
+        // these blockers (posting journals, recording reconciliations), so any
+        // control the final close will enforce must already pass here.
+        $preflightBlockers = $this->startClosePreflightBlockers($accountingDay);
+        if ($preflightBlockers !== []) {
+            return $this->respondUnprocessable(__('domain.accounting_day_start_close_blocked'), [
+                'code' => 'accounting_day_start_close_blocked',
+                'blockers' => $preflightBlockers,
+            ]);
+        }
+
         $previousStatus = $accountingDay->status;
 
         DB::transaction(function () use ($accountingDay): void {
@@ -240,6 +262,53 @@ final class AccountingDayWorkflow extends BaseController
         return $this->respondSuccess(
             $this->daySummaryPayload($accountingDay->refresh()),
             __('domain.accounting_day_close_started'),
+        );
+    }
+
+    /**
+     * Escape hatch out of the `closing` state.
+     *
+     * A day in `closing` blocks all registrations and blocks opening the next
+     * day; if its close controls cannot pass, cancelling the close is the only
+     * recovery that does not require database intervention.
+     */
+    public function cancelClose(Request $request, AccountingDay $accountingDay): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User || $actor->cannot('cancelClose', $accountingDay)) {
+            return $this->respondForbidden();
+        }
+
+        if ($accountingDay->status !== AccountingDay::STATUS_CLOSING) {
+            return $this->respondUnprocessable(__('domain.accounting_day_only_closing_can_be_cancelled'), [
+                'code' => 'accounting_day_invalid_transition',
+                'status' => $accountingDay->status,
+            ]);
+        }
+
+        $restoredStatus = $accountingDay->reopened_by_user_id !== null
+            ? AccountingDay::STATUS_REOPENED
+            : AccountingDay::STATUS_OPEN;
+
+        DB::transaction(function () use ($accountingDay, $restoredStatus): void {
+            $accountingDay->fill([
+                'status' => $restoredStatus,
+                'close_failure_reason' => null,
+                'write_lock_version' => $accountingDay->write_lock_version + 1,
+            ])->save();
+        });
+
+        $this->securityAudit->record('accounting_day.close_cancelled', actor: $actor, subject: $accountingDay, properties: [
+            'scope_type' => $accountingDay->scope_type,
+            'agency_id_scope' => $accountingDay->agency_id,
+            'business_date' => $accountingDay->business_date->toDateString(),
+            'previous_status' => AccountingDay::STATUS_CLOSING,
+            'new_status' => $restoredStatus,
+        ], request: $request);
+
+        return $this->respondSuccess(
+            $this->daySummaryPayload($accountingDay->refresh()),
+            __('domain.accounting_day_close_cancelled'),
         );
     }
 
@@ -325,7 +394,7 @@ final class AccountingDayWorkflow extends BaseController
                 'blockers' => array_map(static fn (array $b): string => $b['control'], $readiness->blockers),
             ], request: $request);
 
-            return $this->respondUnprocessable(__('domain.accounting_day_close_blocked_controls_failed'), [
+            return $this->respondUnprocessable(__('domain.accounting_day_close_blocked_controls_failing'), [
                 'code' => 'accounting_day_close_blocked',
                 'close_summary' => $day->close_summary_payload,
             ]);
@@ -418,6 +487,42 @@ final class AccountingDayWorkflow extends BaseController
     }
 
     /**
+     * Every condition the final close will enforce that must therefore already
+     * hold before the day may enter `closing`: readiness controls (unposted
+     * journals, open sessions, pending transactions), closed-but-unreconciled
+     * teller sessions, and the presence of active close-control procedures.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function startClosePreflightBlockers(AccountingDay $day): array
+    {
+        $blockers = $this->closeControls->evaluate($day)->blockers;
+
+        $unreconciled = $this->closeControls->unreconciledClosedSessionCount($day);
+        if ($unreconciled > 0) {
+            $blockers[] = [
+                'control' => 'unreconciled_closed_sessions',
+                'message' => 'There are closed teller sessions without a balanced reconciliation.',
+                'count' => $unreconciled,
+            ];
+        }
+
+        $missingProcedures = array_values(array_diff(
+            self::CLOSE_CONTROL_PROCEDURE_CODES,
+            array_keys($this->activeCloseControlProceduresByCode(self::CLOSE_CONTROL_PROCEDURE_CODES)),
+        ));
+        if ($missingProcedures !== []) {
+            $blockers[] = [
+                'control' => 'missing_close_control_procedures',
+                'message' => 'No active batch procedure is configured for one or more close controls.',
+                'procedure_codes' => $missingProcedures,
+            ];
+        }
+
+        return $blockers;
+    }
+
+    /**
      * @return array{
      *   controls: array<int, array<string, mixed>>,
      *   failed_controls: array<int, string>,
@@ -427,10 +532,7 @@ final class AccountingDayWorkflow extends BaseController
      */
     private function executeCloseControlRuns(AccountingDay $day, User $actor): array
     {
-        $controlCodes = [
-            'accounting_close_verification',
-            'cash_close_verification',
-        ];
+        $controlCodes = self::CLOSE_CONTROL_PROCEDURE_CODES;
         $proceduresByCode = $this->activeCloseControlProceduresByCode($controlCodes);
         usort(
             $controlCodes,
@@ -561,7 +663,7 @@ final class AccountingDayWorkflow extends BaseController
             return (int) $metadata['execution_priority'];
         }
 
-        return 65535 + (int) array_search($code, ['accounting_close_verification', 'cash_close_verification'], true);
+        return 65535 + (int) array_search($code, self::CLOSE_CONTROL_PROCEDURE_CODES, true);
     }
 
     private function normalizedProcedureCode(string $code): string

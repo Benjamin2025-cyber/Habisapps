@@ -7,6 +7,7 @@ namespace App\Support\AccountingDay;
 use App\Models\AccountingDay;
 use App\Models\JournalEntry;
 use App\Models\TellerSession;
+use App\Models\TillReconciliation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -114,6 +115,33 @@ final class CloseControlService
             'teller_user_public_id' => $session->teller?->public_id,
             'business_date' => $session->business_date->toDateString(),
         ])->values()->all();
+    }
+
+    /**
+     * Closed teller sessions for the day that lack a balanced, zero-difference
+     * reconciliation. Mirrors the cash-close verification batch rule so the
+     * start-close preflight can refuse to enter `closing` when the final cash
+     * control would fail — while `closing`, the registration lock forbids
+     * recording the reconciliation that would clear the blocker.
+     */
+    public function unreconciledClosedSessionCount(AccountingDay $day): int
+    {
+        $query = DB::table('teller_sessions')
+            ->where('status', TellerSession::STATUS_CLOSED)
+            ->whereDate('business_date', $day->business_date->toDateString())
+            ->whereNotExists(function ($query): void {
+                $query->select(DB::raw('1'))
+                    ->from('till_reconciliations')
+                    ->whereColumn('till_reconciliations.teller_session_id', 'teller_sessions.id')
+                    ->where('till_reconciliations.status', TillReconciliation::STATUS_BALANCED)
+                    ->where('till_reconciliations.difference_minor', 0);
+            });
+
+        if ($day->scope_type === AccountingDay::SCOPE_AGENCY) {
+            $query->where('agency_id', $day->agency_id);
+        }
+
+        return $query->count();
     }
 
     /**

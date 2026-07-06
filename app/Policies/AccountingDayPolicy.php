@@ -35,6 +35,11 @@ final class AccountingDayPolicy
         return $user->can('accounting.days.close') && $this->canAccessScope($user, $accountingDay);
     }
 
+    public function cancelClose(User $user, AccountingDay $accountingDay): bool
+    {
+        return $user->can('accounting.days.close') && $this->canAccessScope($user, $accountingDay);
+    }
+
     public function reopen(User $user, AccountingDay $accountingDay): bool
     {
         return $user->can('accounting.days.reopen') && $this->canAccessScope($user, $accountingDay);

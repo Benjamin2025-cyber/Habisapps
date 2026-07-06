@@ -254,19 +254,146 @@ final class AccountingDayLifecycleTest extends TestCase
         self::assertSame(2, DB::table('batch_runs')->where('accounting_day_id', $day->id)->count());
     }
 
-    public function test_close_fails_when_required_close_control_procedures_are_missing(): void
+    public function test_start_close_is_blocked_when_close_control_procedures_are_missing(): void
     {
         $agency = $this->createAgency('AD-BATCH-MISS');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
         $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
 
         $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
-        $this->assertJsonSuccess($startClose, 200);
+
+        $this->assertJsonError($startClose, 422);
+        $startClose->assertJsonPath('errors.code', 'accounting_day_start_close_blocked');
+        $startClose->assertJsonPath('errors.blockers.0.control', 'missing_close_control_procedures');
+        $startClose->assertJsonPath('errors.blockers.0.procedure_codes.0', 'accounting_close_verification');
+        $startClose->assertJsonPath('errors.blockers.0.procedure_codes.1', 'cash_close_verification');
+
+        // The day must remain open so the blocker can be fixed and close retried.
+        self::assertSame(AccountingDay::STATUS_OPEN, $day->refresh()->status);
+        self::assertSame(0, DB::table('batch_runs')->where('accounting_day_id', $day->id)->count());
+    }
+
+    public function test_close_fails_when_required_close_control_procedures_are_missing(): void
+    {
+        $agency = $this->createAgency('AD-BATCH-MISS2');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+
+        // Force the closing state directly: start-close now preflights missing
+        // procedures, so this covers a day already trapped before the preflight
+        // existed (or procedures deactivated mid-close).
+        $this->setAccountingDayClosing($day);
 
         $close = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/close");
         $this->assertJsonError($close, 422);
         $close->assertJsonPath('errors.code', 'accounting_day_close_blocked');
         $close->assertJsonPath('errors.close_summary.close_control_batch_failures.0', 'accounting_close_verification');
+    }
+
+    public function test_start_close_is_blocked_by_unposted_journals(): void
+    {
+        $agency = $this->createAgency('AD-PRE-JOURNAL');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
+
+        DB::table('journal_entries')->insert([
+            'public_id' => (string) Str::ulid(),
+            'reference' => 'JE-PRE-1',
+            'business_date' => '2026-06-01',
+            'agency_id' => $agency['id'],
+            'status' => 'draft',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
+
+        $this->assertJsonError($startClose, 422);
+        $startClose->assertJsonPath('errors.code', 'accounting_day_start_close_blocked');
+        $startClose->assertJsonPath('errors.blockers.0.control', 'unposted_journals');
+        self::assertSame(AccountingDay::STATUS_OPEN, $day->refresh()->status);
+    }
+
+    public function test_start_close_is_blocked_by_unreconciled_closed_sessions_until_reconciled(): void
+    {
+        $agency = $this->createAgency('AD-PRE-RECON');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $teller = $this->createUserWithRole('teller', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $tillId = $this->createTill($agency['id']);
+        $sessionId = $this->createTellerSession($day, $tillId, $teller->id, 'closed');
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
+
+        $blocked = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
+
+        $this->assertJsonError($blocked, 422);
+        $blocked->assertJsonPath('errors.code', 'accounting_day_start_close_blocked');
+        $blocked->assertJsonPath('errors.blockers.0.control', 'unreconciled_closed_sessions');
+        $blocked->assertJsonPath('errors.blockers.0.count', 1);
+        self::assertSame(AccountingDay::STATUS_OPEN, $day->refresh()->status);
+
+        // Recording the balanced reconciliation clears the blocker.
+        $this->createBalancedReconciliation($sessionId, $teller->id);
+
+        $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
+        $this->assertJsonSuccess($startClose, 200);
+        $startClose->assertJsonPath('data.status', AccountingDay::STATUS_CLOSING);
+    }
+
+    public function test_cancel_close_returns_closing_day_to_open(): void
+    {
+        $agency = $this->createAgency('AD-CANCEL');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $this->setAccountingDayClosing($day);
+        $lockBefore = $day->refresh()->write_lock_version;
+
+        $cancel = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/cancel-close");
+
+        $this->assertJsonSuccess($cancel, 200);
+        $cancel->assertJsonPath('data.status', AccountingDay::STATUS_OPEN);
+        $cancel->assertJsonPath('data.can_register', true);
+        self::assertSame($lockBefore + 1, $day->refresh()->write_lock_version);
+        $this->assertDatabaseHas('activity_log', ['event' => 'accounting_day.close_cancelled']);
+
+        // Cancelling again is an invalid transition: the day is no longer closing.
+        $again = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/cancel-close");
+        $this->assertJsonError($again, 422);
+        $again->assertJsonPath('errors.code', 'accounting_day_invalid_transition');
+    }
+
+    public function test_cancel_close_restores_reopened_status_for_reopened_days(): void
+    {
+        $agency = $this->createAgency('AD-CANCEL-REOPEN');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+        $admin = $this->createUserWithRole('platform-admin', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $day->forceFill([
+            'status' => AccountingDay::STATUS_CLOSING,
+            'reopened_by_user_id' => $admin->id,
+            'reopen_reason' => 'Previously reopened for a correction.',
+        ])->save();
+
+        $cancel = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/cancel-close");
+
+        $this->assertJsonSuccess($cancel, 200);
+        $cancel->assertJsonPath('data.status', AccountingDay::STATUS_REOPENED);
+    }
+
+    public function test_cancel_close_requires_close_permission(): void
+    {
+        $agency = $this->createAgency('AD-CANCEL-PERM');
+        $teller = $this->createUserWithRole('teller', $agency['code']);
+        $day = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $this->setAccountingDayClosing($day);
+
+        $cancel = $this->actingAsSanctum($teller)->postJson("/api/v1/accounting-days/{$day->public_id}/cancel-close");
+
+        $cancel->assertStatus(403);
+        self::assertSame(AccountingDay::STATUS_CLOSING, $day->refresh()->status);
     }
 
     public function test_start_close_is_blocked_by_open_teller_sessions_then_succeeds_after_session_closes(): void
@@ -297,13 +424,14 @@ final class AccountingDayLifecycleTest extends TestCase
         self::assertSame($lockBefore, $refreshed->write_lock_version);
         self::assertSame(0, DB::table('batch_runs')->where('accounting_day_id', $day->id)->count());
 
-        // Once the teller session closes, start-close can proceed.
+        // Once the teller session closes and is reconciled, start-close can proceed.
         DB::table('teller_sessions')->where('id', $sessionId)->update([
             'status' => 'closed',
             'closed_at' => now(),
             'closing_declaration_minor' => 0,
             'updated_at' => now(),
         ]);
+        $this->createBalancedReconciliation($sessionId, $teller->id);
 
         $startClose = $this->actingAsSanctum($accountant)->postJson("/api/v1/accounting-days/{$day->public_id}/start-close");
         $this->assertJsonSuccess($startClose, 200);

@@ -73,6 +73,7 @@ final class AccountingDayRouteClassificationTest extends TestCase
         $expectations = [
             'POST v1/accounting-days/open' => RouteClassification::DAY_LIFECYCLE,
             'POST v1/accounting-days/{accountingDay}/start-close' => RouteClassification::DAY_LIFECYCLE,
+            'POST v1/accounting-days/{accountingDay}/cancel-close' => RouteClassification::DAY_LIFECYCLE,
             'POST v1/accounting-days/{accountingDay}/close' => RouteClassification::DAY_LIFECYCLE,
             'POST v1/accounting-days/{accountingDay}/reopen' => RouteClassification::DAY_LIFECYCLE,
             'POST v1/logout' => RouteClassification::SYSTEM_MAINTENANCE,
