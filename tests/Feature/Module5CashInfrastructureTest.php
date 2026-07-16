@@ -521,6 +521,55 @@ final class Module5CashInfrastructureTest extends TestCase
             ->where('reference', 'PENDING-CLOSE-1')
             ->update(['status' => 'cancelled']);
 
+        $withoutReconciliation = $this->withApiHeaders([
+            'Authorization' => 'Bearer '.$actor->createToken('close-without-reconciliation')->plainTextToken,
+            'X-Locale' => 'fr',
+        ])->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
+            'closing_declaration_minor' => 1500,
+            'currency' => 'XAF',
+            'denomination_counts' => [
+                ['denomination_public_id' => $note1000['public_id'], 'count' => 1],
+                ['denomination_public_id' => $note500['public_id'], 'count' => 1],
+            ],
+        ]);
+        $withoutReconciliation->assertStatus(422);
+        $withoutReconciliation->assertJsonValidationErrors(['reconciliation']);
+        $withoutReconciliation->assertJsonPath(
+            'errors.reconciliation.0',
+            'Un rapprochement de caisse équilibré et à jour doit être enregistré avant la fermeture de la session de caisse.'
+        );
+        self::assertSame('open', DB::table('teller_sessions')->where('id', $sessionId)->value('status'));
+
+        $reconciliation = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('close-reconciliation')->plainTextToken])
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/reconciliations', [
+                'currency' => 'XAF',
+                'denomination_counts' => [
+                    ['denomination_public_id' => $note1000['public_id'], 'count' => 1],
+                    ['denomination_public_id' => $note500['public_id'], 'count' => 1],
+                ],
+            ]);
+        $this->assertJsonSuccess($reconciliation, 201);
+
+        DB::table('till_reconciliations')
+            ->where('teller_session_id', $sessionId)
+            ->update(['actual_balance_minor' => 1000]);
+
+        $staleReconciliation = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('close-stale-reconciliation')->plainTextToken])
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
+                'closing_declaration_minor' => 1500,
+                'currency' => 'XAF',
+                'denomination_counts' => [
+                    ['denomination_public_id' => $note1000['public_id'], 'count' => 1],
+                    ['denomination_public_id' => $note500['public_id'], 'count' => 1],
+                ],
+            ]);
+        $staleReconciliation->assertStatus(422);
+        $staleReconciliation->assertJsonValidationErrors(['reconciliation']);
+
+        DB::table('till_reconciliations')
+            ->where('teller_session_id', $sessionId)
+            ->update(['actual_balance_minor' => 1500]);
+
         $close = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('close-success')->plainTextToken])
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
                 'closing_declaration_minor' => 1500,
@@ -1258,7 +1307,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $blocked->assertJsonValidationErrors(['till']);
         $blocked->assertJsonPath('errors.till.0', 'Fermez toutes les sessions de caisse ouvertes avant de modifier l\'affectation, l\'agence, le compte du grand livre ou la devise de la caisse.');
 
-        // Close the session to unlock the till.
+        // Reconcile and close the session to unlock the till.
+        $this->createCurrentBalancedReconciliation($sessionPublicId, $manager, 0);
         $close = $this->withApiHeaders()
             ->actingAsSanctum($manager)
             ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/close', [
@@ -1561,6 +1611,7 @@ final class Module5CashInfrastructureTest extends TestCase
 
         // The close validation accepts exactly the summary's expected balance,
         // proving the dashboard summary and close use the same direction rules.
+        $this->createCurrentBalancedReconciliation($ctx['session_public_id'], $ctx['manager'], 12000);
         $close = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
             ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/close', [
                 'closing_declaration_minor' => 12000,
@@ -2133,6 +2184,33 @@ final class Module5CashInfrastructureTest extends TestCase
             'currency' => 'XAF',
             'status' => 'balanced',
             'notes' => 'Consultation fixture',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $publicId;
+    }
+
+    private function createCurrentBalancedReconciliation(
+        string $sessionPublicId,
+        User $countedBy,
+        int $balanceMinor,
+    ): string {
+        $sessionId = DB::table('teller_sessions')->where('public_id', $sessionPublicId)->value('id');
+        self::assertIsInt($sessionId);
+
+        $publicId = (string) Str::ulid();
+        DB::table('till_reconciliations')->insert([
+            'public_id' => $publicId,
+            'teller_session_id' => $sessionId,
+            'counted_by_user_id' => $countedBy->id,
+            'counted_at' => now(),
+            'reconciliation_date' => now(),
+            'theoretical_balance_minor' => $balanceMinor,
+            'actual_balance_minor' => $balanceMinor,
+            'difference_minor' => 0,
+            'currency' => 'XAF',
+            'status' => 'balanced',
             'created_at' => now(),
             'updated_at' => now(),
         ]);

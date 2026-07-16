@@ -439,7 +439,7 @@ final class AccountingDayLifecycleTest extends TestCase
         self::assertSame($lockBefore + 1, $day->refresh()->write_lock_version);
     }
 
-    public function test_teller_session_close_remains_available_while_day_is_open(): void
+    public function test_teller_session_close_remains_available_after_reconciliation_while_day_is_open(): void
     {
         $agency = $this->createAgency('AD-TELLER-OPEN');
         $teller = $this->createUserWithRole('teller', $agency['code']);
@@ -449,6 +449,7 @@ final class AccountingDayLifecycleTest extends TestCase
         $sessionId = $this->createTellerSession($day, $tillId, $teller->id, 'open');
         $sessionPublicId = DB::table('teller_sessions')->where('id', $sessionId)->value('public_id');
         self::assertIsString($sessionPublicId);
+        $this->createBalancedReconciliation($sessionId, $teller->id);
 
         $close = $this->actingAsSanctum($teller)->postJson("/api/v1/teller-sessions/{$sessionPublicId}/close", [
             'closing_declaration_minor' => 0,

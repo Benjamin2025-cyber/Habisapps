@@ -15,6 +15,7 @@ use App\Models\Denomination;
 use App\Models\StaffAgencyAssignment;
 use App\Models\TellerSession;
 use App\Models\Till;
+use App\Models\TillReconciliation;
 use App\Models\User;
 use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\Security\SecurityAudit;
@@ -277,6 +278,10 @@ final class TellerSessionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: ['closing_declaration_minor' => [__('Closing declaration must equal the posted theoretical till balance.')]]);
         }
 
+        if (! $this->hasCurrentBalancedReconciliation($tellerSession, $theoreticalBalanceMinor, $currency)) {
+            return $this->respondUnprocessable(errors: ['reconciliation' => [__('A current balanced till reconciliation must be recorded before closing the teller session.')]]);
+        }
+
         DB::transaction(function () use ($tellerSession, $till, $closingDeclarationMinor, $currency): void {
             $tellerSession->fill([
                 'closed_at' => now(),
@@ -333,6 +338,22 @@ final class TellerSessionWorkflow extends BaseController
         }
 
         return $this->staffAgencyScope->currentAgencyId($actor) === $agencyId;
+    }
+
+    private function hasCurrentBalancedReconciliation(
+        TellerSession $tellerSession,
+        int $theoreticalBalanceMinor,
+        string $currency,
+    ): bool {
+        $query = TillReconciliation::query()
+            ->where('teller_session_id', $tellerSession->id)
+            ->where('status', TillReconciliation::STATUS_BALANCED)
+            ->where('difference_minor', 0)
+            ->where('theoretical_balance_minor', $theoreticalBalanceMinor)
+            ->where('actual_balance_minor', $theoreticalBalanceMinor)
+            ->where('currency', $currency);
+
+        return $query->getQuery()->exists();
     }
 
     /**

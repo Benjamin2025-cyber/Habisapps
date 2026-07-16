@@ -2,6 +2,7 @@
     "A batch run is already executing for this procedure, agency, and business date.": "A batch run is already executing for this procedure, agency, and business date.",
     "A current agency assignment is required to list report definitions.": "A current agency assignment is required to list report definitions.",
     "A current agency assignment is required to list teller transactions.": "A current agency assignment is required to list teller transactions.",
+    "A current balanced till reconciliation must be recorded before closing the teller session.": "A current balanced till reconciliation must be recorded before closing the teller session.",
     "A directory query requires an active agency assignment or institution scope.": "A directory query requires an active agency assignment or institution scope.",
     "A pending decision request already exists for this claim.": "A pending decision request already exists for this claim.",
     "A sign-off with approval_type=deny cannot be activated; create a separate denying record only as historical evidence in draft.": "A sign-off with approval_type=deny cannot be activated; create a separate denying record only as historical evidence in draft.",

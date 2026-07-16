@@ -2,6 +2,7 @@
     "A batch run is already executing for this procedure, agency, and business date.": "Une exécution de lot est déjà en cours pour cette procédure, cette agence et cette date d'arrêté.",
     "A current agency assignment is required to list report definitions.": "Une affectation d'agence active est requise pour lister les définitions de rapport.",
     "A current agency assignment is required to list teller transactions.": "Une affectation d'agence actuelle est requise pour lister les transactions de guichetier.",
+    "A current balanced till reconciliation must be recorded before closing the teller session.": "Un rapprochement de caisse équilibré et à jour doit être enregistré avant la fermeture de la session de caisse.",
     "A directory query requires an active agency assignment or institution scope.": "Une requête d’annuaire nécessite une affectation d’agence active ou un périmètre institutionnel.",
     "A pending decision request already exists for this claim.": "Une demande de décision en attente existe déjà pour ce sinistre.",
     "A sign-off with approval_type=deny cannot be activated; create a separate denying record only as historical evidence in draft.": "Une validation avec approval_type=deny ne peut pas être activée ; créez un enregistrement de refus distinct uniquement comme preuve historique à l'état brouillon.",
