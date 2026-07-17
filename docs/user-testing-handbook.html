@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HABIS Finance — Complete Beginner Frontend Testing Handbook</title>
+  <style>
+    :root{--ink:#17202a;--muted:#5b6875;--line:#d9e1e8;--paper:#fff;--wash:#f4f7fa;--brand:#126782;--brand-dark:#0b4356;--ok:#19734a;--warn:#9b6512;--danger:#a52d2d;--code:#10212b}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{display:grid;grid-template-columns:280px minmax(0,1fr);max-width:1500px;margin:auto;background:var(--paper);min-height:100vh}.toc{position:sticky;top:0;height:100vh;overflow:auto;padding:28px 20px;background:#102f3c;color:#eaf5f8}.toc h2{font-size:1.05rem;margin:0 0 18px}.toc a{display:block;color:#cce5eb;text-decoration:none;padding:4px 0;font-size:.9rem}.toc a:hover{color:#fff}.toc .sub{padding-left:14px;font-size:.82rem;color:#acd0d8}.content{padding:46px clamp(24px,5vw,80px);max-width:1100px}h1,h2,h3{line-height:1.2;color:var(--brand-dark)}h1{font-size:clamp(2rem,4vw,3.6rem);margin:.1em 0 .35em}h2{font-size:1.85rem;border-top:3px solid var(--line);padding-top:28px;margin-top:52px}h3{font-size:1.25rem;margin-top:30px}p{max-width:82ch}.lead{font-size:1.15rem;color:var(--muted);max-width:75ch}.meta{color:var(--muted);font-size:.9rem}.card,.callout{border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:18px 0;background:#fff}.callout{border-left:5px solid var(--brand);background:#f1f8fa}.callout.warn{border-left-color:var(--warn);background:#fff8e9}.callout.ok{border-left-color:var(--ok);background:#effaf4}.callout.danger{border-left-color:var(--danger);background:#fff2f2}table{border-collapse:collapse;width:100%;margin:18px 0;font-size:.94rem}th,td{border:1px solid var(--line);padding:9px 11px;vertical-align:top;text-align:left}th{background:#eaf2f5;color:var(--brand-dark)}code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}code{background:#edf2f5;border-radius:4px;padding:2px 5px}pre{background:var(--code);color:#e9f5f6;padding:16px;border-radius:9px;overflow:auto;line-height:1.5}pre code{background:none;padding:0;color:inherit}.pill{display:inline-block;border-radius:999px;padding:2px 9px;background:#e7f2f4;color:var(--brand-dark);font-size:.78rem;font-weight:700}.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.check{list-style:none;padding-left:0}.check li{padding-left:27px;position:relative;margin:7px 0}.check li:before{content:"□";position:absolute;left:0;color:var(--brand);font-weight:bold}.small{font-size:.88rem;color:var(--muted)}.top{font-size:.85rem}.nowrap{white-space:nowrap}details{border-bottom:1px solid var(--line);padding:9px 0}summary{cursor:pointer;font-weight:700;color:var(--brand-dark)}.tag{font-size:.72rem;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--muted)}@media(max-width:900px){.wrap{display:block}.toc{position:static;height:auto}.toc a{display:inline-block;margin-right:12px}.content{padding:28px 18px}.two{grid-template-columns:1fr}table{display:block;overflow:auto}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Table of contents">
+  <h2>HABIS testing handbook</h2>
+  <a href="#read-first">Read this first</a>
+  <a href="#mental-model">How the application fits together</a>
+  <a href="#setup">Prepare a safe test environment</a>
+  <a href="#coverage">Coverage boundary</a>
+  <a href="#roles">Users, roles, and permissions</a>
+  <a href="#auth">1. Sign in and activate accounts</a>
+  <a href="#admin">2. Administration foundation</a>
+  <a href="#reference">3. Reference data</a>
+  <a href="#cash">4. Cash operations (tills)</a>
+  <a class="sub" href="#cash-day">Accounting day</a>
+  <a class="sub" href="#cash-session">Teller session</a>
+  <a class="sub" href="#cash-recon">Reconciliation and close</a>
+  <a class="sub" href="#cash-tx">Deposits and withdrawals</a>
+  <a href="#crm">5. Clients and customer accounts</a>
+  <a href="#credit">6. Credit lifecycle</a>
+  <a href="#accounting">7. Accounting and journals</a>
+  <a href="#reports">8. Reports, audit, notifications, backups</a>
+  <a href="#test-matrix">9. Complete test matrix</a>
+  <a href="#troubleshooting">10. Troubleshooting</a>
+  <a href="#glossary">Field glossary</a>
+</nav>
+
+<main class="content">
+<header id="read-first">
+  <p class="meta">For the HABIS Finance API and <code>habbis-front-local</code> frontend</p>
+  <h1>Complete beginner frontend testing handbook</h1>
+  <p class="lead">This is a practical training path for someone who has never used the current HABIS frontend. Follow it from top to bottom on a test database, then repeat individual scenarios using the checklists. Every field is explained in plain language, with an example and the reason the application needs it.</p>
+  <div class="callout warn"><strong>Important:</strong> This guide is for testing. Use fake names, fake phone numbers, fake documents, and test money. Never paste production passwords, OTPs, identity documents, or customer data into a test record.</div>
+  <p><strong>Frontend:</strong> run the Next.js project in <code>~/personal_projects/habbis-front-local</code> and open its local URL (normally <code>http://localhost:3000</code>). <strong>API:</strong> the frontend talks to the configured API proxy; if a page says “network error,” check the frontend <code>.env</code> and the API health first. The sidebar is permission-aware: a missing menu item usually means the signed-in user does not have the required permission.</p>
+  <p class="top"><a href="#read-first">Back to top</a></p>
+</header>
+
+<section id="mental-model">
+  <h2>How the application fits together</h2>
+  <p>HABIS is a financial operations system. Most workflows are deliberately staged. A record may be created as a draft, reviewed, approved, posted, reconciled, or closed. The application often prevents a later step until the earlier step is complete. That is a control, not a bug.</p>
+  <table><thead><tr><th>Concept</th><th>Beginner meaning</th><th>Why it matters while testing</th></tr></thead><tbody>
+    <tr><td>Agency</td><td>A branch or operating unit.</td><td>Most users and financial records are scoped to one agency. A user in Agency A should not see Agency B records.</td></tr>
+    <tr><td>Accounting day</td><td>The business-date container for registrations and close.</td><td>Cash sessions and journals inherit a business date. Keep the target day open while creating or changing financial records; a missing, closed, or closing day blocks most mutating requests.</td></tr>
+    <tr><td>Till</td><td>A physical or logical cash drawer.</td><td>A till must be active and daily-closed before opening a new teller session.</td></tr>
+    <tr><td>Teller session</td><td>One teller's use of one till for one business date.</td><td>Open it, post operations, reconcile cash, then close it.</td></tr>
+    <tr><td>Customer account</td><td>A ledger-backed account belonging to a client.</td><td>Deposits, withdrawals, recoveries, and transfers need a valid active account and correct ledger mapping.</td></tr>
+    <tr><td>Journal entry</td><td>An accounting event with balanced debit and credit lines.</td><td>It may move through draft, submitted, approved, posted, rejected, or reversed states.</td></tr>
+    <tr><td>Public ID</td><td>The long identifier shown by the API, not the internal database integer.</td><td>Support and API examples use public IDs. Copy the entire value when filtering or opening a detail page.</td></tr>
+  </tbody></table>
+  <div class="callout ok"><strong>Golden rule:</strong> When a form asks for a date, amount, agency, account, or person, choose the record that belongs to the same agency and accounting day as the workflow you are testing.</div>
+  <div class="callout warn"><strong>Important order rule:</strong> Before creating or changing reference data, open an accounting day for the required scope. In the current API, denomination, till, sector, sub-sector, operation-code, mapping, and other mutating setup requests are protected by the accounting-day registration lock. A closed, closing, or missing day will block the save even when the user has the feature permission.</div>
+  <div class="card"><strong>Dependency order for a clean first run:</strong> create the agency and staff → open the accounting day → create denominations and ledger accounts → create operation codes and account mappings → create account products → create and verify the client → open the customer account → create the loan product → create, approve, charge, and disburse the loan.<br><strong>Scope exception:</strong> denominations are global (not agency-owned). A platform administrator must open an <code>institution</code>-scoped accounting day before creating them. Agency-scoped days are used for agency-owned financial records.</div>
+</section>
+
+<section id="setup">
+  <h2>Prepare a safe test environment</h2>
+  <h3>Recommended test data</h3>
+  <ul class="check">
+    <li>One platform administrator for setup and permission tests.</li>
+    <li>One agency manager, one teller (the current configuration uses <code>teller</code>; it does not define a separate <code>cashier</code> role), one accountant, one loan officer, and one KYC officer.</li>
+    <li>Two agencies so cross-agency access can be tested.</li>
+    <li>At least two denominations (for example XAF 1,000 and XAF 500). Include a zero-count line when reconciling a zero-balance till.</li>
+    <li>One active cash ledger account per till and the ledger accounts required by deposit, withdrawal, loan, and journal operations.</li>
+    <li>One client with a verified identity document, one guarantor, one proxy, and one active customer account.</li>
+    <li>A loan product with a small amount and short term, such as 100,000 XAF over one month, for quick testing.</li>
+  </ul>
+  <h3>Keep a test log</h3>
+  <p>For each scenario write down: date/time, signed-in user, agency, page, data used, expected result, actual result, screenshot or public ID, and whether the result was expected. This makes a failure reproducible instead of becoming “it did not work.”</p>
+  <div class="card"><strong>Record IDs as you go:</strong> agency public ID, user public ID, till public ID, session public ID, client public ID, account public ID, loan public ID, journal public ID, and batch-run public ID.</div>
+  <h3>Language and amounts</h3>
+  <p>The interface supports English and French. Switch language before testing validation messages. Monetary APIs use <em>minor units</em>; the frontend money field normally displays major units and converts internally. Always verify the displayed currency and the resulting balance. For XAF in this application, confirm the displayed amount rather than guessing whether a field expects cents.</p>
+</section>
+
+<section id="coverage">
+  <h2>Coverage boundary</h2>
+  <div class="callout warn"><strong>Do not mistake this handbook for an API inventory.</strong> It covers the workflows currently reachable from <code>habbis-front-local</code>: dashboard, administration, cash, CRM, credit, accounting, reports, notifications, and backups. The API also contains modules for which this frontend currently has no page.</div>
+  <table><thead><tr><th>Area</th><th>Current handbook coverage</th><th>What is not covered here</th></tr></thead><tbody>
+    <tr><td>Frontend pages</td><td>All currently navigable pages, including their main create, update, review, close, and reporting paths.</td><td>Backend actions that have no corresponding frontend screen.</td></tr>
+    <tr><td>API-only modules</td><td>Not covered by beginner UI steps.</td><td>Currency exchange, HR/payroll, insurance, Islamic finance, and regulatory reporting routes. These require an API client and a separate contract/workflow test plan.</td></tr>
+  </tbody></table>
+  <p>For API-only work, start from the matching route file in <code>routes/api/v1/</code>, inspect the request/response types, seed only synthetic records, and preserve the same accounting-day, agency-scope, approval, audit, and idempotency rules described in this handbook.</p>
+</section>
+
+<section id="roles">
+  <h2>Users, roles, and permissions</h2>
+  <p>A role is a bundle of permissions. A permission answers “may this user perform this action?” A role does not automatically override agency scope. Create separate test users and never use the platform administrator to test ordinary staff behavior.</p>
+  <table><thead><tr><th>Role</th><th>Typical responsibility</th><th>Beginner test focus</th></tr></thead><tbody>
+    <tr><td><code>platform-admin</code></td><td>Institution-wide setup and emergency administration.</td><td>Can select agencies, manage permissions, inspect audit and database operations. Verify that it can see multiple agencies but must still choose the intended target for writes.</td></tr>
+    <tr><td><code>user-admin</code></td><td>Staff-user and role assignment administration.</td><td>Create/activate staff without granting protected platform-admin access. Test forbidden role escalation.</td></tr>
+    <tr><td><code>agency-manager</code></td><td>Agency operations and staff/till oversight.</td><td>Can work inside the assigned agency; cannot read or mutate another agency.</td></tr>
+    <tr><td><code>regional-manager</code></td><td>Read-only institution or regional oversight.</td><td>Compare agency filters and confirm that visibility does not imply write permission.</td></tr>
+    <tr><td><code>teller</code> / <code>cashier</code></td><td>Daily cash operations.</td><td>Open their permitted session, post deposits/withdrawals, reconcile, and close their own session.</td></tr>
+    <tr><td><code>accountant</code></td><td>Accounting days, journals, reports, and controls.</td><td>Start and close days, create/review/post journals, and verify close blockers.</td></tr>
+    <tr><td><code>loan-officer</code></td><td>Client loans and servicing.</td><td>Create loans, generate schedules, prepare the approval path, and follow setup-charge/readiness rules.</td></tr>
+    <tr><td><code>kyc-officer</code></td><td>Identity and KYC review.</td><td>Submit, review, verify, reject, suspend, and archive KYC records according to permissions.</td></tr>
+    <tr><td><code>compliance-officer</code></td><td>Compliance and control review.</td><td>Review KYC and the compliance step of loan approvals; do not assume this role can create loans.</td></tr>
+    <tr><td><code>auditor</code></td><td>Read-only audit and oversight.</td><td>Inspect evidence and reports, then confirm that mutation controls return 403.</td></tr>
+    <tr><td><code>staff</code></td><td>Baseline authenticated staff.</td><td>Verify the minimum visible menu and negative authorization cases.</td></tr>
+  </tbody></table>
+  <h3>Permission test pattern</h3>
+  <ol><li>Sign in as the role under test.</li><li>Confirm the expected menu item appears.</li><li>Try the permitted action in the correct agency.</li><li>Try the same action in another agency and expect an empty result, forbidden response, or validation error.</li><li>Sign in as a role without the permission and confirm the page/action is hidden or returns HTTP 403.</li></ol>
+</section>
+
+<section id="auth">
+  <h2>1. Sign in and activate accounts</h2>
+  <div class="callout ok"><strong>Using the test-staff seeder?</strong> The accounts created by <code>TestStaffAccountsSeeder</code> are already active, phone-verified, and password-ready. Skip the activation wizard for those identities and use the credentials printed by the seeder. Use the activation steps below for a newly invited/pending user.</div>
+  <h3>First activation</h3>
+  <ol><li>Open <strong>Activate account</strong> from the login page.</li><li>Enter the phone number exactly as registered. Spaces are normalized; use the country code consistently, for example <code>+237650000001</code>.</li><li>Request the activation code. In a test environment configured with a log provider, find the OTP in the configured application log or test mail/SMS sink.</li><li>Enter the OTP before it expires and before the maximum failed attempts are consumed.</li><li>Choose a password and confirm it. This step changes the account from <code>pending_verification</code> to <code>active</code>, records phone verification, and records activation time.</li><li>Return to login and sign in with the phone number and new password.</li></ol>
+  <h3>Login fields</h3>
+  <table><thead><tr><th>Field</th><th>What to enter</th><th>Common mistake</th></tr></thead><tbody>
+    <tr><td>Phone</td><td>The registered staff phone number.</td><td>Using a client phone, a number with a missing country code, or a number belonging to a suspended user.</td></tr>
+    <tr><td>Password</td><td>The password created during activation or password reset.</td><td>Repeated wrong attempts trigger rate limiting. Wait for the countdown instead of repeatedly submitting.</td></tr>
+  </tbody></table>
+  <h3>Forgot password</h3><p>Choose <strong>Forgot password</strong>, enter the registered phone, retrieve the password-reset OTP, enter it, and choose a new password. A user must be active and phone-verified for this flow. If the account is suspended or deactivated, an administrator must resolve its status first.</p>
+  <div class="callout warn"><strong>Testing shortcut warning:</strong> manually marking an account active without setting a password does not make it immediately usable. The user must complete password reset before login.</div>
+</section>
+
+<section id="admin">
+  <h2>2. Administration foundation</h2>
+  <h3>Agencies — <code>/admin/agencies</code></h3>
+  <p>Create an agency before creating agency-scoped users, tills, ledgers, clients, or loans.</p>
+  <table><thead><tr><th>Field</th><th>Meaning and example</th></tr></thead><tbody>
+    <tr><td>Code</td><td>Short unique identifier, e.g. <code>AG-TEST-01</code>. Use it in filters and reports.</td></tr>
+    <tr><td>Name</td><td>Human-readable agency name, e.g. <code>Test Branch Bonamoussadi</code>.</td></tr>
+    <tr><td>Region / city</td><td>Location used for directory and reporting context.</td></tr>
+    <tr><td>Branch name / type</td><td>Optional operational description; do not confuse it with the unique agency code.</td></tr>
+    <tr><td>Phone / fax / email</td><td>Agency contact information, not the staff user's login phone.</td></tr>
+    <tr><td>Address / PO box / geographic description</td><td>Location details used for records and printed output.</td></tr>
+    <tr><td>Creation date</td><td>When the agency began operating; it is not the accounting day.</td></tr>
+    <tr><td>Status</td><td><code>active</code> permits operations; inactive, suspended, or archived agencies should be blocked from new work.</td></tr>
+  </tbody></table>
+  <p>For a first run create <code>AG-TEST-01</code> / <code>Test Branch A</code>, city <code>Douala</code>, status <code>active</code>, then optionally create <code>AG-TEST-02</code> / <code>Test Branch B</code> with the same fake contact pattern. Use the agency manager action to assign a manager, then verify the manager can see Agency A but not Agency B.</p>
+  <h3>Account products — <code>/admin/account-products</code></h3>
+  <p>Create the customer-account product before opening customer accounts, but only after opening the target accounting day <em>and</em> creating the matching active ledger account (see Section 7). An account product is the rule template; a customer account is one client's actual account created from that template.</p>
+  <table><thead><tr><th>Field</th><th>Beginner value for the first savings product</th><th>What it controls</th></tr></thead><tbody>
+    <tr><td>Code / name</td><td><code>SAV-TEST-01</code> / <code>Test savings</code></td><td>Unique product label and display name.</td></tr>
+    <tr><td>Agency / currency</td><td>Test Agency A / <code>XAF</code></td><td>Scope and monetary unit. Use the same agency/currency as the client, account, till, and day.</td></tr>
+    <tr><td>Family</td><td><code>savings</code></td><td>Product behavior. Start with savings; test current/recovery separately.</td></tr>
+    <tr><td>Ledger account</td><td><code>2100 — Customer deposits</code></td><td>Accounting bucket selected from the active agency ledger.</td></tr>
+    <tr><td>Minimum balance</td><td><code>0 XAF</code></td><td>Smallest allowed balance.</td></tr>
+    <tr><td>Overdraft</td><td>Off; leave limit blank</td><td>Whether withdrawals may exceed available balance.</td></tr>
+    <tr><td>Ordinary savings / recovery flags</td><td>Ordinary savings on; recovery account and recovery debit off</td><td>Special collection/recovery behavior. Do not enable these until you are testing that workflow.</td></tr>
+    <tr><td>Status</td><td><code>active</code></td><td>Only active products can open new customer accounts.</td></tr>
+  </tbody></table>
+  <p>After saving, record the product public ID and use it to open the test client's account. Do not start with an Islamic, recovery, overdraft, fee-bearing, or multi-currency product; each adds a separate rule that can hide the basic cash workflow.</p>
+  <h3>Staff users — <code>/admin/users</code></h3>
+  <p>Create the user profile, assign the smallest role needed, assign the agency, and have the person complete activation. Test status changes separately: active, pending verification, suspended, and deactivated are not interchangeable.</p>
+  <table><thead><tr><th>Field</th><th>Explanation</th></tr></thead><tbody>
+    <tr><td>Name</td><td>Staff member's display name; it appears in audit, session, and approval screens.</td></tr>
+    <tr><td>Phone / email</td><td>Phone is the login and OTP identity. Email is a contact/OTP channel when configured.</td></tr>
+    <tr><td>Matricule</td><td>Internal staff identifier.</td></tr>
+    <tr><td>Job title / service</td><td>Organizational context; role permissions still control access.</td></tr>
+    <tr><td>Gender / birth date / birth place</td><td>Staff profile data. Use fake values in tests.</td></tr>
+    <tr><td>Portfolio code</td><td>Optional code used to associate a staff member with a portfolio or operational responsibility.</td></tr>
+    <tr><td>Agency</td><td>The user's primary agency scope. A staff-agency assignment may also be shown.</td></tr>
+    <tr><td>Roles</td><td>Permission bundles. Assign one role first, then add another only when testing combined responsibilities.</td></tr>
+  </tbody></table>
+  <div class="callout ok"><strong>Simple staff recipe:</strong> for a first run create one user named <code>Test Teller A</code>, phone <code>+237650000001</code>, email <code>teller.a@example.test</code>, assign Test Agency A and the <code>teller</code> role, then activate it. Repeat with a different phone for the accountant and loan officer. Use the smallest role needed; never give the teller platform-admin just to make a page appear.</div>
+  <h3>Roles — <code>/admin/roles</code></h3><p>Use this page to inspect the permission matrix. For testing, create a deliberately limited role/user and verify that protected pages disappear and direct requests fail. Do not grant every permission to every staff role just to make testing easier; that hides scope bugs.</p>
+  <h3>Audit — <code>/admin/audit</code></h3><p>After each important action, search by actor, event, subject, agency, or date. Confirm the record shows who acted, what changed, when it happened, and a safe description. Audit properties must never contain passwords, OTPs, raw tokens, or unnecessary personal data.</p>
+</section>
+
+<section id="reference">
+  <h2>3. Reference data</h2>
+  <div class="callout warn"><strong>Prerequisite — do this first:</strong> Go to <code>/admin/accounting-day</code> and open the intended scope. For denominations, choose <code>institution</code> in the platform-admin scope selector; an agency-scoped day alone will not satisfy the global denomination request. For agency-owned setup, choose the matching agency. Return here only after the day shows <code>open</code> (or <code>reopened</code>). If you see an error such as <code>accounting_day_missing</code>, <code>accounting_day_closed</code>, or <code>accounting_day_closing</code>, stop and resolve the day status before retrying the form.</div>
+  <h3>Denominations — <code>/settings/denominations</code></h3>
+  <p><strong>Access:</strong> creating or editing a denomination requires <code>cash.denominations.manage</code>. In the current role configuration, this is a platform-administrator setup action; ordinary teller and accountant accounts can use active denominations but cannot create them. Because denominations are global, the platform administrator must have an open institution-scoped day for this save.</p>
+  <p>A denomination is a note or coin that can be counted at session opening, reconciliation, and (when enabled) closing. Create values in the same currency as the till.</p>
+  <table><thead><tr><th>Field</th><th>Example</th><th>Meaning</th></tr></thead><tbody>
+    <tr><td>Code</td><td><code>XAF-1000</code></td><td>Unique reference code.</td></tr>
+    <tr><td>Label</td><td><code>1,000 XAF note</code></td><td>Text shown to staff.</td></tr>
+    <tr><td>Value</td><td><code>1000</code></td><td>Value in the configured money scale.</td></tr>
+    <tr><td>Currency</td><td><code>XAF</code></td><td>Must match the session/till currency.</td></tr>
+    <tr><td>Type</td><td><code>banknote</code> or <code>coin</code></td><td>Describes the physical denomination; it does not change the arithmetic.</td></tr>
+    <tr><td>Status</td><td><code>active</code></td><td>Only active denominations appear in counters.</td></tr>
+  </tbody></table>
+  <h3>Sectors and sub-sectors — <code>/accounting/sectors</code></h3>
+  <p>Create an active sector first, then a sub-sector belonging to it. These are classification/reference data, not ledger accounts and not agencies. They are only needed when a client, loan, or report asks for a sector classification.</p>
+  <table><thead><tr><th>Record</th><th>Beginner example</th><th>Rule</th></tr></thead><tbody>
+    <tr><td>Sector</td><td>Code <code>AGRI</code>, name <code>Agriculture</code>, status <code>active</code></td><td>Create the parent before its sub-sector.</td></tr>
+    <tr><td>Sub-sector</td><td>Parent <code>AGRI</code>, code <code>AGRI-CROP</code>, name <code>Crop farming</code>, status <code>active</code></td><td>Select the active parent; do not reuse a code under the same parent.</td></tr>
+  </tbody></table>
+  <p>Test a duplicate code, an inactive parent, and a wrong-parent selection after the happy path. Do not create dozens of sectors just to populate the dropdown.</p>
+  <h3>Operation codes and mappings — <code>/accounting/operation-codes</code></h3>
+  <p>An operation code names a business event. A mapping supplies the ledger leg(s) for that event. This is an accounting setup screen, not a teller screen; use the platform administrator or a staff user with the operation-code/mapping permissions. For the first cash-and-loan run, use the codes below; they match the workflow names used by the current API. Search first: if a code already exists and is active, reuse it instead of creating a duplicate.</p>
+  <table><thead><tr><th>Code</th><th>Label</th><th>Module</th><th>Operation type</th><th>Direction</th><th>Use it for</th></tr></thead><tbody>
+    <tr><td><code>cash_deposit</code></td><td>Cash deposit</td><td><code>cash</code></td><td><code>cash_deposit</code></td><td><code>debit_credit</code></td><td>Base cash deposit event; physical-cash leg uses the till account.</td></tr>
+    <tr><td><code>cash_withdrawal</code></td><td>Cash withdrawal</td><td><code>cash</code></td><td><code>cash_withdrawal</code></td><td><code>debit_credit</code></td><td>Base cash withdrawal event.</td></tr>
+    <tr><td><code>loan_principal_disbursement</code></td><td>Loan principal disbursement</td><td><code>loan</code></td><td><code>loan_disbursement</code></td><td><code>debit</code></td><td>Debit the loan-principal asset during disbursement.</td></tr>
+    <tr><td><code>loan_repayment_principal</code></td><td>Loan principal repayment</td><td><code>loan</code></td><td><code>loan_repayment</code></td><td><code>credit</code></td><td>Credit the loan-principal asset when principal is repaid.</td></tr>
+    <tr><td><code>loan_repayment_interest</code></td><td>Loan interest repayment</td><td><code>loan</code></td><td><code>loan_repayment</code></td><td><code>credit</code></td><td>Credit interest income when the product charges interest.</td></tr>
+  </tbody></table>
+  <p>For a simple cash deposit/withdrawal, the base cash codes do not replace the customer-account and till ledgers. Create the additional tender codes only when testing cheque or transfer: <code>cash_deposit_cheque</code>, <code>cash_withdrawal_cheque</code>, <code>cash_deposit_transfer</code>, and <code>cash_withdrawal_transfer</code>.</p>
+  <table><thead><tr><th>Mapping field</th><th>What to enter for the first agency XAF mapping</th><th>Why it matters</th></tr></thead><tbody>
+    <tr><td>Operation code</td><td>Select the active code, for example <code>loan_repayment_interest</code>.</td><td>Determines which workflow will use the mapping.</td></tr>
+    <tr><td>Agency</td><td>Select Test Agency A; do not leave it global for the first test.</td><td>Prevents a different branch from supplying the ledger.</td></tr>
+    <tr><td>Debit / credit ledger</td><td>Select the required leg: e.g. debit <code>1200</code> for disbursement or credit <code>4100</code> for interest.</td><td>The UI requires at least one leg; the workflow decides whether debit, credit, or both are required.</td></tr>
+    <tr><td>Currency</td><td><code>XAF</code></td><td>Must match the loan/account/session currency; blank/global is a separate test.</td></tr>
+    <tr><td>Effective from / to</td><td>From the accounting-day business date; leave “to” blank.</td><td>A mapping outside its date window is treated as unavailable.</td></tr>
+    <tr><td>Status / approval</td><td><code>active</code> and <code>approved</code> after the review step.</td><td>Draft, inactive, or unapproved mappings fail readiness even when the accounts are correct.</td></tr>
+  </tbody></table>
+</section>
+
+<section id="cash">
+  <h2>4. Cash operations: the till workflow</h2>
+  <div class="callout danger"><strong>Never skip the order:</strong> accounting day open → till/session open → transactions → no pending transactions → reconciliation with zero difference → session close → accounting-day close. Closing the session before reconciliation creates a day-close blocker.</div>
+  <h3 id="cash-day">Accounting day — <code>/admin/accounting-day</code></h3>
+  <p>For the first run, open <strong>scope = agency</strong>, select <strong>Test Agency A</strong>, and enter the business date shown on the screen (for example <code>2026-07-16</code>). Leave the date empty only when you intentionally want the API to choose the next date. Use <strong>scope = institution</strong> only for global records such as denominations.</p>
+  <ol><li>Choose the agency scope (or institution scope if your role permits it).</li><li>Open a day with the intended business date. The business date is not necessarily today's calendar date.</li><li>Confirm the status is <code>open</code> and registration is allowed.</li><li>During close, use <strong>Start close</strong> first. This runs preflight checks and moves the day to <code>closing</code>.</li><li>Resolve every blocker shown: open sessions, pending cash transactions, unposted journals, missing reconciliations, or failed close-control batches.</li><li>Choose <strong>Close</strong> only after the preflight is clean.</li><li>Use <strong>Cancel close</strong> when a day is in closing but work must continue. Use <strong>Reopen</strong> only with the proper permission and an explicit reason.</li></ol>
+  <h3 id="cash-session">Till setup and teller session — <code>/operations/tills</code> and <code>/operations/sessions</code></h3>
+  <p>Create or inspect a till before opening a session. A till must be <code>active</code> and daily-closed. If it has an assigned user, only that teller can operate it.</p>
+  <table><thead><tr><th>Till field</th><th>Beginner value</th><th>Reason</th></tr></thead><tbody>
+    <tr><td>Code / name / type</td><td><code>TILL-TEST-01</code> / <code>Main test counter</code> / <code>counter</code></td><td>Identifies the drawer; the type is the normal branch counter.</td></tr>
+    <tr><td>Agency / currency</td><td>Test Agency A / <code>XAF</code></td><td>Must match the accounting day, teller, ledger, and customer account.</td></tr>
+    <tr><td>Assigned teller</td><td><code>Test Teller A</code></td><td>Optional, but assigning it makes the ownership rule testable.</td></tr>
+    <tr><td>Cash ledger account</td><td><code>1000 — Cash till</code></td><td>Required for posting; it must be active, asset-class, and agency-matching.</td></tr>
+    <tr><td>Requires denominations</td><td>On for the first physical-cash test</td><td>Forces opening/reconciliation/closing counts, which is the safest way to test the till controls.</td></tr>
+    <tr><td>Limits / central till</td><td>Leave limits blank; central till off</td><td>Add limits or central-till behavior only in a separate scenario.</td></tr>
+    <tr><td>Status</td><td><code>active</code></td><td>Inactive tills cannot open sessions.</td></tr>
+  </tbody></table>
+  <table><thead><tr><th>Session field</th><th>What it means</th><th>Example</th></tr></thead><tbody>
+    <tr><td>Till</td><td>The drawer being used.</td><td><code>COUNTER-01 — Main counter</code></td></tr>
+    <tr><td>Teller</td><td>The staff member responsible for this session.</td><td>Select the assigned teller when the till locks the field.</td></tr>
+    <tr><td>Business date</td><td>The accounting day that owns the session.</td><td><code>2026-07-16</code></td></tr>
+    <tr><td>Opening declaration</td><td>Cash physically present when the session starts.</td><td><code>50,000 XAF</code>, or the total of denomination lines.</td></tr>
+    <tr><td>Denomination counts</td><td>Number of each note/coin. Required when the till requires denominations.</td><td>10 × 5,000 + 5 × 1,000 = 55,000.</td></tr>
+    <tr><td>Currency</td><td>Currency of the till and session.</td><td><code>XAF</code>; never reconcile in another currency.</td></tr>
+  </tbody></table>
+  <h3 id="cash-tx">Deposits, withdrawals, and pending operations</h3>
+  <p>Use <code>/operations/transactions</code> to inspect the list and the session detail/actions to create a transaction. A deposit increases till cash; a withdrawal decreases it. The customer account, agency, currency, operation code, and ledger mapping must agree.</p>
+  <table><thead><tr><th>Transaction field</th><th>Plain-language explanation</th></tr></thead><tbody>
+    <tr><td>Customer account</td><td>The account receiving or providing the money.</td></tr><tr><td>Amount</td><td>The financial amount, not a fee or a display-only figure.</td></tr><tr><td>Currency</td><td>Must match the session and account currency.</td></tr><tr><td>Operation code</td><td>Business reason used to select ledger mapping.</td></tr><tr><td>Cash amount / tender</td><td>Physical cash portion used to compute the till balance.</td></tr><tr><td>Initiator</td><td>Holder, proxy, staff-on-behalf, or system. This explains who requested the operation.</td></tr><tr><td>Reference / idempotency key</td><td>Reference for search and a unique key that prevents accidental duplicate posting.</td></tr><tr><td>Description</td><td>Human explanation; do not put passwords or sensitive secrets here.</td></tr>
+  </tbody></table>
+  <div class="card"><strong>First deposit example:</strong> choose the customer's active XAF savings account, amount <code>10,000 XAF</code>, currency <code>XAF</code>, operation code <code>cash_deposit</code>, payment method <code>cash</code>, cash amount <code>10,000 XAF</code>, denomination count <code>10 × XAF-1000</code>, initiator <code>holder</code>, description <code>Test deposit</code>, and idempotency key <code>deposit-test-001</code>. Submit once, then inspect the posted transaction and journal. Reusing the same key should return the existing operation; changing the amount with that key should fail.</div>
+  <p>Before closing, every transaction must be posted, reversed, or cancelled. A status such as <code>pending</code> or <code>pending_review</code> blocks close.</p>
+  <h3 id="cash-recon">Reconciliation, then close</h3>
+  <ol><li>Open the session's reconciliation action.</li><li>Count the physical cash by denomination. The total must equal the session's current theoretical balance.</li><li>Enter a note explaining unusual circumstances, not a secret.</li><li>Submit and confirm <code>balanced</code> and difference <code>0</code>.</li><li>Open the session close action. For a denomination-required till, enter the same physical count; otherwise enter the closing amount.</li><li>The closing declaration must equal the posted theoretical balance. The API now also requires a current balanced reconciliation, so the sequence is enforced server-side.</li></ol>
+  <div class="card"><strong>Example:</strong> opening cash 50,000 + deposits 20,000 − withdrawals 5,000 = theoretical 65,000. Count notes that total exactly 65,000, record reconciliation, then close with 65,000.</div>
+  <div class="callout warn"><strong>Zero-balance example:</strong> reconciliation still requires at least one denomination line in the frontend/API. Select an active denomination and enter count <code>0</code>. The actual total is zero; then close with amount zero.</div>
+  <h3>Cash inspection — <code>/operations/inspection</code></h3><p>Use inspection to filter sessions by date, till, teller, and status, open a session detail, compare opening/closing declarations and timestamps, and review its reconciliation history. For an open session, the inspection page can create a reconciliation when your role has <code>cash.reconciliations.manage</code>; use it to reproduce the same balanced/unbalanced cases before attempting close.</p>
+</section>
+
+<section id="crm">
+  <h2>5. Clients and customer accounts</h2>
+  <h3>Clients — <code>/clients</code></h3>
+  <p>Create a client before an account or loan. Test the complete KYC lifecycle, not only the happy path.</p>
+  <table><thead><tr><th>Field group</th><th>What it is for</th></tr></thead><tbody>
+    <tr><td>Client reference</td><td>Internal unique customer number.</td></tr><tr><td>First/middle/last name</td><td>Legal/display identity.</td></tr><tr><td>Phone/email</td><td>Contact information; use test values.</td></tr><tr><td>Birth date/place, gender, nationality</td><td>Identity and demographic profile.</td></tr><tr><td>Address, city, region, occupation</td><td>Contact and customer-profile context.</td></tr><tr><td>Agency</td><td>Operational ownership and scope.</td></tr><tr><td>Status</td><td><code>active</code>, <code>inactive</code>, <code>suspended</code>, or <code>archived</code>.</td></tr><tr><td>KYC status</td><td>Whether identity review is pending, submitted, verified, rejected, or suspended.</td></tr><tr><td>Collection frequency</td><td>Expected repayment/collection cadence where applicable.</td></tr>
+  </tbody></table>
+  <div class="card"><strong>First client example:</strong> create <code>Test Client A</code> in Test Agency A with phone <code>+237690000001</code>, email <code>client.a@example.test</code>, birth date <code>1990-01-01</code>, city <code>Douala</code>, region <code>Littoral</code>, occupation <code>Trader</code>, and fake address <code>1 Test Street</code>. Leave collection agent, photo, and optional family fields blank until the basic KYC/account path works.</div>
+  <h3>Identity documents and KYC</h3>
+  <p>Attach a document with type, number, issue/expiry dates, issuing country/authority, and status. For a harmless test record, use type <code>passport</code> (the catalog requires one face), number <code>TEST-PASS-0001</code>, country <code>CM</code>, authority <code>Test authority</code>, issue date <code>2025-01-01</code>, expiry date <code>2030-01-01</code>, and a synthetic test file. Never upload a real identity document. If you choose <code>national_id</code> instead, upload both front and back faces because verification requires both.</p>
+  <p>Verify at least one identity document, then submit the client KYC for review. A different checker must verify the client; self-verification is blocked unless the protected override permission and a reason are supplied. Exercise reject, suspend, archive, and resubmit transitions. A loan or customer account requires both an active client and <code>kyc_status=verified</code>, not merely an active client.</p>
+  <h3>Guarantors, proxies, and guarantees</h3><p>A guarantor is a person or organization supporting a client. A proxy is authorized to act for a client. A guarantee obligation connects a guarantor/proxy to a loan or account and has its own amount, status, and release lifecycle. Test expiry, revocation, wrong-client links, and unauthorized actions.</p>
+  <p>The standalone directories at <code>/guarantors</code> and <code>/proxies</code> are read/filter views; create and verify records from the client detail tabs. Confirm that opening a directory does not grant permission to edit another agency's record.</p>
+  <h3>Customer accounts — <code>/accounts</code></h3>
+  <table><thead><tr><th>Field</th><th>Explanation</th></tr></thead><tbody>
+    <tr><td>Account number / title</td><td>Human-facing identifier and name.</td></tr><tr><td>Client</td><td>Owner of the account.</td></tr><tr><td>Product</td><td>Defines family/rules such as savings, current, recovery, or Islamic.</td></tr><tr><td>Ledger account</td><td>Where the accounting balance is posted.</td></tr><tr><td>Agency / currency</td><td>Operational and monetary scope.</td></tr><tr><td>Opening date / status</td><td>Lifecycle start and active/suspended/closed/archive state.</td></tr><tr><td>Signatures</td><td>Authorized holders/proxies. Verify before testing withdrawals or proxy operations.</td></tr><tr><td>Holds</td><td>Reserved money that reduces available balance without changing accounting balance until posted/released.</td></tr>
+  </tbody></table>
+  <p>For the first account, choose the <code>Test savings</code> product, use currency <code>XAF</code>, opening date equal to the open accounting day, status <code>active</code>, and ledger <code>2100 — Customer deposits</code>. Leave holds and extra signatures empty until the basic deposit works. After creation, test balance, available balance, statement, signatures, holds, and a transaction. Confirm that an active hold reduces available balance but does not silently rewrite the accounting balance.</p>
+  <h3>Global client image — <code>/accounting/global-client-image</code></h3><p>Search for one client and compare the consolidated identity/KYC status, accounts and available balances, loans, guarantors, proxies, and identity documents with their individual detail pages. This is a read-only reconciliation view; investigate any stale or missing child record instead of editing the summary.</p>
+</section>
+
+<section id="credit">
+  <h2>6. Credit lifecycle</h2>
+  <h3>Loan products — <code>/credit/loan-products</code></h3>
+  <p>Define the rules before creating a loan. For the first happy path, create a deliberately boring product so an accounting or penalty rule does not obscure the basic lifecycle:</p>
+  <table><thead><tr><th>Field</th><th>Starter value</th><th>Why</th></tr></thead><tbody>
+    <tr><td>Code / name</td><td><code>LP-TEST-01</code> / <code>Small test loan</code></td><td>Unique product label.</td></tr>
+    <tr><td>Guarantor / collateral required</td><td>Off / off</td><td>Lets you test approval and disbursement before testing guarantees and collateral.</td></tr>
+    <tr><td>Term</td><td>Minimum <code>1</code>, maximum <code>1</code>, unit <code>month</code></td><td>One short schedule is easy to inspect.</td></tr>
+    <tr><td>Repayment frequency</td><td><code>monthly</code> only</td><td>Do not enable every frequency on the first product.</td></tr>
+    <tr><td>Amount limits</td><td>Minimum <code>10,000 XAF</code>, maximum <code>100,000 XAF</code></td><td>Use a small amount that can be funded by the test till.</td></tr>
+    <tr><td>Due date / grace</td><td>Due day <code>25</code>; minimum and maximum grace <code>0</code></td><td>Removes date ambiguity from the first schedule.</td></tr>
+    <tr><td>Interest, tax, insurance, fee</td><td>All <code>0</code> for the first product</td><td>Then only principal mapping is needed. Add a second product with interest later.</td></tr>
+    <tr><td>Penalty / guarantee deposit</td><td>Leave blank/off</td><td>These are separate workflows and require additional mappings.</td></tr>
+    <tr><td>Ledger account</td><td><code>1200 — Loans principal</code></td><td>Receivable asset used by the loan product.</td></tr>
+    <tr><td>Policy switches / status</td><td>Leave optional policies off; status <code>active</code></td><td>Only enable an approved policy when testing that calculation.</td></tr>
+  </tbody></table>
+  <p>Use the formula-policy catalog shown by the form. If a policy is shown as unapproved, leave its switch off; do not invent a policy key to make the product save.</p>
+  <h3>Loan creation — <code>/credit/loans</code></h3>
+  <p>Choose the verified client and <code>LP-TEST-01</code>. For a first loan use requested amount <code>50,000 XAF</code>, currency <code>XAF</code>, applied date equal to the open business date, one installment, first installment date one month later, tranche duration <code>30</code> days, grace period <code>0</code>, and total loan duration <code>30</code> days. Select the <code>loan-officer</code> as credit agent, purpose <code>Test working capital</code>, sector <code>AGRI</code>, sub-sector <code>AGRI-CROP</code>, financed activity code <code>TEST-CROP-01</code>, and a fake activity/entrepreneur address. Link the client's savings account only where the field is required; leave unpaid/recovery/transfer accounts empty until those paths are tested. A loan is not automatically disbursed when created.</p>
+  <h3>Approval decision — <code>/credit/decision</code></h3><p>Follow the displayed visa/approval step. A maker should submit; the correct reviewer approves, rejects, or returns. The required sequence is:</p>
+  <table><thead><tr><th>Step</th><th>Configured staff role</th><th>What to verify</th></tr></thead><tbody>
+    <tr><td><code>montage</code></td><td><code>loan-officer</code></td><td>Moves an application into review.</td></tr>
+    <tr><td><code>comptabilite</code></td><td><code>accountant</code></td><td>Reviews the accounting stage after montage.</td></tr>
+    <tr><td><code>controle</code></td><td><code>compliance-officer</code></td><td>Reviews the control stage after comptabilité.</td></tr>
+    <tr><td><code>direction</code></td><td><code>agency-manager</code></td><td>Provides the final direction decision and can move the loan to approved.</td></tr>
+  </tbody></table>
+  <div class="callout warn"><strong>Permission trap:</strong> every non-platform approver needs both <code>loans.update</code> and <code>loans.approvals.&lt;step&gt;</code>, plus agency scope. The current configured accountant and compliance-officer roles have their stage permission but not <code>loans.update</code>; the test-staff seeder grants that permission directly to those test identities. A production role will otherwise receive 403 until its role definition is corrected.</div>
+  <p>Test that approvals are sequential, a stage cannot be repeated, the same user cannot improperly skip required steps or approve their own work when separation of duties is enforced, and reject/return decisions include a useful comment.</p>
+  <h3>Schedule and setup charges</h3><ol><li>Generate the schedule after the loan reaches the state that permits it.</li><li>Inspect principal, interest, due dates, totals, and final rounding. For <code>LP-TEST-01</code>, expect principal 50,000 XAF, one installment, and zero interest/fees.</li><li>Open setup-charge readiness. With the starter product, there should be no required charge. If you create a fee-bearing product later, assess the charge before disbursement.</li><li>Collect a charge from an eligible customer account or open teller cash session only when the product requires it; follow the approved exception/waiver flow if permitted.</li></ol>
+  <h3>Disbursement — <code>/credit/disbursement</code></h3><p>For the first test choose the <strong>cash</strong> channel, select the open session/till, and disburse 50,000 XAF only after the till has at least that much posted cash. The till must be active, open, agency-matching, ledger-mapped, and have sufficient balance. For a transfer test, first link an active customer account belonging to the same client, agency, and currency. Confirm the loan status, journal, teller transaction (cash), account balance (transfer), notification, and audit event.</p>
+  <h3>Loan transfers — <code>/credit/transfers</code></h3><p>Select one eligible loan, choose an active manager in the same agency, enter a reason such as <code>Portfolio balancing</code>, and use the open business date. Preview before submitting. Test that disbursed/closed-ineligible statuses, inactive or wrong-agency targets, blank reasons, and duplicate submissions are rejected.</p>
+  <h3>Delinquencies and recovery — <code>/credit/delinquencies</code></h3><p>Select a client first, then a loan that is overdue or otherwise recoverable. For a tracking use a follow-up date four days after the open business date, reason <code>Payment reminder</code>, an appointment one day later, promised amount <code>5,000 XAF</code>, currency <code>XAF</code>, and a factual comment. Use <strong>Recoveries</strong> for attempts, enter an amount only when money was actually recovered, and distinguish failed from succeeded attempts. The page disables recovery for loans that are not in a recoverable status.</p>
+  <h3>Collateral management — <code>/credit/collaterals</code></h3><p>Keep collateral off for the starter loan. For a separate collateral test, create one record for the loan with type <code>movable</code>, owner <code>Test Client</code>, valuation date equal to the business date, declared value <code>150,000 XAF</code>, currency <code>XAF</code>, and a description such as <code>Test motorbike — no real asset</code>. Then add its item/evidence record. Test real-estate and personal-guarantee types separately; release only after the loan is closed and the permission allows it.</p>
+  <h3>Repayments and write-offs</h3><p>The current frontend has no standalone repayment or write-off page. Treat these as API-only workflows until a frontend route is added; do not claim that the loan pages alone exercise them. Use the corresponding backend route tests with synthetic data and preserve accounting-day, balance, allocation, and authorization checks.</p>
+</section>
+
+<section id="accounting">
+  <h2>7. Accounting and journals</h2>
+  <h3>Ledger accounts — <code>/accounting/ledger-accounts</code></h3>
+  <p>A ledger account is a shared accounting bucket, not a customer record. You do <strong>not</strong> create one account for every customer, loan, or denomination. Create a small chart for the agency you are testing, then link the relevant account to a till, account product, loan product, or operation mapping.</p>
+  <div class="callout warn"><strong>Before you click Create:</strong> keep an accounting day open for the target agency. In the current safe slice every new ledger account must be attached to an agency. A platform administrator must explicitly select the target agency; leaving the agency blank will be rejected. Create the parent accounts first, but leave <strong>Parent</strong> blank for the starter chart unless you already have a deliberate hierarchy.</div>
+  <h3>The starter chart for a complete beginner</h3>
+  <p>Use these example codes and names for one XAF agency. Codes are your institution's labels, so another numbering scheme is fine; the important parts are the purpose, class, normal side, and where you link the account. Start with the first four rows for a cash-and-basic-loan test. Add the optional rows only when the workflow actually uses them.</p>
+  <table><thead><tr><th>Code / name to enter</th><th>Class</th><th>Normal side</th><th>What it represents</th><th>Where you use it</th><th>When needed</th></tr></thead><tbody>
+    <tr><td><code>1000</code> — Cash till</td><td>Asset</td><td>Debit</td><td>Physical cash held by a till.</td><td>Assign one active account to each till.</td><td><strong>Required</strong> before opening a session or posting cash.</td></tr>
+    <tr><td><code>2100</code> — Customer deposits</td><td>Liability</td><td>Credit</td><td>Money the institution owes to customers in savings/current accounts.</td><td>Select it as the ledger account when creating the customer-account product.</td><td><strong>Required</strong> before opening a customer account or testing a deposit/withdrawal.</td></tr>
+    <tr><td><code>1200</code> — Loans principal</td><td>Asset</td><td>Debit</td><td>Principal still owed to the institution by borrowers.</td><td>Select it on the loan product; it can also be the debit leg of <code>loan_principal_disbursement</code>.</td><td><strong>Required</strong> for loan creation/disbursement and repayment tests.</td></tr>
+    <tr><td><code>4100</code> — Interest income</td><td>Revenue</td><td>Credit</td><td>Interest earned from loans.</td><td>Credit leg of <code>loan_repayment_interest</code> mapping.</td><td>Required when the schedule has interest and you test repayment.</td></tr>
+    <tr><td><code>4200</code> — Fee income</td><td>Revenue</td><td>Credit</td><td>Application, setup, or service fees retained by the institution.</td><td>Credit leg of <code>loan_repayment_fees</code> or a fee mapping.</td><td>Optional until you test setup charges or fees.</td></tr>
+    <tr><td><code>2200</code> — Tax payable</td><td>Liability</td><td>Credit</td><td>Tax collected and owed to the authority.</td><td>Credit leg of <code>loan_repayment_tax</code> or tax mapping.</td><td>Optional until tax is enabled in the product.</td></tr>
+    <tr><td><code>2300</code> — Guarantee deposits</td><td>Liability</td><td>Credit</td><td>Guarantee money held on behalf of a customer or guarantor.</td><td>Guarantee/deposit mapping.</td><td>Optional; create it only for guarantee workflows.</td></tr>
+    <tr><td><code>5100</code> — Operating expense</td><td>Expense</td><td>Debit</td><td>An expense paid by the institution.</td><td>Manual journal tests and expense mappings.</td><td>Optional; not needed for the first cash or loan happy path.</td></tr>
+  </tbody></table>
+  <div class="callout ok"><strong>Why these debit/credit choices?</strong> Assets and expenses normally increase on the debit side. Liabilities, equity, and revenue normally increase on the credit side. The normal side is a validation and reporting hint; it does not mean “money in” or “money out.”</div>
+  <h3>Use the chart to picture a transaction</h3>
+  <p>The examples below use 10,000 XAF and the starter chart. They show the direction you should expect in the posted journal, not extra accounts you must create. A real entry may include additional fee, tax, insurance, or penalty lines.</p>
+  <table><thead><tr><th>Workflow</th><th>Debit</th><th>Credit</th><th>What changed in plain language</th></tr></thead><tbody>
+    <tr><td>Cash deposit</td><td><code>1000</code> Cash till — 10,000</td><td><code>2100</code> Customer deposits — 10,000</td><td>The till received cash; the institution now owes that balance to the customer.</td></tr>
+    <tr><td>Cash withdrawal</td><td><code>2100</code> Customer deposits — 10,000</td><td><code>1000</code> Cash till — 10,000</td><td>The customer's deposit liability went down; the till paid cash out.</td></tr>
+    <tr><td>Cash loan disbursement</td><td><code>1200</code> Loans principal — 10,000</td><td><code>1000</code> Cash till — 10,000</td><td>The borrower now owes principal; the till paid it out.</td></tr>
+    <tr><td>Repayment from the customer account</td><td><code>2100</code> Customer deposits — 10,000</td><td><code>1200</code> Loans principal and/or <code>4100</code> Interest income</td><td>The customer's account is debited and the repayment is allocated to principal and interest.</td></tr>
+  </tbody></table>
+  <div class="callout warn"><strong>Testing boundary:</strong> this is a starter chart for synthetic testing, not a production accounting policy. Have your institution's accountant approve the final chart, tax treatment, interest treatment, and mapping before using real financial data.</div>
+  <h3>Exactly how to create the starter chart</h3>
+  <ol>
+    <li>Sign in as <code>platform-admin</code> or an authorized accounting user and open the accounting day for the agency you will test.</li>
+    <li>Open <code>/accounting/ledger-accounts</code> and choose <strong>Create</strong>. For each row above enter the code, name, class, and normal side; choose the same agency every time; set <strong>Status</strong> to <code>active</code>; leave <strong>Account type</strong> and <strong>Parent</strong> blank for the first pass.</li>
+    <li>Open the account-product page and create a savings/current product linked to <code>2100</code>. Create a loan product linked to <code>1200</code>. Do not link a product to an inactive account or to an account from another agency.</li>
+    <li>Create the till and assign <code>1000</code> as its cash ledger account. If you have two tills, create two cash accounts (for example <code>1000-A</code> and <code>1000-B</code>) so their balances cannot be confused.</li>
+    <li>For a simple cash deposit/withdrawal, the till account plus the customer-account ledger are sufficient. For cheque or transfer tenders, create active, approved mappings for <code>cash_deposit_cheque</code>, <code>cash_withdrawal_cheque</code>, <code>cash_deposit_transfer</code>, or <code>cash_withdrawal_transfer</code> as applicable.</li>
+    <li>For loans, open the mappings tab and use the readiness result. A typical loan setup needs an approved active debit mapping for <code>loan_principal_disbursement</code> pointing to <code>1200</code>, plus credit mappings for each repayment component you enabled: <code>loan_repayment_principal</code>, <code>loan_repayment_interest</code>, <code>loan_repayment_fees</code>, <code>loan_repayment_tax</code>, and <code>loan_repayment_penalty</code>. Link each to the matching asset, revenue, or liability account and use the same agency, currency, and effective date as the loan.</li>
+    <li>Run one small cash deposit first, then inspect the journal: the till is debited and the customer-deposit ledger is credited. Only after that works should you add fees, taxes, non-cash tenders, or loan repayment mappings.</li>
+  </ol>
+  <h3>What each form field means</h3>
+  <table><thead><tr><th>Field</th><th>Plain-language answer</th><th>Safe first value</th></tr></thead><tbody>
+    <tr><td><strong>Code</strong></td><td>Short unique label used in searches and reports. It cannot be changed after creation.</td><td><code>1000</code>, <code>2100</code>, <code>1200</code>.</td></tr>
+    <tr><td><strong>Name</strong></td><td>Human-readable description.</td><td><code>Cash till</code> or <code>Customer deposits</code>.</td></tr>
+    <tr><td><strong>Class</strong></td><td>Broad accounting category: asset, liability, equity, revenue, or expense.</td><td>Use the class shown in the starter chart; the UI calls income <code>revenue</code>.</td></tr>
+    <tr><td><strong>Account type</strong></td><td>Optional local detail such as <code>cash</code>, <code>loan_principal</code>, or <code>customer_deposit</code>. It does not create behavior by itself.</td><td>Leave blank on the first pass.</td></tr>
+    <tr><td><strong>Agency</strong></td><td>The branch that owns the account and its postings.</td><td>Always select the agency used by the till, product, loan, and journal.</td></tr>
+    <tr><td><strong>Parent</strong></td><td>Optional grouping account for a chart hierarchy.</td><td>Leave blank until the flat chart works.</td></tr>
+    <tr><td><strong>Normal balance side</strong></td><td>Side on which this class normally carries a balance; it is not a transaction direction.</td><td>Debit for assets/expenses; credit for liabilities/equity/revenue.</td></tr>
+    <tr><td><strong>Status</strong></td><td>Whether new postings may use the account.</td><td><code>active</code>.</td></tr>
+  </tbody></table>
+  <div class="callout danger"><strong>Do not create an account just to make an error disappear.</strong> If a mapping says “missing,” first check that the operation code exists, the mapping is active and approved, both legs required by that workflow are present, the effective date includes the accounting day, the currency matches, and every selected ledger belongs to the agency. Creating duplicate accounts makes later reports harder to reconcile.</div>
+  <p>After creating each account, open its detail and record its public ID, code, agency, class, normal side, and status. Test the account detail, balance, movements, and statement. Archive/delete should be blocked when dependent mappings or posted entries exist.</p>
+  <h3>Journal entries — <code>/accounting/journal-entries</code></h3><ol><li>Create the header: reference, business date, agency, description, and optional source/context.</li><li>Add at least one debit line and one credit line. Each line needs a ledger account, side, amount, and memo.</li><li>Confirm total debits equal total credits exactly.</li><li>Submit, approve, and post using the permitted roles. Test reject, return, and reverse separately.</li><li>Inspect the journal and ledger movements after posting.</li></ol>
+  <table><thead><tr><th>Journal field</th><th>Meaning</th></tr></thead><tbody><tr><td>Reference</td><td>Unique human-searchable business identifier.</td></tr><tr><td>Business date</td><td>Date used for accounting-day and reports.</td></tr><tr><td>Agency</td><td>Operational scope; must match the selected accounts and user scope.</td></tr><tr><td>Side</td><td>Debit or credit; it is not “money in/out” by itself.</td></tr><tr><td>Amount</td><td>Line amount. The entry must balance, not merely have a plausible total.</td></tr><tr><td>Memo</td><td>Explanation of that line.</td></tr></tbody></table>
+  <div class="card"><strong>Safe manual-journal example:</strong> reference <code>MANUAL-TEST-001</code>, business date = the open day, agency = Test Agency A, description <code>Test cash expense</code>; debit <code>5100 — Operating expense</code> for <code>5,000 XAF</code> with memo <code>Test expense</code>; credit <code>1000 — Cash till</code> for <code>5,000 XAF</code> with memo <code>Test cash paid</code>. Use a test-only expense account and never post this against real money. If the page requires a source/context, choose the manual-journal option.</div>
+  <p>Posting is a controlled transition: the creator submits, an authorized reviewer approves, and the permitted poster posts. If the page hides an action, use the role/permission matrix rather than adding permissions blindly. Reversal creates a compensating entry; it does not erase the posted journal.</p>
+  <h3>Batch procedures and runs — <code>/settings/batch</code></h3>
+  <p>A procedure is a registered job definition; a run is one execution for a business date and agency. For a safe first test, create or reuse <code>cash_close_verification</code> with name <code>Cash close test</code>, description <code>Verify test sessions before close</code>, schedule <code>manual</code>, and empty metadata. The other executable starter codes are <code>accounting_close_verification</code>, <code>loan_arrears_assessment</code>, <code>loan_monthly_arrears_penalty</code>, and <code>loan_portfolio_report_hook</code>. Do not invent a code: a procedure may save but fail every run if the backend has no handler.</p>
+  <p>Run it for the open business date and Test Agency A. Confirm the run status and error details, then test retry/cancel only on a deliberately failed or long-running test. Cash close verification checks sessions closed and reconciled; accounting close verification checks accounting controls.</p>
+</section>
+
+<section id="reports">
+  <h2>8. Reports, audit, notifications, and backups</h2>
+  <h3>Dashboard and reports</h3><p>Use the dashboard first to establish a baseline. Then compare the relevant report with the underlying detail: <code>/reports/par</code> (portfolio at risk), <code>/reports/journal</code>, <code>/reports/cash-draft</code>, <code>/reports/exigible</code>, and <code>/reports/balance</code>. Filter by agency, date, currency, and status. A report total should be explainable from posted records, not pending drafts. <code>/reports/release</code> is visible in the source navigation but intentionally unavailable in the current frontend; do not use it as a test step.</p>
+  <h3>Notifications — <code>/notifications</code></h3><p>Open the notification bell and notification page after actions such as session open/close, reconciliation accepted/rejected, loan decisions, and batch failures. Mark one notification read and then mark all read. Verify unread count changes and confirm that marking read does not alter the underlying financial record.</p>
+  <h3>Database backups — <code>/database/backups</code></h3><p>Test only with an authorized administrator. Create a backup, wait for its status, verify it, inspect storage metadata, and test the restore plan in dry-run or verify-only mode before any replace/restore action. A restore can destroy current data; never test replace against the only copy of a database.</p>
+  <div class="callout danger"><strong>Do not use production credentials in this handbook, screenshots, browser history, issue tickets, or examples.</strong> Redact phone numbers, emails, tokens, OTPs, and customer identity documents.</div>
+</section>
+
+<section id="test-matrix">
+  <h2>9. Complete test matrix</h2>
+  <p>Run each row once as the happy path and once as an authorization/validation failure. Tick the row only when the UI result, API status, database record, audit event, and notification (where applicable) agree.</p>
+  <table><thead><tr><th>Area</th><th>Happy path</th><th>Failure/edge cases</th><th>Evidence to keep</th></tr></thead><tbody>
+    <tr><td>Auth</td><td>Activate, login, reset password.</td><td>Wrong OTP, expired OTP, suspended account, rate limit.</td><td>Successful user status and safe audit event.</td></tr>
+    <tr><td>Agency/staff</td><td>Create agency, manager, staff, roles.</td><td>Duplicate code, inactive agency, missing assignment, forbidden role.</td><td>Public IDs, role view, 403/validation response.</td></tr>
+    <tr><td>Reference/setup</td><td>Open day, create account product, denominations, till, sectors, and mappings.</td><td>Closed/missing day, duplicate code, inactive ledger/parent, wrong currency, missing permission.</td><td>Created public IDs, active statuses, and a reproducible prerequisite sequence.</td></tr>
+    <tr><td>Accounting day</td><td>Open → start close → close.</td><td>Unposted journal, open session, pending transaction, failed batch, cancel close, reopen.</td><td>Blocker summary and final status.</td></tr>
+    <tr><td>Till/session</td><td>Open with opening declaration, transact, reconcile, close.</td><td>Wrong teller, duplicate open, wrong currency, wrong closing amount, no/stale reconciliation.</td><td>Session summary, reconciliation, till state.</td></tr>
+    <tr><td>Cash transaction</td><td>Deposit and withdrawal with correct mapping.</td><td>Insufficient balance, wrong account, wrong currency, duplicate idempotency key, pending/reversal.</td><td>Transaction, journal, account/till balance.</td></tr>
+    <tr><td>CRM/KYC</td><td>Client → document → verify → account.</td><td>Expired document, reject, suspend, cross-agency client, missing signature.</td><td>KYC status and audit.</td></tr>
+    <tr><td>Client image/inspection</td><td>Reconcile consolidated client and session inspection views with detail records.</td><td>Stale child data, wrong agency, unbalanced reconciliation, forbidden inspection write.</td><td>Compared public IDs, balances, statuses, and reconciliation history.</td></tr>
+    <tr><td>Credit</td><td>Product → loan → approval → schedule → charges → disbursement.</td><td>Skipped approval, self-approval, missing mapping, unpaid charge, cash shortage.</td><td>Approval trail, schedule, journal, disbursement.</td></tr>
+    <tr><td>Accounting</td><td>Balanced journal submit/approve/post.</td><td>Unbalanced lines, wrong agency, duplicate reference, reverse posted entry.</td><td>Journal status and ledger movements.</td></tr>
+    <tr><td>Reports/audit</td><td>Filter and reconcile totals.</td><td>Wrong date/agency, pending records included, unauthorized visibility.</td><td>Saved filters/screenshots and public IDs.</td></tr>
+    <tr><td>API-only modules</td><td>Run separately with an API client and synthetic fixtures.</td><td>Wrong scope, missing day, invalid transition, duplicate idempotency key.</td><td>Request/response captures with secrets redacted and audit IDs.</td></tr>
+  </tbody></table>
+  <h3>Repeatable “clean day” exercise</h3><ol><li>Open one accounting day for Test Agency A.</li><li>Create/verify a test client and active account.</li><li>Open one till session with a small opening balance.</li><li>Post one deposit and one withdrawal.</li><li>Inspect account, till, transaction, journal, notification, and audit records.</li><li>Cancel or reverse any intentionally pending/error test transaction.</li><li>Reconcile exact physical cash.</li><li>Close the teller session.</li><li>Create and post any required accounting journal.</li><li>Start close, inspect blockers, resolve them, and close the accounting day.</li><li>Repeat the same steps with Agency B and prove that Agency A users cannot see B.</li></ol>
+</section>
+
+<section id="troubleshooting">
+  <h2>10. Troubleshooting</h2>
+  <table><thead><tr><th>What you see</th><th>Likely cause</th><th>What to check</th></tr></thead><tbody>
+    <tr><td>Menu item is missing</td><td>Role lacks the page permission, or the item is intentionally unavailable.</td><td>Inspect the role permission matrix. The reports release page is currently marked unavailable in the frontend.</td></tr>
+    <tr><td>HTTP 403 / forbidden</td><td>Permission or agency scope failure.</td><td>Signed-in user, role, active agency assignment, and target agency.</td></tr>
+    <tr><td>HTTP 422 / field error</td><td>Business rule or validation failure.</td><td>Read the field key literally; correct the record rather than retrying blindly.</td></tr>
+    <tr><td>Cannot open a teller session</td><td>Till inactive/open, teller already has an open session, wrong assignment, or accounting day unavailable.</td><td>Till status/daily state, teller status/role, assignment, and day status.</td></tr>
+    <tr><td>Cannot close a teller session</td><td>Pending transaction, wrong amount, wrong denomination total, wrong currency, or missing/stale reconciliation.</td><td>Session summary, transaction statuses, reconciliation difference, and current theoretical balance.</td></tr>
+    <tr><td>Cannot close accounting day</td><td>Open sessions, unreconciled closed sessions, pending cash, unposted journals, or failed close batch.</td><td>Start-close blocker list; resolve each named blocker.</td></tr>
+    <tr><td>Money total looks wrong</td><td>Major/minor-unit confusion, wrong currency, or cash amount differs from transaction amount.</td><td>Compare opening + posted deposits − posted withdrawals with the session summary.</td></tr>
+    <tr><td>“Network error”</td><td>Frontend cannot reach the API, proxy is misconfigured, or API is down.</td><td>Frontend environment/API base, browser network tab, API health/logs, and authentication token expiry.</td></tr>
+    <tr><td>OTP never arrives</td><td>Test provider is configured to log, delivery failed, or the challenge expired.</td><td>Application log/test delivery sink, phone/email, resend cooldown, and challenge expiry.</td></tr>
+  </tbody></table>
+  <h3>How to report a bug</h3><ol><li>Write the exact URL/page and language.</li><li>Record the user role, agency, business date, and public IDs.</li><li>Copy the visible error and HTTP status without copying secrets.</li><li>Capture the smallest reproducible sequence.</li><li>State expected versus actual result.</li><li>Attach audit event IDs, transaction/journal/session IDs, and a redacted screenshot.</li></ol>
+</section>
+
+<section id="glossary">
+  <h2>Field glossary</h2>
+  <details><summary>Active, inactive, suspended, deactivated, archived</summary><p><strong>Active</strong> can normally participate in the workflow. <strong>Inactive</strong> is configured but unavailable for normal use. <strong>Suspended</strong> is deliberately blocked pending review. <strong>Deactivated</strong> is disabled as a user/account. <strong>Archived</strong> is retained for history but should not be used for new work.</p></details>
+  <details><summary>Business date versus calendar date</summary><p>The business date is the date under which accounting/reporting occurs. It can differ from the server's current date during backdated testing or a reopened day. Always use the accounting day shown by the application.</p></details>
+  <details><summary>Opening/closing declaration</summary><p>The amount the teller declares is physically present at the start/end of a session. It is not automatically the customer's account balance and is not a journal line by itself.</p></details>
+  <details><summary>Theoretical balance</summary><p>The system-derived till balance: opening cash plus posted cash deposits minus posted cash withdrawals. Pending transactions are not included.</p></details>
+  <details><summary>Actual/countable balance</summary><p>The total obtained from physical denomination counts. It must equal the theoretical balance for a balanced reconciliation.</p></details>
+  <details><summary>Difference</summary><p><code>actual balance − theoretical balance</code>. Zero is balanced. A positive value is surplus; a negative value is shortage. The current close control requires zero.</p></details>
+  <details><summary>Ledger account versus customer account</summary><p>A customer account is the product-facing account a client owns. A ledger account is the accounting book account used to post debits and credits. A customer account normally links to a ledger account.</p></details>
+  <details><summary>Debit and credit</summary><p>Accounting sides, not synonyms for “payment” and “receipt.” Whether a debit increases or decreases a balance depends on the account's normal balance side.</p></details>
+  <details><summary>Idempotency key</summary><p>A unique request key used to prevent the same operation from being posted twice when a user retries after a timeout. Reusing it for a different operation should fail.</p></details>
+  <details><summary>Maker/checker</summary><p>Separation of duties: one person prepares or submits an action and another authorized person reviews or approves it. Test that the workflow does not silently let one person skip the required review.</p></details>
+  <details><summary>Public ID</summary><p>A non-sequential identifier exposed to the frontend/API. Use it in URLs and support notes; do not rely on internal database IDs.</p></details>
+  <p class="meta">This handbook was checked against the current frontend navigation, frontend API types/components, backend routes, and the cash/session controls. It is intentionally scoped to frontend-reachable workflows; revisit the coverage boundary when a backend-only module gains a frontend page.</p>
+</section>
+</main></div>
+</body>
+</html>
