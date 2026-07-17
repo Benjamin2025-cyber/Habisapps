@@ -93,7 +93,7 @@ final class DashboardMetrics
     }
 
     /**
-     * Outstanding (due minus paid) for the given loans.
+     * Outstanding principal for the given loans.
      *
      * `$paidAsOfDate` bounds the posted-payment side to `paid_on <= date`, which
      * is required for a true historical (per-bucket) balance. Leave it null for
@@ -108,30 +108,29 @@ final class DashboardMetrics
             return 0;
         }
 
-        $due = $this->numericValue(DB::table('loan_schedule_lines')
-            ->join('loan_schedule_snapshots', 'loan_schedule_snapshots.id', '=', 'loan_schedule_lines.loan_schedule_snapshot_id')
-            ->whereIn('loan_schedule_snapshots.loan_id', $loanIds)
-            ->where('loan_schedule_snapshots.status', 'active')
-            ->whereDate('loan_schedule_lines.due_date', '<=', $asOfDate)
-            ->selectRaw('COALESCE(SUM(loan_schedule_lines.principal_minor + loan_schedule_lines.interest_minor + loan_schedule_lines.penalty_minor), 0) AS total_minor')
+        $disbursed = $this->numericValue(DB::table('loans')
+            ->whereIn('id', $loanIds)
+            ->whereNotNull('disbursed_on')
+            ->whereDate('disbursed_on', '<=', $asOfDate)
+            ->selectRaw('COALESCE(SUM(COALESCE(approved_principal_minor, requested_amount_minor)), 0) AS total_minor')
             ->value('total_minor'));
 
         $paidQuery = DB::table('loan_repayment_allocations')
             ->join('loan_repayments', 'loan_repayments.id', '=', 'loan_repayment_allocations.loan_repayment_id')
             ->whereIn('loan_repayments.loan_id', $loanIds)
             ->where('loan_repayments.status', 'posted')
-            ->whereIn('loan_repayment_allocations.component', ['principal', 'interest', 'penalty']);
+            ->where('loan_repayment_allocations.component', 'principal');
         if ($paidAsOfDate !== null) {
             $paidQuery->whereDate('loan_repayments.paid_on', '<=', $paidAsOfDate);
         }
         $paid = $this->numericValue($paidQuery->sum('loan_repayment_allocations.amount_minor'));
 
-        return max(0, $due - $paid);
+        return max(0, $disbursed - $paid);
     }
 
     /**
-     * Historical portfolio balance as of a date: due lines on/before the date
-     * minus posted payments on/before the date. Used for timeseries buckets so
+     * Historical portfolio balance as of a date: disbursed principal on/before
+     * the date minus posted principal repayments on/before the date. Used for timeseries buckets so
      * later payments do not retroactively shrink earlier buckets.
      */
     public function portfolioBalanceAsOf(?Agency $agency, string $currency, string $asOfDate, ?string $loanStatus, ?int $loanProductId): int

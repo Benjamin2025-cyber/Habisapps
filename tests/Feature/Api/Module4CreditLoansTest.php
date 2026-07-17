@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\StandardReportDefinitionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -369,6 +370,7 @@ final class Module4CreditLoansTest extends TestCase
             'requested_amount_minor' => 100000,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'status' => Loan::STATUS_APPLICATION,
         ]);
 
@@ -847,6 +849,7 @@ final class Module4CreditLoansTest extends TestCase
             'requested_amount_minor' => 200000,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'status' => Loan::STATUS_APPLICATION,
         ]);
 
@@ -974,6 +977,7 @@ final class Module4CreditLoansTest extends TestCase
             'loan_id' => $loan->id,
             'transaction_type' => 'cash_deposit',
             'amount_minor' => 20000,
+            'cash_amount_minor' => 20000,
             'status' => 'posted',
             'operation_code' => 'loan_setup_charge_collection',
         ]);
@@ -1032,6 +1036,7 @@ final class Module4CreditLoansTest extends TestCase
             'approved_principal_minor' => 200000,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'approved_on' => '2026-05-13',
             'status' => Loan::STATUS_APPROVED,
             'transfer_account_id' => $transferAccount['id'],
@@ -1343,6 +1348,8 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($posted);
         $posted->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
         $posted->assertJsonPath('data.loan.disbursed_on', '2026-05-13');
+        $posted->assertJsonPath('data.loan.outstanding_principal_minor', 300000);
+        $posted->assertJsonPath('data.loan.global_outstanding_amount_minor', 300000);
         $posted->assertJsonPath('data.disbursement.principal_amount_minor', 300000);
         $posted->assertJsonPath('data.disbursement.transfer_account_public_id', $transferAccount['public_id']);
         $posted->assertJsonPath('data.journal_entry.status', 'posted');
@@ -1366,6 +1373,8 @@ final class Module4CreditLoansTest extends TestCase
         $repeat->assertJsonPath('data.journal_entry.public_id', $journalEntryPublicId);
 
         self::assertSame(1, DB::table('loan_disbursements')->where('loan_id', $loan->id)->count());
+        self::assertSame(1, DB::table('loan_schedule_snapshots')->where('loan_id', $loan->id)->where('status', 'active')->count());
+        self::assertSame(1, DB::table('loan_schedule_lines')->whereIn('loan_schedule_snapshot_id', DB::table('loan_schedule_snapshots')->where('loan_id', $loan->id)->select('id'))->count());
         self::assertSame(1, DB::table('journal_entries')->where('source_type', 'loan_disbursement')->where('source_public_id', $loan->public_id)->count());
         self::assertSame(2, DB::table('journal_lines')->where('loan_id', $loan->id)->count());
         $this->assertDatabaseHas('loan_status_transitions', [
@@ -1483,6 +1492,7 @@ final class Module4CreditLoansTest extends TestCase
             'loan_id' => $loan->id,
             'transaction_type' => 'cash_withdrawal',
             'amount_minor' => 300000,
+            'cash_amount_minor' => 300000,
             'status' => 'posted',
             'operation_code' => 'loan_cash_disbursement',
         ]);
@@ -1637,6 +1647,11 @@ final class Module4CreditLoansTest extends TestCase
             'id' => $loan->id,
             'installments_repaid_count' => 2,
             'last_repayment_date' => '2026-06-13',
+            'outstanding_principal_minor' => 0,
+            'total_principal_repaid_minor' => 100000,
+            'total_interest_repaid_minor' => 10000,
+            'global_outstanding_amount_minor' => 0,
+            'due_amount_minor' => 0,
         ]);
     }
 
@@ -2632,9 +2647,35 @@ final class Module4CreditLoansTest extends TestCase
         $loan->forceFill(['status' => Loan::STATUS_CLOSED, 'closed_on' => now()->toDateString()])->save();
         $release = $this->withApiHeaders()
             ->actingAsSanctum($actor)
-            ->postJson('/api/v1/loans/'.$loan->public_id.'/collaterals/'.$collateralPublicId.'/release');
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/collaterals/'.$collateralPublicId.'/release', [
+                'reason' => 'Loan settled in full.',
+            ]);
         $this->assertJsonSuccess($release);
         $release->assertJsonPath('data.status', 'released');
+
+        $this->seed(StandardReportDefinitionSeeder::class);
+        $definitionPublicId = DB::table('report_definitions')
+            ->where('report_type', ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE)
+            ->value('public_id');
+        $agencyPublicId = DB::table('agencies')->where('id', $agencyId)->value('public_id');
+        self::assertIsString($definitionPublicId);
+        self::assertIsString($agencyPublicId);
+        $mainlevee = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'agency_public_id' => $agencyPublicId,
+                'parameters' => [
+                    'loan_public_id' => $loan->public_id,
+                    'collateral_public_id' => $collateralPublicId,
+                ],
+            ]);
+        $this->assertJsonSuccess($mainlevee, 201);
+        $mainlevee->assertJsonPath('data.summary.report_type', ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE);
+        $mainlevee->assertJsonPath('data.summary.released_item_type', 'collateral');
+        $mainlevee->assertJsonPath('data.summary.released_item_description', 'Motorbike collateral');
+        $mainlevee->assertJsonPath('data.summary.released_amount_minor', 250000);
+        $mainlevee->assertJsonPath('data.summary.release_reason', 'Loan settled in full.');
+        $mainlevee->assertJsonPath('data.summary.items.0.reference', 'BIKE-001');
 
         $this->assertDatabaseHas('collaterals', [
             'public_id' => $collateralPublicId,
@@ -3395,6 +3436,7 @@ final class Module4CreditLoansTest extends TestCase
             'requested_amount_minor' => $amountMinor,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'status' => Loan::STATUS_APPLICATION,
         ]);
     }
@@ -3428,6 +3470,7 @@ final class Module4CreditLoansTest extends TestCase
             'requested_amount_minor' => 200000,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'status' => Loan::STATUS_APPLICATION,
         ]);
 
@@ -3586,6 +3629,7 @@ final class Module4CreditLoansTest extends TestCase
             'requested_amount_minor' => 200000,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'status' => Loan::STATUS_APPLICATION,
         ]);
 
@@ -3959,6 +4003,7 @@ final class Module4CreditLoansTest extends TestCase
             'requested_amount_minor' => $principalMinor,
             'currency' => 'XAF',
             'applied_on' => now()->toDateString(),
+            'number_of_installments' => 1,
             'status' => Loan::STATUS_APPLICATION,
         ]);
 

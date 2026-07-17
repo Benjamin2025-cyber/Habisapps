@@ -88,6 +88,11 @@ final class DashboardsTest extends TestCase
             ['due_date' => '2026-04-30', 'principal_minor' => 500, 'interest_minor' => 0, 'penalty_minor' => 0],
             ['due_date' => '2026-05-20', 'principal_minor' => 1000, 'interest_minor' => 0, 'penalty_minor' => 0],
         ]);
+        // A fresh loan whose first installment is not due yet must still count
+        // in principal outstanding, but must not count as PAR.
+        $this->seedLoanWithSchedule($agency['id'], $productA['id'], 'active', [
+            ['due_date' => '2026-12-20', 'principal_minor' => 2000, 'interest_minor' => 0, 'penalty_minor' => 0],
+        ]);
         $this->seedLoanWithSchedule($agency['id'], $productB['id'], 'rescheduled', [
             ['due_date' => '2026-04-30', 'principal_minor' => 9000, 'interest_minor' => 0, 'penalty_minor' => 0],
         ]);
@@ -98,7 +103,7 @@ final class DashboardsTest extends TestCase
                 .'&period_ends_on=2026-05-31&loan_product_public_id='.$productA['public_id'].'&loan_status=active');
 
         $this->assertJsonSuccess($response);
-        $response->assertJsonPath('data.portfolio_outstanding_minor', 1500);
+        $response->assertJsonPath('data.portfolio_outstanding_minor', 3500);
         $response->assertJsonPath('data.par.par30_outstanding_at_risk_minor', 1500);
         $response->assertJsonPath('data.par.par60_outstanding_at_risk_minor', 0);
         $response->assertJsonPath('data.loan_product_public_id', $productA['public_id']);
@@ -351,14 +356,15 @@ final class DashboardsTest extends TestCase
     private function seedLoanWithSchedule(int $agencyId, int $productId, string $status, array $lines): int
     {
         $clientId = $this->seedClient($agencyId, 'Loan', 'Client');
+        $principalMinor = array_sum(array_column($lines, 'principal_minor'));
         $loanId = DB::table('loans')->insertGetId([
             'public_id' => (string) Str::ulid(),
             'client_id' => $clientId,
             'agency_id' => $agencyId,
             'loan_product_id' => $productId,
             'loan_number' => 'LOAN-'.Str::ulid(),
-            'requested_amount_minor' => 10000,
-            'approved_principal_minor' => 10000,
+            'requested_amount_minor' => $principalMinor,
+            'approved_principal_minor' => $principalMinor,
             'currency' => 'XAF',
             'applied_on' => '2026-01-01',
             'approved_on' => '2026-01-02',

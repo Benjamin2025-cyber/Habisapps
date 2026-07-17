@@ -446,6 +446,8 @@ final class InsurancePremiumWorkflow extends BaseController
                     'customer_account_id' => null,
                     'loan_id' => null,
                     'amount_minor' => $amountMinor,
+                    'payment_method' => TellerTransaction::PAYMENT_CASH,
+                    'cash_amount_minor' => $amountMinor,
                     'currency' => $currency,
                     'status' => TellerTransaction::STATUS_POSTED,
                     'reference' => $tellerReference,

@@ -81,6 +81,17 @@ final class StandardReportDefinitionSeeder extends Seeder
                 'requires_currency' => true,
                 'requires_period' => true,
             ],
+            [
+                'code' => 'credit_guarantee_release',
+                'name' => 'Mainlevée de garantie',
+                'report_type' => ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE,
+                'module' => 'credit',
+                'description' => 'Attestation de mainlevée for a released collateral or guarantee obligation tied to a closed loan.',
+                'supported_parameters' => ['agency', 'loan_public_id', 'collateral_public_id', 'guarantee_obligation_public_id'],
+                'requires_agency' => true,
+                'requires_currency' => false,
+                'requires_period' => false,
+            ],
         ];
     }
 

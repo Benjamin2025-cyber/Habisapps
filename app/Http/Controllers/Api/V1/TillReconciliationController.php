@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\CashOperations\TellerSessionSummary;
 use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreTillReconciliationRequest;
 use App\Http\Resources\TillReconciliationResource;
 use App\Models\Agency;
 use App\Models\Denomination;
-use App\Models\JournalEntry;
 use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use App\Models\Till;
@@ -46,6 +46,7 @@ final class TillReconciliationController extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly UserNotificationFeed $notifications,
+        private readonly TellerSessionSummary $sessionSummary,
     ) {}
 
     #[QueryParameter('filter[teller_session_public_id]', 'Limit results to a teller session public ID.', type: 'string')]
@@ -159,7 +160,7 @@ final class TillReconciliationController extends BaseController
         }
 
         $actualBalanceMinor = array_sum(array_column($counts['lines'], 'declared_amount_minor'));
-        $theoreticalBalanceMinor = $this->theoreticalBalanceMinor($tellerSession, $till);
+        $theoreticalBalanceMinor = $this->sessionSummary->theoreticalBalanceMinor($tellerSession);
         $differenceMinor = $actualBalanceMinor - $theoreticalBalanceMinor;
         if ($differenceMinor !== 0) {
             $this->notifications->notifyAgency(
@@ -386,56 +387,6 @@ final class TillReconciliationController extends BaseController
             ->where('teller_session_id', $tellerSessionId)
             ->whereNotIn('status', [TellerTransaction::STATUS_POSTED, TellerTransaction::STATUS_REVERSED, TellerTransaction::STATUS_CANCELLED])
             ->first(['id']) !== null;
-    }
-
-    private function theoreticalBalanceMinor(TellerSession $session, Till $till): int
-    {
-        $opening = $session->opening_declaration_minor ?? 0;
-        $transactions = DB::table('teller_transactions')
-            ->where('teller_session_id', $session->id)
-            ->where('status', TellerTransaction::STATUS_POSTED)
-            ->get(['id', 'transaction_type', 'amount_minor', 'journal_entry_id']);
-
-        $movement = 0;
-        foreach ($transactions as $transaction) {
-            $type = is_string($transaction->transaction_type) ? $transaction->transaction_type : '';
-            $amount = is_numeric($transaction->amount_minor) ? (int) $transaction->amount_minor : 0;
-
-            if ($type === TellerTransaction::TYPE_CASH_DEPOSIT) {
-                $movement += $amount;
-
-                continue;
-            }
-
-            if ($type === TellerTransaction::TYPE_CASH_WITHDRAWAL) {
-                $movement -= $amount;
-
-                continue;
-            }
-
-            if ($type === TellerTransaction::TYPE_MANUAL_JOURNAL && is_numeric($transaction->journal_entry_id)) {
-                $movement += $this->journalCashMovement((int) $transaction->journal_entry_id, $till->ledger_account_id);
-            }
-        }
-
-        return $opening + $movement;
-    }
-
-    private function journalCashMovement(int $journalEntryId, ?int $tillLedgerAccountId): int
-    {
-        if ($tillLedgerAccountId === null) {
-            return 0;
-        }
-
-        $line = DB::table('journal_lines')
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
-            ->where('journal_lines.journal_entry_id', $journalEntryId)
-            ->where('journal_lines.ledger_account_id', $tillLedgerAccountId)
-            ->selectRaw('COALESCE(SUM(journal_lines.debit_minor - journal_lines.credit_minor), 0) AS movement_minor')
-            ->first();
-
-        return is_object($line) && is_numeric($line->movement_minor) ? (int) $line->movement_minor : 0;
     }
 
     /**

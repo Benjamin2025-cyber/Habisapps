@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\CashOperations;
 
+use App\Models\JournalEntry;
 use App\Models\TellerSession;
 use App\Models\TellerTransaction;
 use Carbon\CarbonImmutable;
@@ -43,15 +44,26 @@ final class TellerSessionSummary
         $rows = DB::table('teller_transactions')
             ->where('teller_session_id', $session->id)
             ->where('status', TellerTransaction::STATUS_POSTED)
-            ->get(['transaction_type', 'amount_minor', 'cash_amount_minor']);
+            ->get([
+                'transaction_type',
+                'amount_minor',
+                'cash_amount_minor',
+                'cheque_amount_minor',
+                'transfer_amount_minor',
+                'journal_entry_id',
+            ]);
 
         $movement = 0;
+        $tillLedgerAccountId = $this->tillLedgerAccountId($session);
         foreach ($rows as $row) {
             $type = is_string($row->transaction_type) ? $row->transaction_type : '';
-            $amount = is_numeric($row->cash_amount_minor ?? null)
-                ? (int) $row->cash_amount_minor
-                : (is_numeric($row->amount_minor) ? (int) $row->amount_minor : 0);
-            $movement += (self::TILL_BALANCE_DIRECTION[$type] ?? 0) * $amount;
+            if ($type === TellerTransaction::TYPE_MANUAL_JOURNAL && is_numeric($row->journal_entry_id ?? null)) {
+                $movement += $this->journalCashMovement((int) $row->journal_entry_id, $tillLedgerAccountId);
+
+                continue;
+            }
+
+            $movement += (self::TILL_BALANCE_DIRECTION[$type] ?? 0) * $this->physicalCashAmountMinor($row);
         }
 
         return $this->openingDeclarationMinor($session) + $movement;
@@ -109,8 +121,8 @@ final class TellerSessionSummary
             ->groupBy('teller_session_id')
             ->get([
                 'teller_session_id',
-                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$deposit}' AND status = '{$posted}' THEN COALESCE(cash_amount_minor, amount_minor) ELSE 0 END), 0) AS deposits_total"),
-                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$withdrawal}' AND status = '{$posted}' THEN COALESCE(cash_amount_minor, amount_minor) ELSE 0 END), 0) AS withdrawals_total"),
+                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$deposit}' AND status = '{$posted}' THEN CASE WHEN COALESCE(cash_amount_minor, 0) > 0 THEN cash_amount_minor WHEN COALESCE(cheque_amount_minor, 0) > 0 OR COALESCE(transfer_amount_minor, 0) > 0 THEN 0 ELSE amount_minor END ELSE 0 END), 0) AS deposits_total"),
+                DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$withdrawal}' AND status = '{$posted}' THEN CASE WHEN COALESCE(cash_amount_minor, 0) > 0 THEN cash_amount_minor WHEN COALESCE(cheque_amount_minor, 0) > 0 OR COALESCE(transfer_amount_minor, 0) > 0 THEN 0 ELSE amount_minor END ELSE 0 END), 0) AS withdrawals_total"),
                 DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$manual}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS manual_journals_total"),
                 DB::raw("COALESCE(SUM(CASE WHEN transaction_type = '{$reversal}' AND status = '{$posted}' THEN amount_minor ELSE 0 END), 0) AS reversals_total"),
                 DB::raw('COUNT(*) AS transaction_count'),
@@ -127,6 +139,11 @@ final class TellerSessionSummary
             $bySession[(int) $row->teller_session_id] = $array;
         }
 
+        foreach ($this->manualCashMovementsFor($sessionIds) as $sessionId => $movementMinor) {
+            $bySession[$sessionId] ??= ['teller_session_id' => $sessionId];
+            $bySession[$sessionId]['manual_cash_movement_minor'] = $movementMinor;
+        }
+
         return $bySession;
     }
 
@@ -139,6 +156,7 @@ final class TellerSessionSummary
         $deposits = $this->intFrom($aggregate, 'deposits_total');
         $withdrawals = $this->intFrom($aggregate, 'withdrawals_total');
         $manual = $this->intFrom($aggregate, 'manual_journals_total');
+        $manualCashMovement = $this->intFrom($aggregate, 'manual_cash_movement_minor');
         $reversals = $this->intFrom($aggregate, 'reversals_total');
         $transactionCount = $this->intFrom($aggregate, 'transaction_count');
         $postedCount = $this->intFrom($aggregate, 'posted_count');
@@ -152,12 +170,14 @@ final class TellerSessionSummary
         // till-affecting components, matching theoreticalBalanceMinor() exactly.
         $expected = $this->openingDeclarationMinor($session)
             + (self::TILL_BALANCE_DIRECTION[TellerTransaction::TYPE_CASH_DEPOSIT] * $deposits)
-            + (self::TILL_BALANCE_DIRECTION[TellerTransaction::TYPE_CASH_WITHDRAWAL] * $withdrawals);
+            + (self::TILL_BALANCE_DIRECTION[TellerTransaction::TYPE_CASH_WITHDRAWAL] * $withdrawals)
+            + $manualCashMovement;
 
         return [
             'deposits_total_minor' => $deposits,
             'withdrawals_total_minor' => $withdrawals,
             'manual_journals_total_minor' => $manual,
+            'manual_journal_cash_movement_minor' => $manualCashMovement,
             'reversals_total_minor' => $reversals,
             'commissions_total_minor' => $this->intFrom($aggregate, 'commissions_total'),
             'distinct_clients_served_count' => $this->intFrom($aggregate, 'distinct_clients_served'),
@@ -184,5 +204,76 @@ final class TellerSessionSummary
         $value = $session->getAttribute('opening_declaration_minor');
 
         return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function physicalCashAmountMinor(object $row): int
+    {
+        $cash = is_numeric($row->cash_amount_minor ?? null) ? (int) $row->cash_amount_minor : 0;
+        if ($cash > 0) {
+            return $cash;
+        }
+
+        $cheque = is_numeric($row->cheque_amount_minor ?? null) ? (int) $row->cheque_amount_minor : 0;
+        $transfer = is_numeric($row->transfer_amount_minor ?? null) ? (int) $row->transfer_amount_minor : 0;
+        if ($cheque > 0 || $transfer > 0) {
+            return 0;
+        }
+
+        return is_numeric($row->amount_minor ?? null) ? (int) $row->amount_minor : 0;
+    }
+
+    private function tillLedgerAccountId(TellerSession $session): ?int
+    {
+        $value = DB::table('tills')->where('id', $session->till_id)->value('ledger_account_id');
+
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function journalCashMovement(int $journalEntryId, ?int $tillLedgerAccountId): int
+    {
+        if ($tillLedgerAccountId === null) {
+            return 0;
+        }
+
+        $value = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->where('journal_lines.journal_entry_id', $journalEntryId)
+            ->where('journal_lines.ledger_account_id', $tillLedgerAccountId)
+            ->sum(DB::raw('journal_lines.debit_minor - journal_lines.credit_minor'));
+
+        return (int) $value;
+    }
+
+    /**
+     * @param  array<int, int>  $sessionIds
+     * @return array<int, int>
+     */
+    private function manualCashMovementsFor(array $sessionIds): array
+    {
+        $rows = DB::table('teller_transactions as transactions')
+            ->join('teller_sessions as sessions', 'sessions.id', '=', 'transactions.teller_session_id')
+            ->join('tills', 'tills.id', '=', 'sessions.till_id')
+            ->join('journal_entries', 'journal_entries.id', '=', 'transactions.journal_entry_id')
+            ->join('journal_lines', function ($join): void {
+                $join->on('journal_lines.journal_entry_id', '=', 'journal_entries.id')
+                    ->on('journal_lines.ledger_account_id', '=', 'tills.ledger_account_id');
+            })
+            ->whereIn('transactions.teller_session_id', $sessionIds)
+            ->where('transactions.transaction_type', TellerTransaction::TYPE_MANUAL_JOURNAL)
+            ->where('transactions.status', TellerTransaction::STATUS_POSTED)
+            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->groupBy('transactions.teller_session_id')
+            ->get([
+                'transactions.teller_session_id',
+                DB::raw('COALESCE(SUM(journal_lines.debit_minor - journal_lines.credit_minor), 0) AS movement_minor'),
+            ]);
+
+        $movements = [];
+        foreach ($rows as $row) {
+            $movements[(int) $row->teller_session_id] = is_numeric($row->movement_minor) ? (int) $row->movement_minor : 0;
+        }
+
+        return $movements;
     }
 }

@@ -31,6 +31,8 @@ final class ReportDefinition extends Model
 
     public const string TYPE_CREDIT_COLLECTION_PERFORMANCE = 'credit_collection_performance';
 
+    public const string TYPE_CREDIT_GUARANTEE_RELEASE = 'credit_guarantee_release';
+
     /**
      * @return array<int, string>
      */

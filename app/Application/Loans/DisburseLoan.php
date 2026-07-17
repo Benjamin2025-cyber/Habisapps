@@ -29,6 +29,7 @@ final class DisburseLoan
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly LoanSetupState $setupState,
         private readonly AgencyLedgerMappingResolver $mappingResolver,
+        private readonly GenerateLoanSchedule $generateLoanSchedule,
     ) {}
 
     /**
@@ -88,6 +89,11 @@ final class DisburseLoan
             if ($principal <= 0) {
                 throw new InvalidArgumentException('Disbursement principal must be positive.');
             }
+
+            // A posted loan must always enter the portfolio with an active
+            // repayment schedule. The generator is idempotent for an existing
+            // matching schedule, so a manually generated schedule is reused.
+            $schedule = $this->generateLoanSchedule->handle($lockedLoan, $actor);
 
             $transferAccount = null;
             $creditLedger = null;
@@ -193,6 +199,8 @@ final class DisburseLoan
                     'customer_account_id' => null,
                     'loan_id' => $lockedLoan->id,
                     'amount_minor' => $principal,
+                    'payment_method' => TellerTransaction::PAYMENT_CASH,
+                    'cash_amount_minor' => $principal,
                     'currency' => $lockedLoan->currency,
                     'status' => TellerTransaction::STATUS_POSTED,
                     'reference' => 'TT-LD-'.$lockedLoan->loan_number,
@@ -224,6 +232,16 @@ final class DisburseLoan
                 'status' => Loan::STATUS_DISBURSED,
                 'approved_principal_minor' => $principal,
                 'disbursed_on' => $effectiveBusinessDate,
+                'outstanding_principal_minor' => $principal,
+                'installment_amount_minor' => $schedule->lines->first()?->total_installment_minor,
+                'total_unpaid_amount_minor' => 0,
+                'due_amount_minor' => 0,
+                'total_principal_repaid_minor' => 0,
+                'total_interest_repaid_minor' => 0,
+                'total_penalties_paid_minor' => 0,
+                'installments_repaid_count' => 0,
+                'next_repayment_date' => $schedule->lines->first()?->due_date,
+                'global_outstanding_amount_minor' => $schedule->lines->sum('total_installment_minor'),
             ])->save();
 
             LoanStatusTransition::query()->create([

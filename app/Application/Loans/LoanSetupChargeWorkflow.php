@@ -298,6 +298,8 @@ final class LoanSetupChargeWorkflow extends BaseController
                         'customer_account_id' => null,
                         'loan_id' => $loan->id,
                         'amount_minor' => $amountMinor,
+                        'payment_method' => TellerTransaction::PAYMENT_CASH,
+                        'cash_amount_minor' => $amountMinor,
                         'currency' => $currency,
                         'status' => TellerTransaction::STATUS_POSTED,
                         'reference' => $tellerReference,

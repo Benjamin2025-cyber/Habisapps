@@ -10,10 +10,13 @@ use App\Http\Resources\ReportRunCollection;
 use App\Http\Resources\ReportRunResource;
 use App\Models\AccountingDay;
 use App\Models\Agency;
+use App\Models\Client;
+use App\Models\Collateral;
 use App\Models\Document;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\Loan;
+use App\Models\LoanGuaranteeObligation;
 use App\Models\LoanRepaymentAllocation;
 use App\Models\ReportDefinition;
 use App\Models\ReportRun;
@@ -31,6 +34,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 final class ReportRunController extends BaseController
 {
@@ -143,10 +147,13 @@ final class ReportRunController extends BaseController
                 ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING => $this->creditPortfolioOutstandingSummary($agency, $currency, $from, $to),
                 ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY => $this->creditParDelinquencySummary($agency, $currency, $to ?? now()->toDateString()),
                 ReportDefinition::TYPE_CREDIT_COLLECTION_PERFORMANCE => $this->creditCollectionPerformanceSummary($agency, $currency, $from, $to),
+                ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE => $this->creditGuaranteeReleaseSummary($agency, $validated['parameters'] ?? []),
                 default => $this->generalLedgerSummary($agency, $currency, $from, $to, $accountingDay),
             };
         } catch (FormulaPolicyNotApproved $exception) {
             return $this->respondUnprocessable(errors: ['portfolio_reporting_metrics' => [$exception->getMessage()]]);
+        } catch (InvalidArgumentException $exception) {
+            return $this->respondUnprocessable(errors: ['parameters' => [$exception->getMessage()]]);
         }
 
         $run = ReportRun::query()->create([
@@ -223,6 +230,113 @@ final class ReportRunController extends BaseController
             ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING,
             ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY,
             ReportDefinition::TYPE_CREDIT_COLLECTION_PERFORMANCE,
+            ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     * @return array<string, mixed>
+     */
+    private function creditGuaranteeReleaseSummary(?Agency $agency, array $parameters): array
+    {
+        if (! $agency instanceof Agency) {
+            throw new InvalidArgumentException('agency_public_id is required for a guarantee-release report.');
+        }
+
+        $loanPublicId = $parameters['loan_public_id'] ?? null;
+        $collateralPublicId = $parameters['collateral_public_id'] ?? null;
+        $obligationPublicId = $parameters['guarantee_obligation_public_id'] ?? null;
+        if (! is_string($loanPublicId) || $loanPublicId === '') {
+            throw new InvalidArgumentException('loan_public_id is required for a guarantee-release report.');
+        }
+        if ((! is_string($collateralPublicId) || $collateralPublicId === '') === (! is_string($obligationPublicId) || $obligationPublicId === '')) {
+            throw new InvalidArgumentException('Provide exactly one of collateral_public_id or guarantee_obligation_public_id.');
+        }
+
+        $loan = Loan::query()->with(['client', 'agency'])->where('public_id', $loanPublicId)->first();
+        if (! $loan instanceof Loan || $loan->agency_id !== $agency->id) {
+            throw new InvalidArgumentException('The selected loan does not belong to the report agency.');
+        }
+        $client = $loan->client;
+        $clientName = $client instanceof Client ? trim($client->first_name.' '.$client->last_name) : null;
+
+        $base = [
+            'report_type' => ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE,
+            'attestation_type' => 'mainlevee_de_garantie',
+            'loan_public_id' => $loan->public_id,
+            'loan_number' => $loan->loan_number,
+            'agency_public_id' => $loan->agency?->public_id,
+            'agency_name' => $loan->agency?->name,
+            'client_reference' => $loan->client?->client_reference,
+            'client_name' => $clientName,
+            'generated_on' => now()->toDateString(),
+        ];
+
+        if (is_string($collateralPublicId) && $collateralPublicId !== '') {
+            $collateral = Collateral::query()->with('items')->where('public_id', $collateralPublicId)->first();
+            if (! $collateral instanceof Collateral || $collateral->loan_id !== $loan->id) {
+                throw new InvalidArgumentException('The selected collateral does not belong to the loan.');
+            }
+            if ($collateral->status !== Collateral::STATUS_RELEASED) {
+                throw new InvalidArgumentException('The selected collateral has not been released.');
+            }
+            $release = DB::table('activity_log')
+                ->where('subject_type', Collateral::class)
+                ->where('subject_id', $collateral->id)
+                ->where('event', 'loan.collateral.released')
+                ->latest('id')
+                ->first(['created_at', 'properties']);
+            $properties = is_object($release) && is_string($release->properties) ? json_decode($release->properties, true) : [];
+
+            return $base + [
+                'released_item_type' => 'collateral',
+                'released_item_public_id' => $collateral->public_id,
+                'released_item_description' => $collateral->description,
+                'released_item_category' => $collateral->collateral_type,
+                'owner_full_name' => $collateral->owner_full_name,
+                'released_amount_minor' => $collateral->declared_value_minor,
+                'currency' => $collateral->currency,
+                'release_date' => is_object($release) ? substr((string) $release->created_at, 0, 10) : null,
+                'release_reason' => is_array($properties) ? ($properties['release_reason'] ?? 'loan_closed') : 'loan_closed',
+                'items' => $collateral->items->map(static fn ($item): array => [
+                    'description' => $item->description,
+                    'quantity' => $item->quantity,
+                    'reference' => $item->reference,
+                    'amount_minor' => $item->amount_minor,
+                    'currency' => $item->currency,
+                ])->values()->all(),
+            ];
+        }
+
+        $obligation = LoanGuaranteeObligation::query()->with(['clientGuarantor', 'releasedBy'])
+            ->where('public_id', $obligationPublicId)->first();
+        if (! $obligation instanceof LoanGuaranteeObligation || $obligation->loan_id !== $loan->id) {
+            throw new InvalidArgumentException('The selected guarantee obligation does not belong to the loan.');
+        }
+        if ($obligation->status !== LoanGuaranteeObligation::STATUS_RELEASED || $obligation->released_at === null) {
+            throw new InvalidArgumentException('The selected guarantee obligation has not been released.');
+        }
+        $release = DB::table('activity_log')
+            ->where('subject_type', LoanGuaranteeObligation::class)
+            ->where('subject_id', $obligation->id)
+            ->where('event', 'loan.guarantee_obligation.released')
+            ->latest('id')
+            ->first(['properties']);
+        $properties = is_object($release) && is_string($release->properties) ? json_decode($release->properties, true) : [];
+
+        return $base + [
+            'released_item_type' => 'guarantee_obligation',
+            'released_item_public_id' => $obligation->public_id,
+            'released_item_description' => $obligation->obligation_type,
+            'released_item_category' => $obligation->obligation_type,
+            'guarantor_name' => $obligation->clientGuarantor?->guarantor_full_name,
+            'released_amount_minor' => $obligation->obligation_amount_minor,
+            'currency' => $obligation->currency ?? $loan->currency,
+            'release_date' => CarbonImmutable::parse($obligation->released_at)->toDateString(),
+            'release_reason' => is_array($properties) ? ($properties['release_reason'] ?? $obligation->release_condition ?? 'loan_closed') : ($obligation->release_condition ?? 'loan_closed'),
+            'released_by' => $obligation->releasedBy?->name,
+            'items' => [],
         ];
     }
 

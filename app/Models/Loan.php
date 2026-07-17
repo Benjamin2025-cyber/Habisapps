@@ -111,7 +111,7 @@ final class Loan extends Model
             'formula_policy_snapshot' => 'array',
             // Outstanding / repayment projection columns. These are written by
             // domain services via forceFill (not client-fillable) and are
-            // nullable until the loan has an active schedule and repayments.
+            // initialized when the loan is disbursed and refreshed after repayments.
             'outstanding_principal_minor' => 'integer',
             'installment_amount_minor' => 'integer',
             'total_unpaid_amount_minor' => 'integer',

@@ -1621,6 +1621,125 @@ final class Module5CashInfrastructureTest extends TestCase
         $close->assertJsonPath('data.status', 'closed');
     }
 
+    public function test_summary_and_reconciliation_share_legacy_and_manual_cash_movements(): void
+    {
+        $ctx = $this->openCashSession('SUMMARY-SHARED');
+        $session = DB::table('teller_sessions')->where('public_id', $ctx['session_public_id'])->first(['id', 'agency_id', 'till_id']);
+        self::assertIsObject($session);
+        self::assertIsInt($session->id);
+        self::assertIsInt($session->agency_id);
+        self::assertIsInt($session->till_id);
+
+        $tillLedgerId = DB::table('tills')->where('id', $session->till_id)->value('ledger_account_id');
+        self::assertIsInt($tillLedgerId);
+        $offsetLedger = $this->createLedgerAccount($session->agency_id, 'SUMMARY-OFFSET', LedgerAccount::ACCOUNT_CLASS_EXPENSE);
+
+        DB::table('teller_transactions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'teller_session_id' => $session->id,
+            'agency_id' => $session->agency_id,
+            'transaction_date' => now()->toDateString(),
+            'till_id' => $session->till_id,
+            'transaction_type' => TellerTransaction::TYPE_CASH_WITHDRAWAL,
+            'amount_minor' => 1000,
+            'cash_amount_minor' => 0,
+            'cheque_amount_minor' => 0,
+            'transfer_amount_minor' => 0,
+            'currency' => 'XAF',
+            'status' => TellerTransaction::STATUS_POSTED,
+            'reference' => 'LEGACY-LOAN-CASH-1',
+            'operation_code' => 'loan_cash_disbursement',
+            'initiator_type' => TellerTransaction::INITIATOR_SYSTEM,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $journalId = DB::table('journal_entries')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'reference' => 'SUMMARY-MANUAL-1',
+            'business_date' => now()->toDateString(),
+            'posted_at' => null,
+            'agency_id' => $session->agency_id,
+            'source_module' => 'cash_operations',
+            'source_type' => TellerTransaction::TYPE_MANUAL_JOURNAL,
+            'status' => 'draft',
+            'description' => 'Manual till debit for shared-summary test',
+            'created_by_user_id' => $ctx['manager']->id,
+            'posted_by_user_id' => $ctx['manager']->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        foreach ([
+            ['ledger_account_id' => $tillLedgerId, 'debit_minor' => 1000, 'credit_minor' => 0],
+            ['ledger_account_id' => $offsetLedger['id'], 'debit_minor' => 0, 'credit_minor' => 1000],
+        ] as $line) {
+            DB::table('journal_lines')->insert([
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $session->agency_id,
+                'journal_entry_id' => $journalId,
+                'ledger_account_id' => $line['ledger_account_id'],
+                'debit_minor' => $line['debit_minor'],
+                'credit_minor' => $line['credit_minor'],
+                'currency' => 'XAF',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        DB::table('journal_entries')->where('id', $journalId)->update([
+            'status' => 'submitted',
+            'submitted_by_user_id' => $ctx['manager']->id,
+            'submitted_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('journal_entries')->where('id', $journalId)->update([
+            'status' => 'approved',
+            'reviewed_by_user_id' => $ctx['manager']->id,
+            'reviewed_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('journal_entries')->where('id', $journalId)->update([
+            'status' => 'posted',
+            'posted_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('teller_transactions')->insert([
+            'public_id' => (string) Str::ulid(),
+            'teller_session_id' => $session->id,
+            'agency_id' => $session->agency_id,
+            'transaction_date' => now()->toDateString(),
+            'till_id' => $session->till_id,
+            'transaction_type' => TellerTransaction::TYPE_MANUAL_JOURNAL,
+            'amount_minor' => 1000,
+            'currency' => 'XAF',
+            'status' => TellerTransaction::STATUS_POSTED,
+            'reference' => 'SUMMARY-MANUAL-1',
+            'journal_entry_id' => $journalId,
+            'initiator_type' => TellerTransaction::INITIATOR_SYSTEM,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $show = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->getJson('/api/v1/teller-sessions/'.$ctx['session_public_id']);
+        $this->assertJsonSuccess($show);
+        $show->assertJsonPath('data.summary.withdrawals_total_minor', 1000);
+        $show->assertJsonPath('data.summary.manual_journal_cash_movement_minor', 1000);
+        $show->assertJsonPath('data.summary.expected_cash_balance_minor', 5000);
+
+        $denomination = $this->createDenomination('SUMMARY-XAF-1000', 1000);
+        $reconciliation = $this->withApiHeaders()->actingAsSanctum($ctx['manager'])
+            ->postJson('/api/v1/teller-sessions/'.$ctx['session_public_id'].'/reconciliations', [
+                'currency' => 'XAF',
+                'denomination_counts' => [[
+                    'denomination_public_id' => $denomination['public_id'],
+                    'count' => 5,
+                ]],
+            ]);
+        $this->assertJsonSuccess($reconciliation, 201);
+        $reconciliation->assertJsonPath('data.theoretical_balance_minor', 5000);
+        $reconciliation->assertJsonPath('data.difference_minor', 0);
+    }
+
     public function test_reversed_deposit_is_excluded_from_expected_balance_and_counted_as_reversal(): void
     {
         $ctx = $this->openCashSession('REV');

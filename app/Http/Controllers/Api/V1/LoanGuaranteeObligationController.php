@@ -157,13 +157,18 @@ final class LoanGuaranteeObligationController extends BaseController
             return $this->respondUnprocessable(errors: ['status' => [__('Cancelled guarantee obligations cannot be released.')]]);
         }
 
+        $validated = Validator::make($request->all(), [
+            'reason' => ['sometimes', 'nullable', 'string', 'max:1000'],
+        ])->validate();
         $obligation->update([
             'status' => LoanGuaranteeObligation::STATUS_RELEASED,
             'released_at' => $obligation->released_at ?? now(),
             'released_by_user_id' => $actor->id,
         ]);
 
-        $this->securityAudit->record('loan.guarantee_obligation.released', actor: $actor, subject: $obligation, request: $request);
+        $this->securityAudit->record('loan.guarantee_obligation.released', actor: $actor, subject: $obligation, properties: [
+            'release_reason' => $validated['reason'] ?? $obligation->release_condition ?? 'loan_closed',
+        ], request: $request);
 
         return $this->respondSuccess(
             LoanGuaranteeObligationResource::make($obligation->refresh()->loadMissing(['agency', 'loan', 'clientGuarantor', 'document', 'releasedBy'])),

@@ -223,10 +223,21 @@ final class RecordLoanRepayment
                 ]);
             }
 
+            $componentTotals = $this->postedComponentTotals($lockedLoan);
+            $outstandingPrincipal = max(0, ($lockedLoan->approved_principal_minor ?? $lockedLoan->requested_amount_minor)
+                - $componentTotals[LoanRepaymentAllocation::COMPONENT_PRINCIPAL]);
+
             $lockedLoan->forceFill([
                 'last_repayment_date' => $paidDate,
                 'installments_repaid_count' => $this->paidInstallmentCount($lockedLoan),
                 'next_repayment_date' => $this->nextRepaymentDate($lockedLoan),
+                'outstanding_principal_minor' => $outstandingPrincipal,
+                'total_principal_repaid_minor' => $componentTotals[LoanRepaymentAllocation::COMPONENT_PRINCIPAL],
+                'total_interest_repaid_minor' => $componentTotals[LoanRepaymentAllocation::COMPONENT_INTEREST],
+                'total_penalties_paid_minor' => $componentTotals[LoanRepaymentAllocation::COMPONENT_PENALTY],
+                'due_amount_minor' => $this->dueAmount($lockedLoan, $paidDate),
+                'total_unpaid_amount_minor' => $this->dueAmount($lockedLoan, $paidDate),
+                'global_outstanding_amount_minor' => $this->outstandingAmount($lockedLoan),
             ])->save();
 
             return [
@@ -235,6 +246,50 @@ final class RecordLoanRepayment
                 'journal_entry' => $journalEntry->refresh()->loadMissing(['agency', 'lines.ledgerAccount', 'lines.customerAccount']),
             ];
         });
+    }
+
+    /**
+     * @return array{principal:int, interest:int, penalty:int}
+     */
+    private function postedComponentTotals(Loan $loan): array
+    {
+        $rows = DB::table('loan_repayment_allocations')
+            ->join('loan_repayments', 'loan_repayments.id', '=', 'loan_repayment_allocations.loan_repayment_id')
+            ->where('loan_repayments.loan_id', $loan->id)
+            ->where('loan_repayments.status', LoanRepayment::STATUS_POSTED)
+            ->whereIn('loan_repayment_allocations.component', [
+                LoanRepaymentAllocation::COMPONENT_PRINCIPAL,
+                LoanRepaymentAllocation::COMPONENT_INTEREST,
+                LoanRepaymentAllocation::COMPONENT_PENALTY,
+            ])
+            ->groupBy('loan_repayment_allocations.component')
+            ->selectRaw('loan_repayment_allocations.component, SUM(loan_repayment_allocations.amount_minor) AS total_minor')
+            ->pluck('total_minor', 'component');
+
+        return [
+            LoanRepaymentAllocation::COMPONENT_PRINCIPAL => $this->numericValue($rows[LoanRepaymentAllocation::COMPONENT_PRINCIPAL] ?? 0),
+            LoanRepaymentAllocation::COMPONENT_INTEREST => $this->numericValue($rows[LoanRepaymentAllocation::COMPONENT_INTEREST] ?? 0),
+            LoanRepaymentAllocation::COMPONENT_PENALTY => $this->numericValue($rows[LoanRepaymentAllocation::COMPONENT_PENALTY] ?? 0),
+        ];
+    }
+
+    private function numericValue(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function dueAmount(Loan $loan, string $asOfDate): int
+    {
+        $open = 0;
+        $interestConcessionRemaining = 0;
+        foreach ($this->activeScheduleLines($loan) as $line) {
+            $dueDate = $this->formatDateOnly($line->getAttribute('due_date'));
+            if ($dueDate !== null && $dueDate <= $asOfDate) {
+                $open += $this->lineOpenAmount($line, null, $interestConcessionRemaining, null);
+            }
+        }
+
+        return $open;
     }
 
     /**

@@ -146,8 +146,13 @@ final class CollateralController extends BaseController
             return $this->respondUnprocessable(errors: ['collateral' => [__('Only active collateral can be released.')]]);
         }
 
+        $validated = Validator::make($request->all(), [
+            'reason' => ['sometimes', 'nullable', 'string', 'max:1000'],
+        ])->validate();
         $collateral->update(['status' => Collateral::STATUS_RELEASED]);
-        $this->securityAudit->record('loan.collateral.released', actor: $actor, subject: $collateral, request: $request);
+        $this->securityAudit->record('loan.collateral.released', actor: $actor, subject: $collateral, properties: [
+            'release_reason' => $validated['reason'] ?? 'loan_closed',
+        ], request: $request);
 
         return $this->respondSuccess(CollateralResource::make($collateral->refresh()->loadMissing(['agency', 'client', 'loan', 'document', 'items'])), 'Collateral released successfully');
     }

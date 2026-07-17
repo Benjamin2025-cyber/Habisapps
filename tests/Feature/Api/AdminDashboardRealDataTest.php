@@ -155,8 +155,9 @@ final class AdminDashboardRealDataTest extends TestCase
         $rowA = $byPublicId[$agencyA['public_id']];
         self::assertSame(1000, $rowA['collections_minor']);
         self::assertSame(2, $rowA['loans_count']);
-        // Outstanding as of 2026-06-06: only the 5000 line is due; minus 1000 paid = 4000.
-        self::assertSame(4000, $rowA['loans_amount_minor']);
+        // Principal outstanding includes both loans, irrespective of whether an
+        // installment is due: 5000 + 3000 - 1000 repaid.
+        self::assertSame(7000, $rowA['loans_amount_minor']);
         self::assertSame(1, $rowA['delinquent_count']);
         self::assertSame(5000, $rowA['delinquent_amount_minor']);
         self::assertSame($agent->public_id, $rowA['best_agent_public_id']);
@@ -378,14 +379,15 @@ final class AdminDashboardRealDataTest extends TestCase
     private function seedLoanWithSchedule(int $agencyId, int $productId, string $status, array $lines): array
     {
         $clientId = $this->seedClient($agencyId);
+        $principalMinor = array_sum(array_column($lines, 'principal_minor'));
         $loanId = DB::table('loans')->insertGetId([
             'public_id' => (string) Str::ulid(),
             'client_id' => $clientId,
             'agency_id' => $agencyId,
             'loan_product_id' => $productId,
             'loan_number' => 'LOAN-'.Str::ulid(),
-            'requested_amount_minor' => 10000,
-            'approved_principal_minor' => 10000,
+            'requested_amount_minor' => $principalMinor,
+            'approved_principal_minor' => $principalMinor,
             'currency' => 'XAF',
             'applied_on' => '2026-01-01',
             'approved_on' => '2026-01-02',
