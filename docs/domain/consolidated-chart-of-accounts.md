@@ -7,6 +7,11 @@ records what changed, which decisions were deliberate, and the invariants that
 later work must not break. See also [accounting-ledger.md](accounting-ledger.md)
 for the ledger tables and [agency-scope.md](agency-scope.md) for agency scoping.
 
+To **verify** the feature by hand rather than read about it, follow
+[consolidated-chart-of-accounts-test-guide.md](consolidated-chart-of-accounts-test-guide.md)
+— a click-through scenario written for a non-accountant, including the refusals that are
+supposed to happen.
+
 ---
 
 ## 1. The problem this solved
