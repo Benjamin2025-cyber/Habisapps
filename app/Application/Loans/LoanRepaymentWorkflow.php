@@ -16,11 +16,13 @@ use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use DateTimeInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use InvalidArgumentException;
+use PDOException;
 
 final class LoanRepaymentWorkflow extends BaseController
 {
@@ -68,6 +70,16 @@ final class LoanRepaymentWorkflow extends BaseController
             );
         } catch (InvalidArgumentException $exception) {
             return $this->respondUnprocessable(errors: ['disbursement' => [$exception->getMessage()]]);
+        } catch (QueryException|PDOException $exception) {
+            if ((string) $exception->getCode() !== '23514') {
+                throw $exception;
+            }
+
+            report($exception);
+
+            return $this->respondUnprocessable(errors: [
+                'disbursement' => ['Loan disbursement could not be posted. Verify the accounting configuration and try again.'],
+            ]);
         }
 
         $this->securityAudit->record('loan.disbursement.posted', actor: $actor, subject: $loan, properties: [

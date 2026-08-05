@@ -1386,6 +1386,46 @@ final class Module4CreditLoansTest extends TestCase
         ]);
     }
 
+    public function test_loan_disbursement_does_not_expose_database_constraint_details(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR15DB');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+        $invalidTransferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $invalidTransferLedger['id']);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 300000,
+            'approved_on' => '2026-05-13',
+            'transfer_account_id' => $transferAccount['id'],
+        ])->save();
+
+        DB::statement('SET CONSTRAINTS customer_account_non_overdraft_after_line_change IMMEDIATE');
+        DB::statement('SET CONSTRAINTS customer_account_non_overdraft_after_entry_status IMMEDIATE');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'business_date' => '2026-05-13',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['disbursement']);
+        $response->assertJsonPath(
+            'errors.disbursement.0',
+            'Loan disbursement could not be posted. Verify the accounting configuration and try again.',
+        );
+        self::assertStringNotContainsString('SQLSTATE', $response->getContent());
+        self::assertStringNotContainsString('enforce_customer_account_non_overdraft', $response->getContent());
+        self::assertStringNotContainsString('Customer account', $response->getContent());
+        self::assertSame(0, DB::table('loan_disbursements')->where('loan_id', $loan->id)->count());
+        self::assertSame(0, DB::table('journal_entries')->where('source_type', 'loan_disbursement')->where('source_public_id', $loan->public_id)->count());
+        self::assertSame(Loan::STATUS_APPROVED, $loan->refresh()->status);
+    }
+
     public function test_loan_disbursement_replay_rejects_payload_mismatch(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
