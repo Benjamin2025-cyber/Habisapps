@@ -28,10 +28,13 @@ Stores the chart of accounts.
 Minimum fields:
 
 - `id`
-- `code`, unique
+- `code`, unique per agency, and unique institution-wide for institution-level accounts
 - `name`
 - `account_class`
 - `type`
+- `agency_id`, nullable — `NULL` means an institution-level grouping account
+- `is_postable`
+- `parent_account_id`
 - `normal_balance`
 - `status`
 - timestamps
@@ -40,6 +43,10 @@ Rules:
 
 - Ledger account codes are stable accounting references and should not be reused after deactivation.
 - Deactivating a ledger account prevents new postings but must not break historical reporting.
+- The chart is consolidated: institution-level accounts group the agency detail
+  accounts beneath them, and only detail accounts (`is_postable`) receive entries.
+  See [consolidated-chart-of-accounts.md](consolidated-chart-of-accounts.md) for the
+  full structure, invariants, and remaining work.
 
 ### account_products
 
@@ -72,7 +79,10 @@ Rules:
 
 - EMF accounts are global regulatory references, not operational posting accounts.
 - Parent-child hierarchy is supported for reporting rollups.
-- Operational `ledger_accounts` remain agency-scoped in the current implementation.
+- Operational `ledger_accounts` are agency-scoped when they receive entries; an
+  institution-level account (`agency_id IS NULL`) is a grouping account only and can
+  never be posted to or mapped. This is the local consolidated chart, and it does not
+  replace the EMF regulatory chart below.
 - Local ledger-to-regulatory reporting must use `emf_ledger_account_mappings`; do not make agency ledgers global just to satisfy regulatory reporting.
 - EMF accounts cannot be archived while child accounts or local ledger mappings still reference them.
 

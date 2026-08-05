@@ -523,7 +523,6 @@
     "Ledger account must exist and be active.": "Ledger account must exist and be active.",
     "Ledger account updated successfully": "Ledger account updated successfully",
     "Ledger accounts must be active and match the teller session agency.": "Ledger accounts must be active and match the teller session agency.",
-    "Ledger accounts must be attached to an agency in this safe slice.": "Ledger accounts must be attached to an agency in this safe slice.",
     "Legacy compatibility role for staff administration.": "Legacy compatibility role for staff administration.",
     "Link could not be reloaded.": "Link could not be reloaded.",
     "Link not found on this sign-off.": "Link not found on this sign-off.",

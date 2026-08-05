@@ -31,6 +31,7 @@ final class UpdateLedgerAccountRequest extends FormRequest
         return [
             'name' => ['sometimes', 'string', 'max:255'],
             'account_type' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'is_postable' => ['sometimes', 'boolean'],
             'parent_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
             'normal_balance_side' => ['sometimes', Rule::in([
                 LedgerAccount::NORMAL_BALANCE_DEBIT,

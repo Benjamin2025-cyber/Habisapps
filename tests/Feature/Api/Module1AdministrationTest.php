@@ -13,6 +13,7 @@ use App\Models\OperationCode;
 use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -654,6 +655,7 @@ final class Module1AdministrationTest extends TestCase
         self::assertIsArray($protected);
         self::assertIsArray($nonDelegable);
         self::assertContains('crm.pii.view', $protected);
+        self::assertContains('institution.profile.manage', $protected);
         self::assertContains('roles.manage', $nonDelegable);
         self::assertContains('system.database.view', $nonDelegable);
         self::assertContains('system.database.restore.execute', $nonDelegable);
@@ -1604,6 +1606,83 @@ final class Module1AdministrationTest extends TestCase
         $response->assertForbidden();
         $this->assertDatabaseMissing('agencies', [
             'code' => 'AG-Z9',
+        ]);
+    }
+
+    public function test_institution_profile_can_be_read_and_updated(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Readable before anything is configured: the row is created empty so
+        // the endpoint never 404s on a fresh install.
+        $initial = $this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/institution');
+        $this->assertJsonSuccess($initial);
+        $initial->assertJsonPath('data.legal_name', null);
+
+        $update = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/institution', [
+                'legal_name' => 'Habis Microfinance SA',
+                'trade_name' => 'Habis',
+                'legal_form' => 'Société Anonyme',
+                'emf_category' => 'deuxieme_categorie',
+                'supervisory_authority' => 'COBAC',
+                'approval_number' => 'D-2026/145',
+                'approval_date' => '2026-02-14',
+                'city' => 'Douala',
+                'country' => 'Cameroun',
+                'email' => 'contact@habis.example',
+                'declared_reporting_currency' => 'xaf',
+                'fiscal_year_start_month' => 1,
+            ]);
+        $this->assertJsonSuccess($update);
+        $update->assertJsonPath('data.legal_name', 'Habis Microfinance SA');
+        $update->assertJsonPath('data.approval_date', '2026-02-14');
+        $update->assertJsonPath('data.fiscal_year_start_month', 1);
+        // Declared currency is normalised for filings but drives no conversion.
+        $update->assertJsonPath('data.declared_reporting_currency', 'XAF');
+
+        // A partial patch leaves untouched fields alone.
+        $partial = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/institution', ['city' => 'Yaoundé']);
+        $this->assertJsonSuccess($partial);
+        $partial->assertJsonPath('data.city', 'Yaoundé');
+        $partial->assertJsonPath('data.legal_name', 'Habis Microfinance SA');
+
+        self::assertSame(1, DB::table('institution_profile')->count());
+        self::assertDatabaseHas('activity_log', ['event' => 'institution.profile.updated']);
+    }
+
+    public function test_institution_profile_editing_requires_the_manage_permission(): void
+    {
+        $agency = $this->createAgency('INST-ROLE');
+        $accountant = $this->createUserWithRole('accountant', $agency['code'], $agency['name']);
+
+        // An accountant reads the institution identity for report headers...
+        $this->assertJsonSuccess(
+            $this->withApiHeaders()->actingAsSanctum($accountant)->getJson('/api/v1/institution')
+        );
+
+        // ...but editing it is an institution-control action.
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->patchJson('/api/v1/institution', ['legal_name' => 'Unauthorised Rename'])
+            ->assertForbidden();
+
+        self::assertNull(DB::table('institution_profile')->value('legal_name'));
+    }
+
+    public function test_institution_profile_rejects_a_second_row(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)->getJson('/api/v1/institution'));
+        self::assertSame(1, DB::table('institution_profile')->count());
+
+        // There is one institution: one legal entity, enforced by the schema
+        // rather than by convention.
+        $this->expectException(QueryException::class);
+        DB::table('institution_profile')->insert([
+            'id' => 2,
+            'public_id' => (string) Str::ulid(),
+            'legal_name' => 'Second Institution',
         ]);
     }
 

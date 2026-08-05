@@ -523,7 +523,6 @@
     "Ledger account must exist and be active.": "Le compte du grand livre doit exister et être actif.",
     "Ledger account updated successfully": "Compte du grand livre mis à jour avec succès",
     "Ledger accounts must be active and match the teller session agency.": "Les comptes du grand livre doivent être actifs et correspondre à l'agence de la session de caisse.",
-    "Ledger accounts must be attached to an agency in this safe slice.": "Les comptes du grand livre doivent être rattachés à une agence dans ce périmètre sécurisé.",
     "Legacy compatibility role for staff administration.": "Rôle de compatibilité hérité pour l'administration du personnel.",
     "Link could not be reloaded.": "Le lien n'a pas pu être rechargé.",
     "Link not found on this sign-off.": "Lien introuvable sur cette validation.",

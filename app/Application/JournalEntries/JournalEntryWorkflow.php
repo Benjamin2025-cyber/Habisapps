@@ -62,13 +62,20 @@ final class JournalEntryWorkflow extends BaseController
             }
         }
 
+        // journal_entries.agency_id is NOT NULL: every entry belongs to the
+        // agency where the financial event occurred, even when a head-office
+        // actor records it. Without this the insert fails at the database.
+        if (! $agency instanceof Agency) {
+            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.journal_entry_requires_agency')]]);
+        }
+
         // The accounting day governs the business date; reject closed-day writes
         // and supplied dates that diverge from the open day.
         $requestedDate = $request->input('business_date');
         $accountingDay = $this->accountingDayGuard->resolveAccountingDay(
             $actor,
             'journal.create',
-            $agency?->id,
+            $agency->id,
             is_string($requestedDate) ? $requestedDate : null,
             $request,
         );
@@ -80,7 +87,7 @@ final class JournalEntryWorkflow extends BaseController
             'business_date' => $businessDate,
             'accounting_day_id' => $accountingDay->id,
             'posted_at' => null,
-            'agency_id' => $agency?->id,
+            'agency_id' => $agency->id,
             'source_module' => $request->input('source_module'),
             'source_type' => $request->input('source_type'),
             'source_public_id' => $request->input('source_public_id'),

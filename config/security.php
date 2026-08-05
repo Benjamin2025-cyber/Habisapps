@@ -100,6 +100,8 @@ return [
                 'audit.view',
                 'agencies.view',
                 'agencies.manage',
+                'institution.profile.view',
+                'institution.profile.manage',
                 'users.view',
                 'users.create',
                 'users.manage',
@@ -114,6 +116,7 @@ return [
                 'batch.procedures.manage',
                 'batch.runs.view',
                 'batch.runs.manage',
+                'accounting.scope.institution.manage',
                 'accounting.days.view',
                 'accounting.days.open',
                 'accounting.days.close',
@@ -184,6 +187,8 @@ return [
                 'ledger.accounts.create',
                 'ledger.accounts.update',
                 'ledger.accounts.archive',
+                'ledger.scope.institution.read',
+                'ledger.scope.institution.manage',
                 'customer.accounts.view',
                 'customer.accounts.balance.view',
                 'customer.accounts.statement.view',
@@ -492,6 +497,16 @@ return [
             'accountant' => [
                 'system.view-health',
                 'audit.view',
+                'institution.profile.view',
+                // Maintaining the chart of accounts is the accountant's own job.
+                // Scope is enforced by LedgerAccountPolicy: their own agency's
+                // accounts only. Creating institution-level grouping accounts
+                // additionally needs ledger.scope.institution.manage, which this
+                // role does not hold.
+                'ledger.accounts.view',
+                'ledger.accounts.create',
+                'ledger.accounts.update',
+                'ledger.accounts.archive',
                 'accounting.days.view',
                 'accounting.days.open',
                 'accounting.days.close',
@@ -513,6 +528,83 @@ return [
                 'loans.recoveries.manage',
                 'journal.entries.view',
                 'journal.lines.view',
+            ],
+            /*
+             * Head-office accounting authority (chef comptable). Owns what only
+             * the institution can decide: the institution grouping chart, its
+             * deployment into each agency chart, consolidated reporting, and the
+             * institution's declared identity. Carries no agency assignment, so
+             * agency-scoped operational permissions are deliberately absent —
+             * ledger.scope.institution.manage is what lets it write into any
+             * agency chart (see LedgerAccountController::canCreateInAgency).
+             *
+             * Institution-scoped accounting-day lifecycle stays platform-admin
+             * only; AccountingDayPolicy::canAccessScope() reserves it explicitly.
+             */
+            'chief-accountant' => [
+                'system.view-health',
+                'audit.view',
+                'agencies.view',
+                'documents.view',
+                'references.reserve',
+                // The institution's declared identity, used on filings.
+                'institution.profile.view',
+                'institution.profile.manage',
+                // The chart of accounts: institution grouping chart plus every
+                // agency's detail accounts.
+                'ledger.accounts.view',
+                'ledger.accounts.create',
+                'ledger.accounts.update',
+                'ledger.accounts.archive',
+                'ledger.scope.institution.read',
+                'ledger.scope.institution.manage',
+                // The accounting period, institution-wide and per agency
+                // (the arrêté comptable). Reopening a closed period is withheld
+                // on purpose — see accounting.days.reopen, platform-admin only.
+                'accounting.scope.institution.manage',
+                'accounting.days.view',
+                'accounting.days.open',
+                'accounting.days.close',
+                'accounting.calendar.view',
+                'accounting.calendar.manage',
+                // Manual journal work (opérations diverses) and corrections.
+                // Maker-checker is enforced per user in JournalEntryWorkflow,
+                // so holding both sides here cannot self-approve an entry.
+                'journal.entries.view',
+                'journal.entries.create',
+                'journal.entries.update',
+                'journal.entries.archive',
+                'journal.entries.review',
+                'journal.entries.post',
+                'journal.entries.reverse',
+                'journal.lines.view',
+                'journal.lines.create',
+                'journal.lines.update',
+                'journal.lines.archive',
+                // Which ledger accounts each operation posts to.
+                'operation.codes.view',
+                'operation.codes.create',
+                'operation.codes.update',
+                'operation.codes.archive',
+                'operation.mappings.view',
+                'operation.mappings.create',
+                'operation.mappings.update',
+                'operation.mappings.archive',
+                // Mapping the local chart onto the EMF/COBAC regulatory chart.
+                'emf.accounts.view',
+                'emf.accounts.create',
+                'emf.accounts.update',
+                'emf.accounts.archive',
+                'emf.mappings.view',
+                'emf.mappings.create',
+                'emf.mappings.update',
+                'emf.mappings.archive',
+                // Reporting, and the visibility needed to reconcile it.
+                'accounting.audit.view',
+                'account.products.view',
+                'loan.products.view',
+                'batch.procedures.view',
+                'batch.runs.view',
             ],
             'kyc-officer' => [
                 'system.view-health',
@@ -601,6 +693,7 @@ return [
                 'system.view-health',
                 'audit.view',
                 'agencies.view',
+                'institution.profile.view',
                 'users.view',
                 'documents.view',
                 'crm.scope.institution.read',

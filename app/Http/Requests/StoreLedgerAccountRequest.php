@@ -25,6 +25,10 @@ final class StoreLedgerAccountRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'scope' => ['nullable', Rule::in([
+                LedgerAccount::SCOPE_AGENCY,
+                LedgerAccount::SCOPE_INSTITUTION,
+            ])],
             'agency_public_id' => ['nullable', 'string', 'exists:agencies,public_id'],
             'code' => ['required', 'string', 'max:64'],
             'name' => ['required', 'string', 'max:255'],
@@ -36,6 +40,7 @@ final class StoreLedgerAccountRequest extends FormRequest
                 LedgerAccount::ACCOUNT_CLASS_EXPENSE,
             ])],
             'account_type' => ['nullable', 'string', 'max:64'],
+            'is_postable' => ['nullable', 'boolean'],
             'parent_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
             'normal_balance_side' => ['required', Rule::in([
                 LedgerAccount::NORMAL_BALANCE_DEBIT,

@@ -579,6 +579,16 @@ final class RoleController extends BaseController
             'crm.scope.institution.read',
             'crm.scope.institution.review',
             'crm.scope.institution.manage',
+            // The institution chart of accounts governs every agency chart
+            // below it, so authoring grouping accounts is a protected surface.
+            'ledger.scope.institution.manage',
+            // The legal name, approval number and registration identifiers are
+            // what the institution declares to its supervisor and prints on
+            // issued attestations, so editing them is protected.
+            'institution.profile.manage',
+            // Opening and closing the institution's own accounting period locks
+            // and unlocks registrations institution-wide.
+            'accounting.scope.institution.manage',
             'crm.pii.view',
             'crm.kyc.override.expired_identity',
             'crm.kyc.override.self_verify',
@@ -613,7 +623,8 @@ final class RoleController extends BaseController
             'regional-manager' => 'Regional oversight role with read access.',
             'teller' => 'Cash operations and teller workflow role.',
             'loan-officer' => 'Loan origination and servicing role.',
-            'accountant' => 'Accounting and audit support role.',
+            'accountant' => 'Agency-scoped accounting role; maintains its own agency chart of accounts.',
+            'chief-accountant' => 'Head-office accounting authority; owns the institution chart of accounts and identity.',
             'kyc-officer' => 'Agency KYC operations and verification role.',
             'compliance-officer' => 'Institution-wide KYC compliance review role.',
             'auditor' => 'Read-only audit and oversight role.',

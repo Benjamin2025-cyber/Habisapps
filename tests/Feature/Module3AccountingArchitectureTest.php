@@ -14,6 +14,8 @@ use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Database\Seeders\StandardReportDefinitionSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -79,7 +81,7 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['agency_public_id']);
-        $response->assertJsonPath('errors.agency_public_id.0', 'Les comptes du grand livre doivent être rattachés à une agence dans ce périmètre sécurisé.');
+        $response->assertJsonPath('errors.agency_public_id.0', 'Un compte du grand livre au niveau agence doit être rattaché à une agence.');
     }
 
     public function test_parent_account_must_exist_before_linking(): void
@@ -1723,6 +1725,657 @@ final class Module3AccountingArchitectureTest extends TestCase
         $teller = $this->createUserWithRole('teller', $agencyA['code'], $agencyA['name']);
         $this->withApiHeaders()->actingAsSanctum($teller)
             ->getJson('/api/v1/ledger-accounts/'.$ledgerPublicId.'/balance?currency=XAF')->assertForbidden();
+    }
+
+    public function test_institution_level_grouping_account_can_be_created_without_an_agency(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => '571000',
+                'name' => 'Caisse Globale',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonPath('data.scope', 'institution');
+        $response->assertJsonPath('data.agency_public_id', null);
+        $response->assertJsonPath('data.is_postable', false);
+    }
+
+    public function test_institution_grouping_account_requires_institution_scope_permission(): void
+    {
+        // The accountant role already maintains its own agency's chart; the
+        // institution grouping chart is a separate, protected surface.
+        $agency = $this->createAgency('INST-PERM');
+        $accountant = $this->createUserWithRole('accountant', $agency['code'], $agency['name']);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($accountant)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => '571100',
+                'name' => 'Unauthorised Grouping Account',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_institution_grouping_account_cannot_be_attached_to_an_agency(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('INST-01');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'agency_public_id' => $agency['public_id'],
+                'code' => '571200',
+                'name' => 'Contradictory Scope',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['agency_public_id']);
+    }
+
+    public function test_agency_accounts_from_different_agencies_share_one_institution_parent(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('CONS-A');
+        $agencyB = $this->createAgency('CONS-B');
+
+        $parentPublicId = $this->createInstitutionLedgerAccount($actor, '571000', 'Caisse Globale');
+
+        foreach ([[$agencyA, '571001'], [$agencyB, '571002']] as [$agency, $code]) {
+            $child = $this->withApiHeaders()
+                ->actingAsSanctum($actor)
+                ->postJson('/api/v1/ledger-accounts', [
+                    'agency_public_id' => $agency['public_id'],
+                    'code' => $code,
+                    'name' => 'Caisse '.$agency['code'],
+                    'account_class' => 'asset',
+                    'normal_balance_side' => 'debit',
+                    'parent_account_public_id' => $parentPublicId,
+                ]);
+
+            $this->assertJsonSuccess($child, 201);
+            $child->assertJsonPath('data.scope', 'agency');
+            $child->assertJsonPath('data.parent_account_public_id', $parentPublicId);
+            $child->assertJsonPath('data.is_postable', true);
+        }
+    }
+
+    public function test_parent_account_from_another_agency_is_still_refused(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('CONS-C');
+        $agencyB = $this->createAgency('CONS-D');
+
+        $parent = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyA['public_id'],
+                'code' => '572001',
+                'name' => 'Agency A Cash',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $parentPublicId = $this->requireStringJsonPath($parent, 'data.public_id');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agencyB['public_id'],
+                'code' => '572002',
+                'name' => 'Agency B Cash',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+                'parent_account_public_id' => $parentPublicId,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['parent_account_public_id']);
+    }
+
+    public function test_institution_account_cannot_be_grouped_under_an_agency_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-E');
+
+        $institutionPublicId = $this->createInstitutionLedgerAccount($actor, '573000', 'Institution Grouping');
+        $agencyAccount = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '573001',
+                'name' => 'Agency Detail',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $agencyAccountPublicId = $this->requireStringJsonPath($agencyAccount, 'data.public_id');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$institutionPublicId, [
+                'parent_account_public_id' => $agencyAccountPublicId,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['parent_account_public_id']);
+    }
+
+    public function test_adding_a_sub_account_turns_the_parent_into_a_grouping_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-F');
+
+        $parent = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '574000',
+                'name' => 'Agency Grouping Candidate',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $parent->assertJsonPath('data.is_postable', true);
+        $parentPublicId = $this->requireStringJsonPath($parent, 'data.public_id');
+
+        $this->assertJsonSuccess($this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '574001',
+                'name' => 'Agency Detail',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+                'parent_account_public_id' => $parentPublicId,
+            ]), 201);
+
+        $reloaded = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/ledger-accounts/'.$parentPublicId);
+        $this->assertJsonSuccess($reloaded);
+        $reloaded->assertJsonPath('data.is_postable', false);
+
+        // A grouping account cannot be turned back into a posting target while
+        // it still has children.
+        $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$parentPublicId, ['is_postable' => true])
+            ->assertStatus(422);
+    }
+
+    public function test_account_carrying_movements_cannot_become_a_grouping_account(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-G');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $posted = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '575000', 'Posted Cash');
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '575900', 'Counterpart');
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-GROUP-1', '2026-05-01', [
+            ['ledger_account_public_id' => $posted, 'debit_minor' => 5000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 5000],
+        ]);
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '575001',
+                'name' => 'Late Sub Account',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+                'parent_account_public_id' => $posted,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['parent_account_public_id']);
+    }
+
+    public function test_journal_lines_cannot_post_to_a_grouping_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-H');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $institutionPublicId = $this->createInstitutionLedgerAccount($actor, '576000', 'Caisse Globale');
+
+        $entry = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-GROUPING-REJECT',
+                'business_date' => '2026-05-01',
+                'agency_public_id' => $agency['public_id'],
+            ]);
+        $this->assertJsonSuccess($entry, 201);
+        $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $entryPublicId,
+                'ledger_account_public_id' => $institutionPublicId,
+                'debit_minor' => 1000,
+                'credit_minor' => 0,
+                'currency' => 'XAF',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['ledger_account_public_id']);
+        self::assertSame(0, DB::table('journal_lines')->count());
+    }
+
+    public function test_institution_account_balance_consolidates_its_agency_children(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('CONS-I');
+        $agencyB = $this->createAgency('CONS-J');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay($agencyA['id'], '2026-05-01');
+        $this->ensureOpenAccountingDay($agencyB['id'], '2026-05-01');
+
+        $institutionPublicId = $this->createInstitutionLedgerAccount($maker, '577000', 'Caisse Globale');
+        $cashA = $this->createAgencyLedgerAccount($maker, $agencyA['public_id'], '577001', 'Caisse Agence A', $institutionPublicId);
+        $cashB = $this->createAgencyLedgerAccount($maker, $agencyB['public_id'], '577002', 'Caisse Agence B', $institutionPublicId);
+        $counterpartA = $this->createAgencyLedgerAccount($maker, $agencyA['public_id'], '577901', 'Counterpart A');
+        $counterpartB = $this->createAgencyLedgerAccount($maker, $agencyB['public_id'], '577902', 'Counterpart B');
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agencyA['public_id'], 'JE-CONS-A', '2026-05-01', [
+            ['ledger_account_public_id' => $cashA, 'debit_minor' => 10000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpartA, 'debit_minor' => 0, 'credit_minor' => 10000],
+        ]);
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agencyB['public_id'], 'JE-CONS-B', '2026-05-01', [
+            ['ledger_account_public_id' => $cashB, 'debit_minor' => 4000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpartB, 'debit_minor' => 0, 'credit_minor' => 4000],
+        ]);
+
+        // A grouping account consolidates by default: no client change needed.
+        $consolidated = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/balance?currency=XAF');
+        $this->assertJsonSuccess($consolidated);
+        $consolidated->assertJsonPath('data.scope', 'ledger_account_consolidated');
+        $consolidated->assertJsonPath('data.debit_total_minor', 14000);
+        $consolidated->assertJsonPath('data.balance_minor', 14000);
+
+        // Its own movements are nil, which is what makes it a receptacle.
+        $ownOnly = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/balance?currency=XAF&consolidated=0');
+        $this->assertJsonSuccess($ownOnly);
+        $ownOnly->assertJsonPath('data.scope', 'ledger_account');
+        $ownOnly->assertJsonPath('data.balance_minor', 0);
+
+        // Detail accounts keep reporting their own movements.
+        $detail = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$cashA.'/balance?currency=XAF');
+        $this->assertJsonSuccess($detail);
+        $detail->assertJsonPath('data.scope', 'ledger_account');
+        $detail->assertJsonPath('data.balance_minor', 10000);
+    }
+
+    public function test_consolidated_trial_balance_rolls_agency_accounts_into_their_institution_parent(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('CONS-K');
+        $agencyB = $this->createAgency('CONS-L');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay($agencyA['id'], '2026-05-01');
+        $this->ensureOpenAccountingDay($agencyB['id'], '2026-05-01');
+        $this->seed(StandardReportDefinitionSeeder::class);
+
+        $institutionPublicId = $this->createInstitutionLedgerAccount($maker, '578000', 'Caisse Globale');
+        $cashA = $this->createAgencyLedgerAccount($maker, $agencyA['public_id'], '578001', 'Caisse Agence A', $institutionPublicId);
+        $cashB = $this->createAgencyLedgerAccount($maker, $agencyB['public_id'], '578002', 'Caisse Agence B', $institutionPublicId);
+        $counterpartA = $this->createAgencyLedgerAccount($maker, $agencyA['public_id'], '578901', 'Counterpart A');
+        $counterpartB = $this->createAgencyLedgerAccount($maker, $agencyB['public_id'], '578902', 'Counterpart B');
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agencyA['public_id'], 'JE-TB-A', '2026-05-01', [
+            ['ledger_account_public_id' => $cashA, 'debit_minor' => 10000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpartA, 'debit_minor' => 0, 'credit_minor' => 10000],
+        ]);
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agencyB['public_id'], 'JE-TB-B', '2026-05-01', [
+            ['ledger_account_public_id' => $cashB, 'debit_minor' => 4000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpartB, 'debit_minor' => 0, 'credit_minor' => 4000],
+        ]);
+
+        $definitionPublicId = DB::table('report_definitions')->where('code', 'trial_balance')->value('public_id');
+        self::assertIsString($definitionPublicId);
+
+        $run = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'currency' => 'XAF',
+                'parameters' => ['consolidated' => true],
+            ]);
+        $this->assertJsonSuccess($run, 201);
+        $run->assertJsonPath('data.summary.consolidated', true);
+
+        $rows = $run->json('data.summary.rows');
+        self::assertIsArray($rows);
+        $byCode = [];
+        foreach ($rows as $row) {
+            self::assertIsArray($row);
+            $code = $row['ledger_account_code'] ?? null;
+            self::assertIsString($code);
+            $byCode[$code] = $row;
+        }
+
+        // The institution parent aggregates both agencies.
+        self::assertArrayHasKey('578000', $byCode);
+        self::assertSame('institution', $byCode['578000']['scope']);
+        self::assertFalse($byCode['578000']['is_postable']);
+        self::assertSame(14000, $byCode['578000']['debit_total_minor']);
+        self::assertSame(14000, $byCode['578000']['balance_minor']);
+
+        // Detail rows stay on their own agency.
+        self::assertSame(10000, $byCode['578001']['debit_total_minor']);
+        self::assertSame($agencyA['public_id'], $byCode['578001']['agency_public_id']);
+        self::assertSame(4000, $byCode['578002']['debit_total_minor']);
+        self::assertSame($institutionPublicId, $byCode['578002']['parent_account_public_id']);
+
+        // Grand totals count the movements once, not once per level.
+        $run->assertJsonPath('data.summary.debit_total_minor', 14000);
+        $run->assertJsonPath('data.summary.credit_total_minor', 14000);
+
+        // Without the flag the report keeps its flat, posted-accounts-only shape.
+        $flat = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($flat, 201);
+        $flat->assertJsonPath('data.summary.consolidated', false);
+        $flatRows = $flat->json('data.summary.rows');
+        self::assertIsArray($flatRows);
+        $flatCodes = [];
+        foreach ($flatRows as $flatRow) {
+            self::assertIsArray($flatRow);
+            $flatCodes[] = $flatRow['ledger_account_code'] ?? null;
+        }
+        self::assertNotContains('578000', $flatCodes);
+        $flat->assertJsonPath('data.summary.debit_total_minor', 14000);
+    }
+
+    public function test_ledger_codes_are_unique_per_agency_and_across_the_institution(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('CONS-M');
+        $agencyB = $this->createAgency('CONS-N');
+
+        $this->createInstitutionLedgerAccount($actor, '579000', 'Caisse Globale');
+
+        // The same code may be reused across agencies: each agency owns its own
+        // namespace, which is what UNIQUE (agency_id, code) has always allowed.
+        $this->createAgencyLedgerAccount($actor, $agencyA['public_id'], '579100', 'Shared Code A');
+        $this->createAgencyLedgerAccount($actor, $agencyB['public_id'], '579100', 'Shared Code B');
+        self::assertSame(2, DB::table('ledger_accounts')->where('code', '579100')->count());
+
+        // Institution codes have a single namespace, guarded by the partial
+        // unique index that Postgres' NULL-distinct rule would otherwise skip.
+        $this->expectException(QueryException::class);
+        DB::table('ledger_accounts')->insert([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => null,
+            'code' => '579000',
+            'name' => 'Duplicate Institution Code',
+            'account_class' => 'asset',
+            'is_postable' => false,
+            'normal_balance_side' => 'debit',
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_accountant_maintains_the_chart_of_accounts_of_its_own_agency(): void
+    {
+        $agency = $this->createAgency('CONS-O');
+        $accountant = $this->createUserWithRole('accountant', $agency['code'], $agency['name']);
+
+        // Create: the accountant's own job, no agency_public_id needed.
+        $create = $this->withApiHeaders()
+            ->actingAsSanctum($accountant)
+            ->postJson('/api/v1/ledger-accounts', [
+                'code' => '580001',
+                'name' => 'Caisse Agence',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.agency_public_id', $agency['public_id']);
+        $publicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        // Read, update and archive all follow.
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($accountant)
+            ->getJson('/api/v1/ledger-accounts/'.$publicId));
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($accountant)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, ['name' => 'Caisse Principale Agence']));
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($accountant)
+            ->deleteJson('/api/v1/ledger-accounts/'.$publicId));
+        self::assertSame('archived', DB::table('ledger_accounts')->where('public_id', $publicId)->value('status'));
+    }
+
+    public function test_accountant_cannot_reach_another_agency_chart_or_the_institution_chart(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $ownAgency = $this->createAgency('CONS-P');
+        $otherAgency = $this->createAgency('CONS-Q');
+        $accountant = $this->createUserWithRole('accountant', $ownAgency['code'], $ownAgency['name']);
+
+        $institutionPublicId = $this->createInstitutionLedgerAccount($admin, '581000', 'Caisse Globale');
+        $otherAccountPublicId = $this->createAgencyLedgerAccount($admin, $otherAgency['public_id'], '581002', 'Other Agency Cash');
+
+        // Naming another agency explicitly is refused rather than honoured.
+        $crossAgency = $this->withApiHeaders()
+            ->actingAsSanctum($accountant)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $otherAgency['public_id'],
+                'code' => '581003',
+                'name' => 'Smuggled Account',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $crossAgency->assertStatus(422);
+        $crossAgency->assertJsonValidationErrors(['agency_public_id']);
+
+        // Another agency's accounts are neither readable nor writable.
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->getJson('/api/v1/ledger-accounts/'.$otherAccountPublicId)->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->patchJson('/api/v1/ledger-accounts/'.$otherAccountPublicId, ['name' => 'Renamed'])->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->deleteJson('/api/v1/ledger-accounts/'.$otherAccountPublicId)->assertForbidden();
+
+        // Minting institution grouping accounts stays institution-control.
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => '581100',
+                'name' => 'Unauthorised Grouping Account',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ])->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->patchJson('/api/v1/ledger-accounts/'.$institutionPublicId, ['name' => 'Renamed Institution Account'])
+            ->assertForbidden();
+
+        // The institution chart is still visible, so agency accounts can be
+        // filed under it — but its consolidated figures are not.
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($accountant)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId));
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($accountant)
+            ->postJson('/api/v1/ledger-accounts', [
+                'code' => '581001',
+                'name' => 'Caisse Agence',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+                'parent_account_public_id' => $institutionPublicId,
+            ]), 201);
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/balance?currency=XAF')->assertForbidden();
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/movements?currency=XAF')->assertForbidden();
+    }
+
+    public function test_chief_accountant_owns_the_institution_chart_without_an_agency_assignment(): void
+    {
+        $agencyA = $this->createAgency('CONS-R');
+        $agencyB = $this->createAgency('CONS-S');
+        // Head office: no agency assignment at all.
+        $chief = $this->createUserWithRole('chief-accountant');
+        self::assertNull(DB::table('staff_agency_assignments')->where('user_id', $chief->id)->value('agency_id'));
+
+        // Creates the institution grouping account.
+        $institution = $this->withApiHeaders()
+            ->actingAsSanctum($chief)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => '582000',
+                'name' => 'Caisse Globale',
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $this->assertJsonSuccess($institution, 201);
+        $institution->assertJsonPath('data.scope', 'institution');
+        $institutionPublicId = $this->requireStringJsonPath($institution, 'data.public_id');
+
+        // Deploys detail accounts into every agency chart, which no agency-bound
+        // actor may do.
+        foreach ([[$agencyA, '582001'], [$agencyB, '582002']] as [$agency, $code]) {
+            $child = $this->withApiHeaders()
+                ->actingAsSanctum($chief)
+                ->postJson('/api/v1/ledger-accounts', [
+                    'agency_public_id' => $agency['public_id'],
+                    'code' => $code,
+                    'name' => 'Caisse '.$agency['code'],
+                    'account_class' => 'asset',
+                    'normal_balance_side' => 'debit',
+                    'parent_account_public_id' => $institutionPublicId,
+                ]);
+            $this->assertJsonSuccess($child, 201);
+            $child->assertJsonPath('data.agency_public_id', $agency['public_id']);
+        }
+
+        // Reads across agencies, including the consolidated institution figure.
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($chief)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/balance?currency=XAF'));
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($chief)
+            ->patchJson('/api/v1/ledger-accounts/'.$institutionPublicId, ['name' => 'Caisse Globale Institution']));
+
+        // Owns the institution's declared identity.
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($chief)
+            ->patchJson('/api/v1/institution', ['legal_name' => 'Habis Microfinance SA']));
+    }
+
+    public function test_chief_accountant_runs_the_institution_accounting_period(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+
+        // Opening and closing the institution's own period is the arrêté
+        // comptable — head-office accounting work, not platform administration.
+        $open = $this->withApiHeaders()
+            ->actingAsSanctum($chief)
+            ->postJson('/api/v1/accounting-days/open', [
+                'scope' => 'institution',
+                'business_date' => '2026-05-01',
+            ]);
+        $this->assertJsonSuccess($open, 201);
+        $open->assertJsonPath('data.scope_type', 'institution');
+        $dayPublicId = $this->requireStringJsonPath($open, 'data.public_id');
+
+        // The days list is reachable despite carrying no agency assignment.
+        $index = $this->withApiHeaders()->actingAsSanctum($chief)->getJson('/api/v1/accounting-days');
+        $this->assertJsonSuccess($index);
+
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/accounting-days/'.$dayPublicId.'/start-close'));
+
+        // Reopening a closed period stays with platform administrators: the role
+        // that closes the books is not the role that can unclose them.
+        self::assertFalse($chief->can('accounting.days.reopen'));
+    }
+
+    public function test_agency_accountant_still_cannot_touch_the_institution_accounting_period(): void
+    {
+        $agency = $this->createAgency('CONS-T');
+        $accountant = $this->createUserWithRole('accountant', $agency['code'], $agency['name']);
+
+        $this->withApiHeaders()
+            ->actingAsSanctum($accountant)
+            ->postJson('/api/v1/accounting-days/open', [
+                'scope' => 'institution',
+                'business_date' => '2026-05-01',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_journal_entry_without_an_agency_is_rejected_rather_than_failing_at_the_database(): void
+    {
+        // A head-office actor has no agency to default to, and
+        // journal_entries.agency_id is NOT NULL.
+        $chief = $this->createUserWithRole('chief-accountant');
+
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($chief)
+            ->postJson('/api/v1/journal-entries', [
+                'reference' => 'JE-NO-AGENCY',
+                'business_date' => '2026-05-01',
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['agency_public_id']);
+    }
+
+    private function createInstitutionLedgerAccount(User $actor, string $code, string $name): string
+    {
+        $response = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => $code,
+                'name' => $name,
+                'account_class' => 'asset',
+                'normal_balance_side' => 'debit',
+            ]);
+        $this->assertJsonSuccess($response, 201);
+
+        return $this->requireStringJsonPath($response, 'data.public_id');
+    }
+
+    private function createAgencyLedgerAccount(User $actor, string $agencyPublicId, string $code, string $name, ?string $parentPublicId = null): string
+    {
+        $payload = [
+            'agency_public_id' => $agencyPublicId,
+            'code' => $code,
+            'name' => $name,
+            'account_class' => 'asset',
+            'normal_balance_side' => 'debit',
+        ];
+        if ($parentPublicId !== null) {
+            $payload['parent_account_public_id'] = $parentPublicId;
+        }
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/ledger-accounts', $payload);
+        $this->assertJsonSuccess($response, 201);
+
+        return $this->requireStringJsonPath($response, 'data.public_id');
     }
 
     private function createUserWithRole(string $role, ?string $agencyCode = null, ?string $agencyName = null): User

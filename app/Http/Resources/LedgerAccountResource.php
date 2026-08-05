@@ -23,12 +23,14 @@ final class LedgerAccountResource extends JsonResource
 
         return [
             'public_id' => $ledgerAccount->public_id,
+            'scope' => $ledgerAccount->accountScope(),
             'agency_public_id' => $ledgerAccount->relationLoaded('agency') ? $ledgerAccount->agency?->public_id : null,
             'parent_account_public_id' => $ledgerAccount->relationLoaded('parentAccount') ? $ledgerAccount->parentAccount?->public_id : null,
             'code' => $ledgerAccount->code,
             'name' => $ledgerAccount->name,
             'account_class' => $ledgerAccount->account_class,
             'account_type' => $ledgerAccount->account_type,
+            'is_postable' => $ledgerAccount->is_postable,
             'normal_balance_side' => $ledgerAccount->normal_balance_side,
             'status' => $ledgerAccount->status,
             'created_at' => $ledgerAccount->created_at?->toAtomString(),

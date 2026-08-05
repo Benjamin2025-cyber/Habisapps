@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\ClientIdentityDocumentController;
 use App\Http\Controllers\Api\V1\ClientProfilePhotoController;
 use App\Http\Controllers\Api\V1\ClientProxyController;
 use App\Http\Controllers\Api\V1\DocumentController;
+use App\Http\Controllers\Api\V1\InstitutionProfileController;
 use App\Http\Controllers\Api\V1\MediaStorageController;
 use App\Http\Controllers\Api\V1\ReferenceCatalogController;
 use App\Http\Controllers\Api\V1\ReferenceNumberController;
@@ -40,6 +41,14 @@ Route::post('logout', [AuthController::class, 'logout'])
 
 Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(function (): void {
     Route::get('me', [AuthController::class, 'me']);
+
+    // Institution identity: a singleton, so no identifier in the path. Same
+    // administration class as agency configuration below — it must be editable
+    // before any accounting day exists, since supervisory filings need it from
+    // the first day of operation.
+    Route::get('institution', [InstitutionProfileController::class, 'show']);
+    Route::patch('institution', [InstitutionProfileController::class, 'update'])
+        ->defaults('accounting_day_classification', 'administration');
 
     // Agency administration: institution-structure configuration, not a
     // financial registration. These writes carry no accounting_day_id and have

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string $account_class
  * @property string|null $account_type
+ * @property bool $is_postable
  * @property int|null $parent_account_id
  * @property string $normal_balance_side
  * @property string $status
@@ -30,6 +31,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'account_class',
     'account_type',
+    'is_postable',
     'parent_account_id',
     'normal_balance_side',
     'status',
@@ -61,12 +63,38 @@ final class LedgerAccount extends Model
 
     public const NORMAL_BALANCE_CREDIT = 'credit';
 
+    /** Grouping account owned by the institution; consolidates agency detail accounts. */
+    public const SCOPE_INSTITUTION = 'institution';
+
+    /** Operational account owned by one agency; the only kind entries can post to. */
+    public const SCOPE_AGENCY = 'agency';
+
     /**
      * @return array<int, string>
      */
     public function uniqueIds(): array
     {
         return ['public_id'];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'is_postable' => 'boolean',
+        ];
+    }
+
+    public function isInstitutionLevel(): bool
+    {
+        return $this->agency_id === null;
+    }
+
+    public function accountScope(): string
+    {
+        return $this->isInstitutionLevel() ? self::SCOPE_INSTITUTION : self::SCOPE_AGENCY;
     }
 
     public function getRouteKeyName(): string
@@ -90,6 +118,12 @@ final class LedgerAccount extends Model
     public function childAccounts(): HasMany
     {
         return $this->hasMany(self::class, 'parent_account_id');
+    }
+
+    /** @return HasMany<JournalLine, $this> */
+    public function journalLines(): HasMany
+    {
+        return $this->hasMany(JournalLine::class);
     }
 
     /** @return HasMany<EmfLedgerAccountMapping, $this> */
