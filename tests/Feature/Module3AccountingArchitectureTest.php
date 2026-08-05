@@ -13,6 +13,7 @@ use App\Models\Document;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use Database\Seeders\BatchProcedureSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\StandardReportDefinitionSeeder;
 use Illuminate\Database\QueryException;
@@ -2070,26 +2071,22 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $rows = $run->json('data.summary.rows');
         self::assertIsArray($rows);
-        $byCode = [];
-        foreach ($rows as $row) {
-            self::assertIsArray($row);
-            $code = $row['ledger_account_code'] ?? null;
-            self::assertIsString($code);
-            $byCode[$code] = $row;
-        }
 
         // The institution parent aggregates both agencies.
-        self::assertArrayHasKey('578000', $byCode);
-        self::assertSame('institution', $byCode['578000']['scope']);
-        self::assertFalse($byCode['578000']['is_postable']);
-        self::assertSame(14000, $byCode['578000']['debit_total_minor']);
-        self::assertSame(14000, $byCode['578000']['balance_minor']);
+        $institutionRow = $this->consolidatedRow($rows, '578000');
+        self::assertSame('institution', $institutionRow['scope']);
+        self::assertFalse($institutionRow['is_postable']);
+        self::assertSame(14000, $institutionRow['debit_total_minor']);
+        self::assertSame(14000, $institutionRow['balance_minor']);
 
         // Detail rows stay on their own agency.
-        self::assertSame(10000, $byCode['578001']['debit_total_minor']);
-        self::assertSame($agencyA['public_id'], $byCode['578001']['agency_public_id']);
-        self::assertSame(4000, $byCode['578002']['debit_total_minor']);
-        self::assertSame($institutionPublicId, $byCode['578002']['parent_account_public_id']);
+        $agencyARow = $this->consolidatedRow($rows, '578001');
+        self::assertSame(10000, $agencyARow['debit_total_minor']);
+        self::assertSame($agencyA['public_id'], $agencyARow['agency_public_id']);
+
+        $agencyBRow = $this->consolidatedRow($rows, '578002');
+        self::assertSame(4000, $agencyBRow['debit_total_minor']);
+        self::assertSame($institutionPublicId, $agencyBRow['parent_account_public_id']);
 
         // Grand totals count the movements once, not once per level.
         $run->assertJsonPath('data.summary.debit_total_minor', 14000);
@@ -2286,6 +2283,12 @@ final class Module3AccountingArchitectureTest extends TestCase
 
     public function test_chief_accountant_runs_the_institution_accounting_period(): void
     {
+        // Starting a close hard-requires active close-control procedures, and
+        // configuring those stays with platform-admin by design
+        // (batch.procedures.manage is non-delegable). Seeding them is the
+        // precondition, not part of what the role is being tested for.
+        $this->seed(BatchProcedureSeeder::class);
+
         $chief = $this->createUserWithRole('chief-accountant');
 
         // Opening and closing the institution's own period is the arrêté
@@ -2297,7 +2300,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'business_date' => '2026-05-01',
             ]);
         $this->assertJsonSuccess($open, 201);
-        $open->assertJsonPath('data.scope_type', 'institution');
+        $open->assertJsonPath('data.scope', 'institution');
         $dayPublicId = $this->requireStringJsonPath($open, 'data.public_id');
 
         // The days list is reachable despite carrying no agency assignment.
@@ -2598,5 +2601,24 @@ final class Module3AccountingArchitectureTest extends TestCase
         self::assertIsString($value);
 
         return $value;
+    }
+
+    /**
+     * The consolidated trial balance row for a ledger account code, failing the
+     * test when the rollup omitted it.
+     *
+     * @param  array<mixed>  $rows
+     * @return array<mixed>
+     */
+    private function consolidatedRow(array $rows, string $code): array
+    {
+        foreach ($rows as $row) {
+            self::assertIsArray($row);
+            if (($row['ledger_account_code'] ?? null) === $code) {
+                return $row;
+            }
+        }
+
+        self::fail("The consolidated trial balance has no row for {$code}.");
     }
 }

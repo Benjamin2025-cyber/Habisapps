@@ -717,8 +717,10 @@ final class Module1AdministrationTest extends TestCase
             self::assertNotContains('accounting.audit.view', $perms, "{$role} must not gain accounting.audit.view");
         }
 
-        // teller, loan-officer and accountant have no ledger.accounts.view from this fix.
-        foreach (['teller', 'loan-officer', 'accountant'] as $role) {
+        // teller and loan-officer have no ledger.accounts.view from this fix. The
+        // accountant deliberately does: maintaining the agency's chart of accounts
+        // is accounting work, and LedgerAccountPolicy scopes it to its own agency.
+        foreach (['teller', 'loan-officer'] as $role) {
             self::assertNotContains('ledger.accounts.view', $rolePermissions($role), "{$role} must not gain ledger.accounts.view");
         }
 

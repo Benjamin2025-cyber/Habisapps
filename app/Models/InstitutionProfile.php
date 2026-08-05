@@ -8,6 +8,7 @@ use App\Support\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -25,7 +26,7 @@ use Illuminate\Support\Str;
  * @property string|null $emf_category
  * @property string|null $supervisory_authority
  * @property string|null $approval_number
- * @property \Illuminate\Support\Carbon|null $approval_date
+ * @property Carbon|null $approval_date
  * @property string|null $registration_number
  * @property string|null $tax_identification_number
  * @property string|null $address_line_1

@@ -260,7 +260,20 @@ New `domain.*` keys in `lang/en/domain.php` and `lang/fr/domain.php`
   scoped out. `chief-accountant` is the role that would drive it: it can already write
   into every agency's chart.
 - **Maker-checker on operation-account mappings.** See the control weakness noted above:
-  posting rules can be authored and approved by the same actor.
+  posting rules can be authored and approved by the same actor. Verified while reviewing
+  this change, and worth knowing before anyone designs the fix: the 8-state
+  `approval_status` enum on that table is not aspirational — a full lifecycle
+  (submit/approve/reject/suspend/revoke/archive, with a transition table and per-decision
+  audit rows) already exists over the *same* `operation_account_mappings` table, but only
+  behind the Islamic-module routes. The generic
+  [`OperationAccountMappingController`](../../app/Http/Controllers/Api/V1/OperationAccountMappingController.php)
+  predates it and bypasses it: `store()` accepts `approval_status: "approved"` and stamps
+  the author into `approved_by_user_id`, and `update()` accepts any of the 8 states in any
+  direction. **No path enforces approver ≠ author**, the Islamic one included — its
+  self-approval guard only fires for "material" subjects and a mapping is not one. So the
+  work is mostly routing the generic path through a lifecycle and adding an
+  `operation.mappings.approve` permission distinct from `create`, not inventing the state
+  machine. Islamic finance is next-version, so treat that module as reference only.
 - **`crm.scope.institution.manage` remains platform-admin.** Cross-agency client data was
   not revisited. If the `chief-accountant` precedent is right, that deserves the same
   question for a compliance role.
@@ -310,17 +323,65 @@ as "unmapped" and cannot block EMF report generation.
   — declarant snapshotted into an EMF run; an unconfigured institution yields nulls
   without blocking the run.
 
-One assertion was updated rather than added: `test_ledger_account_creation_requires_agency_scope`
-checked the old "périmètre sécurisé" French string. Behaviour is unchanged, wording is not.
+Three assertions were updated rather than added:
+
+- `test_ledger_account_creation_requires_agency_scope` checked the old
+  "périmètre sécurisé" French string. Behaviour is unchanged, wording is not.
+- `Module1AdministrationTest::test_operational_roles_receive_identity_and_balance_permissions`
+  asserted that `accountant` must not hold `ledger.accounts.view` — a privilege-creep
+  guard from an earlier fix, directly contradicted by the grant in §3. The loop now
+  covers `teller` and `loan-officer` only and records why the accountant is excluded.
+  **If that grant is ever narrowed, put the accountant back in that loop.**
+- `test_chief_accountant_runs_the_institution_accounting_period` asserted
+  `data.scope_type`; [`AccountingDayResource`](../../app/Http/Resources/AccountingDayResource.php)
+  exposes that column as `scope`.
 
 Incidental: `FoundationSchemaIntegrityTest::test_ledger_account_cannot_parent_itself`
 still passes but now trips two constraints (self-parent *and* the new non-postable
 check) instead of one.
 
-```bash
-composer test
-```
+### Corrections made after the suite was actually run
+
+The two tests named above were **red as committed** — the suite had not been run to
+completion before `681ac22`. Behaviour was correct in both cases; the tests were not.
+Worth recording because one of them exposed a real precondition:
+
+with the `scope` key corrected, `test_chief_accountant_runs_the_institution_accounting_period`
+failed one line later on the close-control gate. `start-close` hard-requires active
+procedures for `accounting_close_verification` and `cash_close_verification`, so the
+test now seeds `BatchProcedureSeeder` first, as
+[`AccountingDayLifecycleTest`](../../tests/Feature/AccountingDayLifecycleTest.php) does.
+That is the platform-admin dependency in the withheld-permissions table above surfacing
+as a test precondition: **the chief accountant holds every permission `start-close`
+checks, and still cannot close a day until a platform admin has configured the
+close-control procedures.**
+
+Three level-9 findings in this change's own code were fixed rather than suppressed:
+`->getQuery()->exists()` on two relations in `LedgerAccountController` became
+`DB::table(...)->exists()` (larastan treats the forwarded `Builder::exists()` as a
+static call — see also `orderBy`/`whereIn`); two redundant `is_string()` guards in
+`ReportRunController::consolidatedTrialBalanceRows()`'s comparator were dropped; and the
+consolidated trial-balance assertions moved off an `array<string, array>` lookup map,
+which level 9 rejects on literal-key access, onto a `consolidatedRow()` helper that
+fails naming the missing code.
+
+Unrelated to this change but required to get a green suite:
+[`InsuranceProductLifecycleTest`](../../tests/Feature/Api/InsuranceProductLifecycleTest.php)
+had drifted red on a hard-coded `effective_on => '2026-08-01'` that became *past* on
+2026-08-02, flipping a deferred-cancellation case into an immediate one. Its clock is
+now pinned (`travelTo(FROZEN_NOW)`, 2026-06-06 — the period its ~47 fixed dates were
+written for) rather than each date rewritten as an offset, since those dates encode
+relationships to each other, not only to now. The rest of the suite was swept for the
+same hazard: `InsuranceModuleTest`'s `ends_on` and `IslamicFinanceTest`'s
+`delivery_date` are fixed dates too, but neither is ever compared against `now()`, so
+neither can drift.
+
+### Gate
+
+All three clean as of 2026-08-05, on `feat-entreprise`:
 
 ```bash
-vendor/bin/phpstan analyse --no-progress
+vendor/bin/pint --test                    # passed
+vendor/bin/phpstan analyse --no-progress  # no errors
+composer test                             # OK (1039 tests, 14904 assertions)
 ```

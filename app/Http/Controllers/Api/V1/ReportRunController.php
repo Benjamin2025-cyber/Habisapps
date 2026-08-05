@@ -504,12 +504,10 @@ final class ReportRunController extends BaseController
             ];
         }
 
-        usort($rows, static function (array $left, array $right): int {
-            $leftCode = is_string($left['ledger_account_code']) ? $left['ledger_account_code'] : '';
-            $rightCode = is_string($right['ledger_account_code']) ? $right['ledger_account_code'] : '';
-
-            return strcmp($leftCode, $rightCode);
-        });
+        usort($rows, static fn (array $left, array $right): int => strcmp(
+            $left['ledger_account_code'],
+            $right['ledger_account_code'],
+        ));
 
         return $rows;
     }

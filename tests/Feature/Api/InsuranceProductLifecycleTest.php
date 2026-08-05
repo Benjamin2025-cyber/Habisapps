@@ -10,6 +10,7 @@ use App\Models\JournalLine;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -29,9 +30,25 @@ final class InsuranceProductLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Every date in this file is fixed, and many are only meaningful relative to
+     * "now": a cancellation effective in the future stays pending while one
+     * effective today closes the subscription immediately, coverage windows must
+     * contain the claim incident dates, and rule versions must already be in
+     * force. Left on the wall clock those dates silently change meaning as time
+     * passes — `effective_on => '2026-08-01'` tested deferred cancellation until
+     * 2026-08-01, then started testing immediate cancellation and failed.
+     *
+     * Pinning the clock to the period these cases were written for keeps them
+     * deterministic. Reach for a date relative to `now()` only for a case that is
+     * genuinely about the present.
+     */
+    private const string FROZEN_NOW = '2026-06-06 09:00:00';
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo(Carbon::parse(self::FROZEN_NOW));
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
@@ -333,6 +350,8 @@ final class InsuranceProductLifecycleTest extends TestCase
         $checker = $this->createUser('platform-admin');
         [, $subscriptionPublicId] = $this->createSubscriptionWithRuleVersion($admin, $checker, 'annual');
 
+        // Effective after the frozen now, so approving must not close the
+        // subscription yet — the sibling test below covers effective-today.
         $request = $this->withApiHeaders()
             ->actingAsSanctum($admin)
             ->postJson('/api/v1/insurance-subscriptions/'.$subscriptionPublicId.'/cancel', [

@@ -18,6 +18,7 @@ use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class LedgerAccountController extends BaseController
@@ -210,7 +211,7 @@ final class LedgerAccountController extends BaseController
             if ($postable && $ledgerAccount->isInstitutionLevel()) {
                 return $this->respondUnprocessable(errors: ['is_postable' => [__('domain.ledger_institution_account_not_postable')]]);
             }
-            if ($postable && $ledgerAccount->childAccounts()->getQuery()->exists()) {
+            if ($postable && DB::table('ledger_accounts')->where('parent_account_id', $ledgerAccount->id)->exists()) {
                 return $this->respondUnprocessable(errors: ['is_postable' => [__('domain.ledger_grouping_account_not_postable')]]);
             }
 
@@ -280,7 +281,7 @@ final class LedgerAccountController extends BaseController
             return __('The selected parent account must belong to the same agency scope.');
         }
 
-        if ($parent->is_postable && $parent->journalLines()->getQuery()->exists()) {
+        if ($parent->is_postable && DB::table('journal_lines')->where('ledger_account_id', $parent->id)->exists()) {
             return __('domain.ledger_parent_has_movements');
         }
 
