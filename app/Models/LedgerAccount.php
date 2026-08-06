@@ -49,15 +49,45 @@ final class LedgerAccount extends Model
 
     public const STATUS_ARCHIVED = 'archived';
 
-    public const ACCOUNT_CLASS_ASSET = 'asset';
+    /*
+     * PCEMF classes — the eight top-level classes of the Plan Comptable des
+     * Établissements de Microfinance (CEMAC/COBAC), which is the chart a
+     * Cameroonian EMF is required to keep. The class is the first digit of the
+     * account code: 571001 is a class 5 account.
+     *
+     * These replaced the IFRS-style asset/liability/equity/revenue/expense
+     * values, which named the *nature* of an account rather than its place in
+     * the national chart, and which accountants here do not recognise.
+     *
+     * Nature is not lost: classes 6 and 7 are the income statement, 8 is
+     * off-balance-sheet, and for classes 1–5 the balance-sheet side follows
+     * `normal_balance_side` — a debit-side class 3 is client lending, a
+     * credit-side class 3 is client deposits.
+     */
 
-    public const ACCOUNT_CLASS_LIABILITY = 'liability';
+    /** Class 1 — Comptes de capitaux permanents. */
+    public const ACCOUNT_CLASS_CAPITAUX_PERMANENTS = 'capitaux_permanents';
 
-    public const ACCOUNT_CLASS_EQUITY = 'equity';
+    /** Class 2 — Comptes de valeurs immobilisées. */
+    public const ACCOUNT_CLASS_VALEURS_IMMOBILISEES = 'valeurs_immobilisees';
 
-    public const ACCOUNT_CLASS_REVENUE = 'revenue';
+    /** Class 3 — Comptes d'opérations avec la clientèle. */
+    public const ACCOUNT_CLASS_OPERATIONS_CLIENTELE = 'operations_clientele';
 
-    public const ACCOUNT_CLASS_EXPENSE = 'expense';
+    /** Class 4 — Comptes de tiers. */
+    public const ACCOUNT_CLASS_TIERS = 'tiers';
+
+    /** Class 5 — Comptes de trésorerie et d'opérations interbancaires. */
+    public const ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE = 'tresorerie_interbancaire';
+
+    /** Class 6 — Comptes de charges. */
+    public const ACCOUNT_CLASS_CHARGES = 'charges';
+
+    /** Class 7 — Comptes de produits. */
+    public const ACCOUNT_CLASS_PRODUITS = 'produits';
+
+    /** Class 8 — Comptes de hors bilan. */
+    public const ACCOUNT_CLASS_HORS_BILAN = 'hors_bilan';
 
     public const NORMAL_BALANCE_DEBIT = 'debit';
 
@@ -68,6 +98,36 @@ final class LedgerAccount extends Model
 
     /** Operational account owned by one agency; the only kind entries can post to. */
     public const SCOPE_AGENCY = 'agency';
+
+    /**
+     * The eight PCEMF classes, in class order (1 → 8).
+     *
+     * @return array<int, string>
+     */
+    public static function accountClasses(): array
+    {
+        return [
+            self::ACCOUNT_CLASS_CAPITAUX_PERMANENTS,
+            self::ACCOUNT_CLASS_VALEURS_IMMOBILISEES,
+            self::ACCOUNT_CLASS_OPERATIONS_CLIENTELE,
+            self::ACCOUNT_CLASS_TIERS,
+            self::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
+            self::ACCOUNT_CLASS_CHARGES,
+            self::ACCOUNT_CLASS_PRODUITS,
+            self::ACCOUNT_CLASS_HORS_BILAN,
+        ];
+    }
+
+    /**
+     * The PCEMF class number (1–8) this account's class corresponds to, which is
+     * also the leading digit its code is expected to carry.
+     */
+    public function accountClassNumber(): ?int
+    {
+        $position = array_search($this->account_class, self::accountClasses(), true);
+
+        return $position === false ? null : $position + 1;
+    }
 
     /**
      * @return array<int, string>

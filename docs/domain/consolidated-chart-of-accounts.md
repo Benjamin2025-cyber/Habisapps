@@ -256,6 +256,34 @@ New `domain.*` keys in `lang/en/domain.php` and `lang/fr/domain.php`
 7. `config/money.php` and `accounting_days` remain authoritative for currency and
    calendar; the profile's equivalents are declarative.
 
+## 4b. Follow-up: PCEMF account classes (2026-08-06)
+
+Tester feedback: the account-creation form offered `asset`/`liability`/`equity`/`revenue`/
+`expense`, but a Cameroonian EMF keeps the **PCEMF** chart, whose eight classes are
+capitaux permanents, valeurs immobilisées, opérations avec la clientèle, tiers, trésorerie
+et opérations interbancaires, charges, produits, hors bilan. `account_class` now carries
+those; the class is the leading digit of the code. The value list and the reasoning live in
+[accounting-ledger.md](accounting-ledger.md#pcemf-classes).
+
+Worth knowing about that change:
+
+- **It was a value swap, not a schema change.** `account_class` is a plain `varchar(32)`
+  with no check constraint, validated only by `StoreLedgerAccountRequest` (which now uses
+  `LedgerAccount::accountClasses()`). `UpdateLedgerAccountRequest` never accepted the field,
+  so a class is fixed at creation.
+- **`2026_08_06_000000_convert_ledger_account_classes_to_pcemf`** backfills existing rows
+  from the code's leading digit — the PCEMF rule — falling back to the former nature for
+  codes outside 1–8. `down()` is lossy by nature: several classes collapse onto one former
+  value and class 8 had no equivalent.
+- **One behaviour genuinely tightened.** `TillController::ledgerAccountIsCompatible()`
+  required an `asset` account; a till now requires class 5 (trésorerie). That is narrower
+  and more correct — fixed assets and client lending were assets too and were accepted.
+  The message became `domain.till_ledger_account_must_be_treasury`.
+- **`emf_regulatory_accounts.account_class` was left free-form** on purpose: it mirrors the
+  loaded COBAC source file's own classification.
+- **Frontend contract change.** The `account_class` select and its labels must be replaced;
+  the eight values are listed in the table linked above.
+
 ## 5. Not done / next steps
 
 - **Chart provisioning (the biggest remaining win).** There is still no PCEMF chart

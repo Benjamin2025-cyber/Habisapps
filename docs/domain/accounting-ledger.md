@@ -30,7 +30,7 @@ Minimum fields:
 - `id`
 - `code`, unique per agency, and unique institution-wide for institution-level accounts
 - `name`
-- `account_class`
+- `account_class` — one of the eight PCEMF classes (see below)
 - `type`
 - `agency_id`, nullable — `NULL` means an institution-level grouping account
 - `is_postable`
@@ -47,6 +47,33 @@ Rules:
   accounts beneath them, and only detail accounts (`is_postable`) receive entries.
   See [consolidated-chart-of-accounts.md](consolidated-chart-of-accounts.md) for the
   full structure, invariants, and remaining work.
+
+#### PCEMF classes
+
+`account_class` carries the class of the **Plan Comptable des Établissements de
+Microfinance** (CEMAC/COBAC), which is the chart a Cameroonian EMF is required to keep.
+The class is the leading digit of the account code.
+
+| # | Value | Class |
+| --- | --- | --- |
+| 1 | `capitaux_permanents` | Comptes de capitaux permanents |
+| 2 | `valeurs_immobilisees` | Comptes de valeurs immobilisées |
+| 3 | `operations_clientele` | Comptes d'opérations avec la clientèle |
+| 4 | `tiers` | Comptes de tiers |
+| 5 | `tresorerie_interbancaire` | Comptes de trésorerie et d'opérations interbancaires |
+| 6 | `charges` | Comptes de charges |
+| 7 | `produits` | Comptes de produits |
+| 8 | `hors_bilan` | Comptes de hors bilan |
+
+These replaced IFRS-style `asset`/`liability`/`equity`/`revenue`/`expense` values, which
+named an account's nature rather than its place in the national chart. Nature is not lost:
+classes 6 and 7 are the income statement, 8 is off-balance-sheet, and for classes 1–5 the
+balance-sheet side follows `normal_balance_side` — a debit-side class 3 account is client
+lending, a credit-side class 3 account is client deposits. Add a dedicated statement-nature
+column only if a balance sheet ever needs more than that.
+
+`emf_regulatory_accounts.account_class` is deliberately *not* constrained to this list: it
+mirrors whatever classification the loaded COBAC source file uses.
 
 ### account_products
 

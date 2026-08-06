@@ -1069,7 +1069,6 @@
     "The selected ledger account is invalid.": "The selected ledger account is invalid.",
     "The selected ledger account must be active and match the account product agency scope.": "The selected ledger account must be active and match the account product agency scope.",
     "The selected ledger account must be active.": "The selected ledger account must be active.",
-    "The selected ledger account must be an active asset ledger account in the till agency.": "The selected ledger account must be an active asset ledger account in the till agency.",
     "The selected ledger account must belong to the same agency scope.": "The selected ledger account must belong to the same agency scope.",
     "The selected operation code is invalid.": "The selected operation code is invalid.",
     "The selected operation code must be active and belong to the cash module.": "The selected operation code must be active and belong to the cash module.",

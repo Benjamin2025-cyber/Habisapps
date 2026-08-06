@@ -40,6 +40,7 @@ return [
     'accounting_day_outside_ledger_scope' => 'Le jour comptable sélectionné est en dehors du périmètre de l’agence du compte du grand livre.',
     'accounting_day_outside_customer_scope' => 'Le jour comptable sélectionné est en dehors du périmètre de l’agence du compte client.',
     'accounting_day_institution_scope_forbidden' => 'Les jours comptables au niveau entreprise requièrent une autorité comptable au niveau entreprise.',
+    'till_ledger_account_must_be_treasury' => 'Le compte du grand livre sélectionné doit être un compte de trésorerie actif (classe 5 du PCEMF) dans l’agence de la caisse.',
     'journal_entry_requires_agency' => 'Une écriture comptable doit être rattachée à une agence.',
     'ledger_agency_account_requires_agency' => 'Un compte du grand livre au niveau agence doit être rattaché à une agence.',
     'ledger_agency_outside_actor_scope' => 'Vous ne pouvez gérer que le plan comptable de votre propre agence.',

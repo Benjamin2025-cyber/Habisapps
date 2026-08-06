@@ -1069,7 +1069,6 @@
     "The selected ledger account is invalid.": "Le compte du grand livre sélectionné est invalide.",
     "The selected ledger account must be active and match the account product agency scope.": "Le compte du grand livre sélectionné doit être actif et correspondre au périmètre d’agence du produit de compte.",
     "The selected ledger account must be active.": "Le compte du grand livre sélectionné doit être actif.",
-    "The selected ledger account must be an active asset ledger account in the till agency.": "Le compte du grand livre sélectionné doit être un compte du grand livre d'actif actif dans l'agence de la caisse.",
     "The selected ledger account must belong to the same agency scope.": "Le compte du grand livre sélectionné doit appartenir au même périmètre d’agence.",
     "The selected operation code is invalid.": "Le code d’opération sélectionné est invalide.",
     "The selected operation code must be active and belong to the cash module.": "Le code opération sélectionné doit être actif et appartenir au module caisse.",

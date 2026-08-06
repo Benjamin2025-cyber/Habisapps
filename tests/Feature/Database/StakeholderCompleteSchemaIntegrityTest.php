@@ -682,7 +682,7 @@ final class StakeholderCompleteSchemaIntegrityTest extends TestCase
             'agency_id' => $agencyId,
             'code' => '1000-'.Str::ulid(),
             'name' => 'Cash',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'normal_balance_side' => 'debit',
             'status' => 'active',
         ]);

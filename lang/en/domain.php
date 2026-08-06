@@ -40,6 +40,7 @@ return [
     'accounting_day_outside_ledger_scope' => 'The selected accounting day is outside the ledger account agency scope.',
     'accounting_day_outside_customer_scope' => 'The selected accounting day is outside the customer account agency scope.',
     'accounting_day_institution_scope_forbidden' => 'Institution-scoped accounting days require institution accounting authority.',
+    'till_ledger_account_must_be_treasury' => 'The selected ledger account must be an active treasury account (PCEMF class 5) in the till agency.',
     'journal_entry_requires_agency' => 'A journal entry must be attached to an agency.',
     'ledger_agency_account_requires_agency' => 'An agency-level ledger account must be attached to an agency.',
     'ledger_agency_outside_actor_scope' => 'You can only maintain the chart of accounts of your own agency.',

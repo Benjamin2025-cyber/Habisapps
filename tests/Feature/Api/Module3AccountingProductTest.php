@@ -210,7 +210,7 @@ final class Module3AccountingProductTest extends TestCase
             ->postJson('/api/v1/emf-regulatory-accounts', [
                 'code' => '10',
                 'name' => 'Treasury And Cash',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'metadata' => ['source' => 'COBAC'],
             ]);
         $this->assertJsonSuccess($parent, 201);
@@ -221,7 +221,7 @@ final class Module3AccountingProductTest extends TestCase
                 'parent_public_id' => $parentPublicId,
                 'code' => '101',
                 'name' => 'Cash In Till',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
             ]);
         $this->assertJsonSuccess($child, 201);
         $childPublicId = $this->requireStringJsonPath($child, 'data.public_id');
@@ -259,7 +259,7 @@ final class Module3AccountingProductTest extends TestCase
             'public_id' => $emfPublicId,
             'code' => '201',
             'name' => 'Customer Deposits',
-            'account_class' => 'liability',
+            'account_class' => 'operations_clientele',
             'status' => 'active',
         ]);
 
@@ -405,7 +405,7 @@ final class Module3AccountingProductTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'LA-'.Str::ulid(),
             'name' => 'Customer Control',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
             'status' => $status,
         ]);

@@ -46,7 +46,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '1000',
                 'name' => 'Cash on Hand',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
                 'status' => 'active',
             ]);
@@ -62,7 +62,7 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $this->assertJsonSuccess($show);
         $show->assertJsonPath('data.code', '1000');
-        $show->assertJsonPath('data.account_class', 'asset');
+        $show->assertJsonPath('data.account_class', 'tresorerie_interbancaire');
     }
 
     public function test_ledger_account_creation_requires_agency_scope(): void
@@ -76,7 +76,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ->postJson('/api/v1/ledger-accounts', [
                 'code' => '1001',
                 'name' => 'Global Ledger Attempt',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
 
@@ -98,7 +98,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '2000',
                 'name' => 'Savings',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'parent_account_public_id' => (string) Str::ulid(),
                 'normal_balance_side' => 'debit',
             ]);
@@ -118,7 +118,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '2100',
                 'name' => 'Parent Cash',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $parentPublicId = $this->requireStringJsonPath($parent, 'data.public_id');
@@ -128,7 +128,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '2110',
                 'name' => 'Child Cash',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'parent_account_public_id' => $parentPublicId,
                 'normal_balance_side' => 'debit',
             ]);
@@ -187,7 +187,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '3000',
                 'name' => 'Customer Deposits',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -372,7 +372,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '3100',
                 'name' => 'Blocked Deposits',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -403,7 +403,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '5500',
                 'name' => 'Inactive Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
                 'status' => 'inactive',
             ]);
@@ -414,7 +414,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '5600',
                 'name' => 'Active Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $activeLedgerPublicId = $this->requireStringJsonPath($activeLedger, 'data.public_id');
@@ -491,7 +491,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '5100',
                 'name' => 'Filter Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -540,7 +540,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyA['public_id'],
                 'code' => '5200',
                 'name' => 'Agency A Customer Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerAPublicId = $this->requireStringJsonPath($ledgerA, 'data.public_id');
@@ -550,7 +550,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyB['public_id'],
                 'code' => '5300',
                 'name' => 'Agency B Customer Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerBPublicId = $this->requireStringJsonPath($ledgerB, 'data.public_id');
@@ -599,7 +599,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '4000',
                 'name' => 'Suspense',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -763,7 +763,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '4400',
                 'name' => 'Review Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -824,7 +824,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '4300',
                 'name' => 'Mutability Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -886,7 +886,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '5500',
                 'name' => 'Balance DB Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -991,7 +991,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '6100',
                 'name' => 'Immutability Cash',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $depositLedger = $this->withApiHeaders()
@@ -1000,7 +1000,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '6200',
                 'name' => 'Immutability Liability',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $cashLedgerPublicId = $this->requireStringJsonPath($cashLedger, 'data.public_id');
@@ -1093,7 +1093,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '4500',
                 'name' => 'Cash Balance Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $cashLedgerPublicId = $this->requireStringJsonPath($cashLedger, 'data.public_id');
@@ -1104,7 +1104,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '2500',
                 'name' => 'Customer Deposit Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $depositLedgerPublicId = $this->requireStringJsonPath($depositLedger, 'data.public_id');
@@ -1429,7 +1429,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             'public_id' => (string) Str::ulid(),
             'code' => 'EMF-101',
             'name' => 'EMF Cash',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
@@ -1438,7 +1438,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             'public_id' => (string) Str::ulid(),
             'code' => 'EMF-201',
             'name' => 'EMF Customer Deposits',
-            'account_class' => 'liability',
+            'account_class' => 'operations_clientele',
             'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
@@ -1488,7 +1488,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '5000',
                 'name' => 'Hold Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -1545,7 +1545,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '5400',
                 'name' => 'Closed Hold Ledger',
-                'account_class' => 'liability',
+                'account_class' => 'operations_clientele',
                 'normal_balance_side' => 'credit',
             ]);
         $ledgerPublicId = $this->requireStringJsonPath($ledger, 'data.public_id');
@@ -1601,7 +1601,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyA['public_id'],
                 'code' => '4100',
                 'name' => 'Agency A Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $ledgerAPublicId = $this->requireStringJsonPath($ledgerA, 'data.public_id');
@@ -1611,7 +1611,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyB['public_id'],
                 'code' => '4200',
                 'name' => 'Agency B Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $ledgerBPublicId = $this->requireStringJsonPath($ledgerB, 'data.public_id');
@@ -1717,7 +1717,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyA['public_id'],
                 'code' => '7001',
                 'name' => 'Scope Cash Ledger',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $this->assertJsonSuccess($ledger, 201);
@@ -1738,7 +1738,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'scope' => 'institution',
                 'code' => '571000',
                 'name' => 'Caisse Globale',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
 
@@ -1761,7 +1761,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'scope' => 'institution',
                 'code' => '571100',
                 'name' => 'Unauthorised Grouping Account',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ])
             ->assertForbidden();
@@ -1779,7 +1779,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '571200',
                 'name' => 'Contradictory Scope',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
 
@@ -1802,7 +1802,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                     'agency_public_id' => $agency['public_id'],
                     'code' => $code,
                     'name' => 'Caisse '.$agency['code'],
-                    'account_class' => 'asset',
+                    'account_class' => 'tresorerie_interbancaire',
                     'normal_balance_side' => 'debit',
                     'parent_account_public_id' => $parentPublicId,
                 ]);
@@ -1826,7 +1826,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyA['public_id'],
                 'code' => '572001',
                 'name' => 'Agency A Cash',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $parentPublicId = $this->requireStringJsonPath($parent, 'data.public_id');
@@ -1837,7 +1837,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agencyB['public_id'],
                 'code' => '572002',
                 'name' => 'Agency B Cash',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
                 'parent_account_public_id' => $parentPublicId,
             ]);
@@ -1858,7 +1858,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '573001',
                 'name' => 'Agency Detail',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $agencyAccountPublicId = $this->requireStringJsonPath($agencyAccount, 'data.public_id');
@@ -1884,7 +1884,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '574000',
                 'name' => 'Agency Grouping Candidate',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $parent->assertJsonPath('data.is_postable', true);
@@ -1896,7 +1896,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '574001',
                 'name' => 'Agency Detail',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
                 'parent_account_public_id' => $parentPublicId,
             ]), 201);
@@ -1936,7 +1936,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $agency['public_id'],
                 'code' => '575001',
                 'name' => 'Late Sub Account',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
                 'parent_account_public_id' => $posted,
             ]);
@@ -2134,7 +2134,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             'agency_id' => null,
             'code' => '579000',
             'name' => 'Duplicate Institution Code',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'is_postable' => false,
             'normal_balance_side' => 'debit',
             'status' => 'active',
@@ -2152,7 +2152,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ->postJson('/api/v1/ledger-accounts', [
                 'code' => '580001',
                 'name' => 'Caisse Agence',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $this->assertJsonSuccess($create, 201);
@@ -2186,7 +2186,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'agency_public_id' => $otherAgency['public_id'],
                 'code' => '581003',
                 'name' => 'Smuggled Account',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $crossAgency->assertStatus(422);
@@ -2206,7 +2206,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'scope' => 'institution',
                 'code' => '581100',
                 'name' => 'Unauthorised Grouping Account',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ])->assertForbidden();
         $this->withApiHeaders()->actingAsSanctum($accountant)
@@ -2221,7 +2221,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ->postJson('/api/v1/ledger-accounts', [
                 'code' => '581001',
                 'name' => 'Caisse Agence',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
                 'parent_account_public_id' => $institutionPublicId,
             ]), 201);
@@ -2246,7 +2246,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'scope' => 'institution',
                 'code' => '582000',
                 'name' => 'Caisse Globale',
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $this->assertJsonSuccess($institution, 201);
@@ -2262,7 +2262,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                     'agency_public_id' => $agency['public_id'],
                     'code' => $code,
                     'name' => 'Caisse '.$agency['code'],
-                    'account_class' => 'asset',
+                    'account_class' => 'tresorerie_interbancaire',
                     'normal_balance_side' => 'debit',
                     'parent_account_public_id' => $institutionPublicId,
                 ]);
@@ -2354,7 +2354,7 @@ final class Module3AccountingArchitectureTest extends TestCase
                 'scope' => 'institution',
                 'code' => $code,
                 'name' => $name,
-                'account_class' => 'asset',
+                'account_class' => 'tresorerie_interbancaire',
                 'normal_balance_side' => 'debit',
             ]);
         $this->assertJsonSuccess($response, 201);
@@ -2368,7 +2368,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             'agency_public_id' => $agencyPublicId,
             'code' => $code,
             'name' => $name,
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'normal_balance_side' => 'debit',
         ];
         if ($parentPublicId !== null) {

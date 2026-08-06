@@ -84,9 +84,9 @@ final class RegulatoryReportingTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/regulatory-sources/'.$sourcePublicId.'/emf-accounts', [
                 'accounts' => [
-                    ['code' => 'CL1', 'name' => 'Class 1 — Capitaux propres', 'account_class' => 'liability'],
+                    ['code' => 'CL1', 'name' => 'Class 1 — Capitaux permanents', 'account_class' => 'capitaux_permanents'],
                     ['code' => 'CL1-101', 'name' => 'Capital social', 'parent_code' => 'CL1'],
-                    ['code' => 'CL2', 'name' => 'Class 2 — Immobilisations', 'account_class' => 'asset'],
+                    ['code' => 'CL2', 'name' => 'Class 2 — Valeurs immobilisées', 'account_class' => 'valeurs_immobilisees'],
                 ],
             ]);
         $this->assertJsonSuccess($response, 201);
@@ -374,7 +374,7 @@ final class RegulatoryReportingTest extends TestCase
             'regulatory_source_id' => (int) $source->id,
             'code' => 'INACT-01',
             'name' => 'Inactive EMF Account',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'status' => 'inactive',
             'created_at' => now(),
             'updated_at' => now(),
@@ -579,7 +579,7 @@ final class RegulatoryReportingTest extends TestCase
             'regulatory_source_id' => (int) $source->id,
             'code' => '101',
             'name' => 'Cash',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
@@ -699,7 +699,7 @@ final class RegulatoryReportingTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'LED-'.Str::ulid(),
             'name' => 'Ledger',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
             'status' => LedgerAccount::STATUS_ACTIVE,
             'created_at' => now(),

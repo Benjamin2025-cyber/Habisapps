@@ -76,6 +76,20 @@ to a branch. If the UI forces you to pick an agency, that is a finding — repor
 You type **major units**; the system stores minor (×100). Typing `100` is 100,00 XAF. This
 guide always shows what you type.
 
+### 1.5 Run it once, on a fresh database
+
+This is a one-shot script, not a suite you can re-run. A second pass collides on the account
+codes (`571000` is unique institution-wide, `571001` unique within its agency), and Step 10
+closes the institution accounting day, which only a platform admin can reopen.
+
+So: start from a freshly migrated and seeded database, and reset before running it again.
+
+```bash
+php artisan migrate:fresh --seed
+```
+
+Nothing in the guide requires you to clean up after yourself — the leftovers are expected.
+
 ---
 
 ## 2. The target, on one page
@@ -118,6 +132,14 @@ Save.
 
 ✅ **Expect**: success toast, the amber banner disappears, values survive a page reload.
 
+> **The class list is the PCEMF, not asset/liability.** *Classe* now offers the eight
+> classes of the Plan Comptable des EMF — capitaux permanents, valeurs immobilisées,
+> opérations avec la clientèle, tiers, trésorerie et opérations interbancaires, charges,
+> produits, hors bilan — because that is the chart a Cameroonian EMF keeps. The class is
+> the **first digit of the code**: `571000` starts with 5, so its class is *trésorerie et
+> opérations interbancaires*. If you still see Actif/Passif/Capitaux propres/Produits/
+> Charges, the frontend has not picked up the change.
+
 ### Step 2 — Create the institution total `571000`
 
 **Comptabilité › Comptes généraux** → *Créer*.
@@ -127,7 +149,7 @@ Save.
 | Périmètre | **Institution** |
 | Code | `571000` |
 | Intitulé | `Caisse Globale` |
-| Classe | Actif |
+| Classe | **Comptes de trésorerie et d'opérations interbancaires** (classe 5) |
 | Sens normal | Débit |
 
 Choosing **Institution** makes the *Agence* field disappear and replaces the *Nature* field
@@ -152,16 +174,16 @@ and a *Compte de regroupement* badge.
 | Intitulé | `Caisse HABIS Test` |
 | Nature | **Compte imputable (détail)** |
 | Compte parent | `571000 — Caisse Globale` |
-| Classe / Sens | Actif / Débit |
+| Classe / Sens | Comptes de trésorerie et d'opérations interbancaires (classe 5) / Débit |
 
 ✅ **Expect two things:**
 
 1. `571001` is created as a detail account.
 2. **Look back at `571000`.** It was already a grouping account, so nothing visibly changes
    here — but this is the mechanism to remember: *the first time any account gains a child,
-   the system silently turns that parent into a grouping account.* You will see it in
-   Step 5b. It is why the list refreshes from the server after every create instead of
-   patching the row locally.
+   the system silently turns that parent into a grouping account.* You will see it happen in
+   [Appendix A](#appendix-a--see-the-auto-conversion-for-yourself). It is why the list
+   refreshes from the server after every create instead of patching the row locally.
 
 ### Step 4 — Create `571002` under the other agency
 
@@ -176,19 +198,13 @@ while sharing an institution parent is allowed.
 
 Two more, both **Nature = Compte imputable**, **no parent**:
 
-- `571901` `Contrepartie HABIS` — agency TEST-HABIS — Classe Passif — Sens Crédit
-- `571902` `Contrepartie Cookbook` — agency AG-COOK-01 — Classe Passif — Sens Crédit
+- `571901` `Contrepartie HABIS` — agency TEST-HABIS — Classe *Comptes de tiers* (classe 4) — Sens Crédit
+- `571902` `Contrepartie Cookbook` — agency AG-COOK-01 — Classe *Comptes de tiers* (classe 4) — Sens Crédit
 
-#### Step 5b — See the auto-conversion for yourself *(optional, 1 minute)*
-
-Create a throwaway detail account `571999` in TEST-HABIS with **parent `571901`**. Now look
-at `571901` in the list: it has gained a *Compte de regroupement* badge and is no longer
-postable — **you never asked for that.** It happened because it became a total.
-
-This is the one behaviour most likely to look like a bug. It isn't: an account with
-children must not also carry entries of its own. Archive `571999` afterwards if you like;
-the badge on `571901` stays, so use `571902` for the entry in Step 6 if `571901` is now a
-grouping account. *(Simpler: skip 5b until the end.)*
+Nothing else to do here. Auto-conversion — an account silently becoming a grouping account
+the moment it gains a child — is worth seeing for yourself, but it changes `571901`
+permanently, so it lives in [Appendix A](#appendix-a--see-the-auto-conversion-for-yourself)
+at the end. Do it after Step 11, not now.
 
 ---
 
@@ -198,8 +214,14 @@ This is the fiddly part, and one rule explains the fiddliness: **the person who 
 entry may not approve it.** That is *maker-checker* (four-eyes) — a bank control, not an
 inconvenience to work around. So you need **two users**.
 
-Also note the agency **accountant cannot create entries at all** — it holds
-`journal.entries.view` only. Entry creation belongs to head office. So:
+Also note the agency **accountant cannot create entries at all** in the current
+configuration — it holds `journal.entries.view` only, so in this test the maker is head
+office. Treat that as the setup you are testing against, **not as settled design**: whether
+an agency accountant should record its own agency's *opérations diverses* is an open
+question, so if it looks wrong to an accountant reviewing this, say so rather than assuming
+it is intended.
+
+So, for this run:
 
 | Role in the test | User |
 |---|---|
@@ -257,6 +279,10 @@ number is the whole feature.**
 
 Also check `571001` alone reads `100` and `571002` reads `40`.
 
+> For a grouping account the screen always shows the consolidated figure — there is no
+> toggle. Its own movements (always zero, which is the point) can only be read through the
+> API, with `GET /api/v1/ledger-accounts/{id}/balance?consolidated=0`.
+
 ### Step 9 — The consolidated trial balance
 
 A *balance des comptes* (trial balance) lists every account with its debit and credit
@@ -299,9 +325,9 @@ Each of these **must fail**. Copy the message you get if any of them succeeds.
 | 7b | Create an account in **TEST-HABIS** with parent **`571002`** (an AG-COOK-01 account) | `571002` is **not in the parent dropdown**. Cross-agency parenting is refused: two agencies may share an *institution* parent, never each other's accounts. |
 | 7c | Add a journal line on **`571000`** | `571000` is **not in the account dropdown** (Step 6). |
 | 7d | Make `571000` the debit/credit target of an operation mapping — *Comptabilité › Codes opération & imputations* | `571000` is **not in the account dropdown**. Automatic postings must not target a total either. |
-| 7e | As **`test.accountant@example.test`**, open `571000`'s balance | Account visible (**200**), balance/movements **403** with an explanation. An agency accountant may file accounts under the institution total but not read a figure that spans every agency. **A 403 here is the correct answer, not an error.** |
+| 7e | As **`test.accountant@example.test`**, open `571000`'s balance | The account row is visible, but balance and movements return **403** with an explanation — no figure at all. An agency accountant may file accounts under the institution total without reading a figure that spans every agency. **A 403 here is the correct answer, not an error.** |
 | 7f | As `test.accountant@example.test`, try to create an institution account | No **Périmètre** selector — it only maintains its own agency's chart. |
-| 7g | As the chief accountant, try to **reopen** a closed accounting day | Refused. Reopening a closed period stays with platform admins — whoever closed it must not be able to reopen it. |
+| 7g | As the chief accountant, try to **reopen** a closed accounting day. *Needs a day that actually reached `closed` (Step 10), and the UI offers no Reopen action without the permission — so check it by calling `POST /api/v1/accounting-days/{id}/reopen` directly.* | **403.** Reopening a closed period stays with platform admins — whoever closed the books must not be able to unclose them. The absent button is itself part of the answer. |
 
 ---
 
@@ -344,7 +370,7 @@ period.
 | Cannot create a journal entry | The agency has no **open accounting day**. Open one in *Administration › Journée Comptable*. |
 | *"Journal approval requires a reviewer different from the maker"* | Working as designed. Approve with the **other** user (§4). |
 | The account I want is missing from a dropdown | Almost always correct: it is a grouping account, or belongs to another agency. Check the **Structure** column. |
-| An account became "Compte de regroupement" on its own | Correct — it gained a child (§5b). |
+| An account became "Compte de regroupement" on its own | Correct — it gained a child (Appendix A). |
 | A balance reads 0 where you expected a figure | The entry is not **posted**. Submitted and approved are not enough. |
 | Grand total is double the expected figure | **Real bug.** Report it (§ Step 9). |
 | Only the first ~100 accounts appear in a dropdown | Known limitation: the chart is loaded one page at a time and filtered in the browser. Harmless at this size, must be fixed before a full PCEMF chart is loaded. |
@@ -356,7 +382,7 @@ period.
 - [ ] Institution profile read, updated, persisted; unconfigured banner behaves
 - [ ] Institution grouping account created (`571000`)
 - [ ] Two agencies' detail accounts filed under one institution parent
-- [ ] Auto-conversion of a parent into a grouping account observed
+- [ ] Auto-conversion of a parent into a grouping account observed (Appendix A)
 - [ ] Entries posted in two agencies through maker-checker
 - [ ] Consolidated balance of `571000` = 140
 - [ ] Consolidated trial balance: rows correct **and grand total not double-counted**
@@ -367,3 +393,24 @@ period.
 
 Anything unchecked, or any refusal that did not refuse, is worth reporting with the exact
 message and the user you were logged in as.
+
+---
+
+## Appendix A — See the auto-conversion for yourself
+
+*Optional, one minute. Do this **after** Step 11: it changes `571901` permanently, and that
+account is needed as a counterpart until then.*
+
+Create a throwaway detail account `571999` in TEST-HABIS with **parent `571901`**. Now look
+at `571901` in the list: it has gained a *Compte de regroupement* badge and is no longer
+postable — **you never asked for that.**
+
+It happened because it became a total. This is the behaviour most likely to look like a bug,
+and it isn't: an account with children must not also carry entries of its own, or the same
+money would be counted twice. Archiving `571999` afterwards does not undo it — the badge on
+`571901` stays, which is why this belongs at the end of the run rather than in the middle.
+
+The one case the system refuses instead of converting: give a parent to an account that
+**already carries posted movements**, and you get *"The selected parent account already
+carries movements and cannot become a grouping account."* Converting it would strand those
+entries on a total. Try it on `571001`, which by now has 100 posted on it.

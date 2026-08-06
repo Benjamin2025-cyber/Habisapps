@@ -184,7 +184,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
             'public_id' => (string) Str::ulid(),
             'code' => 'SELF',
             'name' => 'Self Parent',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'parent_account_id' => 9001,
             'normal_balance_side' => 'debit',
         ]);
@@ -526,7 +526,7 @@ final class FoundationSchemaIntegrityTest extends TestCase
             'agency_id' => $agencyId,
             'code' => $code ?? '1000-'.Str::ulid(),
             'name' => 'Cash',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'normal_balance_side' => 'debit',
             'status' => 'active',
         ]);
