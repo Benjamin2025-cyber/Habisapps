@@ -1,150 +1,186 @@
-# Guided test — consolidated chart of accounts & institution profile
+# Guide de test — plan comptable consolidé & profil de l'institution
 
-Companion to [consolidated-chart-of-accounts.md](consolidated-chart-of-accounts.md), which
-explains *why* the feature is built the way it is. This document is the **click-through
-script**: follow it top to bottom and you will have exercised every part of the change.
+Document compagnon de [consolidated-chart-of-accounts.md](consolidated-chart-of-accounts.md),
+qui explique *pourquoi* la fonctionnalité est construite ainsi. Le présent document est le
+**script de test pas à pas** : suivez-le du début à la fin et vous aurez exercé toutes les
+parties de la modification.
 
-Written for a non-accountant. Each step says what to do, what you should see, and — where
-it matters — *why* accounting works that way, so you can tell a bug from correct behaviour.
+Écrit pour un non-comptable. Chaque étape indique ce qu'il faut faire, ce que vous devez
+voir, et — quand cela compte — *pourquoi* la comptabilité fonctionne ainsi, afin que vous
+puissiez distinguer une anomalie d'un comportement correct.
 
-Branches: API `feat-entreprise`, frontend `feat-institution-level`.
+Branches : API `feat-entreprise`, frontend `feat-institution-level`.
 
 ---
 
-## 0. The idea in ninety seconds
+## 0. L'idée en quatre-vingt-dix secondes
 
-An EMF has several agencies. Each agency has its own cash account, and head office wants
-one figure for "all the cash in the institution". So the chart of accounts is a **tree**:
+Un EMF possède plusieurs agences. Chaque agence a sa propre caisse, et le siège veut un
+chiffre unique pour « toute la caisse de l'institution ». Le plan comptable est donc un
+**arbre** :
 
 ```
-571000  Caisse Globale          ← institution level. A TOTAL. Holds no entries itself.
-├── 571001  Caisse HABIS Test   ← agency TEST-HABIS. Real entries land here.
-└── 571002  Caisse Cookbook     ← agency AG-COOK-01. Real entries land here.
+571000  Caisse Globale          ← niveau entreprise. Un TOTAL. Ne porte aucune écriture.
+├── 571001  Caisse HABIS Test   ← agence TEST-HABIS. Les écritures réelles arrivent ici.
+└── 571002  Caisse Cookbook     ← agence AG-COOK-01. Les écritures réelles arrivent ici.
 ```
 
-Three vocabulary items are all you need:
+Trois notions suffisent :
 
-| Term | Meaning |
+| Terme | Signification |
 |---|---|
-| **Detail account** (*compte imputable*) | A real account. Entries land on it. `571001`, `571002`. |
-| **Grouping account** (*compte de regroupement*) | A subtotal. Entries are **refused** on it. Its balance is the sum of its children. `571000`. |
-| **Consolidated** | Reading a grouping account's total instead of its own (always zero) movements. |
+| **Compte imputable** (compte de détail) | Un vrai compte. Les écritures s'y imputent. `571001`, `571002`. |
+| **Compte de regroupement** | Un sous-total. Les écritures y sont **refusées**. Son solde est la somme de ses comptes fils. `571000`. |
+| **Consolidé** | Lire le total d'un compte de regroupement au lieu de ses mouvements propres (toujours nuls). |
 
-The single rule that explains most of what you will see: **a total cannot itself receive
-money.** If it could, you would count the same 100 F twice — once on `571001` and again on
-`571000`. So the system refuses it, in several places. Those refusals are the feature
-working, not breaking.
+La règle unique qui explique presque tout ce que vous allez voir : **un total ne peut pas
+lui-même recevoir de l'argent.** S'il le pouvait, vous compteriez deux fois les mêmes
+100 F — une fois sur `571001`, une seconde fois sur `571000`. Le système le refuse donc, à
+plusieurs endroits. Ces refus sont la fonctionnalité qui marche, pas qui casse.
 
-**What you are proving:** (1) the tree can be built through the UI, (2) the wrong things
-are refused, (3) the numbers add up.
+**Ce que vous prouvez :** (1) l'arbre peut être construit depuis l'interface, (2) les
+mauvaises manipulations sont refusées, (3) les chiffres tombent juste.
 
 ---
 
-## 1. Before you start
+## 1. Avant de commencer
 
-### 1.1 Log out and log back in — do not skip this
+### 1.1 Déconnectez-vous puis reconnectez-vous — ne sautez pas cette étape
 
-Permissions are cached in your browser session at login. The new permissions
-(`institution.profile.view`, `ledger.scope.institution.manage`, …) were added to the
-database by the seeder, but **your existing session still carries the old list**. Nothing
-new appears until you log out and in again.
+Les permissions sont mises en cache dans votre session au moment de la connexion. Les
+nouvelles permissions (`institution.profile.view`, `ledger.scope.institution.manage`, …) ont
+été ajoutées en base par le seeder, mais **votre session actuelle porte encore l'ancienne
+liste**. Rien de nouveau n'apparaît avant une reconnexion.
 
-> If *Paramétrage › Institution* is missing from the sidebar, this is why. It is the single
-> most likely cause of "the feature isn't there".
+> Si *Paramétrage › Institution* est absent du menu latéral, c'est la raison. C'est de loin
+> la première cause de « la fonctionnalité n'est pas là ».
 
-### 1.2 Your starting data
+### 1.2 Préparez le banc de test
 
-Already present, no setup needed:
+Une base fraîche ne contient **ni** la seconde agence, **ni** les journées comptables
+ouvertes, **ni** le chef comptable. Une commande les crée :
+
+```bash
+php artisan db:seed --class=ConsolidatedChartBenchSeeder
+```
+
+Vous obtenez :
 
 | | |
 |---|---|
-| Agencies | `TEST-HABIS` — HABIS Test Agency · `AG-COOK-01` — Cookbook Test Agency |
-| Open accounting days | TEST-HABIS · AG-COOK-01 · INSTITUTION |
-| Platform admin | `admin@example.com` |
-| Agency accountant | `test.accountant@example.test` (agency **AG-COOK-01**) |
+| Agences | `TEST-HABIS` — HABIS Test Agency · `AG-COOK-01` — Cookbook Test Agency |
+| Journées comptables ouvertes | TEST-HABIS · AG-COOK-01 · INSTITUTION |
+| Administrateur plateforme | `admin@example.com` |
+| Chef comptable (siège, **sans agence**) | `test.chief.accountant@example.test` |
+| Comptable d'agence | `test.cookbook.accountant@example.test` (agence **AG-COOK-01**) |
+| Mot de passe des comptes de test | `password123` |
 
-### 1.3 Create the chief accountant
+Le chef comptable est créé **sans aucune agence** : c'est volontaire et cela fait partie de
+ce que vous testez — le siège n'est rattaché à aucune agence.
 
-The role now exists but nobody holds it. *Administration › Gestion des utilisateurs* → create
-a user, assign the role **chief-accountant**, and **leave the agency empty**.
+> Vous pouvez aussi créer ce compte à la main dans *Administration › Gestion des
+> utilisateurs* (rôle **chief-accountant**, agence laissée vide). Si l'interface vous
+> **oblige** à choisir une agence, c'est une anomalie — signalez-la.
 
-Leaving it empty is deliberate and is itself part of the test: head office is not attached
-to a branch. If the UI forces you to pick an agency, that is a finding — report it.
+### 1.3 Deux façons de suivre ce guide
 
-### 1.4 Amounts
+| Vous voulez | Faites |
+|---|---|
+| **Valider l'interface** (première fois, ou les écrans de saisie ont changé) | Le banc de test ci-dessus, puis suivez le guide à partir du §3, à la main. |
+| **Revalider le comportement** (après un correctif, avant une mise en production) | `php artisan db:seed --class=ConsolidatedChartDemoSeeder`, puis sautez directement au §5. |
 
-You type **major units**; the system stores minor (×100). Typing `100` is 100,00 XAF. This
-guide always shows what you type.
+Le second seeder construit l'arbre `571xxx` et comptabilise les deux écritures pour vous —
+il produit exactement l'état final des §3 et §4, en quelques secondes au lieu de vingt
+minutes de saisie. Il n'exerce évidemment **pas** l'interface : ne l'utilisez pas pour un
+premier passage.
 
-### 1.5 Run it once, on a fresh database
+Les deux seeders sont idempotents et refusent de s'exécuter en environnement de production.
 
-This is a one-shot script, not a suite you can re-run. A second pass collides on the account
-codes (`571000` is unique institution-wide, `571001` unique within its agency), and Step 10
-closes the institution accounting day, which only a platform admin can reopen.
+### 1.4 Montants et devise
 
-So: start from a freshly migrated and seeded database, and reset before running it again.
+Vous saisissez en **unités principales** ; le système stocke en unités mineures (×100).
+Saisir `100` donne 100,00 XAF. Ce guide affiche toujours ce que vous devez saisir.
+
+Tout le guide se déroule en **XAF uniquement**. Le multidevise n'est pas dans le périmètre de
+ce test : ne changez pas la devise, et ne consolidez pas des comptes exprimés dans des
+devises différentes.
+
+### 1.5 Le parcours manuel ne se rejoue pas
+
+**Le parcours manuel (§3 et §4) est à passage unique.** Un second passage entre en collision
+sur les codes de comptes (`571000` est unique au niveau entreprise, `571001` unique dans son
+agence), et l'étape 10 clôture la journée comptable de l'institution, que seul un
+administrateur plateforme peut rouvrir. Pour le refaire, repartez d'une base neuve :
 
 ```bash
 php artisan migrate:fresh --seed
+php artisan db:seed --class=ConsolidatedChartBenchSeeder
 ```
 
-Nothing in the guide requires you to clean up after yourself — the leftovers are expected.
+Le parcours rapide, lui, se rejoue autant que voulu : les deux seeders réutilisent ce qui
+existe déjà au lieu de le recréer.
+
+Dans les deux cas, rien ne vous demande de nettoyer derrière vous — les résidus sont normaux.
 
 ---
 
-## 2. The target, on one page
+## 2. La cible, sur une page
 
-| Code | Name | Scope | Nature | Parent | Agency |
+| Code | Intitulé | Périmètre | Nature | Parent | Agence |
 |---|---|---|---|---|---|
-| `571000` | Caisse Globale | Institution | Grouping | — | — |
-| `571001` | Caisse HABIS Test | Agency | Detail | `571000` | TEST-HABIS |
-| `571002` | Caisse Cookbook | Agency | Detail | `571000` | AG-COOK-01 |
-| `571901` | Contrepartie HABIS | Agency | Detail | — | TEST-HABIS |
-| `571902` | Contrepartie Cookbook | Agency | Detail | — | AG-COOK-01 |
+| `571000` | Caisse Globale | Institution | Regroupement | — | — |
+| `571001` | Caisse HABIS Test | Agence | Imputable | `571000` | TEST-HABIS |
+| `571002` | Caisse Cookbook | Agence | Imputable | `571000` | AG-COOK-01 |
+| `571901` | Contrepartie HABIS | Agence | Imputable | — | TEST-HABIS |
+| `571902` | Contrepartie Cookbook | Agence | Imputable | — | AG-COOK-01 |
 
-Then post `100` in TEST-HABIS and `40` in AG-COOK-01, and check that `571000` reads **140**.
+Ensuite, comptabilisez `100` dans TEST-HABIS et `40` dans AG-COOK-01, puis vérifiez que
+`571000` affiche **140**.
 
-The two `5719xx` accounts exist only because every entry needs two sides — debit one
-account, credit another. They are the "where the money came from" side. Ignore them
-otherwise.
+Les deux comptes `5719xx` n'existent que parce que toute écriture a deux sens — un compte au
+débit, un autre au crédit. Ils représentent la contrepartie, « d'où vient l'argent ». Ne vous
+en préoccupez pas autrement.
 
 ---
 
-## 3. Build the structure
+## 3. Construire la structure
 
-### Step 1 — Identify the institution
+### Étape 1 — Identifier l'institution
 
-**Log in as `admin@example.com`.** Go to **Paramétrage › Institution**.
+**Connectez-vous en `admin@example.com`.** Allez dans **Paramétrage › Institution**.
 
-You should see an amber banner, *"Institution non encore identifiée"*. That is correct on a
-fresh install: the row exists but is empty. Nothing is invented — the legal name on a COBAC
-filing has to be typed by a human.
+Vous devez voir un bandeau ambre, *« Institution non encore identifiée »*. C'est correct sur
+une installation neuve : la ligne existe mais elle est vide. Rien n'est inventé — la raison
+sociale portée sur une déclaration COBAC doit être saisie par un humain.
 
-Fill in at least:
+Renseignez au minimum :
 
-- **Raison sociale**: `HABIS MICROFINANCE SA` — the legal person, as on the agrément/RCCM.
-- **Nom commercial**: `HabisLoan` — the public brand. *(Leave empty if identical; most
-  small EMFs have no separate trade name.)*
-- **Autorité de supervision**: `COBAC`
-- **Numéro d'agrément**: any test value.
+- **Raison sociale** : `HABIS MICROFINANCE SA` — la personne morale, telle qu'elle figure sur
+  l'agrément / le RCCM.
+- **Nom commercial** : `HabisLoan` — la marque publique. *(À laisser vide si identique ; la
+  plupart des petits EMF n'ont pas de nom commercial distinct.)*
+- **Autorité de supervision** : `COBAC`
+- **Numéro d'agrément** : n'importe quelle valeur de test.
 
-Save.
+Enregistrez.
 
-✅ **Expect**: success toast, the amber banner disappears, values survive a page reload.
+✅ **Attendu** : notification de succès, le bandeau ambre disparaît, les valeurs survivent à
+un rechargement de la page.
 
-> **The class list is the PCEMF, not asset/liability.** *Classe* now offers the eight
-> classes of the Plan Comptable des EMF — capitaux permanents, valeurs immobilisées,
-> opérations avec la clientèle, tiers, trésorerie et opérations interbancaires, charges,
-> produits, hors bilan — because that is the chart a Cameroonian EMF keeps. The class is
-> the **first digit of the code**: `571000` starts with 5, so its class is *trésorerie et
-> opérations interbancaires*. If you still see Actif/Passif/Capitaux propres/Produits/
-> Charges, the frontend has not picked up the change.
-
-### Step 2 — Create the institution total `571000`
+### Étape 2 — Créer le total entreprise `571000`
 
 **Comptabilité › Comptes généraux** → *Créer*.
 
-| Field | Value |
+> **La liste des classes est celle du PCEMF, pas Actif/Passif.** Le champ *Classe* propose
+> désormais les huit classes du Plan Comptable des EMF — capitaux permanents, valeurs
+> immobilisées, opérations avec la clientèle, tiers, trésorerie et opérations interbancaires,
+> charges, produits, hors bilan — parce que c'est le plan qu'un EMF camerounais est tenu de
+> tenir. La classe est le **premier chiffre du code** : `571000` commence par 5, sa classe est
+> donc *trésorerie et opérations interbancaires*. Si vous voyez encore
+> Actif / Passif / Capitaux propres / Produits / Charges, le frontend n'a pas pris la
+> modification en compte.
+
+| Champ | Valeur |
 |---|---|
 | Périmètre | **Institution** |
 | Code | `571000` |
@@ -152,21 +188,21 @@ Save.
 | Classe | **Comptes de trésorerie et d'opérations interbancaires** (classe 5) |
 | Sens normal | Débit |
 
-Choosing **Institution** makes the *Agence* field disappear and replaces the *Nature* field
-with a note that an institution account is always a grouping account. That is the schema
-speaking: an institution account has no agency and cannot be postable.
+Choisir **Institution** fait disparaître le champ *Agence* et remplace le champ *Nature* par
+une mention indiquant qu'un compte entreprise est toujours un compte de regroupement. C'est
+le schéma qui parle : un compte entreprise n'a pas d'agence et ne peut pas être imputable.
 
-✅ **Expect**: created. In the list, the **Structure** column shows an *Institution* badge
-and a *Compte de regroupement* badge.
+✅ **Attendu** : compte créé. Dans la liste, la colonne **Structure** affiche un badge
+*Institution* et un badge *Compte de regroupement*.
 
-> If the **Périmètre** selector is not there, you lack `ledger.scope.institution.manage` —
-> re-check §1.1.
+> Si le sélecteur **Périmètre** est absent, c'est qu'il vous manque
+> `ledger.scope.institution.manage` — revoyez le §1.1.
 
-### Step 3 — Create `571001` and watch the parent change
+### Étape 3 — Créer `571001` et observer le parent changer
 
-*Créer* again:
+*Créer* à nouveau :
 
-| Field | Value |
+| Champ | Valeur |
 |---|---|
 | Périmètre | Agence |
 | Agence | `TEST-HABIS` |
@@ -176,241 +212,285 @@ and a *Compte de regroupement* badge.
 | Compte parent | `571000 — Caisse Globale` |
 | Classe / Sens | Comptes de trésorerie et d'opérations interbancaires (classe 5) / Débit |
 
-✅ **Expect two things:**
+✅ **Deux choses attendues :**
 
-1. `571001` is created as a detail account.
-2. **Look back at `571000`.** It was already a grouping account, so nothing visibly changes
-   here — but this is the mechanism to remember: *the first time any account gains a child,
-   the system silently turns that parent into a grouping account.* You will see it happen in
-   [Appendix A](#appendix-a--see-the-auto-conversion-for-yourself). It is why the list
-   refreshes from the server after every create instead of patching the row locally.
+1. `571001` est créé comme compte imputable.
+2. **Revenez sur `571000`.** Il était déjà un compte de regroupement, donc rien ne change
+   visiblement ici — mais retenez le mécanisme : *la première fois qu'un compte acquiert un
+   compte fils, le système bascule silencieusement ce parent en compte de regroupement.* Vous
+   le verrez se produire à l'[Annexe A](#annexe-a--voir-la-conversion-automatique-en-direct).
+   C'est aussi pourquoi la liste est rechargée depuis le serveur après chaque création plutôt
+   que mise à jour localement.
 
-### Step 4 — Create `571002` under the other agency
+### Étape 4 — Créer `571002` sous l'autre agence
 
-Same as Step 3 with **Agence = `AG-COOK-01`**, code `571002`, name `Caisse Cookbook`,
+Comme à l'étape 3, avec **Agence = `AG-COOK-01`**, code `571002`, intitulé `Caisse Cookbook`,
 parent `571000`.
 
-✅ **Expect**: created. Two agencies now share one institution parent — this is exactly the
-structure the testers asked for, and the reason cross-agency parenting is refused (Step 7b)
-while sharing an institution parent is allowed.
+✅ **Attendu** : compte créé. Deux agences partagent maintenant un même parent entreprise —
+c'est exactement la structure demandée par les testeurs, et la raison pour laquelle le
+rattachement inter-agences est refusé (étape 7b) alors que le partage d'un parent entreprise
+est autorisé.
 
-### Step 5 — Create the two counterpart accounts
+### Étape 5 — Créer les deux comptes de contrepartie
 
-Two more, both **Nature = Compte imputable**, **no parent**:
+Deux comptes de plus, tous deux **Nature = Compte imputable**, **sans parent** :
 
-- `571901` `Contrepartie HABIS` — agency TEST-HABIS — Classe *Comptes de tiers* (classe 4) — Sens Crédit
-- `571902` `Contrepartie Cookbook` — agency AG-COOK-01 — Classe *Comptes de tiers* (classe 4) — Sens Crédit
+- `571901` `Contrepartie HABIS` — agence TEST-HABIS — Classe *Comptes de tiers* (classe 4) —
+  Sens Crédit
+- `571902` `Contrepartie Cookbook` — agence AG-COOK-01 — Classe *Comptes de tiers* (classe 4)
+  — Sens Crédit
 
-Nothing else to do here. Auto-conversion — an account silently becoming a grouping account
-the moment it gains a child — is worth seeing for yourself, but it changes `571901`
-permanently, so it lives in [Appendix A](#appendix-a--see-the-auto-conversion-for-yourself)
-at the end. Do it after Step 11, not now.
+Rien d'autre à faire ici. La conversion automatique — un compte qui devient silencieusement
+un compte de regroupement dès qu'il acquiert un fils — vaut la peine d'être observée, mais
+elle modifie `571901` définitivement : elle est donc placée à
+l'[Annexe A](#annexe-a--voir-la-conversion-automatique-en-direct), à la fin. Faites-la après
+l'étape 11, pas maintenant.
 
 ---
 
-## 4. Post real money
+## 4. Comptabiliser de l'argent réel
 
-This is the fiddly part, and one rule explains the fiddliness: **the person who writes an
-entry may not approve it.** That is *maker-checker* (four-eyes) — a bank control, not an
-inconvenience to work around. So you need **two users**.
+C'est la partie la plus fastidieuse, et une seule règle explique cette lourdeur : **la
+personne qui saisit une écriture ne peut pas l'approuver.** C'est le principe des quatre yeux
+(*maker-checker*) — un contrôle bancaire, pas une gêne à contourner. Il vous faut donc **deux
+utilisateurs**.
 
-Also note the agency **accountant cannot create entries at all** in the current
-configuration — it holds `journal.entries.view` only, so in this test the maker is head
-office. Treat that as the setup you are testing against, **not as settled design**: whether
-an agency accountant should record its own agency's *opérations diverses* is an open
-question, so if it looks wrong to an accountant reviewing this, say so rather than assuming
-it is intended.
+La répartition suit la pratique réelle d'un EMF : **l'agence prépare, le siège valide.** Le
+comptable d'agence saisit les *opérations diverses* de sa propre agence (corrections,
+régularisations) et les soumet ; il ne peut ni approuver ni comptabiliser. Le chef comptable
+valide et comptabilise, pour n'importe quelle agence.
 
-So, for this run:
+Notez que les écritures **opérationnelles** — dépôts, retraits, décaissements,
+remboursements — ne se saisissent pas à la main : elles sont générées automatiquement par les
+imputations d'opérations. Ce que vous saisissez ici, ce sont les écritures que personne
+n'automatise.
 
-| Role in the test | User |
+Donc, pour ce passage :
+
+| Rôle dans le test | Utilisateur |
 |---|---|
-| **Maker** (writes, submits) | your **chief-accountant** |
-| **Checker** (approves, posts) | `admin@example.com` |
+| **Auteur** (saisit, soumet) | `test.cookbook.accountant@example.test` pour AG-COOK-01 · votre **chief-accountant** pour TEST-HABIS |
+| **Réviseur** (approuve, comptabilise) | votre **chief-accountant**, ou `admin@example.com` |
 
-### Step 6 — Entry 1: 100 in TEST-HABIS
+> Le comptable d'agence ne peut saisir que dans **son** agence. Nommer explicitement une
+> autre agence est refusé — c'est le refus 7h du §6.
 
-**As the chief accountant**, go to **Comptabilité › Opérations diverses** → create an entry:
+### Étape 6 — Écriture 1 : 100 dans TEST-HABIS
 
-- Agence: `TEST-HABIS`
-- Référence: `TEST-CONSO-A`
-- Date: today
+**En tant que chef comptable**, allez dans **Comptabilité › Opérations diverses** → créez une
+écriture :
 
-Open it and add two lines:
+- Agence : `TEST-HABIS`
+- Référence : `TEST-CONSO-A`
+- Date : aujourd'hui
+
+Ouvrez-la et ajoutez deux lignes :
 
 | Compte | Sens | Montant |
 |---|---|---|
 | `571001 — Caisse HABIS Test` | Débit | `100` |
 | `571901 — Contrepartie HABIS` | Crédit | `100` |
 
-✅ **Expect — and this is a headline check:** the account dropdown **does not offer
-`571000`**. The total is not selectable, so you cannot make the double-counting mistake.
-Before this change it *was* offered and produced a confusing error on save.
+✅ **Attendu — et c'est un contrôle majeur :** la liste déroulante des comptes **ne propose
+pas `571000`**. Le total n'est pas sélectionnable, vous ne pouvez donc pas commettre l'erreur
+de double comptage. Avant cette modification il *était* proposé et produisait une erreur
+déroutante à l'enregistrement.
 
-Then **Soumettre**.
+Puis **Soumettre**.
 
-**Log in as `admin@example.com`**, open the same entry, **Approuver**, then **Comptabiliser**
-(post). Only a posted entry affects balances.
+**Connectez-vous en `admin@example.com`**, ouvrez la même écriture, **Approuver**, puis
+**Comptabiliser**. Seule une écriture comptabilisée agit sur les soldes.
 
-> Trying to approve as the chief accountant gives *"Journal approval requires a reviewer
-> different from the maker"* — correct behaviour.
+> Tenter d'approuver en tant que chef comptable donne *« L'approbation du journal nécessite un
+> réviseur différent de l'auteur. »* — comportement correct.
 
-### Step 7 — Entry 2: 40 in AG-COOK-01
+### Étape 7 — Écriture 2 : 40 dans AG-COOK-01
 
-Repeat exactly, as the chief accountant then the admin:
+Répétez à l'identique, mais cette fois **en tant que comptable d'agence**
+(`test.cookbook.accountant@example.test`) puis en chef comptable :
 
-- Agence `AG-COOK-01`, référence `TEST-CONSO-B`
+- Agence `AG-COOK-01` — **ne renseignez pas l'agence**, elle est déduite de l'affectation du
+  comptable ; c'est le comportement attendu.
+- Référence `TEST-CONSO-B`
 - `571002` Débit `40` · `571902` Crédit `40`
-- Submit → approve → post.
+- Soumettre (comptable d'agence) → approuver → comptabiliser (chef comptable).
+
+✅ **Attendu** : l'écriture est créée sur AG-COOK-01 sans que vous ayez choisi d'agence, et
+*Approuver* est refusé au comptable d'agence — la validation appartient au siège.
 
 ---
 
-## 5. Read the numbers — the payoff
+## 5. Lire les chiffres — le résultat attendu
 
-### Step 8 — The consolidated balance of `571000`
+### Étape 8 — Le solde consolidé de `571000`
 
-**Comptabilité › Comptes généraux** → open `571000`.
+**Comptabilité › Comptes généraux** → ouvrez `571000`.
 
-✅ **Expect `140`** — not zero.
+✅ **Attendu : `140`** — et non zéro.
 
-`571000` has never received a single entry. 140 is `100` (TEST-HABIS) + `40` (AG-COOK-01),
-computed by walking the tree. A grey note says the amounts are consolidated. **This one
-number is the whole feature.**
+`571000` n'a jamais reçu la moindre écriture. 140 correspond à `100` (TEST-HABIS) + `40`
+(AG-COOK-01), calculé en parcourant l'arbre. Une note grise indique que les montants sont
+consolidés. **Ce seul chiffre résume toute la fonctionnalité.**
 
-Also check `571001` alone reads `100` and `571002` reads `40`.
+Vérifiez également que `571001` seul affiche `100` et `571002` seul `40`.
 
-> For a grouping account the screen always shows the consolidated figure — there is no
-> toggle. Its own movements (always zero, which is the point) can only be read through the
-> API, with `GET /api/v1/ledger-accounts/{id}/balance?consolidated=0`.
+> Pour un compte de regroupement, l'écran affiche toujours le chiffre consolidé — il n'y a
+> pas de bascule. Ses mouvements propres (toujours nuls, c'est bien le principe) ne sont
+> lisibles que via l'API, avec
+> `GET /api/v1/ledger-accounts/{id}/balance?consolidated=0`.
 
-### Step 9 — The consolidated trial balance
+### Étape 9 — La balance des comptes consolidée
 
-A *balance des comptes* (trial balance) lists every account with its debit and credit
-totals. **Édition › Balance des comptes** → *Générer*:
+Une *balance des comptes* liste chaque compte avec ses totaux débit et crédit.
+**Édition › Balance des comptes** → *Générer* :
 
-- Définition: **trial_balance**
-- **Consolidation: `Consolidé (cumulé)`**
-- **Agence: leave EMPTY** → *"Toutes les agences (institution)"*
-- Devise: `XAF`
+- Définition : **trial_balance**
+- **Consolidation : `Consolidé (cumulé)`**
+- **Agence : laissez VIDE** → *« Toutes les agences (institution) »*
+- Devise : `XAF`
 
-Leaving the agency empty is what makes the run institution-wide. Pick an agency and you get
-that agency's tree only — valid, but not the consolidated institution figure.
+Laisser l'agence vide est ce qui étend l'édition à toute l'institution. Choisir une agence
+vous donne l'arbre de cette agence uniquement — valable, mais ce n'est pas le chiffre
+consolidé de l'institution.
 
-✅ **Expect**, in the preview:
+✅ **Attendu**, dans l'aperçu :
 
-| Check | Expected |
+| Contrôle | Attendu |
 |---|---|
-| Row `571000` | debit **140**, scope `institution`, `is_postable` = *Non* |
-| Row `571001` | debit **100**, agency = TEST-HABIS |
-| Row `571002` | debit **40**, parent = `571000` |
-| **Grand total debit** | **140**, *not* 280 |
+| Ligne `571000` | débit **140**, périmètre `institution`, `is_postable` = *Non* |
+| Ligne `571001` | débit **100**, agence = TEST-HABIS |
+| Ligne `571002` | débit **40**, parent = `571000` |
+| **Total général débit** | **140**, *et non* 280 |
 
-The grand total is the subtle one. `571000` shows 140 and `571001`+`571002` show 140
-between them, so naively summing the rows gives 280. The totals are computed from the
-**posted** accounts only, so each movement is counted once however deep the tree is. **If
-you see 280, that is a real bug — report it.**
+Le total général est le point subtil. `571000` affiche 140 et `571001` + `571002` affichent
+140 à eux deux : additionner naïvement les lignes donnerait 280. Les totaux sont calculés
+uniquement à partir des comptes **effectivement mouvementés**, de sorte que chaque mouvement
+est compté une seule fois, quelle que soit la profondeur de l'arbre. **Si vous voyez 280,
+c'est une véritable anomalie — signalez-la.**
 
-Now regenerate with **Consolidation: `Comptes de détail uniquement`**: `571000` disappears
-(it has no movements of its own) and the total stays 140.
-
----
-
-## 6. The refusals — failures that prove it works
-
-Each of these **must fail**. Copy the message you get if any of them succeeds.
-
-| # | Do this | Must fail with |
-|---|---|---|
-| 7a | Create an account with **Périmètre = Institution** *and* **Nature = imputable** | The Nature field isn't offered for institution scope — the UI prevents it. Via API: *"Institution-level ledger accounts group agency accounts and cannot receive entries."* |
-| 7b | Create an account in **TEST-HABIS** with parent **`571002`** (an AG-COOK-01 account) | `571002` is **not in the parent dropdown**. Cross-agency parenting is refused: two agencies may share an *institution* parent, never each other's accounts. |
-| 7c | Add a journal line on **`571000`** | `571000` is **not in the account dropdown** (Step 6). |
-| 7d | Make `571000` the debit/credit target of an operation mapping — *Comptabilité › Codes opération & imputations* | `571000` is **not in the account dropdown**. Automatic postings must not target a total either. |
-| 7e | As **`test.accountant@example.test`**, open `571000`'s balance | The account row is visible, but balance and movements return **403** with an explanation — no figure at all. An agency accountant may file accounts under the institution total without reading a figure that spans every agency. **A 403 here is the correct answer, not an error.** |
-| 7f | As `test.accountant@example.test`, try to create an institution account | No **Périmètre** selector — it only maintains its own agency's chart. |
-| 7g | As the chief accountant, try to **reopen** a closed accounting day. *Needs a day that actually reached `closed` (Step 10), and the UI offers no Reopen action without the permission — so check it by calling `POST /api/v1/accounting-days/{id}/reopen` directly.* | **403.** Reopening a closed period stays with platform admins — whoever closed the books must not be able to unclose them. The absent button is itself part of the answer. |
+Régénérez maintenant avec **Consolidation : `Comptes de détail uniquement`** : `571000`
+disparaît (il n'a pas de mouvements propres) et le total reste 140.
 
 ---
 
-## 7. Role boundaries
+## 6. Les refus — les échecs qui prouvent que ça marche
 
-### Step 10 — The chief accountant runs the institution period
+Chacun de ces cas **doit échouer**. Si l'un d'eux réussit, copiez le message obtenu.
 
-**As the chief accountant**, go to **Administration › Journée Comptable**.
+> **Où concentrer votre attention.** La colonne *Filet automatique* indique le test qui
+> verrouille déjà chaque refus côté API. Si un cas doté d'un filet échoue chez vous alors que
+> la suite est verte, suspectez d'abord votre environnement (session périmée, base non
+> migrée) plutôt que le code. Les lignes marquées **interface uniquement** sont celles
+> qu'aucun test ne couvre : ce que l'interface choisit de proposer dans une liste déroulante
+> ne se vérifie qu'à l'œil. **Ce sont celles où votre passage apporte le plus.**
 
-✅ **Expect:**
-- The page loads and lists days **even though this user has no agency**. It used to return a
-  blanket 403 to any head-office user.
-- *Ouvrir* offers a **Périmètre** choice including **Institution**. Before this change that
-  choice was reserved for `platform-admin` by a hard-coded role check, so the new role could
-  not do the job it was created for.
-- Opening and starting the close of the **institution** day works.
-
-> **Known dependency, not a bug:** starting a close requires the close-control batch
-> procedures to be configured, which is deliberately platform-admin-only
-> (`batch.procedures.manage`). If start-close reports *"No active batch procedure is
-> configured for one or more close controls"*, that is the documented behaviour: the chief
-> accountant holds every permission start-close checks and still needs a platform admin to
-> have set up the controls.
-
-### Step 11 — The agency accountant stays in its lane
-
-As `test.accountant@example.test`: it can maintain **AG-COOK-01**'s chart (that is new —
-the chart of accounts is an accounting job, previously platform-admin only), but is refused
-the institution chart, another agency's chart, consolidated figures, and the institution
-period.
+| # | À faire | Doit échouer avec | Filet automatique |
+|---|---|---|---|
+| 7a | Créer un compte avec **Périmètre = Institution** *et* **Nature = imputable** | Le champ Nature n'est pas proposé en périmètre institution — l'interface l'empêche. Via l'API : *« Les comptes du grand livre au niveau entreprise regroupent les comptes des agences et ne peuvent pas recevoir d'écritures. »* | `test_institution_grouping_account_cannot_be_asked_to_be_postable` — le masquage du champ *Nature* est **interface uniquement**. |
+| 7b | Créer un compte dans **TEST-HABIS** avec le parent **`571002`** (un compte d'AG-COOK-01) | `571002` **n'est pas dans la liste des parents**. Le rattachement inter-agences est refusé : deux agences peuvent partager un parent *entreprise*, jamais les comptes l'une de l'autre. | `test_parent_account_from_another_agency_is_still_refused` — l'absence dans la liste des parents est **interface uniquement**. |
+| 7c | Ajouter une ligne d'écriture sur **`571000`** | `571000` **n'est pas dans la liste des comptes** (étape 6). | `test_journal_lines_cannot_post_to_a_grouping_account` — l'absence dans la liste des comptes est **interface uniquement**. |
+| 7d | Faire de `571000` la cible débit/crédit d'une imputation d'opération — *Comptabilité › Codes opération & imputations* | `571000` **n'est pas dans la liste des comptes**. Les imputations automatiques ne doivent pas non plus viser un total. | `test_operation_account_mapping_cannot_target_a_grouping_account` — l'absence dans la liste est **interface uniquement**. |
+| 7e | En tant que **`test.cookbook.accountant@example.test`**, ouvrir le solde de `571000` | La ligne du compte est visible, mais le solde et les mouvements renvoient **403** avec une explication — aucun chiffre. Un comptable d'agence peut rattacher ses comptes au total entreprise sans lire un chiffre qui couvre toutes les agences. **Un 403 ici est la bonne réponse, pas une erreur.** | `test_accountant_cannot_reach_another_agency_chart_or_the_institution_chart` |
+| 7f | En tant que `test.cookbook.accountant@example.test`, tenter de créer un compte entreprise | Pas de sélecteur **Périmètre** — ce rôle ne tient que le plan comptable de sa propre agence. | `test_accountant_cannot_reach_another_agency_chart_or_the_institution_chart` |
+| 7g | En tant que chef comptable, tenter de **rouvrir** une journée comptable clôturée. *Nécessite une journée réellement passée à `closed` (étape 10) ; l'interface ne propose aucune action Rouvrir sans la permission — vérifiez donc en appelant directement `POST /api/v1/accounting-days/{id}/reopen`.* | **403.** La réouverture d'une période clôturée reste réservée aux administrateurs plateforme : celui qui a arrêté les comptes ne doit pas pouvoir les réouvrir. L'absence du bouton fait partie de la réponse. | `test_chief_accountant_runs_the_institution_accounting_period` vérifie l'absence de la permission ; le 403 de l'API n'est pas couvert — **à vérifier à la main**. |
+| 7h | En tant que `test.cookbook.accountant@example.test`, créer une écriture en renseignant **Agence = TEST-HABIS** | **422** — *« Vous ne pouvez enregistrer des écritures que pour votre propre agence. »* L'agence prépare ses propres écritures, elle n'écrit pas dans les livres d'une autre. | `test_accountant_prepares_its_own_agency_entries_but_cannot_validate_them` |
 
 ---
 
-## 8. If something looks wrong
+## 7. Frontières des rôles
 
-| Symptom | Almost certainly |
+### Étape 10 — Le chef comptable pilote la période de l'institution
+
+**En tant que chef comptable**, allez dans **Administration › Journée Comptable**.
+
+✅ **Attendu :**
+- La page s'affiche et liste les journées **alors que cet utilisateur n'a aucune agence**.
+  Auparavant, tout utilisateur du siège recevait un 403 pur et simple.
+- *Ouvrir* propose un choix de **Périmètre** incluant **Institution**. Avant cette
+  modification, ce choix était réservé à `platform-admin` par un contrôle de rôle codé en
+  dur : le nouveau rôle ne pouvait donc pas faire le travail pour lequel il a été créé.
+- L'ouverture et le lancement de la clôture de la journée **institution** fonctionnent.
+
+> **Dépendance connue, pas une anomalie :** lancer une clôture exige que les lots de contrôle
+> de clôture soient configurés, ce qui est volontairement réservé à l'administrateur
+> plateforme (`batch.procedures.manage`). Si le lancement de la clôture répond *« La clôture
+> du jour comptable ne peut pas commencer tant que des contrôles de clôture échouent. »*,
+> c'est le comportement documenté : le chef comptable détient toutes les permissions que le
+> lancement de clôture vérifie, et il a tout de même besoin qu'un administrateur plateforme
+> ait mis en place les contrôles.
+
+### Étape 11 — Le comptable d'agence reste dans son périmètre
+
+En tant que `test.cookbook.accountant@example.test` :
+
+- ✅ il **consulte** le plan comptable, saisit et soumet les *opérations diverses* d'**AG-COOK-01**,
+  et ouvre ou clôture la journée comptable de son agence ;
+- ❌ il ne **crée ni ne modifie** de compte — le PCEMF est adopté une fois au siège, chaque
+  compte mouvementé doit être rattaché au plan COBAC, et la consolidation ne tombe juste que
+  si le plan est commun. Une subdivision se demande au chef comptable ;
+- ❌ il n'approuve ni ne comptabilise ses propres écritures, ne touche pas au plan entreprise
+  ni à celui d'une autre agence, ne lit pas les chiffres consolidés, et ne pilote pas la
+  période de l'institution.
+
+---
+
+## 8. Si quelque chose semble anormal
+
+| Symptôme | Presque certainement |
 |---|---|
-| *Paramétrage › Institution* missing from the sidebar | Old session. **Log out and back in** (§1.1). |
-| No **Périmètre** selector on the account form | Same — or the user genuinely lacks `ledger.scope.institution.manage`. |
-| Cannot create a journal entry | The agency has no **open accounting day**. Open one in *Administration › Journée Comptable*. |
-| *"Journal approval requires a reviewer different from the maker"* | Working as designed. Approve with the **other** user (§4). |
-| The account I want is missing from a dropdown | Almost always correct: it is a grouping account, or belongs to another agency. Check the **Structure** column. |
-| An account became "Compte de regroupement" on its own | Correct — it gained a child (Appendix A). |
-| A balance reads 0 where you expected a figure | The entry is not **posted**. Submitted and approved are not enough. |
-| Grand total is double the expected figure | **Real bug.** Report it (§ Step 9). |
-| Only the first ~100 accounts appear in a dropdown | Known limitation: the chart is loaded one page at a time and filtered in the browser. Harmless at this size, must be fixed before a full PCEMF chart is loaded. |
+| *Paramétrage › Institution* absent du menu latéral | Session périmée. **Déconnectez-vous et reconnectez-vous** (§1.1). |
+| Pas de sélecteur **Périmètre** sur le formulaire de compte | Idem — ou l'utilisateur n'a réellement pas `ledger.scope.institution.manage`. |
+| Impossible de créer une écriture | L'agence n'a pas de **journée comptable ouverte**. Ouvrez-en une dans *Administration › Journée Comptable*. |
+| *« L'approbation du journal nécessite un réviseur différent de l'auteur. »* | Fonctionne comme prévu. Approuvez avec l'**autre** utilisateur (§4). |
+| Le compte que je cherche est absent d'une liste déroulante | C'est presque toujours correct : c'est un compte de regroupement, ou il appartient à une autre agence. Vérifiez la colonne **Structure**. |
+| Un compte est devenu « Compte de regroupement » tout seul | Correct — il a acquis un compte fils (Annexe A). |
+| Un solde affiche 0 là où vous attendiez un chiffre | L'écriture n'est pas **comptabilisée**. Soumise et approuvée ne suffisent pas. |
+| Le total général vaut le double du chiffre attendu | **Véritable anomalie.** Signalez-la (§ étape 9). |
+| Seuls les ~100 premiers comptes apparaissent dans une liste déroulante | Limitation connue : le plan est chargé page par page puis filtré dans le navigateur. Sans conséquence à cette taille, à corriger avant de charger un plan PCEMF complet. |
 
 ---
 
-## 9. Coverage checklist
+## 9. Liste de contrôle de couverture
 
-- [ ] Institution profile read, updated, persisted; unconfigured banner behaves
-- [ ] Institution grouping account created (`571000`)
-- [ ] Two agencies' detail accounts filed under one institution parent
-- [ ] Auto-conversion of a parent into a grouping account observed (Appendix A)
-- [ ] Entries posted in two agencies through maker-checker
-- [ ] Consolidated balance of `571000` = 140
-- [ ] Consolidated trial balance: rows correct **and grand total not double-counted**
-- [ ] Non-consolidated run drops the grouping account and keeps the total
-- [ ] All seven refusals in §6 refused
-- [ ] Chief accountant runs the institution period with no agency assignment
-- [ ] Agency accountant confined to its own agency
+- [ ] Profil de l'institution lu, modifié, persistant ; le bandeau « non identifiée » se
+      comporte correctement
+- [ ] Compte de regroupement entreprise créé (`571000`)
+- [ ] Comptes de détail de deux agences rattachés à un même parent entreprise
+- [ ] Conversion automatique d'un parent en compte de regroupement observée (Annexe A)
+- [ ] Écritures comptabilisées dans deux agences via le principe des quatre yeux
+- [ ] Solde consolidé de `571000` = 140
+- [ ] Balance consolidée : lignes correctes **et total général non doublé**
+- [ ] L'édition non consolidée fait disparaître le compte de regroupement et conserve le total
+- [ ] Les huit refus du §6 sont bien refusés
+- [ ] Le chef comptable pilote la période de l'institution sans aucune agence rattachée
+- [ ] Le comptable d'agence prépare et soumet une OD de sa propre agence, sans pouvoir
+      l'approuver
+- [ ] Le comptable d'agence consulte le plan comptable sans pouvoir le modifier
+- [ ] Le comptable d'agence est confiné à sa propre agence
 
-Anything unchecked, or any refusal that did not refuse, is worth reporting with the exact
-message and the user you were logged in as.
+Toute case non cochée, ou tout refus qui n'a pas refusé, mérite d'être signalé avec le message
+exact et l'utilisateur avec lequel vous étiez connecté.
 
 ---
 
-## Appendix A — See the auto-conversion for yourself
+## Annexe A — Voir la conversion automatique en direct
 
-*Optional, one minute. Do this **after** Step 11: it changes `571901` permanently, and that
-account is needed as a counterpart until then.*
+*Facultatif, une minute. À faire **après** l'étape 11 : cela modifie `571901`
+définitivement, or ce compte sert de contrepartie jusque-là.*
 
-Create a throwaway detail account `571999` in TEST-HABIS with **parent `571901`**. Now look
-at `571901` in the list: it has gained a *Compte de regroupement* badge and is no longer
-postable — **you never asked for that.**
+Créez un compte imputable jetable `571999` dans TEST-HABIS avec le **parent `571901`**.
+Regardez maintenant `571901` dans la liste : il a gagné un badge *Compte de regroupement* et
+n'est plus imputable — **vous ne l'avez jamais demandé.**
 
-It happened because it became a total. This is the behaviour most likely to look like a bug,
-and it isn't: an account with children must not also carry entries of its own, or the same
-money would be counted twice. Archiving `571999` afterwards does not undo it — the badge on
-`571901` stays, which is why this belongs at the end of the run rather than in the middle.
+C'est arrivé parce qu'il est devenu un total. C'est le comportement le plus susceptible de
+passer pour une anomalie, et ce n'en est pas une : un compte qui a des fils ne doit pas porter
+en plus ses propres écritures, sinon le même argent serait compté deux fois. Archiver `571999`
+ensuite n'annule rien — le badge sur `571901` demeure, et c'est précisément pourquoi cette
+manipulation se place en fin de parcours plutôt qu'au milieu.
 
-The one case the system refuses instead of converting: give a parent to an account that
-**already carries posted movements**, and you get *"The selected parent account already
-carries movements and cannot become a grouping account."* Converting it would strand those
-entries on a total. Try it on `571001`, which by now has 100 posted on it.
+Le seul cas où le système refuse au lieu de convertir : donner un parent à un compte qui
+**porte déjà des mouvements comptabilisés**. Vous obtenez alors *« Le compte parent
+sélectionné porte déjà des mouvements et ne peut pas devenir un compte de regroupement. »* Le
+convertir laisserait ces écritures échouées sur un total. Essayez sur `571001`, qui porte
+désormais 100.

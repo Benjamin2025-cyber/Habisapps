@@ -42,6 +42,7 @@ return [
     'accounting_day_institution_scope_forbidden' => 'Les jours comptables au niveau entreprise requièrent une autorité comptable au niveau entreprise.',
     'till_ledger_account_must_be_treasury' => 'Le compte du grand livre sélectionné doit être un compte de trésorerie actif (classe 5 du PCEMF) dans l’agence de la caisse.',
     'journal_entry_requires_agency' => 'Une écriture comptable doit être rattachée à une agence.',
+    'journal_entry_outside_actor_scope' => 'Vous ne pouvez enregistrer des écritures que pour votre propre agence.',
     'ledger_agency_account_requires_agency' => 'Un compte du grand livre au niveau agence doit être rattaché à une agence.',
     'ledger_agency_outside_actor_scope' => 'Vous ne pouvez gérer que le plan comptable de votre propre agence.',
     'ledger_institution_account_has_no_agency' => 'Un compte du grand livre au niveau entreprise ne peut pas être rattaché à une agence.',

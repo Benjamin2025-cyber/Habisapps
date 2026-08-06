@@ -10,7 +10,9 @@ for the ledger tables and [agency-scope.md](agency-scope.md) for agency scoping.
 To **verify** the feature by hand rather than read about it, follow
 [consolidated-chart-of-accounts-test-guide.md](consolidated-chart-of-accounts-test-guide.md)
 — a click-through scenario written for a non-accountant, including the refusals that are
-supposed to happen.
+supposed to happen. **That guide is written in French**, because its readers are the
+francophone testers using a French interface; this document stays in English for developers.
+Scope is XAF only: multi-currency consolidation is out of scope for now.
 
 ---
 
@@ -128,12 +130,50 @@ and needed no change.
 
 | Permission | Granted to | Notes |
 |---|---|---|
-| `ledger.accounts.view/create/update/archive` | platform-admin, **accountant**, **chief-accountant** | Maintaining the chart of accounts is an accounting job; previously platform-admin only. Scope is enforced by the policy, below. |
+| `ledger.accounts.view` | platform-admin, **accountant**, **chief-accountant** | Reading the chart is an accounting job; previously platform-admin only. |
+| `ledger.accounts.create/update/archive` | platform-admin, **chief-accountant** | Authoring the chart is central — see "Who does what, and why" below. |
+| `journal.entries.create/update`, `journal.lines.create/update/archive` | platform-admin, **accountant**, **chief-accountant** | Preparing manual entries. `review`/`post`/`reverse` stay with head office. |
 | `ledger.scope.institution.read` | platform-admin, user-admin, **chief-accountant** | Reads across agency charts, and unlocks consolidated institution figures. |
 | `ledger.scope.institution.manage` | platform-admin, **chief-accountant** | In `RoleController::protectedPermissions()`. |
 | `institution.profile.view` | platform-admin, accountant, auditor, **chief-accountant** | |
 | `institution.profile.manage` | platform-admin, **chief-accountant** | In `protectedPermissions()`. |
 | `accounting.scope.institution.manage` | platform-admin, **chief-accountant** | New. Replaces a hard `hasRole('platform-admin')` check on institution-scoped accounting days and calendars. In `protectedPermissions()`. |
+
+### Who does what, and why (revised 2026-08-06)
+
+The first cut let the agency `accountant` author its own agency's chart while leaving entry
+recording to head office. Checked against how an EMF actually runs, that is inverted on both
+counts, so it was swapped:
+
+- **The chart is authored centrally.** The PCEMF is a national plan adopted once; every posted
+  account must map to the COBAC regulatory chart before an EMF return will generate (see
+  `unmappedLedgerAccounts`); and consolidation only ties if the chart is shared. Agencies
+  opening their own accounts defeats all three. An agency requests a subdivision from the chef
+  comptable, who can write into any agency's chart.
+- **Manual entries are prepared locally.** *Opérations diverses* — corrections,
+  régularisations — are the agency accountant's daily work; the siège validates. That is real
+  practice and it is maker-checker across the hierarchy at the same time.
+- **Operational postings need neither.** Deposits, withdrawals, disbursements and repayments
+  are generated from operation→account mappings, not typed by anyone.
+
+So `accountant` now holds `ledger.accounts.view` (read only) plus
+`journal.entries.create/update` and `journal.lines.create/update/archive` — and deliberately
+**not** `review`, `post` or `reverse`.
+
+Granting entry creation to an agency-scoped role made three more latent holes live, all closed
+with it:
+
+- `JournalEntryWorkflow::store()` honoured any `agency_public_id`. It now defaults to the
+  actor's own agency (so an agency accountant never has to name one) and refuses any other
+  unless the actor holds institution accounting authority.
+- `JournalEntryPolicy` checked permissions only, with no agency scoping on view/update/submit/
+  approve/post/reverse — it now matches what `JournalEntryListQuery::applyActorScope` already
+  returned for lists.
+- **`JournalLinePolicy` answered `hasRole('platform-admin')` to everything**, ignoring the
+  `journal.lines.*` permissions entirely. That made those permissions unusable for any other
+  role — including `chief-accountant`, which could create an entry but not add a line to it.
+  The guide's Step 6 would have failed. It now honours the permissions and scopes by the
+  parent entry's agency.
 
 ### The two accounting roles
 
@@ -142,9 +182,10 @@ Before this work, every institution-level *write* in the system belonged to
 `crm.scope.institution.manage` and institution accounting days, but no longer of the
 chart of accounts:
 
-- **`accountant`** — agency-scoped. Maintains its own agency's chart. Holds no
-  institution-scope permission, so it can neither create grouping accounts nor read
-  consolidated institution figures.
+- **`accountant`** — agency-scoped. Reads the chart, prepares and submits its own agency's
+  manual entries, and runs its agency's accounting day. Holds no institution-scope permission,
+  so it cannot author the chart, validate its own entries, or read consolidated institution
+  figures.
 - **`chief-accountant`** (new; *chef comptable*, head office) — the institution's
   accounting authority. It owns:
   - the institution grouping chart and its deployment into every agency chart;
@@ -210,8 +251,13 @@ In the table below, "own agency" means the actor's `staff_agency_assignments` sc
 |---|---|---|---|
 | view | yes | only with `ledger.scope.institution.read` | yes — agency accounts must be filed under them |
 | balance / movements | yes (consolidated within the agency where relevant) | via view rules | computed, but **not returned** without `ledger.scope.institution.read`, since the figures consolidate every agency |
-| create | yes | refused (422) unless `ledger.scope.institution.manage` | needs `ledger.scope.institution.manage` |
-| update / archive | yes | forbidden | needs `ledger.scope.institution.manage` |
+| create | needs `ledger.accounts.create` — held by head office, not by an agency accountant | refused (422) unless `ledger.scope.institution.manage` | needs `ledger.scope.institution.manage` |
+| update / archive | needs `ledger.accounts.update`/`archive`, likewise central | forbidden | needs `ledger.scope.institution.manage` |
+
+The `create` and `update` rows describe what the *permission holder* may reach. Since only
+head office holds those permissions now, the "own agency" column is reachable by
+`chief-accountant` and `platform-admin` — the agency scoping still applies and is what stops a
+future grant from becoming a cross-agency write.
 
 Two deliberate asymmetries:
 
@@ -344,6 +390,12 @@ as "unmapped" and cannot block EMF report generation.
 - [`tests/Feature/Api/Module1AdministrationTest.php`](../../tests/Feature/Api/Module1AdministrationTest.php)
   — institution profile read/update, partial patch, currency normalisation, audit row,
   `manage` gating, second-row rejection, protected-permission listing.
+- Two refusals that the guide exercises by hand were unpinned and now have tests:
+  `test_institution_grouping_account_cannot_be_asked_to_be_postable` (the API refusal behind
+  the hidden *Nature* field) and `test_operation_account_mapping_cannot_target_a_grouping_account`
+  (a posting rule must not aim at a total, in either leg). The guide's refusal table names the
+  test that pins each row, and marks the ones that are UI-only — dropdown filtering is the one
+  thing no PHP test can cover.
 - Role boundaries, in the same file: the accountant maintaining its own agency's chart;
   the accountant blocked from another agency's chart, the institution chart, and
   consolidated figures; the chief accountant creating institution accounts, deploying

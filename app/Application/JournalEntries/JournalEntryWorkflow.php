@@ -16,7 +16,9 @@ use App\Models\TellerTransaction;
 use App\Models\User;
 use App\Support\AccountingDay\AccountingDayException;
 use App\Support\AccountingDay\AccountingDayGuard;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Security\SecurityAudit;
+use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +32,8 @@ final class JournalEntryWorkflow extends BaseController
         private readonly CreateJournalEntryReversal $createJournalEntryReversal,
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly JournalEntryListQuery $journalEntryListQuery,
+        private readonly AccountingScopeAccess $scopeAccess,
+        private readonly StaffAgencyScope $staffAgencyScope,
     ) {}
 
     public function index(Request $request): JournalEntryCollection|JsonResponse
@@ -60,6 +64,11 @@ final class JournalEntryWorkflow extends BaseController
             if (! $agency instanceof Agency) {
                 return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
             }
+        } elseif (! $this->scopeAccess->canManageInstitutionScope($actor)) {
+            // An agency accountant records in its own books; naming the agency is
+            // head office's job, because head office has no agency of its own.
+            $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
+            $agency = $agencyId !== null ? Agency::query()->whereKey($agencyId)->first() : null;
         }
 
         // journal_entries.agency_id is NOT NULL: every entry belongs to the
@@ -67,6 +76,13 @@ final class JournalEntryWorkflow extends BaseController
         // actor records it. Without this the insert fails at the database.
         if (! $agency instanceof Agency) {
             return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.journal_entry_requires_agency')]]);
+        }
+
+        // Recording into another agency's books is head-office work. Without this
+        // an agency accountant could book an entry anywhere simply by naming it.
+        if (! $this->scopeAccess->canManageInstitutionScope($actor)
+            && $this->staffAgencyScope->currentAgencyId($actor) !== $agency->id) {
+            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.journal_entry_outside_actor_scope')]]);
         }
 
         // The accounting day governs the business date; reject closed-day writes
