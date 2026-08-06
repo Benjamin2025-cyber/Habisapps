@@ -2095,6 +2095,22 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->assertJsonSuccess($detail);
         $detail->assertJsonPath('data.scope', 'ledger_account');
         $detail->assertJsonPath('data.balance_minor', 10000);
+
+        // The statement consolidates the subtree too, and has to say so: a client
+        // that showed these figures unlabelled would present a consolidation as
+        // the account's own activity.
+        $statement = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/movements?currency=XAF');
+        $this->assertJsonSuccess($statement);
+        $statement->assertJsonPath('data.statement.scope', 'ledger_account_consolidated');
+        $statement->assertJsonPath('data.statement.debit_total_minor', 14000);
+
+        $detailStatement = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$cashA.'/movements?currency=XAF');
+        $this->assertJsonSuccess($detailStatement);
+        $detailStatement->assertJsonPath('data.statement.scope', 'ledger_account');
     }
 
     public function test_consolidated_trial_balance_rolls_agency_accounts_into_their_institution_parent(): void
@@ -2515,6 +2531,37 @@ final class Module3AccountingArchitectureTest extends TestCase
         // Owns the institution's declared identity.
         $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($chief)
             ->patchJson('/api/v1/institution', ['legal_name' => 'Habis Microfinance SA']));
+    }
+
+    public function test_chief_accountant_reaches_the_report_catalogue_without_an_agency_assignment(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $this->seed(StandardReportDefinitionSeeder::class);
+
+        // Report definitions are a global catalogue, not agency data, and this
+        // role carries no agency by design. Requiring an assignment here empties
+        // the report picker, so the role cannot generate the consolidated trial
+        // balance it exists to produce — the failure looks like "no definitions
+        // available for this type" rather than a permission error.
+        $definitions = $this->withApiHeaders()
+            ->actingAsSanctum($chief)
+            ->getJson('/api/v1/report-definitions');
+        $this->assertJsonSuccess($definitions);
+        $definitions->assertSee('trial_balance');
+
+        $definitionPublicId = DB::table('report_definitions')->where('code', 'trial_balance')->value('public_id');
+        self::assertIsString($definitionPublicId);
+
+        // And it can generate the institution-wide rollup: no agency named.
+        $run = $this->withApiHeaders()
+            ->actingAsSanctum($chief)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'currency' => 'XAF',
+                'parameters' => ['consolidated' => true],
+            ]);
+        $this->assertJsonSuccess($run, 201);
+        $run->assertJsonPath('data.summary.consolidated', true);
     }
 
     public function test_chief_accountant_runs_the_institution_accounting_period(): void

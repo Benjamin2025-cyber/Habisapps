@@ -297,7 +297,12 @@ final class AccountingBalanceWorkflow extends BaseController
             : $this->calculator->forLedgerAccount($ledgerAccount, $currency, $from, $to);
 
         return [
-            'scope' => 'ledger_account',
+            // A grouping account's statement is drawn from its whole subtree (see
+            // ledgerMovementQuery), so it must say so: the figures are not the
+            // account's own movements, and a client showing them unlabelled would
+            // present a consolidation as if it were a single account's activity.
+            // Same two values the balance endpoint reports.
+            'scope' => $ledgerAccount->is_postable ? 'ledger_account' : 'ledger_account_consolidated',
             'public_id' => $ledgerAccount->public_id,
             'currency' => $currency,
             'from' => $from,
