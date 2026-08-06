@@ -57,12 +57,22 @@ liste**. Rien de nouveau n'apparaît avant une reconnexion.
 
 ### 1.2 Préparez le banc de test
 
-Une base fraîche ne contient **ni** la seconde agence, **ni** les journées comptables
-ouvertes, **ni** le chef comptable. Une commande les crée :
+Une base fraîche ne contient **ni** l'administrateur plateforme, **ni** la seconde agence,
+**ni** les journées comptables ouvertes, **ni** le chef comptable. Deux commandes les créent :
 
 ```bash
+# L'administrateur plateforme est volontairement protégé par un drapeau : DatabaseSeeder
+# le saute tant que SEED_BOOTSTRAP_ADMIN vaut false, ce qui est le défaut.
+SEED_BOOTSTRAP_ADMIN=true php artisan db:seed --class=BootstrapAdminSeeder
+
 php artisan db:seed --class=ConsolidatedChartBenchSeeder
 ```
+
+> **On se connecte avec le numéro de téléphone, pas avec l'adresse e-mail.** L'API recherche
+> l'utilisateur sur `phone_number` ; l'e-mail ne sert jamais à l'authentification. Les
+> identifiants de l'administrateur sont ceux de vos variables `SEED_BOOTSTRAP_ADMIN_*`.
+> Les comptes de test créés par le banc utilisent les numéros `+2376900000xx` listés en
+> console à la fin du seeder.
 
 Vous obtenez :
 
@@ -70,7 +80,7 @@ Vous obtenez :
 |---|---|
 | Agences | `TEST-HABIS` — HABIS Test Agency · `AG-COOK-01` — Cookbook Test Agency |
 | Journées comptables ouvertes | TEST-HABIS · AG-COOK-01 · INSTITUTION |
-| Administrateur plateforme | `admin@example.com` |
+| Administrateur plateforme | `SEED_BOOTSTRAP_ADMIN_EMAIL` — connexion par `SEED_BOOTSTRAP_ADMIN_PHONE` |
 | Chef comptable (siège, **sans agence**) | `test.chief.accountant@example.test` |
 | Comptable d'agence | `test.cookbook.accountant@example.test` (agence **AG-COOK-01**) |
 | Mot de passe des comptes de test | `password123` |
@@ -114,8 +124,12 @@ administrateur plateforme peut rouvrir. Pour le refaire, repartez d'une base neu
 
 ```bash
 php artisan migrate:fresh --seed
+SEED_BOOTSTRAP_ADMIN=true php artisan db:seed --class=BootstrapAdminSeeder
 php artisan db:seed --class=ConsolidatedChartBenchSeeder
 ```
+
+> `migrate:fresh` efface **tout**, y compris l'administrateur plateforme et les agences.
+> Sans la deuxième ligne vous ne pourrez plus vous connecter du tout.
 
 Le parcours rapide, lui, se rejoue autant que voulu : les deux seeders réutilisent ce qui
 existe déjà au lieu de le recréer.
@@ -147,7 +161,8 @@ en préoccupez pas autrement.
 
 ### Étape 1 — Identifier l'institution
 
-**Connectez-vous en `admin@example.com`.** Allez dans **Paramétrage › Institution**.
+**Connectez-vous en administrateur plateforme** (numéro `SEED_BOOTSTRAP_ADMIN_PHONE`). Allez
+dans **Paramétrage › Institution**.
 
 Vous devez voir un bandeau ambre, *« Institution non encore identifiée »*. C'est correct sur
 une installation neuve : la ligne existe mais elle est vide. Rien n'est inventé — la raison
@@ -271,7 +286,7 @@ Donc, pour ce passage :
 | Rôle dans le test | Utilisateur |
 |---|---|
 | **Auteur** (saisit, soumet) | `test.cookbook.accountant@example.test` pour AG-COOK-01 · votre **chief-accountant** pour TEST-HABIS |
-| **Réviseur** (approuve, comptabilise) | votre **chief-accountant**, ou `admin@example.com` |
+| **Réviseur** (approuve, comptabilise) | votre **chief-accountant**, ou l'administrateur plateforme |
 
 > Le comptable d'agence ne peut saisir que dans **son** agence. Nommer explicitement une
 > autre agence est refusé — c'est le refus 7h du §6.
@@ -299,7 +314,7 @@ déroutante à l'enregistrement.
 
 Puis **Soumettre**.
 
-**Connectez-vous en `admin@example.com`**, ouvrez la même écriture, **Approuver**, puis
+**Connectez-vous en administrateur plateforme**, ouvrez la même écriture, **Approuver**, puis
 **Comptabiliser**. Seule une écriture comptabilisée agit sur les soldes.
 
 > Tenter d'approuver en tant que chef comptable donne *« L'approbation du journal nécessite un
