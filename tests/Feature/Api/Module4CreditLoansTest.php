@@ -1418,9 +1418,13 @@ final class Module4CreditLoansTest extends TestCase
             'errors.disbursement.0',
             'Loan disbursement could not be posted. Verify the accounting configuration and try again.',
         );
-        self::assertStringNotContainsString('SQLSTATE', $response->getContent());
-        self::assertStringNotContainsString('enforce_customer_account_non_overdraft', $response->getContent());
-        self::assertStringNotContainsString('Customer account', $response->getContent());
+        // assertDontSee rather than assertStringNotContainsString($response->getContent()):
+        // larastan models the forwarded Response::getContent() as a static call and
+        // types it string|false, so the latter fails level 9 twice per line. Same
+        // assertion, and the raw flag keeps the needles unescaped.
+        $response->assertDontSee('SQLSTATE', false);
+        $response->assertDontSee('enforce_customer_account_non_overdraft', false);
+        $response->assertDontSee('Customer account', false);
         self::assertSame(0, DB::table('loan_disbursements')->where('loan_id', $loan->id)->count());
         self::assertSame(0, DB::table('journal_entries')->where('source_type', 'loan_disbursement')->where('source_public_id', $loan->public_id)->count());
         self::assertSame(Loan::STATUS_APPROVED, $loan->refresh()->status);
