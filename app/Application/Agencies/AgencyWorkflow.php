@@ -9,6 +9,7 @@ use App\Http\Resources\AgencyCollection;
 use App\Http\Resources\AgencyResource;
 use App\Models\Agency;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +23,7 @@ final class AgencyWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly AccountingScopeAccess $scopeAccess,
         private readonly CreateAgency $createAgency,
         private readonly AssignAgencyManager $assignAgencyManager,
     ) {}
@@ -32,11 +34,15 @@ final class AgencyWorkflow extends BaseController
         $this->authorize('viewAny', Agency::class);
         $query = Agency::query()->with('manager')->latest();
 
-        if (! $actor instanceof User || ! $actor->hasRole('platform-admin')) {
-            if (! $actor instanceof User) {
-                return $this->respondForbidden();
-            }
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
 
+        // Head office holds institution accounting authority and carries no
+        // agency assignment, so it has to see every agency: naming the agency is
+        // exactly its job when recording an entry or deploying the chart. Anyone
+        // else sees only their own.
+        if (! $actor->hasRole('platform-admin') && ! $this->scopeAccess->canManageInstitutionScope($actor)) {
             $currentAgencyId = $actor->currentAgencyId();
 
             if ($currentAgencyId === null) {

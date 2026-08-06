@@ -175,6 +175,31 @@ with it:
   The guide's Step 6 would have failed. It now honours the permissions and scopes by the
   parent entry's agency.
 
+### The recurring failure mode: no agency means "see nothing"
+
+`chief-accountant` carries no agency assignment, and a lot of list code treats a null
+agency as "scope to nothing" rather than "this actor is above agencies". Every occurrence
+found so far, and the shape it took:
+
+| Site | Symptom | Fixed by |
+|---|---|---|
+| `AccountingDayWorkflow::index()` | blanket 403 — the page would not load | institution authority sees all scopes |
+| `AgencyWorkflow::index()` + `AgencyPolicy` | 403, which the UI rendered as an **empty agency dropdown** on the OD form | same |
+| `BatchRunWorkflow::index()` | silently empty list (`where('id', -1)`) | same, reading only |
+| `AccountingDayChip` (frontend) | asked for an agency-scoped day, got an error, chip vanished on every page | asks for the institution day when the actor has no agency |
+| `JournalLinePolicy` | `hasRole('platform-admin')` on every method, ignoring `journal.lines.*` | honours the permissions, scoped by the parent entry |
+| `journal-entries/page.tsx` (frontend) | `canManageLines = isPlatformAdmin` — no *add line* control | derives from `journal.lines.*` |
+
+**When adding a list endpoint or a UI gate, decide explicitly what a null agency means.** The
+two correct answers are "everything" (institution authority) and "nothing" (an agency actor
+with no assignment). Defaulting to the second is what produced every row above.
+
+Checked and left alone, because the API agrees with the UI: `canOpenAnyAgency={isPlatformAdmin}`
+on the open-day drawer — `resolveScopeForRequest` still restricts *agency*-scoped days to
+platform-admin or the actor's own agency, so head office opens the institution day and each
+agency opens its own. Revisit only if head office should cover for an absent agency
+accountant. Customer-account gates (`accounts/[publicId]`) are platform-admin in the API too.
+
 ### The two accounting roles
 
 Before this work, every institution-level *write* in the system belonged to
@@ -221,7 +246,7 @@ without an agency assignment, which is every head-office actor.
 | Withheld | Why |
 |---|---|
 | `accounting.days.reopen` | Reopening a closed period must not sit with whoever closed it. Platform-admin only. |
-| `batch.runs.manage` / `batch.procedures.manage` | In `nonDelegableProtectedPermissions()` — platform-admin forever by design. The role holds the `view` counterparts, so it can see whether close-control batches passed; **if those batches are triggered manually rather than scheduled, closing a day still depends on a platform admin running them.** |
+| `batch.runs.manage` / `batch.procedures.manage` | In `nonDelegableProtectedPermissions()` — platform-admin forever by design. The role holds the `view` counterparts, so it can see whether close-control batches passed; **if those batches are triggered manually rather than scheduled, closing a day still depends on a platform admin running them.** Reading required a fix: `BatchRunWorkflow::index()` returned an empty list to any actor without `batch.runs.manage` *and* without an agency, so head office saw nothing at all. Institution accounting authority now reads (and filters) across agencies; triggering is untouched. |
 | Regulatory source registration, report-definition versioning, report-run review and submission | `RegulatoryReportingWorkflow` gates these on `hasRole('platform-admin')` directly — no permission exists, so this cannot be granted by config. The role *can* still generate EMF reports via `accounting.audit.view`. |
 | Customer accounts and client data | `CustomerAccountPolicy` requires same-agency for non-admins, so grants would be inert; cross-agency client data is a privacy decision beyond this work. |
 | Cash/teller and loan operations | Agency-operational; the agency `accountant` holds those for its own agency. |
