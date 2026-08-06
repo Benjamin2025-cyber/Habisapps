@@ -1,6 +1,16 @@
 name: ci
 
 on:
+  # Manual trigger, so CI can be re-run without inventing a commit. Also the
+  # fastest way to tell a delivery problem from a disabled one: if a dispatch
+  # runs but a push does not, push events are not reaching Actions; if neither
+  # runs, Actions is off for the repository or the account.
+  #
+  # Note `deploy` keys off `workflow_run` of this workflow, so a successful
+  # manual run on main deploys too — which for main is the same code the VPS
+  # already holds (deploy resets to origin/main), so it is a rebuild, not a
+  # surprise release.
+  workflow_dispatch:
   push:
     branches:
       - main
