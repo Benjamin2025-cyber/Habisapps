@@ -1,6 +1,16 @@
 name: deploy
 
 on:
+  # Break-glass manual deploy. The normal path is the workflow_run chain below;
+  # this exists because that chain depends on Actions receiving events, and when
+  # event delivery stalls (as it did on 2026-08-06, when neither push nor
+  # workflow_run produced runs while dispatch did) there is otherwise no way to
+  # ship at all.
+  #
+  # It deploys whatever `main` currently points at — the script resets to
+  # origin/main — and it does NOT wait for ci. Check that ci is green for that
+  # commit before using it.
+  workflow_dispatch:
   workflow_run:
     workflows:
       - ci
@@ -11,7 +21,9 @@ on:
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # On a manual run there is no upstream workflow_run, so the conclusion is
+    # null; without the first clause the job would be silently skipped.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
