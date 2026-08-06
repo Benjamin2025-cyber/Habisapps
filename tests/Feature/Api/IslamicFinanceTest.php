@@ -6773,7 +6773,7 @@ final class IslamicFinanceTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'IFL-'.Str::ulid(),
             'name' => 'Islamic Ledger',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
             'status' => LedgerAccount::STATUS_ACTIVE,
             'created_at' => now(),

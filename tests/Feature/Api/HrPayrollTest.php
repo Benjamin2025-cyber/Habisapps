@@ -697,7 +697,7 @@ final class HrPayrollTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'HRL-'.Str::ulid(),
             'name' => 'HR Ledger',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_LIABILITY,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_CREDIT,
             'status' => LedgerAccount::STATUS_ACTIVE,
             'created_at' => now(),

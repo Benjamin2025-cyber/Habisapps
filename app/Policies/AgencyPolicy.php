@@ -6,6 +6,7 @@ namespace App\Policies;
 
 use App\Models\Agency;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Staff\StaffAgencyScope;
 
 final class AgencyPolicy
@@ -51,7 +52,11 @@ final class AgencyPolicy
 
     private function canViewAgency(User $user, Agency $agency): bool
     {
-        if ($user->hasRole('platform-admin')) {
+        // Head office works across every agency and is attached to none, so
+        // scoping it to "its own agency" would leave it able to see nothing —
+        // which is what AgencyWorkflow::index() does for the same reason.
+        if ($user->hasRole('platform-admin')
+            || app(AccountingScopeAccess::class)->canManageInstitutionScope($user)) {
             return true;
         }
 

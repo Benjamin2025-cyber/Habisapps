@@ -85,6 +85,13 @@ final class JournalLineController extends BaseController
         if ($ledgerAccount->status !== LedgerAccount::STATUS_ACTIVE) {
             return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
         }
+        // Grouping accounts consolidate their children instead of carrying
+        // movements. Institution-level ones are already rejected by the
+        // (ledger_account_id, agency_id) foreign key; catching both here turns
+        // that constraint violation into a validation error.
+        if (! $ledgerAccount->is_postable) {
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('domain.ledger_account_not_postable')]]);
+        }
 
         $customerAccount = null;
         if ($request->filled('customer_account_public_id')) {

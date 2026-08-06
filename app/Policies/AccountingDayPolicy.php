@@ -6,6 +6,7 @@ namespace App\Policies;
 
 use App\Models\AccountingDay;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Staff\StaffAgencyScope;
 
 final class AccountingDayPolicy
@@ -47,13 +48,15 @@ final class AccountingDayPolicy
 
     private function canAccessScope(User $user, AccountingDay $accountingDay): bool
     {
-        if ($user->hasRole('platform-admin')) {
-            return true;
+        if ($accountingDay->scope_type === AccountingDay::SCOPE_INSTITUTION) {
+            // The institution's own accounting period belongs to head-office
+            // accounting, so it is gated on the institution-scope permission
+            // rather than on being a platform administrator.
+            return app(AccountingScopeAccess::class)->canManageInstitutionScope($user);
         }
 
-        if ($accountingDay->scope_type === AccountingDay::SCOPE_INSTITUTION) {
-            // Institution-scoped lifecycle is reserved for platform administrators.
-            return false;
+        if ($user->hasRole('platform-admin')) {
+            return true;
         }
 
         return app(StaffAgencyScope::class)->currentAgencyId($user) === $accountingDay->agency_id;

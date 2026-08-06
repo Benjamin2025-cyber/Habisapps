@@ -446,7 +446,7 @@ final class AdminDashboardRealDataTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'L-'.Str::ulid(),
             'name' => 'Repayment Ledger',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'normal_balance_side' => 'debit',
             'status' => 'active',
             'created_at' => now(),

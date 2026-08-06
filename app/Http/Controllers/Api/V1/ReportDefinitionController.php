@@ -9,6 +9,7 @@ use App\Http\Resources\ReportDefinitionCollection;
 use App\Http\Resources\ReportDefinitionResource;
 use App\Models\ReportDefinition;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -94,12 +95,29 @@ final class ReportDefinitionController extends BaseController
         return null;
     }
 
+    /**
+     * Institution-wide read authority, for the purpose of the report catalogue.
+     *
+     * The CRM scopes alone are the wrong test here: report definitions are a
+     * global catalogue (trial balance, general ledger, EMF), not agency data, and
+     * head-office *accounting* authority carries no CRM permission by design —
+     * cross-agency client data is a separate privacy decision. Without the
+     * accounting scopes below, a chief accountant — which deliberately holds no
+     * agency assignment — is refused the catalogue and so cannot generate the
+     * consolidated trial balance the role exists to produce.
+     *
+     * Deliberately local to this controller: `StakeholderDirectoryController` and
+     * `ClientCrudWorkflow` keep their own CRM-only copies, so widening the report
+     * catalogue does not widen access to client data.
+     */
     private function hasInstitutionReadScope(User $actor): bool
     {
         return $actor->hasRole('platform-admin')
             || $actor->hasPermissionTo('crm.scope.institution.read')
             || $actor->hasPermissionTo('crm.scope.institution.review')
-            || $actor->hasPermissionTo('crm.scope.institution.manage');
+            || $actor->hasPermissionTo('crm.scope.institution.manage')
+            || $actor->hasPermissionTo(AccountingScopeAccess::INSTITUTION_MANAGE)
+            || $actor->hasPermissionTo('ledger.scope.institution.read');
     }
 
     /**

@@ -6,6 +6,7 @@ namespace App\Policies;
 
 use App\Models\AccountingCalendarDay;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Staff\StaffAgencyScope;
 
 final class AccountingCalendarDayPolicy
@@ -32,12 +33,14 @@ final class AccountingCalendarDayPolicy
 
     private function canAccessScope(User $user, AccountingCalendarDay $calendarDay): bool
     {
-        if ($user->hasRole('platform-admin')) {
-            return true;
+        if ($calendarDay->scope_type === AccountingCalendarDay::SCOPE_INSTITUTION) {
+            // Institution-wide holidays are head-office accounting configuration,
+            // gated on the same institution-scope permission as the day itself.
+            return app(AccountingScopeAccess::class)->canManageInstitutionScope($user);
         }
 
-        if ($calendarDay->scope_type === AccountingCalendarDay::SCOPE_INSTITUTION) {
-            return false;
+        if ($user->hasRole('platform-admin')) {
+            return true;
         }
 
         return app(StaffAgencyScope::class)->currentAgencyId($user) === $calendarDay->agency_id;

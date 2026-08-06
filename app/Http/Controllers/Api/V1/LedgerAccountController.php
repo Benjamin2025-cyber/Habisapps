@@ -16,8 +16,10 @@ use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class LedgerAccountController extends BaseController
@@ -73,19 +75,53 @@ final class LedgerAccountController extends BaseController
             return $this->respondForbidden();
         }
 
+        $scope = $request->filled('scope')
+            ? $request->string('scope')->toString()
+            : LedgerAccount::SCOPE_AGENCY;
+        $institutionScoped = $scope === LedgerAccount::SCOPE_INSTITUTION;
+
         $agency = null;
-        if ($request->filled('agency_public_id')) {
-            $agency = Agency::query()->where('public_id', $request->string('agency_public_id'))->first();
-            if (! $agency instanceof Agency) {
-                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
+        if ($institutionScoped) {
+            // The institution chart of accounts governs every agency below it,
+            // so minting grouping accounts is an institution-control action.
+            if (! $this->canManageInstitutionScope($actor)) {
+                return $this->respondForbidden();
             }
-        } elseif (! $actor->hasRole('platform-admin')) {
-            $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
-            $agency = $agencyId !== null ? Agency::query()->find($agencyId) : null;
+            if ($request->filled('agency_public_id')) {
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.ledger_institution_account_has_no_agency')]]);
+            }
+            if ($request->has('is_postable') && $request->boolean('is_postable')) {
+                return $this->respondUnprocessable(errors: ['is_postable' => [__('domain.ledger_institution_account_not_postable')]]);
+            }
+        } else {
+            if ($request->filled('agency_public_id')) {
+                $agency = Agency::query()->where('public_id', $request->string('agency_public_id'))->first();
+                if (! $agency instanceof Agency) {
+                    return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
+                }
+            } elseif (! $actor->hasRole('platform-admin')) {
+                $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
+                $agency = $agencyId !== null ? Agency::query()->find($agencyId) : null;
+            }
+
+            if (! $agency instanceof Agency) {
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.ledger_agency_account_requires_agency')]]);
+            }
+            // An explicit agency_public_id must still be one the actor may write
+            // to. Without this an agency accountant could file accounts into
+            // another agency's chart just by naming it.
+            if (! $this->canCreateInAgency($actor, $agency)) {
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.ledger_agency_outside_actor_scope')]]);
+            }
         }
 
-        if (! $agency instanceof Agency) {
-            return $this->respondUnprocessable(errors: ['agency_public_id' => [__('Ledger accounts must be attached to an agency in this safe slice.')]]);
+        $code = $request->string('code')->toString();
+        if ($this->codeTakenInScope($code, $agency?->id)) {
+            return $this->respondUnprocessable(errors: ['code' => [
+                $agency instanceof Agency
+                    ? __('domain.ledger_account_code_taken_in_agency', ['agency' => $agency->name])
+                    : __('domain.ledger_account_code_taken_at_institution'),
+            ]]);
         }
 
         $parent = null;
@@ -94,26 +130,45 @@ final class LedgerAccountController extends BaseController
             if (! $parent instanceof LedgerAccount) {
                 return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account is invalid.')]]);
             }
-            if ($parent->agency_id !== null && $agency->id !== $parent->agency_id) {
-                return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account must belong to the same agency scope.')]]);
+
+            $parentError = $this->parentError($agency?->id, $parent);
+            if ($parentError !== null) {
+                return $this->respondUnprocessable(errors: ['parent_account_public_id' => [$parentError]]);
             }
         }
 
-        $ledgerAccount = LedgerAccount::query()->create([
-            'public_id' => (string) Str::ulid(),
-            'agency_id' => $agency->id,
-            'code' => $request->string('code')->toString(),
-            'name' => $request->string('name')->toString(),
-            'account_class' => $request->string('account_class')->toString(),
-            'account_type' => $request->input('account_type'),
-            'parent_account_id' => $parent?->id,
-            'normal_balance_side' => $request->string('normal_balance_side')->toString(),
-            'status' => $request->input('status', LedgerAccount::STATUS_ACTIVE),
-        ]);
+        try {
+            $ledgerAccount = LedgerAccount::query()->create([
+                'public_id' => (string) Str::ulid(),
+                'agency_id' => $agency?->id,
+                'code' => $code,
+                'name' => $request->string('name')->toString(),
+                'account_class' => $request->string('account_class')->toString(),
+                'account_type' => $request->input('account_type'),
+                'is_postable' => ! $institutionScoped && $request->boolean('is_postable', true),
+                'parent_account_id' => $parent?->id,
+                'normal_balance_side' => $request->string('normal_balance_side')->toString(),
+                'status' => $request->input('status', LedgerAccount::STATUS_ACTIVE),
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // The check above answers the ordinary case; this closes the window
+            // between it and the insert. Reaching the partial unique index must
+            // still read as a validation error, never as a 500 leaking the SQL.
+            return $this->respondUnprocessable(errors: ['code' => [
+                $agency instanceof Agency
+                    ? __('domain.ledger_account_code_taken_in_agency', ['agency' => $agency->name])
+                    : __('domain.ledger_account_code_taken_at_institution'),
+            ]]);
+        }
+
+        if ($parent instanceof LedgerAccount) {
+            $this->convertToGroupingAccount($parent, $actor, $request);
+        }
 
         $this->securityAudit->record('ledger.account.created', actor: $actor, subject: $ledgerAccount, properties: [
             'code' => $ledgerAccount->code,
-            'agency_public_id' => $agency->public_id,
+            'scope' => $ledgerAccount->accountScope(),
+            'agency_public_id' => $agency?->public_id,
         ], request: $request);
 
         return $this->respondCreated(
@@ -136,23 +191,53 @@ final class LedgerAccountController extends BaseController
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{ledger_account: \App\Http\Resources\LedgerAccountResource}, errors: null, meta: null}')]
     public function update(UpdateLedgerAccountRequest $request, LedgerAccount $ledgerAccount): JsonResponse
     {
+        $actor = $request->user();
+        if (! $actor instanceof User) {
+            return $this->respondForbidden();
+        }
+
         $validated = $request->validated();
+        $newParent = null;
+
+        // Correcting the class or the normal balance side of an account that has
+        // never been used is a referential fix, not an accounting event — a
+        // mistyped class must not strand its code forever, because the codes come
+        // from PCEMF and cannot be invented. Once the account carries movements
+        // both are frozen: reclassifying retroactively would restate the balance
+        // sheet, and the accounting answer is a new account plus a transfer entry
+        // (écriture de reclassement), not an edit here.
+        foreach (['account_class', 'normal_balance_side'] as $structural) {
+            if (! array_key_exists($structural, $validated)) {
+                continue;
+            }
+            if ($validated[$structural] === $ledgerAccount->{$structural}) {
+                unset($validated[$structural]);
+
+                continue;
+            }
+            if (DB::table('journal_lines')->where('ledger_account_id', $ledgerAccount->id)->exists()) {
+                return $this->respondUnprocessable(errors: [$structural => [
+                    __('domain.ledger_account_structure_locked_by_movements'),
+                ]]);
+            }
+        }
 
         if (array_key_exists('parent_account_public_id', $validated)) {
-            $parent = null;
             if ($validated['parent_account_public_id'] !== null) {
-                $parent = LedgerAccount::query()->where('public_id', $validated['parent_account_public_id'])->first();
-                if (! $parent instanceof LedgerAccount) {
+                $newParent = LedgerAccount::query()->where('public_id', $validated['parent_account_public_id'])->first();
+                if (! $newParent instanceof LedgerAccount) {
                     return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account is invalid.')]]);
                 }
-                if ($parent->id === $ledgerAccount->id) {
+                if ($newParent->id === $ledgerAccount->id) {
                     return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The parent account cannot reference itself.')]]);
                 }
-                if ($ledgerAccount->agency_id !== null && $parent->agency_id !== null && $ledgerAccount->agency_id !== $parent->agency_id) {
-                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account must belong to the same agency scope.')]]);
+
+                $parentError = $this->parentError($ledgerAccount->agency_id, $newParent);
+                if ($parentError !== null) {
+                    return $this->respondUnprocessable(errors: ['parent_account_public_id' => [$parentError]]);
                 }
 
-                $ancestor = $parent->parentAccount;
+                $ancestor = $newParent->parentAccount;
                 while ($ancestor instanceof LedgerAccount) {
                     if ($ancestor->id === $ledgerAccount->id) {
                         return $this->respondUnprocessable(errors: ['parent_account_public_id' => [__('The selected parent account would create a cycle.')]]);
@@ -161,12 +246,28 @@ final class LedgerAccountController extends BaseController
                 }
             }
 
-            $ledgerAccount->parent_account_id = $parent?->id;
+            $ledgerAccount->parent_account_id = $newParent?->id;
             unset($validated['parent_account_public_id']);
+        }
+
+        if (array_key_exists('is_postable', $validated)) {
+            $postable = $request->boolean('is_postable');
+            if ($postable && $ledgerAccount->isInstitutionLevel()) {
+                return $this->respondUnprocessable(errors: ['is_postable' => [__('domain.ledger_institution_account_not_postable')]]);
+            }
+            if ($postable && DB::table('ledger_accounts')->where('parent_account_id', $ledgerAccount->id)->exists()) {
+                return $this->respondUnprocessable(errors: ['is_postable' => [__('domain.ledger_grouping_account_not_postable')]]);
+            }
+
+            $validated['is_postable'] = $postable;
         }
 
         $ledgerAccount->fill($validated);
         $ledgerAccount->save();
+
+        if ($newParent instanceof LedgerAccount) {
+            $this->convertToGroupingAccount($newParent, $actor, $request);
+        }
 
         return $this->respondSuccess(
             LedgerAccountResource::make($ledgerAccount->loadMissing(['agency', 'parentAccount'])),
@@ -184,5 +285,86 @@ final class LedgerAccountController extends BaseController
         }
 
         return $this->respondForbidden();
+    }
+
+    private function canManageInstitutionScope(User $actor): bool
+    {
+        return $actor->hasRole('platform-admin') || $actor->can('ledger.scope.institution.manage');
+    }
+
+    /**
+     * Institution-scope holders may build any agency's chart — that is what
+     * deploying the institution chart across agencies requires. Everyone else
+     * writes only into the agency they are assigned to.
+     */
+    /**
+     * Whether the code is already used in the namespace the account would join.
+     *
+     * Codes are unique per agency chart, and once more across the institution
+     * level — two partial unique indexes rather than one, because Postgres
+     * treats NULL `agency_id` values as distinct and would otherwise allow a
+     * second institution-level `571000`.
+     */
+    private function codeTakenInScope(string $code, ?int $agencyId): bool
+    {
+        $query = DB::table('ledger_accounts')->where('code', $code);
+
+        return ($agencyId === null
+            ? $query->whereNull('agency_id')
+            : $query->where('agency_id', $agencyId)
+        )->exists();
+    }
+
+    private function canCreateInAgency(User $actor, Agency $agency): bool
+    {
+        if ($this->canManageInstitutionScope($actor)) {
+            return true;
+        }
+
+        return $this->staffAgencyScope->currentAgencyId($actor) === $agency->id;
+    }
+
+    /**
+     * Why $parent cannot group an account belonging to $childAgencyId, or null
+     * when the link is valid.
+     *
+     * A consolidated chart of accounts flows one way: agency detail accounts
+     * roll up into institution grouping accounts. Two agencies may therefore
+     * share an institution parent, but never each other's accounts, and an
+     * institution account is never grouped under a single agency.
+     */
+    private function parentError(?int $childAgencyId, LedgerAccount $parent): ?string
+    {
+        if ($childAgencyId === null && ! $parent->isInstitutionLevel()) {
+            return __('domain.ledger_institution_parent_must_be_institution');
+        }
+
+        if ($childAgencyId !== null && ! $parent->isInstitutionLevel() && $parent->agency_id !== $childAgencyId) {
+            return __('The selected parent account must belong to the same agency scope.');
+        }
+
+        if ($parent->is_postable && DB::table('journal_lines')->where('ledger_account_id', $parent->id)->exists()) {
+            return __('domain.ledger_parent_has_movements');
+        }
+
+        return null;
+    }
+
+    /**
+     * An account that gains a sub-account becomes a grouping account: its
+     * balance is the consolidation of its children and it stops accepting
+     * entries of its own.
+     */
+    private function convertToGroupingAccount(LedgerAccount $parent, User $actor, Request $request): void
+    {
+        if (! $parent->is_postable) {
+            return;
+        }
+
+        $parent->update(['is_postable' => false]);
+
+        $this->securityAudit->record('ledger.account.converted_to_grouping', actor: $actor, subject: $parent, properties: [
+            'code' => $parent->code,
+        ], request: $request);
     }
 }

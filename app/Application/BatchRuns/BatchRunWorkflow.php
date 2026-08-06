@@ -12,6 +12,7 @@ use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
@@ -32,6 +33,7 @@ final class BatchRunWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly AccountingScopeAccess $scopeAccess,
         private readonly UpdateBatchRunStatus $updateBatchRunStatus,
         private readonly ExecuteRegisteredBatchRun $executeRegisteredBatchRun,
     ) {}
@@ -48,7 +50,11 @@ final class BatchRunWorkflow extends BaseController
             return new BatchRunCollection($query->where('id', -1)->paginate($perPage));
         }
 
-        if (! $actor->can('batch.runs.manage')) {
+        // Head office needs to read close-control outcomes across agencies: they
+        // are what blocks the institution close, which is its job to run. Reading
+        // only — triggering still needs batch.runs.manage, which stays
+        // non-delegable, and head office carries no agency to scope to.
+        if (! $actor->can('batch.runs.manage') && ! $this->scopeAccess->canManageInstitutionScope($actor)) {
             $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
             if ($agencyId === null) {
                 return new BatchRunCollection($query->where('id', -1)->paginate($perPage));
@@ -103,8 +109,10 @@ final class BatchRunWorkflow extends BaseController
             }
         }
 
+        // Whoever sees every agency's runs can also narrow them to one.
         $agencyCode = $request->query('agency_code');
-        if (is_string($agencyCode) && $agencyCode !== '' && $actor->can('batch.runs.manage')) {
+        if (is_string($agencyCode) && $agencyCode !== ''
+            && ($actor->can('batch.runs.manage') || $this->scopeAccess->canManageInstitutionScope($actor))) {
             $agency = Agency::query()->where('code', $agencyCode)->first();
             if ($agency !== null) {
                 $query->where('agency_id', $agency->id);

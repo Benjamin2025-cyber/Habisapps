@@ -13,6 +13,7 @@ use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
+use App\Support\Accounting\LedgerAccountHierarchy;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,12 +25,16 @@ final class AccountingBalanceWorkflow extends BaseController
 {
     public function __construct(
         private readonly AccountingBalanceCalculator $calculator,
+        private readonly LedgerAccountHierarchy $hierarchy,
     ) {}
 
     public function ledgerAccount(Request $request, LedgerAccount $ledgerAccount): JsonResponse
     {
         $actor = $request->user();
         if (! $actor instanceof User || $actor->cannot('view', $ledgerAccount)) {
+            return $this->respondForbidden();
+        }
+        if (! $this->canReadInstitutionAggregate($actor, $ledgerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -41,6 +46,7 @@ final class AccountingBalanceWorkflow extends BaseController
                 $validated['currency'],
                 $validated['from'] ?? null,
                 $validated['to'] ?? null,
+                $validated['consolidated'] ?? null,
             )
         ));
     }
@@ -87,6 +93,9 @@ final class AccountingBalanceWorkflow extends BaseController
     {
         $actor = $request->user();
         if (! $actor instanceof User || $actor->cannot('view', $ledgerAccount)) {
+            return $this->respondForbidden();
+        }
+        if (! $this->canReadInstitutionAggregate($actor, $ledgerAccount)) {
             return $this->respondForbidden();
         }
 
@@ -179,6 +188,23 @@ final class AccountingBalanceWorkflow extends BaseController
     }
 
     /**
+     * An institution-level grouping account is visible to every agency so that
+     * agency accounts can be filed under it, but its balance and statement
+     * consolidate the movements of *all* agencies. Reading those aggregates is
+     * therefore institution-scope information, not something an agency
+     * assignment confers. Agency-level grouping accounts stay unrestricted:
+     * consolidating them never leaves the agency.
+     */
+    private function canReadInstitutionAggregate(User $actor, LedgerAccount $ledgerAccount): bool
+    {
+        if (! $ledgerAccount->isInstitutionLevel()) {
+            return true;
+        }
+
+        return $actor->hasRole('platform-admin') || $actor->can('ledger.scope.institution.read');
+    }
+
+    /**
      * Customer-account current/available balance access (FB-BAL-002).
      *
      * Requires the narrow operational balance permission plus account
@@ -215,21 +241,25 @@ final class AccountingBalanceWorkflow extends BaseController
     }
 
     /**
-     * @return array{currency:string, from?:string, to?:string}
+     * @return array{currency:string, from?:string, to?:string, consolidated?:bool}
      */
     private function validatedQuery(Request $request): array
     {
-        /** @var array{currency?:mixed, from?:string, to?:string} $validated */
+        /** @var array{currency?:mixed, from?:string, to?:string, consolidated?:mixed} $validated */
         $validated = Validator::make($request->all(), [
             'currency' => ['sometimes', 'string', 'size:3'],
             'from' => ['sometimes', 'date'],
             'to' => ['sometimes', 'date', 'after_or_equal:from'],
+            'consolidated' => ['sometimes', 'boolean'],
         ])->validate();
 
         $currencyValue = $validated['currency'] ?? 'XAF';
         $validated['currency'] = strtoupper(is_string($currencyValue) ? $currencyValue : 'XAF');
+        if (array_key_exists('consolidated', $validated)) {
+            $validated['consolidated'] = $request->boolean('consolidated');
+        }
 
-        /** @var array{currency:string, from?:string, to?:string} $validated */
+        /** @var array{currency:string, from?:string, to?:string, consolidated?:bool} $validated */
         return $validated;
     }
 
@@ -267,7 +297,12 @@ final class AccountingBalanceWorkflow extends BaseController
             : $this->calculator->forLedgerAccount($ledgerAccount, $currency, $from, $to);
 
         return [
-            'scope' => 'ledger_account',
+            // A grouping account's statement is drawn from its whole subtree (see
+            // ledgerMovementQuery), so it must say so: the figures are not the
+            // account's own movements, and a client showing them unlabelled would
+            // present a consolidation as if it were a single account's activity.
+            // Same two values the balance endpoint reports.
+            'scope' => $ledgerAccount->is_postable ? 'ledger_account' : 'ledger_account_consolidated',
             'public_id' => $ledgerAccount->public_id,
             'currency' => $currency,
             'from' => $from,
@@ -310,11 +345,20 @@ final class AccountingBalanceWorkflow extends BaseController
         ];
     }
 
+    /**
+     * A grouping account has no movements of its own, so its statement lists the
+     * movements of the detail accounts beneath it. That keeps the statement
+     * consistent with the consolidated balance the calculator reports for it.
+     */
     private function ledgerMovementQuery(LedgerAccount $ledgerAccount, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): Builder
     {
-        $query = $this->baseMovementQuery()
-            ->where('journal_lines.ledger_account_id', $ledgerAccount->id)
-            ->where('journal_lines.currency', $currency);
+        $query = $this->baseMovementQuery()->where('journal_lines.currency', $currency);
+
+        if ($ledgerAccount->is_postable) {
+            $query->where('journal_lines.ledger_account_id', $ledgerAccount->id);
+        } else {
+            $query->whereIn('journal_lines.ledger_account_id', $this->hierarchy->subtreeIds($ledgerAccount->id));
+        }
 
         return $this->applyMovementFilters($query, $from, $to, $accountingDay);
     }

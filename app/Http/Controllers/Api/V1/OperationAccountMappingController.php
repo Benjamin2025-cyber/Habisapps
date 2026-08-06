@@ -333,6 +333,11 @@ final class OperationAccountMappingController extends BaseController
         return $this->respondSuccess(message: 'Operation account mapping archived successfully');
     }
 
+    /**
+     * A posting target must be an active detail account. Grouping accounts
+     * consolidate their children and can never receive an entry, so mapping an
+     * operation onto one would only fail later, at posting time.
+     */
     private function resolveActiveLedgerAccount(mixed $publicId): LedgerAccount|false|null
     {
         if (! is_string($publicId) || $publicId === '') {
@@ -341,7 +346,11 @@ final class OperationAccountMappingController extends BaseController
 
         $account = LedgerAccount::query()->where('public_id', $publicId)->first();
 
-        return $account instanceof LedgerAccount && $account->status === LedgerAccount::STATUS_ACTIVE ? $account : false;
+        return $account instanceof LedgerAccount
+            && $account->status === LedgerAccount::STATUS_ACTIVE
+            && $account->is_postable
+                ? $account
+                : false;
     }
 
     private function resolveAgency(mixed $publicId): Agency|false|null

@@ -1844,7 +1844,7 @@ final class InsuranceModuleTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'INS-'.Str::ulid(),
             'name' => 'Insurance Ledger',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_LIABILITY,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_CREDIT,
             'status' => LedgerAccount::STATUS_ACTIVE,
             'created_at' => now(),

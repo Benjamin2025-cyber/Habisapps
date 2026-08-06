@@ -257,8 +257,8 @@ final class TellerDashboardContractTest extends TestCase
         $manager = $this->createScopedUserWithRole('agency-manager', $agency);
         $teller = $this->createScopedUserWithRole('teller', $agency);
 
-        $cashLedger = $this->createLedgerAccount($agency['id'], $code.'-TILL-LED', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $depositLedger = $this->createLedgerAccount($agency['id'], $code.'-DEP-LED', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $cashLedger = $this->createLedgerAccount($agency['id'], $code.'-TILL-LED', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $depositLedger = $this->createLedgerAccount($agency['id'], $code.'-DEP-LED', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
         $account = $this->createCustomerAccount($agency['id'], $depositLedger['id'], $code.'-ACC');
 
         $till = $this->actingAsTeller($manager)->postJson('/api/v1/tills', [
@@ -434,8 +434,8 @@ final class TellerDashboardContractTest extends TestCase
             'account_class' => $accountClass,
             'account_type' => null,
             'parent_account_id' => null,
-            'normal_balance_side' => $accountClass === LedgerAccount::ACCOUNT_CLASS_ASSET
-                || $accountClass === LedgerAccount::ACCOUNT_CLASS_EXPENSE
+            'normal_balance_side' => $accountClass === LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE
+                || $accountClass === LedgerAccount::ACCOUNT_CLASS_CHARGES
                     ? LedgerAccount::NORMAL_BALANCE_DEBIT
                     : LedgerAccount::NORMAL_BALANCE_CREDIT,
             'status' => LedgerAccount::STATUS_ACTIVE,

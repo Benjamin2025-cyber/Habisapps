@@ -84,9 +84,9 @@ final class RegulatoryReportingTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/regulatory-sources/'.$sourcePublicId.'/emf-accounts', [
                 'accounts' => [
-                    ['code' => 'CL1', 'name' => 'Class 1 — Capitaux propres', 'account_class' => 'liability'],
+                    ['code' => 'CL1', 'name' => 'Class 1 — Capitaux permanents', 'account_class' => 'capitaux_permanents'],
                     ['code' => 'CL1-101', 'name' => 'Capital social', 'parent_code' => 'CL1'],
-                    ['code' => 'CL2', 'name' => 'Class 2 — Immobilisations', 'account_class' => 'asset'],
+                    ['code' => 'CL2', 'name' => 'Class 2 — Valeurs immobilisées', 'account_class' => 'valeurs_immobilisees'],
                 ],
             ]);
         $this->assertJsonSuccess($response, 201);
@@ -374,7 +374,7 @@ final class RegulatoryReportingTest extends TestCase
             'regulatory_source_id' => (int) $source->id,
             'code' => 'INACT-01',
             'name' => 'Inactive EMF Account',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'status' => 'inactive',
             'created_at' => now(),
             'updated_at' => now(),
@@ -466,6 +466,73 @@ final class RegulatoryReportingTest extends TestCase
         self::assertNotSame($run1->json('data.public_id'), $run2->json('data.public_id'));
     }
 
+    public function test_emf_report_run_snapshots_the_filing_institution_identity(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('REG-DECL');
+        $sourcePublicId = $this->createSource($actor);
+        $definitionPublicId = $this->createReportDefinition($actor, $sourcePublicId);
+        $ledger = $this->createLedgerAccount($agency['id']);
+        $this->mapLedgerToEmfAccount($ledger['id'], $sourcePublicId);
+        $this->seedJournal($agency['id'], $ledger['id'], $actor->id, 1000, 0, 'posted');
+
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/institution', [
+                'legal_name' => 'Habis Microfinance SA',
+                'supervisory_authority' => 'COBAC',
+                'approval_number' => 'D-2026/145',
+                'registration_number' => 'RC/DLA/2026/B/1234',
+                'tax_identification_number' => 'M012600001234X',
+                'city' => 'Douala',
+                'country' => 'Cameroun',
+            ]));
+
+        $run = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-31',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($run, 201);
+
+        // The declarant is the institution, not the agency whose figures the
+        // return carries — both travel with the payload.
+        $run->assertJsonPath('data.summary.institution_legal_name', 'Habis Microfinance SA');
+        $run->assertJsonPath('data.summary.institution_supervisory_authority', 'COBAC');
+        $run->assertJsonPath('data.summary.institution_approval_number', 'D-2026/145');
+        $run->assertJsonPath('data.summary.institution_registration_number', 'RC/DLA/2026/B/1234');
+        $run->assertJsonPath('data.summary.institution_tax_identification_number', 'M012600001234X');
+        $run->assertJsonPath('data.summary.institution_head_office_city', 'Douala');
+        $run->assertJsonPath('data.summary.institution_head_office_country', 'Cameroun');
+    }
+
+    public function test_emf_report_run_is_not_blocked_by_an_unconfigured_institution(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('REG-NODECL');
+        $sourcePublicId = $this->createSource($actor);
+        $definitionPublicId = $this->createReportDefinition($actor, $sourcePublicId);
+        $ledger = $this->createLedgerAccount($agency['id']);
+        $this->mapLedgerToEmfAccount($ledger['id'], $sourcePublicId);
+        $this->seedJournal($agency['id'], $ledger['id'], $actor->id, 1000, 0, 'posted');
+
+        $run = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-31',
+                'currency' => 'XAF',
+            ]);
+
+        // The gap is reported as null rather than invented or fatal.
+        $this->assertJsonSuccess($run, 201);
+        $run->assertJsonPath('data.summary.institution_legal_name', null);
+        $run->assertJsonPath('data.summary.debit_total_minor', 1000);
+    }
+
     private function createSource(User $actor): string
     {
         $response = $this->withApiHeaders()
@@ -512,7 +579,7 @@ final class RegulatoryReportingTest extends TestCase
             'regulatory_source_id' => (int) $source->id,
             'code' => '101',
             'name' => 'Cash',
-            'account_class' => 'asset',
+            'account_class' => 'tresorerie_interbancaire',
             'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
@@ -632,7 +699,7 @@ final class RegulatoryReportingTest extends TestCase
             'agency_id' => $agencyId,
             'code' => 'LED-'.Str::ulid(),
             'name' => 'Ledger',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_ASSET,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
             'status' => LedgerAccount::STATUS_ACTIVE,
             'created_at' => now(),

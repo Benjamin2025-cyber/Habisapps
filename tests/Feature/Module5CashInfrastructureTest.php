@@ -142,7 +142,7 @@ final class Module5CashInfrastructureTest extends TestCase
         $actor = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
         $assignedUser = $this->createUserWithRole('teller', $agencyA['code'], $agencyA['name']);
         $otherAgencyUser = $this->createUserWithRole('teller', $agencyB['code'], $agencyB['name']);
-        $cashLedger = $this->createLedgerAccount($agencyA['id'], 'CASH-TILL-01', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $cashLedger = $this->createLedgerAccount($agencyA['id'], 'CASH-TILL-01', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
 
         $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-create')->plainTextToken])
             ->postJson('/api/v1/tills', [
@@ -226,8 +226,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $agencyB = $this->createAgency('CASH-D');
         $actor = $this->createUserWithRole('agency-manager', $agencyA['code'], $agencyA['name']);
         $otherActor = $this->createUserWithRole('agency-manager', $agencyB['code'], $agencyB['name']);
-        $liabilityLedger = $this->createLedgerAccount($agencyA['id'], 'CASH-LIABILITY', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
-        $crossAgencyLedger = $this->createLedgerAccount($agencyB['id'], 'CASH-CROSS', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $nonTreasuryLedger = $this->createLedgerAccount($agencyA['id'], 'CASH-NON-TREASURY', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
+        $crossAgencyLedger = $this->createLedgerAccount($agencyB['id'], 'CASH-CROSS', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
 
         $create = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-create-a')->plainTextToken])
             ->postJson('/api/v1/tills', [
@@ -256,11 +256,11 @@ final class Module5CashInfrastructureTest extends TestCase
             ->postJson('/api/v1/tills', [
                 'code' => 'TILL-BAL',
                 'name' => 'Invalid Ledger Till',
-                'ledger_account_public_id' => $liabilityLedger['public_id'],
+                'ledger_account_public_id' => $nonTreasuryLedger['public_id'],
             ]);
         $invalidLedgerClass->assertStatus(422);
         $invalidLedgerClass->assertJsonValidationErrors(['ledger_account_public_id']);
-        $invalidLedgerClass->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être un compte du grand livre d\'actif actif dans l\'agence de la caisse.');
+        $invalidLedgerClass->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être un compte de trésorerie actif (classe 5 du PCEMF) dans l’agence de la caisse.');
 
         $crossAgencyLedgerResponse = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-cross-ledger')->plainTextToken])
             ->postJson('/api/v1/tills', [
@@ -805,8 +805,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $agency = $this->createAgency('CASH-I');
         $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
         $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
-        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-DEPOSIT-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $depositLedger = $this->createLedgerAccount($agency['id'], 'CUSTOMER-DEPOSIT-LIABILITY', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-DEPOSIT-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CUSTOMER-DEPOSIT-LIABILITY', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
         $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-DEP-001');
 
         $till = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('deposit-till')->plainTextToken])
@@ -1033,8 +1033,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $reviewer = $this->createUserWithRole('platform-admin');
         $reviewer->givePermissionTo('journal.entries.review', 'journal.entries.post');
         $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
-        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-OD-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $expenseLedger = $this->createLedgerAccount($agency['id'], 'CASH-OD-EXPENSE', LedgerAccount::ACCOUNT_CLASS_EXPENSE);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-OD-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $expenseLedger = $this->createLedgerAccount($agency['id'], 'CASH-OD-EXPENSE', LedgerAccount::ACCOUNT_CLASS_CHARGES);
         $operationCode = $this->createOperationCode('OD-CASH-EXPENSE', 'cash');
 
         $till = $this->withApiHeaders(['Authorization' => 'Bearer '.$maker->createToken('od-till')->plainTextToken])
@@ -1151,8 +1151,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $teller->givePermissionTo('cash.transactions.reverse');
         $teller->refresh();
 
-        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-REVS-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $depositLedger = $this->createLedgerAccount($agency['id'], 'CASH-REVS-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-REVS-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CASH-REVS-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
         $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-REVS-001');
 
         $till = $this->withApiHeaders()
@@ -1212,8 +1212,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $agency = $this->createAgency('CASH-MAXB');
         $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
         $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
-        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-MAXB-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $depositLedger = $this->createLedgerAccount($agency['id'], 'CASH-MAXB-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-MAXB-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CASH-MAXB-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
         $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-MAXB-001');
 
         $till = $this->withApiHeaders()
@@ -1272,7 +1272,7 @@ final class Module5CashInfrastructureTest extends TestCase
         $manager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
         $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
         $secondTeller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
-        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-RA-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-RA-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
 
         $till = $this->withApiHeaders()
             ->actingAsSanctum($manager)
@@ -1330,8 +1330,8 @@ final class Module5CashInfrastructureTest extends TestCase
         $agency = $this->createAgency('CASH-PRX');
         $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
         $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
-        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-PROXY-TILL', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $depositLedger = $this->createLedgerAccount($agency['id'], 'CUSTOMER-DEPOSIT-PROXY', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'CASH-PROXY-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $depositLedger = $this->createLedgerAccount($agency['id'], 'CUSTOMER-DEPOSIT-PROXY', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
         $customerAccount = $this->createCustomerAccount($agency['id'], $depositLedger['id'], 'CASH-PRX-001');
         $clientId = DB::table('customer_accounts')->where('id', $customerAccount['id'])->value('client_id');
         self::assertIsInt($clientId);
@@ -1632,7 +1632,7 @@ final class Module5CashInfrastructureTest extends TestCase
 
         $tillLedgerId = DB::table('tills')->where('id', $session->till_id)->value('ledger_account_id');
         self::assertIsInt($tillLedgerId);
-        $offsetLedger = $this->createLedgerAccount($session->agency_id, 'SUMMARY-OFFSET', LedgerAccount::ACCOUNT_CLASS_EXPENSE);
+        $offsetLedger = $this->createLedgerAccount($session->agency_id, 'SUMMARY-OFFSET', LedgerAccount::ACCOUNT_CLASS_CHARGES);
 
         DB::table('teller_transactions')->insert([
             'public_id' => (string) Str::ulid(),
@@ -2198,8 +2198,8 @@ final class Module5CashInfrastructureTest extends TestCase
      */
     private function openSessionForTeller(User $manager, array $agency, string $code, User $teller): array
     {
-        $cashLedger = $this->createLedgerAccount($agency['id'], $code.'-TILL-LED', LedgerAccount::ACCOUNT_CLASS_ASSET);
-        $depositLedger = $this->createLedgerAccount($agency['id'], $code.'-DEP-LED', LedgerAccount::ACCOUNT_CLASS_LIABILITY);
+        $cashLedger = $this->createLedgerAccount($agency['id'], $code.'-TILL-LED', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $depositLedger = $this->createLedgerAccount($agency['id'], $code.'-DEP-LED', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
         $account = $this->createCustomerAccount($agency['id'], $depositLedger['id'], $code.'-ACC');
 
         $till = $this->withApiHeaders()->actingAsSanctum($manager)->postJson('/api/v1/tills', [
@@ -2384,7 +2384,7 @@ final class Module5CashInfrastructureTest extends TestCase
         self::assertIsInt($session->till_id);
         self::assertIsInt($account->client_id);
 
-        $ledger = $this->createLedgerAccount($ctx['agency']['id'], 'FILTER-LOAN-LED', LedgerAccount::ACCOUNT_CLASS_ASSET);
+        $ledger = $this->createLedgerAccount($ctx['agency']['id'], 'FILTER-LOAN-LED', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
         $productId = DB::table('loan_products')->insertGetId([
             'public_id' => (string) Str::ulid(),
             'ledger_account_id' => $ledger['id'],
@@ -2539,8 +2539,8 @@ final class Module5CashInfrastructureTest extends TestCase
             'account_class' => $accountClass,
             'account_type' => null,
             'parent_account_id' => null,
-            'normal_balance_side' => $accountClass === LedgerAccount::ACCOUNT_CLASS_ASSET
-                || $accountClass === LedgerAccount::ACCOUNT_CLASS_EXPENSE
+            'normal_balance_side' => $accountClass === LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE
+                || $accountClass === LedgerAccount::ACCOUNT_CLASS_CHARGES
                     ? LedgerAccount::NORMAL_BALANCE_DEBIT
                     : LedgerAccount::NORMAL_BALANCE_CREDIT,
             'status' => $status,
@@ -2610,10 +2610,10 @@ final class Module5CashInfrastructureTest extends TestCase
     private function configureCashTenderMappings(int $agencyId): void
     {
         foreach ([
-            'cash_deposit_cheque' => LedgerAccount::ACCOUNT_CLASS_ASSET,
-            'cash_deposit_transfer' => LedgerAccount::ACCOUNT_CLASS_ASSET,
-            'cash_withdrawal_cheque' => LedgerAccount::ACCOUNT_CLASS_LIABILITY,
-            'cash_withdrawal_transfer' => LedgerAccount::ACCOUNT_CLASS_LIABILITY,
+            'cash_deposit_cheque' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
+            'cash_deposit_transfer' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
+            'cash_withdrawal_cheque' => LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE,
+            'cash_withdrawal_transfer' => LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE,
         ] as $operationCode => $accountClass) {
             $operation = $this->createOperationCode($operationCode, 'cash');
             $ledger = $this->createLedgerAccount($agencyId, strtoupper(str_replace('_', '-', $operationCode)), $accountClass);

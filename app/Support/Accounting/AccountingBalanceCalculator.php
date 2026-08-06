@@ -13,16 +13,34 @@ use Illuminate\Support\Facades\DB;
 
 final class AccountingBalanceCalculator
 {
+    public function __construct(
+        private readonly LedgerAccountHierarchy $hierarchy,
+    ) {}
+
     /**
+     * Balance of a ledger account.
+     *
+     * Grouping accounts carry no movements of their own, so they consolidate
+     * their subtree by default: an institution-level 571000 reports the sum of
+     * the agency 571001/571002/571003 beneath it. Pass $consolidated explicitly
+     * to override, which a caller wanting strictly own-movement totals must do.
+     *
      * @return array{scope:string, public_id:string, currency:string, from:string|null, to:string|null, debit_total_minor:int, credit_total_minor:int, balance_minor:int, normal_balance_side:string|null}
      */
-    public function forLedgerAccount(LedgerAccount $ledgerAccount, string $currency, ?string $from = null, ?string $to = null): array
+    public function forLedgerAccount(LedgerAccount $ledgerAccount, string $currency, ?string $from = null, ?string $to = null, ?bool $consolidated = null): array
     {
+        $consolidated ??= ! $ledgerAccount->is_postable;
+
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
-            ->where('journal_lines.ledger_account_id', $ledgerAccount->id)
             ->where('journal_lines.currency', $currency);
+
+        if ($consolidated) {
+            $query->whereIn('journal_lines.ledger_account_id', $this->hierarchy->subtreeIds($ledgerAccount->id));
+        } else {
+            $query->where('journal_lines.ledger_account_id', $ledgerAccount->id);
+        }
 
         $this->applyDateRange($query, $from, $to);
 
@@ -35,7 +53,7 @@ final class AccountingBalanceCalculator
         $creditTotal = (int) ($totals->credit_total_minor ?? 0);
 
         return [
-            'scope' => 'ledger_account',
+            'scope' => $consolidated ? 'ledger_account_consolidated' : 'ledger_account',
             'public_id' => $ledgerAccount->public_id,
             'currency' => $currency,
             'from' => $from,

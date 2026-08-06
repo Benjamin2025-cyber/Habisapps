@@ -15,6 +15,7 @@ return [
     'documentation_not_generated' => 'La documentation de l’API n’est pas encore générée.',
     'method_not_allowed' => 'La méthode demandée n’est pas autorisée pour cette ressource.',
     'invalid_signature' => 'Signature invalide ou expirée.',
+    'resource_conflict' => 'Cet enregistrement est en conflit avec un enregistrement déjà existant.',
     'rate_limit_exceeded' => 'Limite de requêtes dépassée. Réessayez dans :seconds secondes.',
     'internal_server_error' => 'Erreur interne du serveur',
     'idempotency_key_too_long' => 'La clé Idempotency-Key doit contenir 255 caractères ou moins.',

@@ -13,6 +13,7 @@ use App\Models\Agency;
 use App\Models\Client;
 use App\Models\Collateral;
 use App\Models\Document;
+use App\Models\InstitutionProfile;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\Loan;
@@ -21,6 +22,7 @@ use App\Models\LoanRepaymentAllocation;
 use App\Models\ReportDefinition;
 use App\Models\ReportRun;
 use App\Models\User;
+use App\Support\Accounting\LedgerAccountHierarchy;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\FormulaPolicyRegistry;
@@ -38,10 +40,17 @@ use InvalidArgumentException;
 
 final class ReportRunController extends BaseController
 {
+    /** @var array<int, object>|null chart of accounts metadata for consolidated rows */
+    private ?array $trialBalanceAccounts = null;
+
+    /** @var array<string, string|null>|null memoised filing-institution identity */
+    private ?array $declarantSnapshot = null;
+
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
         private readonly UserNotificationFeed $notifications,
+        private readonly LedgerAccountHierarchy $ledgerHierarchy,
     ) {}
 
     public function index(Request $request): ReportRunCollection|JsonResponse
@@ -142,7 +151,7 @@ final class ReportRunController extends BaseController
 
         try {
             $summary = match ($definition->report_type) {
-                ReportDefinition::TYPE_TRIAL_BALANCE => $this->trialBalanceSummary($agency, $currency, $from, $to, $accountingDay),
+                ReportDefinition::TYPE_TRIAL_BALANCE => $this->trialBalanceSummary($agency, $currency, $from, $to, $accountingDay, $this->consolidatedRequested($validated['parameters'] ?? [])),
                 ReportDefinition::TYPE_EMF_TRIAL_BALANCE => $this->emfTrialBalanceSummary($agency, $currency, $from, $to, $accountingDay),
                 ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING => $this->creditPortfolioOutstandingSummary($agency, $currency, $from, $to),
                 ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY => $this->creditParDelinquencySummary($agency, $currency, $to ?? now()->toDateString()),
@@ -264,6 +273,7 @@ final class ReportRunController extends BaseController
         $base = [
             'report_type' => ReportDefinition::TYPE_CREDIT_GUARANTEE_RELEASE,
             'attestation_type' => 'mainlevee_de_garantie',
+            ...$this->institutionDeclarant(),
             'loan_public_id' => $loan->public_id,
             'loan_number' => $loan->loan_number,
             'agency_public_id' => $loan->agency?->public_id,
@@ -391,9 +401,10 @@ final class ReportRunController extends BaseController
     /**
      * @return array<string, mixed>
      */
-    private function trialBalanceSummary(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
+    private function trialBalanceSummary(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null, bool $consolidated = false): array
     {
         $query = $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
+            ->selectRaw('ledger_accounts.id AS ledger_account_id')
             ->selectRaw('ledger_accounts.public_id AS ledger_account_public_id')
             ->selectRaw('ledger_accounts.code AS ledger_account_code')
             ->selectRaw('ledger_accounts.name AS ledger_account_name')
@@ -403,9 +414,11 @@ final class ReportRunController extends BaseController
             ->groupBy('ledger_accounts.id', 'ledger_accounts.public_id', 'ledger_accounts.code', 'ledger_accounts.name', 'ledger_accounts.normal_balance_side')
             ->orderBy('ledger_accounts.code');
 
-        $rows = $query->get()->map(function (object $row): array {
+        $postedTotals = [];
+        $postedRows = $query->get()->map(function (object $row) use (&$postedTotals): array {
             $debit = (int) $row->debit_total_minor;
             $credit = (int) $row->credit_total_minor;
+            $postedTotals[(int) $row->ledger_account_id] = ['debit' => $debit, 'credit' => $credit];
 
             return [
                 'ledger_account_public_id' => $row->ledger_account_public_id,
@@ -418,17 +431,173 @@ final class ReportRunController extends BaseController
             ];
         })->all();
 
+        /** @var array<int, array{debit:int, credit:int}> $postedTotals */
+        $rows = $consolidated ? $this->consolidatedTrialBalanceRows($postedTotals) : $postedRows;
+
         return [
             'report_type' => ReportDefinition::TYPE_TRIAL_BALANCE,
             'currency' => $currency,
             'from' => $from,
             'to' => $to,
+            'consolidated' => $consolidated,
             ...$this->accountingDayMetadata($accountingDay),
             'row_count' => count($rows),
-            'debit_total_minor' => array_sum(array_column($rows, 'debit_total_minor')),
-            'credit_total_minor' => array_sum(array_column($rows, 'credit_total_minor')),
+            // Grand totals always come from the accounts actually posted to.
+            // Rolling the same movements up into grouping accounts adds rows,
+            // not amounts, so summing the returned rows in consolidated mode
+            // would count every movement once per level of the tree.
+            'debit_total_minor' => array_sum(array_column($postedRows, 'debit_total_minor')),
+            'credit_total_minor' => array_sum(array_column($postedRows, 'credit_total_minor')),
             'rows' => $rows,
         ];
+    }
+
+    /**
+     * Roll the posted totals up through parent_account_id so every grouping
+     * account reports the total of the detail accounts beneath it — the
+     * consolidated view the financial statements are built from.
+     *
+     * @param  array<int, array{debit:int, credit:int}>  $postedTotals
+     * @return array<int, array<string, mixed>>
+     */
+    private function consolidatedTrialBalanceRows(array $postedTotals): array
+    {
+        $rows = [];
+        foreach ($this->ledgerHierarchy->subtreeMap() as $accountId => $subtreeIds) {
+            $debit = 0;
+            $credit = 0;
+            $posted = false;
+            foreach ($subtreeIds as $descendantId) {
+                if (! isset($postedTotals[$descendantId])) {
+                    continue;
+                }
+
+                $posted = true;
+                $debit += $postedTotals[$descendantId]['debit'];
+                $credit += $postedTotals[$descendantId]['credit'];
+            }
+
+            // Accounts with no movement anywhere in their subtree stay out of
+            // the report, exactly as they do in the unconsolidated version.
+            if (! $posted) {
+                continue;
+            }
+
+            $account = $this->trialBalanceAccount($accountId);
+            if ($account === null) {
+                continue;
+            }
+
+            $normalBalanceSide = $this->rowString($account, 'normal_balance_side');
+            $rows[] = [
+                'ledger_account_public_id' => $this->rowString($account, 'public_id'),
+                'ledger_account_code' => $this->rowString($account, 'code'),
+                'ledger_account_name' => $this->rowString($account, 'name'),
+                'agency_public_id' => $this->rowNullableString($account, 'agency_public_id'),
+                'scope' => $this->rowNullableString($account, 'agency_id') === null ? LedgerAccount::SCOPE_INSTITUTION : LedgerAccount::SCOPE_AGENCY,
+                'parent_account_public_id' => $this->rowNullableString($account, 'parent_public_id'),
+                'is_postable' => (bool) (((array) $account)['is_postable'] ?? false),
+                'normal_balance_side' => $normalBalanceSide,
+                'debit_total_minor' => $debit,
+                'credit_total_minor' => $credit,
+                'balance_minor' => $normalBalanceSide === LedgerAccount::NORMAL_BALANCE_CREDIT ? $credit - $debit : $debit - $credit,
+            ];
+        }
+
+        usort($rows, static fn (array $left, array $right): int => strcmp(
+            $left['ledger_account_code'],
+            $right['ledger_account_code'],
+        ));
+
+        return $rows;
+    }
+
+    private function rowString(object $row, string $key): string
+    {
+        $value = ((array) $row)[$key] ?? '';
+
+        return is_string($value) ? $value : (string) (is_scalar($value) ? $value : '');
+    }
+
+    private function rowNullableString(object $row, string $key): ?string
+    {
+        $value = ((array) $row)[$key] ?? null;
+        if ($value === null) {
+            return null;
+        }
+
+        return is_string($value) ? $value : (string) (is_scalar($value) ? $value : '');
+    }
+
+    /**
+     * A trial balance is requested consolidated with `parameters.consolidated`,
+     * which rolls agency detail accounts up into their grouping accounts.
+     *
+     * @param  array<string, mixed>  $parameters
+     */
+    private function consolidatedRequested(array $parameters): bool
+    {
+        return filter_var($parameters['consolidated'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Identity of the filing institution.
+     *
+     * A supervisory return or an issued attestation is the act of the
+     * institution, not of the agency whose figures it contains, so the
+     * declarant block is snapshotted into the payload alongside the agency.
+     * Values are null until the institution profile is filled in — the report
+     * is not blocked on it, but the gap is visible rather than invented.
+     *
+     * @return array<string, string|null>
+     */
+    private function institutionDeclarant(): array
+    {
+        if ($this->declarantSnapshot !== null) {
+            return $this->declarantSnapshot;
+        }
+
+        $profile = InstitutionProfile::current();
+
+        return $this->declarantSnapshot = [
+            'institution_legal_name' => $profile?->legal_name,
+            'institution_trade_name' => $profile?->trade_name,
+            'institution_supervisory_authority' => $profile?->supervisory_authority,
+            'institution_approval_number' => $profile?->approval_number,
+            'institution_registration_number' => $profile?->registration_number,
+            'institution_tax_identification_number' => $profile?->tax_identification_number,
+            'institution_head_office_city' => $profile?->city,
+            'institution_head_office_country' => $profile?->country,
+        ];
+    }
+
+    private function trialBalanceAccount(int $accountId): ?object
+    {
+        if ($this->trialBalanceAccounts === null) {
+            $accounts = [];
+            $rows = DB::table('ledger_accounts')
+                ->leftJoin('agencies', 'agencies.id', '=', 'ledger_accounts.agency_id')
+                ->leftJoin('ledger_accounts as parents', 'parents.id', '=', 'ledger_accounts.parent_account_id')
+                ->get([
+                    'ledger_accounts.id',
+                    'ledger_accounts.public_id',
+                    'ledger_accounts.code',
+                    'ledger_accounts.name',
+                    'ledger_accounts.agency_id',
+                    'ledger_accounts.is_postable',
+                    'ledger_accounts.normal_balance_side',
+                    'agencies.public_id as agency_public_id',
+                    'parents.public_id as parent_public_id',
+                ]);
+
+            foreach ($rows as $row) {
+                $accounts[(int) $row->id] = $row;
+            }
+
+            $this->trialBalanceAccounts = $accounts;
+        }
+
+        return $this->trialBalanceAccounts[$accountId] ?? null;
     }
 
     /**
@@ -705,6 +874,7 @@ final class ReportRunController extends BaseController
             'currency' => $currency,
             'from' => $from,
             'to' => $to,
+            ...$this->institutionDeclarant(),
             ...$this->accountingDayMetadata($accountingDay),
             'row_count' => count($rows),
             'debit_total_minor' => array_sum(array_column($rows, 'debit_total_minor')),

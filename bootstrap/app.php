@@ -12,6 +12,7 @@ use App\Support\AccountingDay\AccountingDayException;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -158,6 +159,27 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return $e->render($request);
+        });
+
+        // A duplicate on a unique index is a conflict the caller can act on, not
+        // an unhandled failure. There are ~60 composite unique constraints and
+        // Laravel's `unique:table,column` rule cannot express the scoped ones, so
+        // without this they fall to the Throwable handler below — a 500 whose
+        // non-production body is `$e->getMessage()`, which for a QueryException
+        // is the failing SQL, connection and constraint name.
+        //
+        // This is the floor, not the fix: an endpoint reachable this way by
+        // ordinary input should still validate first and answer with a field
+        // error naming the offending input (see LedgerAccountController::store).
+        // The exception is still reported, so a collision on a machine-generated
+        // value — an idempotency key, a ULID — stays visible in the logs instead
+        // of being silently converted into a client error.
+        $exceptions->render(function (UniqueConstraintViolationException $e, Request $request) {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return ApiResponse::error(__('api.resource_conflict'), null, Response::HTTP_CONFLICT);
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {

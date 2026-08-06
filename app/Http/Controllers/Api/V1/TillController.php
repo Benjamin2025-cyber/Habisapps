@@ -108,7 +108,7 @@ final class TillController extends BaseController
         }
 
         if ($ledgerAccount instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($ledgerAccount, $agency)) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be an active asset ledger account in the till agency.')]]);
+            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('domain.till_ledger_account_must_be_treasury')]]);
         }
 
         $status = $request->input('status', Till::STATUS_ACTIVE);
@@ -203,7 +203,7 @@ final class TillController extends BaseController
             }
 
             if ($ledgerAccount instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($ledgerAccount, $agency)) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be an active asset ledger account in the till agency.')]]);
+                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('domain.till_ledger_account_must_be_treasury')]]);
             }
 
             $validated['ledger_account_id'] = $ledgerAccount instanceof LedgerAccount ? $ledgerAccount->id : null;
@@ -325,7 +325,10 @@ final class TillController extends BaseController
     {
         return $ledgerAccount->status === LedgerAccount::STATUS_ACTIVE
             && $ledgerAccount->agency_id === $agency->id
-            && $ledgerAccount->account_class === LedgerAccount::ACCOUNT_CLASS_ASSET;
+            // A till holds cash, which under the PCEMF is class 5 — trésorerie
+            // et opérations interbancaires. Narrower than the old "asset" test:
+            // fixed assets and client lending are assets too and were accepted.
+            && $ledgerAccount->account_class === LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE;
     }
 
     private function normalizedCurrency(mixed $currency): string

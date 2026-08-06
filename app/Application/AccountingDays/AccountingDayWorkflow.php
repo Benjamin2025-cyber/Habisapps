@@ -17,6 +17,7 @@ use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\User;
+use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\AccountingDay\CloseControlService;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
@@ -44,6 +45,7 @@ final class AccountingDayWorkflow extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly AccountingScopeAccess $scopeAccess,
         private readonly CloseControlService $closeControls,
         private readonly ExecuteRegisteredBatchRun $executeRegisteredBatchRun,
     ) {}
@@ -57,7 +59,10 @@ final class AccountingDayWorkflow extends BaseController
 
         $query = AccountingDay::query()->with(['agency', 'openedBy', 'closedBy', 'reopenedBy'])->latest('business_date');
 
-        if (! $actor->hasRole('platform-admin')) {
+        // Head-office actors hold institution scope and carry no agency
+        // assignment, so they see every scope. Everyone else is restricted to
+        // their own agency's days.
+        if (! $this->scopeAccess->canManageInstitutionScope($actor)) {
             $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
             if ($agencyId === null) {
                 return $this->respondForbidden();
@@ -678,8 +683,8 @@ final class AccountingDayWorkflow extends BaseController
     {
         $scope = $request->input('scope', AccountingDay::SCOPE_AGENCY);
         if ($scope === AccountingDay::SCOPE_INSTITUTION) {
-            if (! $actor->hasRole('platform-admin')) {
-                return ['', null, $this->respondForbidden('Institution-scoped accounting days are reserved for platform administrators.')];
+            if (! $this->scopeAccess->canManageInstitutionScope($actor)) {
+                return ['', null, $this->respondForbidden(__('domain.accounting_day_institution_scope_forbidden'))];
             }
 
             return [AccountingDay::SCOPE_INSTITUTION, null, null];

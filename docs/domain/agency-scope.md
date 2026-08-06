@@ -24,6 +24,14 @@ Recommended entities:
 - `agencies`: code, name, type, region_id, city, status, manager_id.
 - `user_agency_assignments`: user_id, agency_id, role/scope, starts_at, ends_at, is_primary.
 
+The institution itself is **not** a scoping parent. There is no `institution_id` on any
+record: institution scope is encoded as `agency_id IS NULL` (ledger accounts, operation
+account mappings) or `scope_type = 'institution'` (accounting days), because an EMF is a
+single legal entity. `institution_profile` is a one-row table holding institution
+*identity* only — legal name, agrément, RCCM, NIU, head office — used by supervisory
+filings and issued attestations. See
+[consolidated-chart-of-accounts.md](consolidated-chart-of-accounts.md).
+
 Reasoning:
 
 - A staff member may be temporarily assigned to another agency.

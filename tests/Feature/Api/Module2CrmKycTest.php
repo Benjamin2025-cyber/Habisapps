@@ -1990,7 +1990,7 @@ final class Module2CrmKycTest extends TestCase
             'agency_id' => $client->agency_id,
             'code' => 'CRM-PROXY-'.Str::upper(Str::random(8)),
             'name' => 'CRM Proxy Ledger',
-            'account_class' => 'liability',
+            'account_class' => 'operations_clientele',
             'normal_balance_side' => 'credit',
             'status' => 'active',
             'created_at' => now(),

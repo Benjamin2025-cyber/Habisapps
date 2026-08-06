@@ -15,6 +15,7 @@ return [
     'documentation_not_generated' => 'API documentation is not generated yet.',
     'method_not_allowed' => 'The requested method is not allowed for this resource.',
     'invalid_signature' => 'Invalid or expired signature.',
+    'resource_conflict' => 'This record conflicts with one that already exists.',
     'rate_limit_exceeded' => 'Rate limit exceeded. Try again in :seconds seconds.',
     'internal_server_error' => 'Internal server error',
     'idempotency_key_too_long' => 'Idempotency-Key must be 255 characters or fewer.',
