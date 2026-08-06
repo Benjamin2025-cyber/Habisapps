@@ -145,13 +145,13 @@ Dans les deux cas, rien ne vous demande de nettoyer derrière vous — les rési
 | `571000` | Caisse Globale | Institution | Regroupement | — | — |
 | `571001` | Caisse HABIS Test | Agence | Imputable | `571000` | TEST-HABIS |
 | `571002` | Caisse Cookbook | Agence | Imputable | `571000` | AG-COOK-01 |
-| `571901` | Contrepartie HABIS | Agence | Imputable | — | TEST-HABIS |
-| `571902` | Contrepartie Cookbook | Agence | Imputable | — | AG-COOK-01 |
+| `471901` | Contrepartie HABIS | Agence | Imputable | — | TEST-HABIS |
+| `471902` | Contrepartie Cookbook | Agence | Imputable | — | AG-COOK-01 |
 
 Ensuite, comptabilisez `100` dans TEST-HABIS et `40` dans AG-COOK-01, puis vérifiez que
 `571000` affiche **140**.
 
-Les deux comptes `5719xx` n'existent que parce que toute écriture a deux sens — un compte au
+Les deux comptes `4719xx` n'existent que parce que toute écriture a deux sens — un compte au
 débit, un autre au crédit. Ils représentent la contrepartie, « d'où vient l'argent ». Ne vous
 en préoccupez pas autrement.
 
@@ -251,14 +251,21 @@ est autorisé.
 
 Deux comptes de plus, tous deux **Nature = Compte imputable**, **sans parent** :
 
-- `571901` `Contrepartie HABIS` — agence TEST-HABIS — Classe *Comptes de tiers* (classe 4) —
+- `471901` `Contrepartie HABIS` — agence TEST-HABIS — Classe *Comptes de tiers* (classe 4) —
   Sens Crédit
-- `571902` `Contrepartie Cookbook` — agence AG-COOK-01 — Classe *Comptes de tiers* (classe 4)
+- `471902` `Contrepartie Cookbook` — agence AG-COOK-01 — Classe *Comptes de tiers* (classe 4)
   — Sens Crédit
+
+> **Pourquoi `4719xx` et non `5719xx`.** Dans le PCEMF, la classe est le **premier chiffre du
+> code** : un code en `5…` relève de la classe 5 (trésorerie), un code en `4…` de la classe 4
+> (tiers). Ces comptes servent de contrepartie de tiers, donc classe 4, donc un code en `4`.
+> La caisse, elle, est bien en `571…`. L'API **ne vérifie pas** cette cohérence — des plans
+> existants portent des codes qui ne suivent pas la convention, et refuser leur création
+> serait plus gênant qu'utile. C'est donc à vous de la respecter.
 
 Rien d'autre à faire ici. La conversion automatique — un compte qui devient silencieusement
 un compte de regroupement dès qu'il acquiert un fils — vaut la peine d'être observée, mais
-elle modifie `571901` définitivement : elle est donc placée à
+elle modifie `471901` définitivement : elle est donc placée à
 l'[Annexe A](#annexe-a--voir-la-conversion-automatique-en-direct), à la fin. Faites-la après
 l'étape 11, pas maintenant.
 
@@ -305,7 +312,7 @@ Ouvrez-la et ajoutez deux lignes :
 | Compte | Sens | Montant |
 |---|---|---|
 | `571001 — Caisse HABIS Test` | Débit | `100` |
-| `571901 — Contrepartie HABIS` | Crédit | `100` |
+| `471901 — Contrepartie HABIS` | Crédit | `100` |
 
 ✅ **Attendu — et c'est un contrôle majeur :** la liste déroulante des comptes **ne propose
 pas `571000`**. Le total n'est pas sélectionnable, vous ne pouvez donc pas commettre l'erreur
@@ -328,7 +335,7 @@ Répétez à l'identique, mais cette fois **en tant que comptable d'agence**
 - Agence `AG-COOK-01` — **ne renseignez pas l'agence**, elle est déduite de l'affectation du
   comptable ; c'est le comportement attendu.
 - Référence `TEST-CONSO-B`
-- `571002` Débit `40` · `571902` Crédit `40`
+- `571002` Débit `40` · `471902` Crédit `40`
 - Soumettre (comptable d'agence) → approuver → comptabiliser (chef comptable).
 
 ✅ **Attendu** : l'écriture est créée sur AG-COOK-01 sans que vous ayez choisi d'agence, et
@@ -460,6 +467,8 @@ En tant que `test.cookbook.accountant@example.test` :
 | *« L'approbation du journal nécessite un réviseur différent de l'auteur. »* | Fonctionne comme prévu. Approuvez avec l'**autre** utilisateur (§4). |
 | Le compte que je cherche est absent d'une liste déroulante | C'est presque toujours correct : c'est un compte de regroupement, ou il appartient à une autre agence. Vérifiez la colonne **Structure**. |
 | Un compte est devenu « Compte de regroupement » tout seul | Correct — il a acquis un compte fils (Annexe A). |
+| **Je me suis trompé de classe à la création** | Corrigez-la : ouvrez le compte, changez la **Classe**, enregistrez. C'est accepté tant que le compte ne porte **aucun mouvement**. Dès qu'il en porte, la classe se fige — la changer reviendrait à modifier des états déjà produits ; la réponse comptable est alors un nouveau compte correctement classé et une **écriture de reclassement**. |
+| **J'ai archivé un compte et je ne peux plus créer le même code** | Normal : le code reste réservé même archivé, sinon l'historique deviendrait ambigu. N'inventez pas un autre code — filtrez la liste sur **Statut = Archivé**, puis **Activer** le compte et corrigez-le. Archiver n'est pas définitif. |
 | Un solde affiche 0 là où vous attendiez un chiffre | L'écriture n'est pas **comptabilisée**. Soumise et approuvée ne suffisent pas. |
 | Le total général vaut le double du chiffre attendu | **Véritable anomalie.** Signalez-la (§ étape 9). |
 | Seuls les ~100 premiers comptes apparaissent dans une liste déroulante | Limitation connue : le plan est chargé page par page puis filtré dans le navigateur. Sans conséquence à cette taille, à corriger avant de charger un plan PCEMF complet. |
@@ -491,17 +500,17 @@ exact et l'utilisateur avec lequel vous étiez connecté.
 
 ## Annexe A — Voir la conversion automatique en direct
 
-*Facultatif, une minute. À faire **après** l'étape 11 : cela modifie `571901`
+*Facultatif, une minute. À faire **après** l'étape 11 : cela modifie `471901`
 définitivement, or ce compte sert de contrepartie jusque-là.*
 
-Créez un compte imputable jetable `571999` dans TEST-HABIS avec le **parent `571901`**.
-Regardez maintenant `571901` dans la liste : il a gagné un badge *Compte de regroupement* et
+Créez un compte imputable jetable `471999` dans TEST-HABIS avec le **parent `471901`**.
+Regardez maintenant `471901` dans la liste : il a gagné un badge *Compte de regroupement* et
 n'est plus imputable — **vous ne l'avez jamais demandé.**
 
 C'est arrivé parce qu'il est devenu un total. C'est le comportement le plus susceptible de
 passer pour une anomalie, et ce n'en est pas une : un compte qui a des fils ne doit pas porter
-en plus ses propres écritures, sinon le même argent serait compté deux fois. Archiver `571999`
-ensuite n'annule rien — le badge sur `571901` demeure, et c'est précisément pourquoi cette
+en plus ses propres écritures, sinon le même argent serait compté deux fois. Archiver `471999`
+ensuite n'annule rien — le badge sur `471901` demeure, et c'est précisément pourquoi cette
 manipulation se place en fin de parcours plutôt qu'au milieu.
 
 Le seul cas où le système refuse au lieu de convertir : donner un parent à un compte qui

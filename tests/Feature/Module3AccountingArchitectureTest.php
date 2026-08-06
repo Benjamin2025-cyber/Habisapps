@@ -2028,7 +2028,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         foreach ([
             ['debit_ledger_account_public_id' => $institutionPublicId, 'credit_ledger_account_public_id' => $detailPublicId],
             ['debit_ledger_account_public_id' => $detailPublicId, 'credit_ledger_account_public_id' => $institutionPublicId],
-        ] as $index => $legs) {
+        ] as $legs) {
             $response = $this->withApiHeaders()
                 ->actingAsSanctum($actor)
                 ->postJson('/api/v1/operation-account-mappings', [
@@ -2037,7 +2037,10 @@ final class Module3AccountingArchitectureTest extends TestCase
                     'currency' => 'XAF',
                 ]);
 
-            $response->assertStatus(422, 'Leg combination '.$index.' must be refused.');
+            // assertStatus() accepts no message, so a custom one would be silently
+            // discarded. On failure Laravel dumps the response, which names the
+            // offending legs, so the index is recoverable without it.
+            $response->assertStatus(422);
         }
 
         self::assertSame(0, DB::table('operation_account_mappings')->count());
@@ -2203,6 +2206,144 @@ final class Module3AccountingArchitectureTest extends TestCase
             'normal_balance_side' => 'debit',
             'status' => 'active',
         ]);
+    }
+
+    public function test_duplicate_ledger_code_is_a_validation_error_not_a_database_failure(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-DUP');
+
+        $this->createAgencyLedgerAccount($actor, $agency['public_id'], '579200', 'Contrepartie');
+        $this->createInstitutionLedgerAccount($actor, '579300', 'Caisse Globale');
+
+        // Reaching the partial unique index raises a QueryException, which
+        // surfaces as a 500 carrying the failing SQL — the connection, database
+        // name and inserted values included. Both namespaces must answer with a
+        // field error on `code` instead.
+        $duplicateInAgency = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'agency',
+                'agency_public_id' => $agency['public_id'],
+                'code' => '579200',
+                'name' => 'Contrepartie bis',
+                'account_class' => 'tresorerie_interbancaire',
+                'normal_balance_side' => 'credit',
+            ]);
+        $duplicateInAgency->assertStatus(422);
+        $duplicateInAgency->assertJsonValidationErrors(['code']);
+
+        $duplicateAtInstitution = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => '579300',
+                'name' => 'Caisse Globale bis',
+                'account_class' => 'tresorerie_interbancaire',
+                'normal_balance_side' => 'debit',
+            ]);
+        $duplicateAtInstitution->assertStatus(422);
+        $duplicateAtInstitution->assertJsonValidationErrors(['code']);
+
+        // The same code in a *different* agency stays legal: each agency chart
+        // owns its own namespace.
+        $otherAgency = $this->createAgency('CONS-DUP2');
+        $reused = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'agency',
+                'agency_public_id' => $otherAgency['public_id'],
+                'code' => '579200',
+                'name' => 'Contrepartie autre agence',
+                'account_class' => 'tresorerie_interbancaire',
+                'normal_balance_side' => 'credit',
+            ]);
+        $this->assertJsonSuccess($reused, 201);
+    }
+
+    public function test_a_mistyped_account_class_is_correctable_until_the_account_has_movements(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-CLS');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // Created with the wrong class, as happens during setup. The code comes
+        // from the regulated chart and cannot be reinvented, so the class has to
+        // be correctable — otherwise archiving the account strands its code and
+        // there is no way forward at all.
+        $publicId = $this->createAgencyLedgerAccount($actor, $agency['public_id'], '571901', 'Contrepartie');
+
+        // While unused, the class is a referential value and stays correctable.
+        $corrected = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, [
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_TIERS,
+            ]);
+        $this->assertJsonSuccess($corrected);
+        $corrected->assertJsonPath('data.account_class', LedgerAccount::ACCOUNT_CLASS_TIERS);
+
+        // Once it carries a movement, changing the class would restate figures
+        // already reported, so it freezes.
+        $cash = $this->createAgencyLedgerAccount($actor, $agency['public_id'], '571001', 'Caisse');
+        $this->createPostedJournalEntryWithLines($actor, $this->createUserWithRole('platform-admin'), $agency['public_id'], 'JE-CLS', '2026-05-01', [
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 2500, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $publicId, 'debit_minor' => 0, 'credit_minor' => 2500],
+        ]);
+
+        $frozen = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, [
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_CHARGES,
+            ]);
+        $frozen->assertStatus(422);
+        $frozen->assertJsonValidationErrors(['account_class']);
+
+        // Renaming an account that has movements still works: only the class and
+        // the normal balance side are frozen.
+        $this->assertJsonSuccess($this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, ['name' => 'Contrepartie corrigée']));
+    }
+
+    public function test_an_archived_account_can_be_reactivated_so_its_code_is_never_stranded(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-ARC');
+
+        $publicId = $this->createAgencyLedgerAccount($actor, $agency['public_id'], '571903', 'Compte à corriger');
+
+        $this->assertJsonSuccess($this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->deleteJson('/api/v1/ledger-accounts/'.$publicId));
+        self::assertSame(
+            LedgerAccount::STATUS_ARCHIVED,
+            DB::table('ledger_accounts')->where('public_id', $publicId)->value('status'),
+        );
+
+        // The code stays taken while archived — history must remain unambiguous,
+        // so a second account may not claim it.
+        $reuse = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'agency',
+                'agency_public_id' => $agency['public_id'],
+                'code' => '571903',
+                'name' => 'Tentative de réemploi',
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
+                'normal_balance_side' => 'debit',
+            ]);
+        $reuse->assertStatus(422);
+        $reuse->assertJsonValidationErrors(['code']);
+
+        // Which is only acceptable because archiving is reversible: the way out
+        // is to reactivate the account and correct it, not to duplicate its code.
+        $reactivated = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, [
+                'status' => LedgerAccount::STATUS_ACTIVE,
+            ]);
+        $this->assertJsonSuccess($reactivated);
+        $reactivated->assertJsonPath('data.status', LedgerAccount::STATUS_ACTIVE);
     }
 
     public function test_accountant_reads_the_chart_but_does_not_author_it(): void

@@ -30,6 +30,10 @@ final class UpdateLedgerAccountRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:255'],
+            // Correctable while the account has no movements: a class chosen by
+            // mistake must not strand a PCEMF code that cannot be reinvented.
+            // The controller freezes it as soon as movements exist.
+            'account_class' => ['sometimes', Rule::in(LedgerAccount::accountClasses())],
             'account_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'is_postable' => ['sometimes', 'boolean'],
             'parent_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],

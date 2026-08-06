@@ -28,7 +28,13 @@ final class StoreJournalEntryRequest extends FormRequest
             // Optional for backward compatibility; if supplied it must equal the
             // open accounting day's business date (enforced by AccountingDayGuard).
             'business_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
-            'agency_public_id' => ['required', 'string', 'exists:agencies,public_id'],
+            // Nullable, not required: an agency accountant records in its own
+            // books, so JournalEntryWorkflow derives the agency from the actor's
+            // assignment when it is omitted. Head office has no assignment and
+            // must name it — the workflow answers 422
+            // `journal_entry_requires_agency` when neither is available, so
+            // relaxing the rule here opens no hole.
+            'agency_public_id' => ['nullable', 'string', 'exists:agencies,public_id'],
             'source_module' => ['nullable', 'string', 'max:64'],
             'source_type' => ['nullable', 'string', 'max:64'],
             'source_public_id' => ['nullable', 'string', 'max:64'],

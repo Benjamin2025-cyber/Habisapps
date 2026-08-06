@@ -121,6 +121,11 @@ final class LedgerAccount extends Model
     /**
      * The PCEMF class number (1–8) this account's class corresponds to, which is
      * also the leading digit its code is expected to carry.
+     *
+     * Advisory only. The convention is not enforced on write: existing charts
+     * carry codes whose leading digit does not match their class, and refusing
+     * those would make an account impossible to create rather than merely
+     * unconventional.
      */
     public function accountClassNumber(): ?int
     {
