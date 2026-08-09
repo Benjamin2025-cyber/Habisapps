@@ -26,6 +26,8 @@ final class StoreDenominationRequest extends FormRequest
     {
         $inputCurrency = $this->input('currency');
         $currency = is_string($inputCurrency) ? strtoupper($inputCurrency) : '';
+        $inputType = $this->input('type');
+        $type = is_string($inputType) ? $inputType : '';
 
         return [
             'code' => [
@@ -39,7 +41,11 @@ final class StoreDenominationRequest extends FormRequest
                 'required',
                 'integer',
                 'min:1',
-                Rule::unique('denominations', 'value_minor')->where('currency', $currency),
+                // Scoped by type: the 500 F circulates as both a note and a
+                // coin, and a teller must be able to count them separately.
+                Rule::unique('denominations', 'value_minor')
+                    ->where('currency', $currency)
+                    ->where('type', $type),
             ],
             'currency' => ['required', 'string', 'size:3'],
             'type' => ['required', 'string', Rule::in([Denomination::TYPE_BANKNOTE, Denomination::TYPE_COIN])],

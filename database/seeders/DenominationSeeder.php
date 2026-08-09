@@ -41,11 +41,10 @@ final class DenominationSeeder extends Seeder
      * series put into circulation on 2 April 2025: 1 to 500, the 200 being the
      * newest. There is no 10-franc note — the 10 is a coin.
      *
-     * One row per face value, because `denominations` is UNIQUE (currency,
-     * value_minor): the schema identifies a denomination by what it is worth,
-     * not by its physical form, so `type` is a label rather than a key. The 500
-     * circulates as both a note and a coin and is listed once, as a note; a
-     * teller counting 500s enters them on that single line either way.
+     * The 500 appears twice, as a note and as a coin: both circulate, and a
+     * teller counting a drawer has to record what is actually in it. Uniqueness
+     * is (currency, value_minor, type), so the pair is legal and a duplicate of
+     * either form is still refused.
      *
      * @var array<int, array{0: int, 1: string}>
      */
@@ -55,6 +54,7 @@ final class DenominationSeeder extends Seeder
         [2000, Denomination::TYPE_BANKNOTE],
         [1000, Denomination::TYPE_BANKNOTE],
         [500, Denomination::TYPE_BANKNOTE],
+        [500, Denomination::TYPE_COIN],
         [200, Denomination::TYPE_COIN],
         [100, Denomination::TYPE_COIN],
         [50, Denomination::TYPE_COIN],

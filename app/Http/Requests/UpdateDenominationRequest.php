@@ -32,6 +32,11 @@ final class UpdateDenominationRequest extends FormRequest
         $inputCurrency = $this->input('currency', $currentCurrency);
         $currency = is_string($inputCurrency) ? strtoupper($inputCurrency) : $currentCurrency;
         $ignoreId = $denomination instanceof Denomination ? $denomination->id : null;
+        // `type` is optional on update, so fall back to the stored one — the
+        // uniqueness of a value is scoped to the form it takes.
+        $currentType = $denomination instanceof Denomination ? $denomination->type : '';
+        $inputType = $this->input('type', $currentType);
+        $type = is_string($inputType) ? $inputType : $currentType;
 
         return [
             'code' => [
@@ -45,7 +50,10 @@ final class UpdateDenominationRequest extends FormRequest
                 'sometimes',
                 'integer',
                 'min:1',
-                Rule::unique('denominations', 'value_minor')->where('currency', $currency)->ignore($ignoreId),
+                Rule::unique('denominations', 'value_minor')
+                    ->where('currency', $currency)
+                    ->where('type', $type)
+                    ->ignore($ignoreId),
             ],
             'currency' => ['sometimes', 'string', 'size:3'],
             'type' => ['sometimes', 'string', Rule::in([Denomination::TYPE_BANKNOTE, Denomination::TYPE_COIN])],

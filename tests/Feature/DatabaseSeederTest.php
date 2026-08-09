@@ -66,11 +66,14 @@ final class DatabaseSeederTest extends TestCase
     {
         $this->seed(DenominationSeeder::class);
 
-        // One row per face value: UNIQUE (currency, value_minor) means the 500,
-        // which circulates as both a note and a coin, is listed once.
-        // Gamme 2020 notes 500–10 000, Type 2024 coins 1–200.
+        // Gamme 2020: five notes, 500–10 000. Type 2024: nine coins, 1–500,
+        // the 200 being the newest (circulating since 2 April 2025).
         self::assertSame(5, DB::table('denominations')->where('type', 'banknote')->count());
-        self::assertSame(8, DB::table('denominations')->where('type', 'coin')->count());
+        self::assertSame(9, DB::table('denominations')->where('type', 'coin')->count());
+
+        // The 500 exists in both forms, so a drawer of 500 coins is counted as
+        // coins rather than misrecorded as notes.
+        self::assertSame(2, DB::table('denominations')->where('value_minor', 500 * 100)->count());
         self::assertSame(1, DB::table('denominations')->where('type', 'coin')->where('value_minor', 200 * 100)->count());
 
         // There is no 10-franc note: the 10 is a coin.
@@ -85,7 +88,7 @@ final class DatabaseSeederTest extends TestCase
 
         // Idempotent: re-running adds nothing.
         $this->seed(DenominationSeeder::class);
-        self::assertSame(13, DB::table('denominations')->count());
+        self::assertSame(14, DB::table('denominations')->count());
     }
 
     public function test_the_first_agency_seeder_never_adds_to_an_existing_network(): void

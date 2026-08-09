@@ -25,6 +25,44 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
+    public function test_a_face_value_can_exist_as_both_a_note_and_a_coin(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $token = 'Bearer '.$actor->createToken('denomination-forms')->plainTextToken;
+
+        $note = [
+            'code' => 'XAF-500-B',
+            'label' => 'Billet 500 XAF',
+            'value_minor' => 50000,
+            'currency' => 'XAF',
+            'type' => 'banknote',
+        ];
+
+        $this->assertJsonSuccess(
+            $this->withApiHeaders(['Authorization' => $token])->postJson('/api/v1/denominations', $note),
+            201,
+        );
+
+        // The 500 circulates as both a note and a coin. Forcing coins onto the
+        // note line would make a cash count describe something other than what
+        // is in the drawer, and the reconciliation uncheckable against it.
+        $this->assertJsonSuccess(
+            $this->withApiHeaders(['Authorization' => $token])->postJson('/api/v1/denominations', [
+                ...$note,
+                'code' => 'XAF-500-C',
+                'label' => 'Pièce 500 XAF',
+                'type' => 'coin',
+            ]),
+            201,
+        );
+
+        // A second piece of the *same* form is still a duplicate.
+        $duplicate = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/denominations', [...$note, 'code' => 'XAF-500-B2']);
+        $duplicate->assertStatus(422);
+        $duplicate->assertJsonValidationErrors(['value_minor']);
+    }
+
     public function test_platform_admin_can_manage_denominations_without_creating_cash_workflow_records(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
