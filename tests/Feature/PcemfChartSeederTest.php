@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\LedgerAccount;
+use App\Support\Accounting\AccountingBalanceCalculator;
 use Database\Seeders\PcemfChartSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,54 @@ final class PcemfChartSeederTest extends TestCase
         $leaf = (string) $leafRow->code;
         self::assertSame(2, DB::table('ledger_accounts')->where('code', $leaf)->count());
         self::assertSame(0, DB::table('ledger_accounts')->where('code', $leaf)->whereNull('agency_id')->count());
+    }
+
+    public function test_bivalent_accounts_are_seeded_without_an_imposed_side(): void
+    {
+        $agency = $this->createAgency('PCEMF-BIV');
+        $this->seed(PcemfChartSeeder::class);
+
+        // The accounting team's answer of 2026-08-09: 45, 47, 52, 56, 94, 97, 98
+        // and 99 take entries on either side, so no side is imposed on them or
+        // on anything beneath them.
+        foreach (['45', '47', '52', '56', '94', '97', '98', '99'] as $root) {
+            $sides = DB::table('ledger_accounts')
+                ->whereRaw('left(code, 2) = ?', [$root])
+                ->distinct()
+                ->pluck('normal_balance_side')
+                ->all();
+            self::assertSame([null], $sides, "Root {$root} should impose no side.");
+        }
+
+        // And a root that was confirmed keeps the side it was confirmed with.
+        $caisse = DB::table('ledger_accounts')
+            ->where('agency_id', $agency['id'])->whereRaw('left(code, 2) = ?', ['57'])
+            ->distinct()->pluck('normal_balance_side')->all();
+        self::assertSame(['debit'], $caisse);
+    }
+
+    public function test_a_bivalent_account_reports_the_side_it_actually_sits_on(): void
+    {
+        $agency = $this->createAgency('PCEMF-POS');
+        $this->seed(PcemfChartSeeder::class);
+
+        $liaison = DB::table('ledger_accounts')
+            ->where('agency_id', $agency['id'])
+            ->where('is_postable', true)
+            ->whereRaw('left(code, 2) = ?', ['45'])
+            ->first(['public_id', 'normal_balance_side']);
+        self::assertNotNull($liaison);
+        self::assertNull($liaison->normal_balance_side);
+
+        // A liaison account receives a transfer out one day and a transfer in
+        // the next, so what matters is which way it currently leans — not
+        // whether it matches a side it was never given.
+        $account = LedgerAccount::query()->where('public_id', $liaison->public_id)->firstOrFail();
+        $calculator = app(AccountingBalanceCalculator::class);
+
+        $empty = $calculator->forLedgerAccount($account, 'XAF');
+        self::assertNull($empty['balance_side'], 'Nothing posted is a position on neither side.');
+        self::assertSame(0, $empty['balance_minor']);
     }
 
     public function test_every_account_carries_the_class_its_code_implies(): void

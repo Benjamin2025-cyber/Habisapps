@@ -38,7 +38,7 @@ final class PcemfChartSeeder extends Seeder
     {
         $chart = $this->chart();
 
-        /** @var array<string, array{label: string, side: string, confirmed: bool}> $rootSides */
+        /** @var array<string, array{label: string, side: string|null, confirmed: bool}> $rootSides */
         $rootSides = $chart['root_sides'];
         /** @var array<int, array{code: string, label: string, postable: bool}> $accounts */
         $accounts = $chart['accounts'];
@@ -55,7 +55,7 @@ final class PcemfChartSeeder extends Seeder
 
         // Parents first: a detail account references its institution parent, and
         // the parent of a parent is resolved the same way.
-        $institutionIds = $this->seedInstitutionGroupingAccounts($accounts, $byCode);
+        $institutionIds = $this->seedInstitutionGroupingAccounts($accounts, $byCode, $rootSides);
         $created = $this->seedAgencyDetailAccounts($accounts, $byCode, $rootSides, $agencies, $institutionIds);
 
         $provisional = count(array_filter($rootSides, static fn (array $r): bool => ! $r['confirmed']));
@@ -80,9 +80,10 @@ final class PcemfChartSeeder extends Seeder
     /**
      * @param  array<int, array{code: string, label: string, postable: bool}>  $accounts
      * @param  array<string, array{code: string, label: string, postable: bool}>  $byCode
+     * @param  array<string, array{label: string, side: string|null, confirmed: bool}>  $rootSides
      * @return array<string, int> ledger_accounts.id keyed by code
      */
-    private function seedInstitutionGroupingAccounts(array $accounts, array $byCode): array
+    private function seedInstitutionGroupingAccounts(array $accounts, array $byCode, array $rootSides): array
     {
         /** @var array<string, int> $ids */
         $ids = [];
@@ -108,9 +109,11 @@ final class PcemfChartSeeder extends Seeder
                 'name' => $account['label'],
                 'account_class' => $this->classOf($account['code']),
                 'is_postable' => false,
-                // A grouping account holds no movements; the side only orients how
-                // its consolidated total is presented.
-                'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
+                // Inherited like a leaf's, because the side is exactly what
+                // orients the consolidated total this account exists to carry:
+                // forcing debit on `35 Comptes de dépôts` would report every
+                // agency's deposits as a negative balance.
+                'normal_balance_side' => $this->sideOf($account['code'], $rootSides),
                 'status' => LedgerAccount::STATUS_ACTIVE,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -123,7 +126,7 @@ final class PcemfChartSeeder extends Seeder
     /**
      * @param  array<int, array{code: string, label: string, postable: bool}>  $accounts
      * @param  array<string, array{code: string, label: string, postable: bool}>  $byCode
-     * @param  array<string, array{label: string, side: string, confirmed: bool}>  $rootSides
+     * @param  array<string, array{label: string, side: string|null, confirmed: bool}>  $rootSides
      * @param  array<int, Agency>  $agencies
      * @param  array<string, int>  $institutionIds
      */
@@ -207,17 +210,24 @@ final class PcemfChartSeeder extends Seeder
      * The normal side is not in the source document, so it is carried by the
      * two-digit roots and inherited: a code's side is its root's side.
      *
-     * @param  array<string, array{label: string, side: string, confirmed: bool}>  $rootSides
+     * Null is a value, not a gap — the accounting team marked eight roots as
+     * bivalent (45, 47, 52, 56, 94, 97, 98, 99), meaning no side is imposed and
+     * the balance reports whichever side it actually lands on.
+     *
+     * @param  array<string, array{label: string, side: string|null, confirmed: bool}>  $rootSides
      */
-    private function sideOf(string $code, array $rootSides): string
+    private function sideOf(string $code, array $rootSides): ?string
     {
         $root = substr($code, 0, 2);
+        if (! array_key_exists($root, $rootSides)) {
+            return LedgerAccount::NORMAL_BALANCE_DEBIT;
+        }
 
-        return $rootSides[$root]['side'] ?? LedgerAccount::NORMAL_BALANCE_DEBIT;
+        return $rootSides[$root]['side'];
     }
 
     /**
-     * @return array{root_sides: array<string, array{label: string, side: string, confirmed: bool}>, accounts: array<int, array{code: string, label: string, postable: bool}>}
+     * @return array{root_sides: array<string, array{label: string, side: string|null, confirmed: bool}>, accounts: array<int, array{code: string, label: string, postable: bool}>}
      */
     private function chart(): array
     {
@@ -227,7 +237,7 @@ final class PcemfChartSeeder extends Seeder
             throw new RuntimeException("Chart data file is missing: {$path}");
         }
 
-        /** @var array{root_sides: array<string, array{label: string, side: string, confirmed: bool}>, accounts: array<int, array{code: string, label: string, postable: bool}>} $chart */
+        /** @var array{root_sides: array<string, array{label: string, side: string|null, confirmed: bool}>, accounts: array<int, array{code: string, label: string, postable: bool}>} $chart */
         $chart = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
 
         return $chart;

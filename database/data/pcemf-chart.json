@@ -105,137 +105,137 @@
   "32": {
    "label": "CREDITS A COURT TERME",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "33": {
    "label": "CREANCES EN SOUFFRANCE",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "34": {
    "label": "AUTRES OPERATIONS ENGAGEES POUR LE COMPTE DE LA CLIENTELE",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "35": {
    "label": "COMPTES DE DEPOTS A REGIME SPECIAL",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "36": {
    "label": "COMPTES DE DEPOTS A TERME",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "37": {
    "label": "DECOUVERTS ET COMPTES CREDITEURS A VUE",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "38": {
    "label": "AUTRES COMPTES DE LA CLIENTELE",
-   "side": "debit",
-   "confirmed": false
+   "side": "credit",
+   "confirmed": true
   },
   "39": {
    "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE LA CLIENTELE",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "40": {
    "label": "FOURNISSEURS",
-   "side": "debit",
-   "confirmed": false
+   "side": "credit",
+   "confirmed": true
   },
   "41": {
    "label": "INSTRUMENTS DE PAIEMENT A L'ENCAISSEMENT",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "42": {
    "label": "PERSONNEL",
-   "side": "debit",
-   "confirmed": false
+   "side": "credit",
+   "confirmed": true
   },
   "43": {
    "label": "ETAT, COLLECTIVITES PUBLIQUES ET ORGANISMES INTERNATIONAUX",
-   "side": "debit",
-   "confirmed": false
+   "side": "credit",
+   "confirmed": true
   },
   "44": {
    "label": "SOCIETAIRES ET ACTIONNAIRES",
-   "side": "debit",
-   "confirmed": false
+   "side": "credit",
+   "confirmed": true
   },
   "45": {
    "label": "COMPTES DE LIAISON",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "46": {
    "label": "AUTRES DEBITEURS ET CREDITEURS",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "47": {
    "label": "COMPTES DE REGULARISATION",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "48": {
    "label": "CREANCES DIVERSES EN SOUFFRANCE",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "49": {
    "label": "PROVISIONS POUR DEPRECIATION DES COMPTES D'AUTRES TIERS",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "51": {
    "label": "TITRES DE PLACEMENT TRANSACTION",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "52": {
    "label": "MARCHE MONETAIRE",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "53": {
    "label": "AUTRES VALEURS RECUES OU DONNEES",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "54": {
    "label": "PRETS, EMPRUNTS ET COMPTES A TERME DES CORRESPONDANTS",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "55": {
    "label": "PRETS ET EMPRUNTS AU JOUR LE JOUR DES CORRESPONDANTS",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "56": {
    "label": "COMPTES A VUE DES CORRESPONDANTS",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "57": {
    "label": "CAISSE",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "58": {
    "label": "CREANCES EN SOUFFRANCE SUR LES CORRESPONDANTS",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "59": {
    "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE TRESORERIE",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "60": {
    "label": "CHARGES SUR OPERATIONS DE TRESORERIE ET OPERATIONS INTERBANCAIRES",
@@ -340,52 +340,52 @@
   "90": {
    "label": "ENGAGEMENTS DONNES AUX CORRESPONDANTS LOCAUX",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "91": {
    "label": "ENGAGEMENTS RECUS DES CORRESPONDANTS LOCAUX",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "92": {
    "label": "ENGAGEMENTS EN FAVEUR DE LA CLIENTELE",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "93": {
    "label": "ENGAGEMENTS RECUS DE LA CLIENTELE",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "94": {
    "label": "ENGAGEMENTS DE CREDIT BAIL",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "95": {
    "label": "OPERATIONS SUR TITRES ET VALEURS AFFECTEES EN GARANTIE DES OPERATIONS DU MARCHE MONETAIRE",
    "side": "debit",
-   "confirmed": false
+   "confirmed": true
   },
   "96": {
    "label": "ENGAGEMENTS RECUS DE L'ETAT ET DES ORGANISMES PUBLICS",
    "side": "credit",
-   "confirmed": false
+   "confirmed": true
   },
   "97": {
    "label": "OPERATIONS EN DEVISES",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "98": {
    "label": "ENGAGEMENTS PAR SIGNATURE DOUTEUX",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   },
   "99": {
    "label": "COMPTE GENERAL DES ENGAGEMENTS HORS-BILAN",
-   "side": "debit",
-   "confirmed": false
+   "side": null,
+   "confirmed": true
   }
  },
  "accounts": [
@@ -7499,5 +7499,7 @@
    "label": "Engagements reçus en réseau",
    "postable": true
   }
- ]
+ ],
+ "confirmed_on": "2026-08-09",
+ "confirmed_by": "HABIBI FINANCE accounting team (SAMANTHA), Plan_des_Comptes_HF_2026_Réponse du 09082026"
 }

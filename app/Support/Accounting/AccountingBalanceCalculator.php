@@ -25,7 +25,7 @@ final class AccountingBalanceCalculator
      * the agency 571001/571002/571003 beneath it. Pass $consolidated explicitly
      * to override, which a caller wanting strictly own-movement totals must do.
      *
-     * @return array{scope:string, public_id:string, currency:string, from:string|null, to:string|null, debit_total_minor:int, credit_total_minor:int, balance_minor:int, normal_balance_side:string|null}
+     * @return array{scope:string, public_id:string, currency:string, from:string|null, to:string|null, debit_total_minor:int, credit_total_minor:int, balance_minor:int, normal_balance_side:string|null, balance_side:string|null}
      */
     public function forLedgerAccount(LedgerAccount $ledgerAccount, string $currency, ?string $from = null, ?string $to = null, ?bool $consolidated = null): array
     {
@@ -62,11 +62,15 @@ final class AccountingBalanceCalculator
             'credit_total_minor' => $creditTotal,
             'balance_minor' => $this->normalBalance($ledgerAccount->normal_balance_side, $debitTotal, $creditTotal),
             'normal_balance_side' => $ledgerAccount->normal_balance_side,
+            // Which side the account actually sits on for this period, as
+            // opposed to the side it is expected to sit on. For a bivalent
+            // account (no imposed side) this is the only meaningful answer.
+            'balance_side' => $this->positionSide($debitTotal, $creditTotal),
         ];
     }
 
     /**
-     * @return array{scope:string, public_id:string, currency:string, from:string|null, to:string|null, debit_total_minor:int, credit_total_minor:int, balance_minor:int, normal_balance_side:string|null}
+     * @return array{scope:string, public_id:string, currency:string, from:string|null, to:string|null, debit_total_minor:int, credit_total_minor:int, balance_minor:int, normal_balance_side:string|null, balance_side:string|null}
      */
     public function forCustomerAccount(CustomerAccount $customerAccount, string $currency, ?string $from = null, ?string $to = null): array
     {
@@ -82,8 +86,15 @@ final class AccountingBalanceCalculator
         $totals = $query
             ->selectRaw('COALESCE(SUM(journal_lines.debit_minor), 0) AS debit_total_minor')
             ->selectRaw('COALESCE(SUM(journal_lines.credit_minor), 0) AS credit_total_minor')
-            ->selectRaw("COALESCE(SUM(CASE WHEN ledger_accounts.normal_balance_side = 'debit' THEN journal_lines.debit_minor - journal_lines.credit_minor ELSE journal_lines.credit_minor - journal_lines.debit_minor END), 0) AS balance_minor")
+            // Mirrors normalBalance(): only an explicit 'credit' inverts the
+            // subtraction. Written this way round because `= 'debit'` is false
+            // for NULL, which would have quietly reported every bivalent
+            // account's balance the wrong way up.
+            ->selectRaw("COALESCE(SUM(CASE WHEN ledger_accounts.normal_balance_side = 'credit' THEN journal_lines.credit_minor - journal_lines.debit_minor ELSE journal_lines.debit_minor - journal_lines.credit_minor END), 0) AS balance_minor")
             ->first();
+
+        $debitTotal = (int) ($totals->debit_total_minor ?? 0);
+        $creditTotal = (int) ($totals->credit_total_minor ?? 0);
 
         return [
             'scope' => 'customer_account',
@@ -91,10 +102,11 @@ final class AccountingBalanceCalculator
             'currency' => $currency,
             'from' => $from,
             'to' => $to,
-            'debit_total_minor' => (int) ($totals->debit_total_minor ?? 0),
-            'credit_total_minor' => (int) ($totals->credit_total_minor ?? 0),
+            'debit_total_minor' => $debitTotal,
+            'credit_total_minor' => $creditTotal,
             'balance_minor' => (int) ($totals->balance_minor ?? 0),
             'normal_balance_side' => $customerAccount->ledgerAccount?->normal_balance_side,
+            'balance_side' => $this->positionSide($debitTotal, $creditTotal),
         ];
     }
 
@@ -130,13 +142,37 @@ final class AccountingBalanceCalculator
         ];
     }
 
-    private function normalBalance(string $normalBalanceSide, int $debitTotal, int $creditTotal): int
+    /**
+     * The balance oriented to the account's normal side, so a well-behaved
+     * account reads positive.
+     *
+     * A bivalent account (null side) has no side to orient to, so it reports the
+     * natural signed balance — positive in debit, negative in credit — and
+     * `balance_side` names the position outright.
+     */
+    private function normalBalance(?string $normalBalanceSide, int $debitTotal, int $creditTotal): int
     {
         if ($normalBalanceSide === LedgerAccount::NORMAL_BALANCE_CREDIT) {
             return $creditTotal - $debitTotal;
         }
 
         return $debitTotal - $creditTotal;
+    }
+
+    /**
+     * The side the account is actually on: debit when it owes nothing, credit
+     * when the credits exceed the debits. Null only when the two cancel out,
+     * which is a position on neither side.
+     */
+    private function positionSide(int $debitTotal, int $creditTotal): ?string
+    {
+        if ($debitTotal === $creditTotal) {
+            return null;
+        }
+
+        return $debitTotal > $creditTotal
+            ? LedgerAccount::NORMAL_BALANCE_DEBIT
+            : LedgerAccount::NORMAL_BALANCE_CREDIT;
     }
 
     /**
