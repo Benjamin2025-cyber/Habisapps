@@ -2113,6 +2113,69 @@ final class Module3AccountingArchitectureTest extends TestCase
         $detailStatement->assertJsonPath('data.statement.scope', 'ledger_account');
     }
 
+    public function test_an_agency_account_created_without_a_parent_still_rolls_up_to_the_institution(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-ORPH');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $institutionPublicId = $this->createInstitutionLedgerAccount($maker, '578', 'Caisse Globale');
+
+        // Created without naming a parent. In the seeded chart a grouping
+        // account is the shorter code (571 totalises 571001), so the code alone
+        // already says where this belongs.
+        // The accounting team's answer to question 1: « les totaux par agence
+        // remontent automatiquement dans les comptes globaux au niveau du siège ».
+        // Automatically is the operative word: if attaching the parent were left
+        // to whoever fills the form, one forgotten field would quietly keep an
+        // account's money out of the institution total for good, and nothing on
+        // either screen would look wrong.
+        $created = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'agency',
+                'agency_public_id' => $agency['public_id'],
+                'code' => '578001',
+                'name' => 'Caisse Agence Sans Parent',
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
+                'normal_balance_side' => 'debit',
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.parent_account_public_id', $institutionPublicId);
+
+        $orphan = $this->requireStringJsonPath($created, 'data.public_id');
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '578901', 'Counterpart');
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-ORPH', '2026-05-01', [
+            ['ledger_account_public_id' => $orphan, 'debit_minor' => 7000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 7000],
+        ]);
+
+        $consolidated = $this->withApiHeaders()
+            ->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$institutionPublicId.'/balance?currency=XAF');
+        $this->assertJsonSuccess($consolidated);
+        $consolidated->assertJsonPath('data.debit_total_minor', 7000);
+
+        // An explicit parent still wins: derivation fills a gap, it does not
+        // overrule a choice.
+        $explicit = $this->withApiHeaders()
+            ->actingAsSanctum($maker)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'agency',
+                'agency_public_id' => $agency['public_id'],
+                'code' => '578002',
+                'name' => 'Caisse Agence Parent Explicite',
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
+                'normal_balance_side' => 'debit',
+                'parent_account_public_id' => null,
+            ]);
+        $this->assertJsonSuccess($explicit, 201);
+        $explicit->assertJsonPath('data.parent_account_public_id', $institutionPublicId);
+    }
+
     public function test_consolidated_trial_balance_rolls_agency_accounts_into_their_institution_parent(): void
     {
         $maker = $this->createUserWithRole('platform-admin');

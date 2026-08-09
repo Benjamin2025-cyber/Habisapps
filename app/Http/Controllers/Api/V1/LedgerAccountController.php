@@ -140,6 +140,8 @@ final class LedgerAccountController extends BaseController
             if ($parentError !== null) {
                 return $this->respondUnprocessable(errors: ['parent_account_public_id' => [$parentError]]);
             }
+        } else {
+            $parent = $this->institutionParentImpliedByCode($code);
         }
 
         try {
@@ -392,6 +394,39 @@ final class LedgerAccountController extends BaseController
 
         if ($parent->is_postable && DB::table('journal_lines')->where('ledger_account_id', $parent->id)->exists()) {
             return __('domain.ledger_parent_has_movements');
+        }
+
+        return null;
+    }
+
+    /**
+     * The institution grouping account a code belongs under, found by its
+     * longest proper prefix — 578001 hangs off 578, or off 57 if 578 does not
+     * exist. Mirrors PcemfChartSeeder::parentCodeOf(), so an account added
+     * through the API lands where the seeded chart would have put it.
+     *
+     * The accounting team's answer to question 1 is that agency totals reach the
+     * institution accounts « automatiquement ». That only holds if every detail
+     * account is attached to the tree, and leaving the attachment to whoever
+     * fills the form does not hold it: one skipped field silently keeps that
+     * account's money out of the consolidated total, on every report, with
+     * nothing on screen looking wrong. Deriving it costs one query and makes the
+     * guarantee structural.
+     *
+     * Returns null when no ancestor exists — a new class root, which legitimately
+     * sits at the top and must not be forced under an unrelated account.
+     */
+    private function institutionParentImpliedByCode(string $code): ?LedgerAccount
+    {
+        for ($length = strlen($code) - 1; $length >= 2; $length--) {
+            $id = DB::table('ledger_accounts')
+                ->where('code', substr($code, 0, $length))
+                ->whereNull('agency_id')
+                ->value('id');
+
+            if ($id !== null) {
+                return LedgerAccount::query()->whereKey($id)->first();
+            }
         }
 
         return null;

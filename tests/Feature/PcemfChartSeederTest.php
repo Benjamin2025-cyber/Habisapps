@@ -77,6 +77,29 @@ final class PcemfChartSeederTest extends TestCase
         self::assertSame(['debit'], $caisse);
     }
 
+    public function test_the_soldes_intermediaires_de_gestion_are_not_seeded_as_accounts(): void
+    {
+        $this->createAgency('PCEMF-SIG');
+        $this->seed(PcemfChartSeeder::class);
+
+        // Question 3 of the same answer, ticked « C'est correct »: « Les comptes
+        // 80 à 87 ne doivent pas être créés comme de vrais comptes où l'on
+        // enregistre des écritures. Ce sont des totaux calculés automatiquement
+        // à partir des classes 6 (charges) et 7 (produits) au moment de sortir
+        // le compte de résultat. »
+        //
+        // They aggregate classes 6 and 7, which is not a parent/child relation
+        // by account number, so seeding them would leave 8 accounts permanently
+        // empty and offer somewhere wrong to post. Asserted rather than assumed:
+        // the chart simply has no class 8, and a later import must not add one.
+        $classEight = DB::table('ledger_accounts')
+            ->whereRaw('left(code, 1) = ?', ['8'])
+            ->pluck('code')
+            ->all();
+
+        self::assertSame([], $classEight, 'Classes 8 are computed at reporting time, never posted to.');
+    }
+
     public function test_a_bivalent_account_reports_the_side_it_actually_sits_on(): void
     {
         $agency = $this->createAgency('PCEMF-POS');
