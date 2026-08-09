@@ -3,16 +3,19 @@
 # Resets the QA database back to the state a fresh deployment produces, while
 # preserving a small allowlist of user accounts.
 #
-# Kept:    everything the deploy pipeline seeds (roles, permissions, report
-#          definitions, batch procedures, bootstrap admin) plus the accounts
-#          listed in KEEP_EMAILS -- with their password hashes, public_ids and
-#          role assignments intact.
-# Dropped: every other row in the database. Agencies, the chart of accounts,
-#          operation-code mappings, products, clients, loans, journals, teller
-#          sessions, accounting days and all access tokens are tester-created
-#          and do NOT come back. Testers must rebuild the accounting config
-#          (agency -> ledger accounts -> operation mappings -> products ->
-#          open an accounting day) before they can transact again.
+# Kept:    everything DatabaseSeeder installs -- roles and permissions, the
+#          institution profile, report definitions, batch procedures, BEAC
+#          denominations, the bootstrap admin, the default agency and the PCEMF
+#          chart of accounts -- plus the accounts listed in KEEP_EMAILS, with
+#          their password hashes, public_ids and role assignments intact.
+# Dropped: every other row. Clients, accounts, loans, journals, teller sessions,
+#          accounting days, operation-code mappings, products, all other users
+#          and all access tokens are tester-created and do NOT come back.
+#
+# The default agency and the bootstrap admin are opt-in through env
+# (SEED_DEFAULT_AGENCY, SEED_BOOTSTRAP_ADMIN) and no-op unless enabled. Note
+# that docker compose applies env_file only at container creation: after editing
+# .env run `docker compose up -d` or the new values are invisible here.
 #
 # Run this ON the VPS:
 #   ./reset-qa-db.sh              # prompts for confirmation
@@ -28,14 +31,6 @@ set -Eeuo pipefail
 APP_DIR="${APP_DIR:-/srv/habis-finance-api}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/db-backups}"
 KEEP_EMAILS="${KEEP_EMAILS:-alimronaldo1234@gmail.com,sbellaessomba@gmail.com,samanthalizaymone@gmail.com}"
-
-# Mirrors .github/workflows/deploy.yml, in order.
-SEEDERS=(
-    RolesAndPermissionsSeeder
-    StandardReportDefinitionSeeder
-    BatchProcedureSeeder
-    BootstrapAdminSeeder
-)
 
 ASSUME_YES=0
 SKIP_BACKUP=0
@@ -232,12 +227,12 @@ fi
 log "Rebuilding the schema (migrate:fresh)"
 api php artisan migrate:fresh --force --ansi 2>&1 | tail -5
 
-log "Running the deploy-pipeline seeders"
-for seeder in "${SEEDERS[@]}"; do
-    echo "  - $seeder"
-    api php artisan db:seed --class="Database\\Seeders\\$seeder" --force --ansi 2>&1 \
-        | grep -viE '^\s*$|INFO\s+Seeding database' || true
-done
+# One call, not a hand-listed set: DatabaseSeeder already encodes the dependency
+# order (institution profile and the default agency before the PCEMF chart, which
+# hangs its detail accounts off an agency). Listing seeders here instead means
+# the list silently drifts as new ones are added.
+log "Seeding the installation (DatabaseSeeder)"
+api php artisan db:seed --force --ansi 2>&1 | grep -viE '^\s*$|RUNNING' || true
 
 # ---------------------------------------------------------------------------
 # 4. Restore the preserved accounts
@@ -360,7 +355,8 @@ cat <<'DONE'
 
 Reset complete. Next steps for the testers:
   1. Everyone must log in again -- all access tokens were revoked.
-  2. Preserved accounts have NO agency. Recreate the agency, then the chart of
-     accounts, operation-account mappings and products, then open an
-     accounting day before attempting any transaction.
+  2. The default agency, denominations and the PCEMF chart of accounts are
+     seeded. Preserved accounts are NOT attached to the agency: assign staff,
+     then set up operation-account mappings and products and open an accounting
+     day before attempting any transaction.
 DONE
