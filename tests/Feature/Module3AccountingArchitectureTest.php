@@ -2672,6 +2672,63 @@ final class Module3AccountingArchitectureTest extends TestCase
         $crossAgency->assertJsonValidationErrors(['agency_public_id']);
     }
 
+    public function test_head_office_records_an_entry_remotely_into_an_agency_ledger(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-REM');
+
+        // Head office carries no agency of its own — that is what makes this
+        // remote. The accounting team's correction to question 2: « certaines
+        // opérations doivent même pouvoir être saisies à distance depuis le
+        // siège, directement dans les pôles HABISLOAN installés dans les
+        // agences ». So the chief accountant names the agency and books into
+        // its ledger without being posted there.
+        $chief = $this->createUserWithRole('chief-accountant');
+
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '582001', 'Caisse Agence');
+        $counterpart = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '582901', 'Counterpart');
+
+        $entry = $this->createPostedJournalEntryWithLines($chief, $admin, $agency['public_id'], 'JE-REMOTE', '2026-05-01', [
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 25000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 25000],
+        ]);
+
+        // The entry belongs to the agency where the event happened, not to
+        // whoever keyed it in: the books stay the agency's.
+        $stored = DB::table('journal_entries')->where('public_id', $entry)->first(['agency_id', 'created_by_user_id']);
+        self::assertNotNull($stored);
+        self::assertSame($agency['id'], $stored->agency_id);
+        self::assertSame($chief->id, $stored->created_by_user_id);
+
+        $balance = $this->withApiHeaders()->actingAsSanctum($admin)
+            ->getJson('/api/v1/ledger-accounts/'.$cash.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+        $balance->assertJsonPath('data.balance_minor', 25000);
+
+        // Remote does not mean unbounded: an entry filed against one agency has
+        // to use that agency's accounts, so head office cannot fold two
+        // agencies' ledgers into a single entry.
+        $otherAgency = $this->createAgency('CONS-REM2');
+        $otherCash = $this->createAgencyLedgerAccount($admin, $otherAgency['public_id'], '582002', 'Caisse Autre Agence');
+
+        $draft = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/journal-entries', [
+                'agency_public_id' => $agency['public_id'],
+                'reference' => 'JE-REMOTE-MIX',
+                'business_date' => '2026-05-01',
+            ]);
+        $this->assertJsonSuccess($draft, 201);
+
+        $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/journal-lines', [
+                'journal_entry_public_id' => $this->requireStringJsonPath($draft, 'data.public_id'),
+                'ledger_account_public_id' => $otherCash,
+                'currency' => 'XAF',
+                'debit_minor' => 1000,
+                'credit_minor' => 0,
+            ])->assertStatus(422);
+    }
+
     public function test_accountant_cannot_reach_another_agency_chart_or_the_institution_chart(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
