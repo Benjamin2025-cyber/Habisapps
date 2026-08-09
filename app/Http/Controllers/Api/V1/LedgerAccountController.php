@@ -116,6 +116,11 @@ final class LedgerAccountController extends BaseController
         }
 
         $code = $request->string('code')->toString();
+        $classError = $this->accountClassCodeMismatch($code, $request->string('account_class')->toString());
+        if ($classError !== null) {
+            return $this->respondUnprocessable(errors: ['account_class' => [$classError]]);
+        }
+
         if ($this->codeTakenInScope($code, $agency?->id)) {
             return $this->respondUnprocessable(errors: ['code' => [
                 $agency instanceof Agency
@@ -222,6 +227,13 @@ final class LedgerAccountController extends BaseController
             }
         }
 
+        if (array_key_exists('account_class', $validated) && is_string($validated['account_class'])) {
+            $classError = $this->accountClassCodeMismatch($ledgerAccount->code, $validated['account_class']);
+            if ($classError !== null) {
+                return $this->respondUnprocessable(errors: ['account_class' => [$classError]]);
+            }
+        }
+
         if (array_key_exists('parent_account_public_id', $validated)) {
             if ($validated['parent_account_public_id'] !== null) {
                 $newParent = LedgerAccount::query()->where('public_id', $validated['parent_account_public_id'])->first();
@@ -297,6 +309,26 @@ final class LedgerAccountController extends BaseController
      * deploying the institution chart across agencies requires. Everyone else
      * writes only into the agency they are assigned to.
      */
+    /**
+     * Why the class contradicts the code, or null when they agree.
+     *
+     * Consulted only where the class is being set, so a code that does not start
+     * with a digit — or an account being edited for some other reason — is never
+     * retroactively blocked.
+     */
+    private function accountClassCodeMismatch(string $code, string $accountClass): ?string
+    {
+        $implied = LedgerAccount::classImpliedByCode($code);
+        if ($implied === null || $implied === $accountClass) {
+            return null;
+        }
+
+        return __('domain.ledger_account_class_contradicts_code', [
+            'digit' => substr($code, 0, 1),
+            'expected' => __('domain.ledger_account_class_'.$implied),
+        ]);
+    }
+
     /**
      * Whether the code is already used in the namespace the account would join.
      *

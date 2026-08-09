@@ -30,7 +30,7 @@ Minimum fields:
 - `id`
 - `code`, unique per agency, and unique institution-wide for institution-level accounts
 - `name`
-- `account_class` — one of the eight PCEMF classes (see below)
+- `account_class` — one of the nine PCEMF classes (see below)
 - `type`
 - `agency_id`, nullable — `NULL` means an institution-level grouping account
 - `is_postable`
@@ -52,7 +52,10 @@ Rules:
 
 `account_class` carries the class of the **Plan Comptable des Établissements de
 Microfinance** (CEMAC/COBAC), which is the chart a Cameroonian EMF is required to keep.
-The class is the leading digit of the account code.
+The class is the leading digit of the account code, and this is **enforced on write**:
+`571901` is a class 5 account and cannot be saved as class 4. The nine classes and their
+order are taken from the institution's own "Plan des Comptes HF 2026"; the order is the
+numbering, so inserting or reordering a value re-numbers every class after it.
 
 | # | Value | Class |
 | --- | --- | --- |
@@ -63,11 +66,13 @@ The class is the leading digit of the account code.
 | 5 | `tresorerie_interbancaire` | Comptes de trésorerie et d'opérations interbancaires |
 | 6 | `charges` | Comptes de charges |
 | 7 | `produits` | Comptes de produits |
-| 8 | `hors_bilan` | Comptes de hors bilan |
+| 8 | `soldes_intermediaires_gestion` | Soldes intermédiaires de gestion |
+| 9 | `hors_bilan` | Comptes de hors bilan |
 
 These replaced IFRS-style `asset`/`liability`/`equity`/`revenue`/`expense` values, which
 named an account's nature rather than its place in the national chart. Nature is not lost:
-classes 6 and 7 are the income statement, 8 is off-balance-sheet, and for classes 1–5 the
+classes 6 and 7 are the income statement, 8 aggregates them into the soldes intermédiaires
+de gestion, 9 is off-balance-sheet, and for classes 1–5 the
 balance-sheet side follows `normal_balance_side` — a debit-side class 3 account is client
 lending, a credit-side class 3 account is client deposits. Add a dedicated statement-nature
 column only if a balance sheet ever needs more than that.

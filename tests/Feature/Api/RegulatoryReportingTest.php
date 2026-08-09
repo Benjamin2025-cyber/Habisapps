@@ -579,7 +579,7 @@ final class RegulatoryReportingTest extends TestCase
             'regulatory_source_id' => (int) $source->id,
             'code' => '101',
             'name' => 'Cash',
-            'account_class' => 'tresorerie_interbancaire',
+            'account_class' => 'capitaux_permanents',
             'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),

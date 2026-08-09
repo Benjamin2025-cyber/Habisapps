@@ -59,10 +59,16 @@ final class LedgerAccount extends Model
      * values, which named the *nature* of an account rather than its place in
      * the national chart, and which accountants here do not recognise.
      *
-     * Nature is not lost: classes 6 and 7 are the income statement, 8 is
-     * off-balance-sheet, and for classes 1–5 the balance-sheet side follows
-     * `normal_balance_side` — a debit-side class 3 is client lending, a
-     * credit-side class 3 is client deposits.
+     * Nature is not lost: classes 6 and 7 are the income statement, 8 aggregates
+     * them into the soldes intermédiaires de gestion, 9 is off-balance-sheet,
+     * and for classes 1–5 the balance-sheet side follows `normal_balance_side`
+     * — a debit-side class 3 is client lending, a credit-side class 3 is client
+     * deposits.
+     *
+     * Nine classes, per the institution's own "Plan des Comptes" (extrait du
+     * manuel de procédures comptables): hors bilan is class **9**, not 8. Class
+     * 8 was previously modelled as hors bilan, which left the 136 class-9
+     * accounts of that chart with nowhere correct to go.
      */
 
     /** Class 1 — Comptes de capitaux permanents. */
@@ -86,7 +92,14 @@ final class LedgerAccount extends Model
     /** Class 7 — Comptes de produits. */
     public const ACCOUNT_CLASS_PRODUITS = 'produits';
 
-    /** Class 8 — Comptes de hors bilan. */
+    /**
+     * Class 8 — Soldes intermédiaires de gestion (PNF, résultat d'exploitation,
+     * résultat courant …). Functional groupings the income statement is built
+     * from, so these carry no movements of their own.
+     */
+    public const ACCOUNT_CLASS_SOLDES_INTERMEDIAIRES_GESTION = 'soldes_intermediaires_gestion';
+
+    /** Class 9 — Comptes de hors bilan. */
     public const ACCOUNT_CLASS_HORS_BILAN = 'hors_bilan';
 
     public const NORMAL_BALANCE_DEBIT = 'debit';
@@ -114,24 +127,41 @@ final class LedgerAccount extends Model
             self::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
             self::ACCOUNT_CLASS_CHARGES,
             self::ACCOUNT_CLASS_PRODUITS,
+            self::ACCOUNT_CLASS_SOLDES_INTERMEDIAIRES_GESTION,
             self::ACCOUNT_CLASS_HORS_BILAN,
         ];
     }
 
     /**
-     * The PCEMF class number (1–8) this account's class corresponds to, which is
-     * also the leading digit its code is expected to carry.
-     *
-     * Advisory only. The convention is not enforced on write: existing charts
-     * carry codes whose leading digit does not match their class, and refusing
-     * those would make an account impossible to create rather than merely
-     * unconventional.
+     * The PCEMF class number (1–9) this account's class corresponds to, which is
+     * also the leading digit its code carries.
      */
     public function accountClassNumber(): ?int
     {
         $position = array_search($this->account_class, self::accountClasses(), true);
 
         return $position === false ? null : $position + 1;
+    }
+
+    /**
+     * The class a code belongs to, read from its leading digit, or null when the
+     * code does not start with a digit in the 1–9 range.
+     *
+     * The convention is not a preference: every one of the 1 430 accounts in the
+     * institution's own "Plan des Comptes" classifies this way, and `571901` is
+     * therefore a class 5 account and can never be class 4. Enforcing it turns a
+     * mistyped class — which used to be unrecoverable, because the code it
+     * occupies comes from the regulated chart and cannot be reinvented — into an
+     * error caught at the moment of entry.
+     */
+    public static function classImpliedByCode(string $code): ?string
+    {
+        $leading = substr($code, 0, 1);
+        if ($leading === '' || ! ctype_digit($leading)) {
+            return null;
+        }
+
+        return self::accountClasses()[((int) $leading) - 1] ?? null;
     }
 
     /**

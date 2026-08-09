@@ -48,13 +48,47 @@ were **wrong and were not acted on**:
 
 | Decision | Rationale |
 |---|---|
-| **Distinct codes per agency** (`571000` institution, `571001/2/3` per agency) | Matches how the testers drew it. Works with the existing `UNIQUE (agency_id, code)`; only needs an added partial index for institution codes. The alternative (same code in every agency) makes a code ambiguous without its agency in every report. |
+| ~~**Distinct codes per agency**~~ (`571000` institution, `571001/2/3` per agency) — **superseded, see §2b** | Matched how the testers drew it. Works with the existing `UNIQUE (agency_id, code)`; only needs an added partial index for institution codes. The alternative (same code in every agency) was rejected as making a code ambiguous without its agency in every report. |
 | **Institution = `agency_id IS NULL`**, not a parent FK | An EMF is one legal entity, so a scoping table would have exactly one row. More importantly the composite FK `journal_lines (ledger_account_id, agency_id) → ledger_accounts (id, agency_id)` makes institution accounts **unpostable for free**; an `institution_id` column would lose that and need a trigger. Also consistent with `accounting_days.scope_type = 'institution'`, which already used this encoding. |
 | **`is_postable` column** rather than reusing `account_type` | `account_type` is a free-form `varchar(64)` with no semantics anywhere. The flag also covers *agency-level* grouping accounts, which the composite FK cannot protect. |
 | **Grouping accounts consolidate by default** | A non-postable account can never have movements of its own, so a bare balance request would return 0. Defaulting to consolidation makes the tree work with no client change; `?consolidated=0` returns own-movements-only. |
 | **Auto-convert a parent** when it gains its first child | Requiring the client to flip `is_postable` first would make adding a sub-account a two-call dance with a confusing error. Rejected only when the parent already carries movements. |
 | **Institution profile as a singleton, no FKs** | The institution needed identity attributes (legal name, agrément, RCCM, NIU, head office) that had nowhere to live. Adding them as a profile keeps the blast radius near zero; nothing gained an `institution_id`. |
 | **Declared currency / fiscal-year month are inert** | `config/money.php` stays authoritative for currency, and `accounting_days` / `accounting_calendar_days` for the calendar. Making the profile authoritative would ripple through every `?? 'XAF'` default and the whole accounting-day pipeline. |
+
+## 2b. Correction: the institution's real chart uses one nomenclature
+
+The first row of §2 was decided from a sketch, before anyone had seen the chart the
+accounting team actually keeps. That chart — *"Plan des Comptes HF 2026, extrait du manuel
+de procédures comptables"*, received 2026-08-09 — contradicts it, and it wins.
+
+Its 1 430 accounts contain **no agency-specific code at all**. There is one nomenclature
+(`57 CAISSE` → `571 Billets et Monnaies`), and agencies appear only as counterparties, through
+liaison accounts: `451 Siège et agences locales`, `452 Comptes de liaison entre agences`,
+`485 Opérations entre sièges et agences en souffrance`, `2680 Dotations des succursales`.
+
+So the model to load is the option §2 rejected: **the same code in every agency**, with the
+grouping accounts held once at institution level. Nothing in the schema has to change — the
+two partial unique indexes already let one institution `571` coexist with one `571` per
+agency, which is exactly what this needs. The "ambiguity" §2 worried about is resolved the
+way the accounting profession resolves it, by reading a code together with the entity that
+carries it.
+
+Two things follow, both confirmed against the document:
+
+- **What is institution-level.** The 379 accounts that either have a child or are named in
+  the manual's own *"LISTE DES COMPTES PARENTS"*. The manual defines a parent account exactly
+  as this codebase does: it totalises its children, is **non-imputable**, and its balance is
+  "la somme dynamique des soldes de ses comptes enfants". The remaining 1 051 leaves are the
+  postable accounts, repeated per agency.
+- **Why `is_postable` had to be a stored column.** 8 accounts are declared parents while
+  having no children in the document, so being a parent cannot be inferred from structure
+  alone — which is the justification §2 reached on other grounds.
+
+The guide's `571000/571001/571002` are **pedagogical inventions**, kept because a distinct
+code per level reads more clearly when teaching the mechanism. They are marked as such in
+[the test guide](consolidated-chart-of-accounts-test-guide.md) and must not be copied into
+production.
 
 ## 3. What shipped
 
@@ -326,15 +360,42 @@ New `domain.*` keys in `lang/en/domain.php` and `lang/fr/domain.php`
    permissions.
 7. `config/money.php` and `accounting_days` remain authoritative for currency and
    calendar; the profile's equivalents are declarative.
+8. **The class is the leading digit of the code, and it is enforced on write.**
+   `571901` is class 5 and can never be class 4. Verified against all 1 430 accounts of
+   the institution's chart, which classify this way without exception. A new write path
+   that sets `account_class` must go through
+   `LedgerAccountController::accountClassCodeMismatch()` or repeat the check — the codes
+   come from the regulated chart and cannot be reinvented, so a class saved against the
+   wrong code used to strand that code permanently.
+9. **There are nine classes, and hors bilan is class 9.** Class 8 is *soldes
+   intermédiaires de gestion*. Adding a class, or reordering `accountClasses()`, changes
+   every code's implied class — the order **is** the numbering.
 
 ## 4b. Follow-up: PCEMF account classes (2026-08-06)
 
 Tester feedback: the account-creation form offered `asset`/`liability`/`equity`/`revenue`/
-`expense`, but a Cameroonian EMF keeps the **PCEMF** chart, whose eight classes are
-capitaux permanents, valeurs immobilisées, opérations avec la clientèle, tiers, trésorerie
-et opérations interbancaires, charges, produits, hors bilan. `account_class` now carries
-those; the class is the leading digit of the code. The value list and the reasoning live in
-[accounting-ledger.md](accounting-ledger.md#pcemf-classes).
+`expense`, but a Cameroonian EMF keeps the **PCEMF** chart. `account_class` now carries
+those classes; the class is the leading digit of the code. The value list and the reasoning
+live in [accounting-ledger.md](accounting-ledger.md#pcemf-classes).
+
+**Amended 2026-08-09, from the institution's own chart.** That first pass modelled *eight*
+classes with hors bilan at 8. The real chart has **nine**: class 8 is *soldes intermédiaires
+de gestion* (80–87: PNF, résultat d'exploitation, résultat courant …, described there as
+"regroupements fonctionnels automatiques pour générer le compte de résultat") and hors bilan
+is class **9** (90–99). The earlier list left the chart's 136 class-9 accounts with nowhere
+correct to go, and had no home at all for the 8 class-8 accounts.
+
+`soldes_intermediaires_gestion` was therefore inserted at position 8 and `hors_bilan` moved
+to 9, in `LedgerAccount::accountClasses()` and mirrored in the frontend union, class list,
+filters, tone map and both locales. `account_class` is a plain `varchar(32)` with no database
+constraint, so no migration was needed and existing `hors_bilan` rows keep their value —
+only the derived class *number* changes.
+
+The same pass made the code↔class rule enforced rather than advisory (invariant 8). It had
+been left advisory on the evidence that 26 test fixtures violated it; those fixtures turned
+out to be arbitrary placeholders, and every one of the 1 430 real accounts obeys the rule, so
+the fixtures were realigned to their codes and the check turned on. The form now fills the
+class in from the code, so the choice that could only be made wrongly is no longer offered.
 
 Worth knowing about that change:
 

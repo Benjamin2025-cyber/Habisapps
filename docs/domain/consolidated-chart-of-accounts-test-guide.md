@@ -155,6 +155,15 @@ Les deux comptes `4719xx` n'existent que parce que toute écriture a deux sens �
 débit, un autre au crédit. Ils représentent la contrepartie, « d'où vient l'argent ». Ne vous
 en préoccupez pas autrement.
 
+> **Ces numéros sont pédagogiques, pas le plan réel.** `571000`, `571001`, `571002` sont
+> inventés pour que l'arbre se lise d'un coup d'œil : un numéro distinct par niveau et par
+> agence. Le « Plan des Comptes HF 2026 » de la comptabilité ne fonctionne pas ainsi — il
+> contient une nomenclature **unique** (`57 CAISSE` → `571 Billets et Monnaies`), sans aucun
+> code propre à une agence, et chaque agence tiendra le **même** numéro `571`. Les mouvements
+> entre entités passent par les comptes de liaison `451`, `452` et `485`. Les deux modèles
+> fonctionnent dans le logiciel ; c'est celui de la comptabilité qui sera chargé. Ne recopiez
+> donc pas ces numéros en production.
+
 ---
 
 ## 3. Construire la structure
@@ -186,14 +195,17 @@ un rechargement de la page.
 
 **Comptabilité › Comptes généraux** → *Créer*.
 
-> **La liste des classes est celle du PCEMF, pas Actif/Passif.** Le champ *Classe* propose
-> désormais les huit classes du Plan Comptable des EMF — capitaux permanents, valeurs
-> immobilisées, opérations avec la clientèle, tiers, trésorerie et opérations interbancaires,
-> charges, produits, hors bilan — parce que c'est le plan qu'un EMF camerounais est tenu de
-> tenir. La classe est le **premier chiffre du code** : `571000` commence par 5, sa classe est
-> donc *trésorerie et opérations interbancaires*. Si vous voyez encore
-> Actif / Passif / Capitaux propres / Produits / Charges, le frontend n'a pas pris la
-> modification en compte.
+> **La classe se remplit toute seule, et c'est normal.** Dès que vous saisissez le code, le
+> champ *Classe* se positionne : dans le PCEMF la classe **est** le premier chiffre du code,
+> `571000` commence par 5, sa classe est donc *trésorerie et opérations interbancaires*. Ce
+> n'est pas un choix, et l'API refuse toute autre combinaison — c'est ce qui rend impossible
+> l'erreur qui, auparavant, immobilisait définitivement un code du plan.
+>
+> Les **neuf** classes proposées sont celles du plan que tient l'institution : capitaux
+> permanents, valeurs immobilisées, opérations avec la clientèle, tiers, trésorerie et
+> opérations interbancaires, charges, produits, **soldes intermédiaires de gestion (classe 8)**
+> et **hors bilan (classe 9)**. Si vous voyez encore Actif / Passif / Capitaux propres, ou le
+> hors bilan en classe 8, le frontend n'a pas pris la modification en compte.
 
 | Champ | Valeur |
 |---|---|
@@ -256,12 +268,11 @@ Deux comptes de plus, tous deux **Nature = Compte imputable**, **sans parent** :
 - `471902` `Contrepartie Cookbook` — agence AG-COOK-01 — Classe *Comptes de tiers* (classe 4)
   — Sens Crédit
 
-> **Pourquoi `4719xx` et non `5719xx`.** Dans le PCEMF, la classe est le **premier chiffre du
-> code** : un code en `5…` relève de la classe 5 (trésorerie), un code en `4…` de la classe 4
-> (tiers). Ces comptes servent de contrepartie de tiers, donc classe 4, donc un code en `4`.
-> La caisse, elle, est bien en `571…`. L'API **ne vérifie pas** cette cohérence — des plans
-> existants portent des codes qui ne suivent pas la convention, et refuser leur création
-> serait plus gênant qu'utile. C'est donc à vous de la respecter.
+> **Pourquoi `4719xx` et non `5719xx`.** La classe est le premier chiffre du code : un code en
+> `5…` relève de la classe 5 (trésorerie), un code en `4…` de la classe 4 (tiers). Ces comptes
+> servent de contrepartie de tiers, donc classe 4, donc un code en `4`. La caisse, elle, reste
+> en `571…`. L'API **vérifie** cette cohérence : un code en `5…` déclaré en classe 4 est
+> refusé, et le formulaire remplit la classe pour vous à partir du code.
 
 Rien d'autre à faire ici. La conversion automatique — un compte qui devient silencieusement
 un compte de regroupement dès qu'il acquiert un fils — vaut la peine d'être observée, mais
@@ -467,7 +478,8 @@ En tant que `test.cookbook.accountant@example.test` :
 | *« L'approbation du journal nécessite un réviseur différent de l'auteur. »* | Fonctionne comme prévu. Approuvez avec l'**autre** utilisateur (§4). |
 | Le compte que je cherche est absent d'une liste déroulante | C'est presque toujours correct : c'est un compte de regroupement, ou il appartient à une autre agence. Vérifiez la colonne **Structure**. |
 | Un compte est devenu « Compte de regroupement » tout seul | Correct — il a acquis un compte fils (Annexe A). |
-| **Je me suis trompé de classe à la création** | Corrigez-la : ouvrez le compte, changez la **Classe**, enregistrez. C'est accepté tant que le compte ne porte **aucun mouvement**. Dès qu'il en porte, la classe se fige — la changer reviendrait à modifier des états déjà produits ; la réponse comptable est alors un nouveau compte correctement classé et une **écriture de reclassement**. |
+| **La classe ne correspond pas à ce que je voulais** | Elle découle du code : changez le **code** et la classe suivra. On ne peut plus créer un compte dont la classe contredit son code — c'est refusé à la saisie. |
+| **Un compte existant porte une classe manifestement fausse** | Cela ne peut venir que d'un compte antérieur à cette règle ou repris d'un plan importé. Ouvrez-le et remettez la **Classe** sur celle qu'impose le code ; c'est accepté tant que le compte ne porte **aucun mouvement**. Dès qu'il en porte, la classe et le sens normal se figent — les changer reviendrait à modifier des états déjà produits ; la réponse comptable est alors un nouveau compte correctement classé et une **écriture de reclassement**. |
 | **J'ai archivé un compte et je ne peux plus créer le même code** | Normal : le code reste réservé même archivé, sinon l'historique deviendrait ambigu. N'inventez pas un autre code — filtrez la liste sur **Statut = Archivé**, puis **Activer** le compte et corrigez-le. Archiver n'est pas définitif. |
 | Un solde affiche 0 là où vous attendiez un chiffre | L'écriture n'est pas **comptabilisée**. Soumise et approuvée ne suffisent pas. |
 | Le total général vaut le double du chiffre attendu | **Véritable anomalie.** Signalez-la (§ étape 9). |
