@@ -62,6 +62,20 @@ return [
         'password' => env('SEED_BOOTSTRAP_ADMIN_PASSWORD'),
         'role' => env('SEED_BOOTSTRAP_ADMIN_ROLE', 'platform-admin'),
     ],
+    /*
+     * The first agency, so a fresh install has somewhere to hang the chart of
+     * accounts. Off by default, and the code has no fallback on purpose: an
+     * agency's `code` cannot be changed after creation — AgencyWorkflow::update
+     * accepts name, city, address and the rest, but not the code — so guessing
+     * one would burn an identifier the institution then has to live with.
+     * Everything else is editable, so only the code has to be right up front.
+     */
+    'default_agency' => [
+        'enabled' => (bool) env('SEED_DEFAULT_AGENCY', false),
+        'code' => env('SEED_DEFAULT_AGENCY_CODE'),
+        'name' => env('SEED_DEFAULT_AGENCY_NAME'),
+        'city' => env('SEED_DEFAULT_AGENCY_CITY'),
+    ],
     'crm' => [
         'kyc' => [
             'enforce_maker_checker' => (bool) env('CRM_KYC_ENFORCE_MAKER_CHECKER', true),
