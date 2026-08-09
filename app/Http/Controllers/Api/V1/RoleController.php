@@ -589,6 +589,11 @@ final class RoleController extends BaseController
             // Opening and closing the institution's own accounting period locks
             // and unlocks registrations institution-wide.
             'accounting.scope.institution.manage',
+            // Approving an operation-account mapping is what puts a posting rule
+            // into service — it decides where money is booked automatically, for
+            // every future transaction. It is the checker half of a maker-checker
+            // control, so it must not be handed out casually.
+            'operation.mappings.approve',
             'crm.pii.view',
             'crm.kyc.override.expired_identity',
             'crm.kyc.override.self_verify',

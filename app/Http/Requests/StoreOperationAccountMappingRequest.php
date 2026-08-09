@@ -33,10 +33,12 @@ final class StoreOperationAccountMappingRequest extends FormRequest
             'effective_from' => ['nullable', 'date'],
             'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'status' => ['nullable', Rule::in([OperationAccountMapping::STATUS_ACTIVE, OperationAccountMapping::STATUS_INACTIVE])],
+            // Approval is not something the author grants themselves: it comes
+            // from POST /operation-account-mappings/{id}/approve, which requires
+            // a different actor. Accepting `approved` here made create == approve.
             'approval_status' => ['nullable', Rule::in([
                 OperationAccountMapping::APPROVAL_DRAFT,
                 OperationAccountMapping::APPROVAL_SUBMITTED,
-                OperationAccountMapping::APPROVAL_APPROVED,
             ])],
             'rules' => ['nullable', 'array'],
             'rules.*' => ['nullable'],

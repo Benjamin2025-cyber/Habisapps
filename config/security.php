@@ -183,6 +183,7 @@ return [
                 'operation.mappings.create',
                 'operation.mappings.update',
                 'operation.mappings.archive',
+                'operation.mappings.approve',
                 'ledger.accounts.view',
                 'ledger.accounts.create',
                 'ledger.accounts.update',
@@ -603,6 +604,7 @@ return [
                 'operation.mappings.create',
                 'operation.mappings.update',
                 'operation.mappings.archive',
+                'operation.mappings.approve',
                 // Mapping the local chart onto the EMF/COBAC regulatory chart.
                 'emf.accounts.view',
                 'emf.accounts.create',

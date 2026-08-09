@@ -51,6 +51,31 @@ final class InsuranceProductWorkflow extends BaseController
             'metadata' => ['sometimes', 'nullable', 'array'],
         ])->validate();
 
+        // `insurance_partners` carries UNIQUE (agency_id, code). Answer a duplicate
+        // as a field error rather than letting it reach the index, where it can
+        // only surface as a generic conflict with no indication of which input
+        // was at fault.
+        $partnerAgencyId = $this->agencyId($validated['agency_public_id'] ?? null);
+        $codeTaken = DB::table('insurance_partners')
+            ->where('code', (string) $validated['code'])
+            ->when(
+                $partnerAgencyId === null,
+                static fn ($query) => $query->whereNull('agency_id'),
+                static fn ($query) => $query->where('agency_id', $partnerAgencyId),
+            )
+            ->exists();
+        if ($codeTaken) {
+            $agencyName = $partnerAgencyId === null
+                ? null
+                : DB::table('agencies')->where('id', $partnerAgencyId)->value('name');
+
+            return $this->respondUnprocessable(errors: ['code' => [
+                is_string($agencyName)
+                    ? __('domain.code_taken_in_agency', ['agency' => $agencyName])
+                    : __('domain.code_taken_at_institution'),
+            ]]);
+        }
+
         try {
             $partner = DB::transaction(function () use ($validated): object {
                 $agencyId = $this->agencyId($validated['agency_public_id'] ?? null);

@@ -191,10 +191,6 @@ final class OperationAccountMappingController extends BaseController
         $effectiveFrom = $this->dateInput($request->input('effective_from'));
         $effectiveTo = $this->dateInput($request->input('effective_to'));
 
-        if ($this->conflictsWithActiveApproved($status, $approvalStatus, $operationCode->id, $agencyId, $currency, $effectiveFrom, $effectiveTo, null)) {
-            return $this->respondUnprocessable(errors: ['effective_from' => [__('An overlapping active, approved mapping already exists for this operation code, agency, currency, and effective window.')]]);
-        }
-
         $approved = $approvalStatus === OperationAccountMapping::APPROVAL_APPROVED;
         $mapping = OperationAccountMapping::query()->create([
             'public_id' => (string) Str::ulid(),
@@ -278,10 +274,12 @@ final class OperationAccountMappingController extends BaseController
             $changes['status'] = $validated['status'];
         }
         if (array_key_exists('approval_status', $validated)) {
+            // Only draft/submitted reach here, so any recorded approval is being
+            // withdrawn: clear it rather than leave a stale approver on a rule
+            // that is no longer approved.
             $changes['approval_status'] = $validated['approval_status'];
-            $approved = $validated['approval_status'] === OperationAccountMapping::APPROVAL_APPROVED;
-            $changes['approved_by_user_id'] = $approved ? $actor->id : null;
-            $changes['approved_at'] = $approved ? now() : null;
+            $changes['approved_by_user_id'] = null;
+            $changes['approved_at'] = null;
         }
         if (array_key_exists('rules', $validated)) {
             $changes['rules'] = $validated['rules'];
@@ -317,6 +315,91 @@ final class OperationAccountMappingController extends BaseController
         return $this->respondSuccess(
             OperationAccountMappingResource::make($operationAccountMapping->refresh()->loadMissing(['operationCode', 'agency', 'debitLedgerAccount', 'creditLedgerAccount'])),
             'Operation account mapping updated successfully'
+        );
+    }
+
+    /**
+     * Approve a mapping — the decision that puts it into service, since only an
+     * approved mapping is ever resolved into a posting.
+     *
+     * Maker-checker, as `JournalEntryWorkflow::approve()` already does for
+     * entries: the reviewer must not be the author. Both may hold the same role,
+     * which is the point — two accountants check each other, rather than the
+     * control depending on a second role existing.
+     */
+    #[Response(status: 200, type: 'array{success: bool, message: string, data: array{operation_account_mapping: \App\Http\Resources\OperationAccountMappingResource}, errors: null, meta: null}')]
+    public function approve(Request $request, OperationAccountMapping $operationAccountMapping): JsonResponse
+    {
+        return $this->decide($request, $operationAccountMapping, OperationAccountMapping::APPROVAL_APPROVED);
+    }
+
+    #[Response(status: 200, type: 'array{success: bool, message: string, data: array{operation_account_mapping: \App\Http\Resources\OperationAccountMappingResource}, errors: null, meta: null}')]
+    public function reject(Request $request, OperationAccountMapping $operationAccountMapping): JsonResponse
+    {
+        return $this->decide($request, $operationAccountMapping, OperationAccountMapping::APPROVAL_REJECTED);
+    }
+
+    private function decide(Request $request, OperationAccountMapping $mapping, string $decision): JsonResponse
+    {
+        $actor = $request->user();
+        if (! $actor instanceof User || ! $actor->can('operation.mappings.approve')) {
+            return $this->respondForbidden();
+        }
+
+        if (! in_array($mapping->approval_status, [
+            OperationAccountMapping::APPROVAL_DRAFT,
+            OperationAccountMapping::APPROVAL_SUBMITTED,
+        ], true)) {
+            return $this->respondUnprocessable(errors: ['approval_status' => [
+                __('domain.operation_mapping_not_pending_decision'),
+            ]]);
+        }
+
+        // These rules decide where money is booked automatically, so the author
+        // signing off their own is the control this endpoint exists to prevent.
+        if ($mapping->accounting_owner_user_id === $actor->id) {
+            return $this->respondForbidden(__('domain.operation_mapping_reviewer_must_differ'));
+        }
+
+        // Two approved mappings overlapping on the same scope leave the resolver
+        // with an ambiguous rule. Checked here, at the moment one enters service:
+        // creating no longer approves, and the previous edit path set the status
+        // without ever consulting this.
+        if ($approved = $decision === OperationAccountMapping::APPROVAL_APPROVED) {
+            if ($this->conflictsWithActiveApproved(
+                $mapping->status,
+                OperationAccountMapping::APPROVAL_APPROVED,
+                $mapping->operation_code_id,
+                $mapping->agency_id,
+                $mapping->currency,
+                // Cast to `date` on the model, so normalise rather than assume.
+                $this->dateInput($mapping->effective_from),
+                $this->dateInput($mapping->effective_to),
+                $mapping->id,
+            )) {
+                return $this->respondUnprocessable(errors: ['effective_from' => [
+                    __('An overlapping active, approved mapping already exists for this operation code, agency, currency, and effective window.'),
+                ]]);
+            }
+        }
+
+        $mapping->fill([
+            'approval_status' => $decision,
+            'approved_by_user_id' => $approved ? $actor->id : null,
+            'approved_at' => $approved ? now() : null,
+        ])->save();
+
+        $this->securityAudit->record(
+            $approved ? 'operation.account_mapping.approved' : 'operation.account_mapping.rejected',
+            actor: $actor,
+            subject: $mapping,
+            properties: ['authored_by_user_id' => $mapping->accounting_owner_user_id],
+            request: $request,
+        );
+
+        return $this->respondSuccess(
+            OperationAccountMappingResource::make($mapping->refresh()->loadMissing(['operationCode', 'agency', 'debitLedgerAccount', 'creditLedgerAccount'])),
+            $approved ? 'Operation account mapping approved successfully' : 'Operation account mapping rejected successfully',
         );
     }
 

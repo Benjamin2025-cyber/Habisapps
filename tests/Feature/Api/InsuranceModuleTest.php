@@ -26,6 +26,42 @@ final class InsuranceModuleTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
+    public function test_duplicate_partner_code_is_a_field_error_not_a_constraint_violation(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('INS-DUP');
+
+        $payload = [
+            'agency_public_id' => $agency['public_id'],
+            'code' => 'INS-PARTNER-DUP',
+            'name' => 'Insurance Partner',
+        ];
+
+        $this->assertJsonSuccess(
+            $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/insurance-partners', $payload),
+            201,
+        );
+
+        // Without the guard this reached UNIQUE (agency_id, code) and could only
+        // come back as a generic conflict, naming no field. The form needs to
+        // know it was the code.
+        $duplicate = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/insurance-partners', $payload);
+        $duplicate->assertStatus(422);
+        $duplicate->assertJsonValidationErrors(['code']);
+
+        // The same code in another agency stays legal: the constraint is scoped.
+        $other = $this->createAgency('INS-DUP2');
+        $this->assertJsonSuccess(
+            $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/insurance-partners', [
+                ...$payload,
+                'agency_public_id' => $other['public_id'],
+            ]),
+            201,
+        );
+    }
+
     public function test_platform_admin_can_create_insurance_product_and_process_claim_lifecycle(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

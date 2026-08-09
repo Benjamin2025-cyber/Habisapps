@@ -74,6 +74,8 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::post('operation-account-mappings', [OperationAccountMappingController::class, 'store']);
     Route::get('operation-account-mappings/{operationAccountMapping}', [OperationAccountMappingController::class, 'show']);
     Route::patch('operation-account-mappings/{operationAccountMapping}', [OperationAccountMappingController::class, 'update']);
+    Route::post('operation-account-mappings/{operationAccountMapping}/approve', [OperationAccountMappingController::class, 'approve']);
+    Route::post('operation-account-mappings/{operationAccountMapping}/reject', [OperationAccountMappingController::class, 'reject']);
     Route::delete('operation-account-mappings/{operationAccountMapping}', [OperationAccountMappingController::class, 'destroy']);
 
     Route::get('report-runs', [ReportRunController::class, 'index']);

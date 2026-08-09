@@ -60,7 +60,10 @@ final class Module3AccountingProductTest extends TestCase
                 'name' => 'Duplicate Savings',
                 'account_family' => AccountProduct::FAMILY_SAVINGS,
             ]);
-        $this->assertJsonError($duplicate, 422, 'Account product code already exists for this agency scope.');
+        // Reported on the `code` field so the form can put it under that input,
+        // and it names the agency the code is already used in.
+        $duplicate->assertStatus(422);
+        $duplicate->assertJsonValidationErrors(['code']);
 
         $update = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('account-product-update')->plainTextToken])
             ->patchJson('/api/v1/account-products/'.$productPublicId, [

@@ -3941,6 +3941,8 @@ final class Module4CreditLoansTest extends TestCase
     public function test_operation_account_mapping_api_configures_agency_mappings_and_rejects_overlap(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
+        // Maker-checker: a posting rule is approved by someone other than its author.
+        $checker = $this->createUserWithRole('platform-admin');
         $agency = $this->createAgency('MAPAPI');
         $debit = $this->createLedgerAccount($agency);
         $credit = $this->createLedgerAccount($agency);
@@ -3955,16 +3957,27 @@ final class Module4CreditLoansTest extends TestCase
                 'credit_ledger_account_public_id' => $credit['public_id'],
                 'currency' => 'XAF',
                 'effective_from' => '2026-01-01',
-                'approval_status' => 'approved',
             ]);
         $this->assertJsonSuccess($create, 201);
         $create->assertJsonPath('data.agency_public_id', $agencyPublicId);
-        $create->assertJsonPath('data.approval_status', 'approved');
+        // Created as a draft: approval is a separate decision now.
+        $create->assertJsonPath('data.approval_status', 'draft');
         $create->assertJsonPath('data.effective_from', '2026-01-01');
         $firstPublicId = $this->requireStringJsonPath($create, 'data.public_id');
 
-        // A second active, approved mapping for the same scope and overlapping
-        // window is rejected.
+        // The author cannot sign off their own posting rule.
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/operation-account-mappings/'.$firstPublicId.'/approve')
+            ->assertForbidden();
+
+        $approve = $this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/operation-account-mappings/'.$firstPublicId.'/approve');
+        $this->assertJsonSuccess($approve);
+        $approve->assertJsonPath('data.approval_status', 'approved');
+
+        // A second mapping may be drafted freely; what is refused is *approving*
+        // it while an approved one already covers the same scope and window,
+        // since that is the point at which the resolver would become ambiguous.
         $overlap = $this->withApiHeaders()->actingAsSanctum($actor)
             ->postJson('/api/v1/operation-account-mappings', [
                 'operation_code_public_id' => $operationCode['public_id'],
@@ -3973,9 +3986,13 @@ final class Module4CreditLoansTest extends TestCase
                 'credit_ledger_account_public_id' => $credit['public_id'],
                 'currency' => 'XAF',
                 'effective_from' => '2026-06-01',
-                'approval_status' => 'approved',
             ]);
-        $overlap->assertStatus(422)->assertJsonValidationErrors(['effective_from']);
+        $this->assertJsonSuccess($overlap, 201);
+        $overlapPublicId = $this->requireStringJsonPath($overlap, 'data.public_id');
+        $this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/operation-account-mappings/'.$overlapPublicId.'/approve')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['effective_from']);
 
         // Suspending the first frees the scope for a new approved mapping.
         $suspend = $this->withApiHeaders()->actingAsSanctum($actor)
@@ -3983,17 +4000,10 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($suspend);
         $suspend->assertJsonPath('data.approval_status', 'suspended');
 
-        $second = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/operation-account-mappings', [
-                'operation_code_public_id' => $operationCode['public_id'],
-                'agency_public_id' => $agencyPublicId,
-                'debit_ledger_account_public_id' => $debit['public_id'],
-                'credit_ledger_account_public_id' => $credit['public_id'],
-                'currency' => 'XAF',
-                'effective_from' => '2026-06-01',
-                'approval_status' => 'approved',
-            ]);
-        $this->assertJsonSuccess($second, 201);
+        $secondApproval = $this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/operation-account-mappings/'.$overlapPublicId.'/approve');
+        $this->assertJsonSuccess($secondApproval);
+        $secondApproval->assertJsonPath('data.approval_status', 'approved');
     }
 
     public function test_operation_account_mapping_readiness_reports_blockers_per_operation(): void

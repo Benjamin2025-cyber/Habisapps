@@ -35,7 +35,21 @@ final class UpdateOperationAccountMappingRequest extends FormRequest
             'effective_from' => ['sometimes', 'nullable', 'date'],
             'effective_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:effective_from'],
             'status' => ['sometimes', Rule::in([OperationAccountMapping::STATUS_ACTIVE, OperationAccountMapping::STATUS_INACTIVE, OperationAccountMapping::STATUS_ARCHIVED])],
-            'approval_status' => ['sometimes', Rule::in(OperationAccountMapping::APPROVAL_STATUSES)],
+            // Editing may withdraw a rule to draft or put it up for review; it
+            // may not approve or reject it. Those are decisions, taken through
+            // their own endpoints by someone other than the author.
+            // Every state except the two decisions. Withdrawing, suspending or
+            // revoking only ever takes a rule *out* of service, so it needs no
+            // second pair of eyes; approving and rejecting are decisions, taken
+            // through their own endpoints by someone other than the author.
+            'approval_status' => ['sometimes', Rule::in([
+                OperationAccountMapping::APPROVAL_DRAFT,
+                OperationAccountMapping::APPROVAL_SUBMITTED,
+                OperationAccountMapping::APPROVAL_SUSPENDED,
+                OperationAccountMapping::APPROVAL_REVOKED,
+                OperationAccountMapping::APPROVAL_EXPIRED,
+                OperationAccountMapping::APPROVAL_ARCHIVED,
+            ])],
             'rules' => ['sometimes', 'nullable', 'array'],
             'rules.*' => ['nullable'],
         ];

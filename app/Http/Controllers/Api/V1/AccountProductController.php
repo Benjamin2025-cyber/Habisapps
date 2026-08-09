@@ -103,7 +103,13 @@ final class AccountProductController extends BaseController
             ->where('agency_id', $agencyId)
             ->exists();
         if ($duplicateExists) {
-            return $this->respondUnprocessable('Account product code already exists for this agency scope.');
+            // On the `code` field, not as a bare message: the form can then put
+            // it under the offending input instead of in a banner.
+            return $this->respondUnprocessable(errors: ['code' => [
+                $agency instanceof Agency
+                    ? __('domain.code_taken_in_agency', ['agency' => $agency->name])
+                    : __('domain.code_taken_at_institution'),
+            ]]);
         }
 
         try {

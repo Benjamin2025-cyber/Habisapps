@@ -2572,6 +2572,111 @@ final class Module3AccountingArchitectureTest extends TestCase
             ->patchJson('/api/v1/institution', ['legal_name' => 'Habis Microfinance SA']));
     }
 
+    public function test_a_posting_rule_cannot_be_authored_and_approved_by_the_same_person(): void
+    {
+        $author = $this->createUserWithRole('chief-accountant');
+        $checker = $this->createUserWithRole('chief-accountant');
+        $agency = $this->createAgency('MAP-MC');
+        $debit = $this->createAgencyLedgerAccount($author, $agency['public_id'], '571401', 'Caisse');
+        $credit = $this->createAgencyLedgerAccount($author, $agency['public_id'], '571411', 'Contrepartie');
+
+        $code = $this->withApiHeaders()->actingAsSanctum($author)
+            ->postJson('/api/v1/operation-codes', [
+                'code' => 'mc_test_operation',
+                'label' => 'Maker-checker test',
+                'module' => 'accounting',
+                'operation_type' => 'adjustment',
+                'direction' => 'debit_credit',
+            ]);
+        $this->assertJsonSuccess($code, 201);
+
+        // Only an approved mapping is ever resolved into a posting, so approval
+        // is what puts a rule into service. The author must not grant it.
+        $mapping = $this->withApiHeaders()->actingAsSanctum($author)
+            ->postJson('/api/v1/operation-account-mappings', [
+                'operation_code_public_id' => $this->requireStringJsonPath($code, 'data.public_id'),
+                'agency_public_id' => $agency['public_id'],
+                'debit_ledger_account_public_id' => $debit,
+                'credit_ledger_account_public_id' => $credit,
+                'currency' => 'XAF',
+                'approval_status' => 'approved',
+            ]);
+        $mapping->assertStatus(422);
+        $mapping->assertJsonValidationErrors(['approval_status']);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($author)
+            ->postJson('/api/v1/operation-account-mappings', [
+                'operation_code_public_id' => $this->requireStringJsonPath($code, 'data.public_id'),
+                'agency_public_id' => $agency['public_id'],
+                'debit_ledger_account_public_id' => $debit,
+                'credit_ledger_account_public_id' => $credit,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.approval_status', 'draft');
+        $mappingPublicId = $this->requireStringJsonPath($created, 'data.public_id');
+
+        // Nor may the author reach approved by editing around the decision.
+        $this->withApiHeaders()->actingAsSanctum($author)
+            ->patchJson('/api/v1/operation-account-mappings/'.$mappingPublicId, ['approval_status' => 'approved'])
+            ->assertStatus(422);
+
+        $this->withApiHeaders()->actingAsSanctum($author)
+            ->postJson('/api/v1/operation-account-mappings/'.$mappingPublicId.'/approve')
+            ->assertForbidden();
+
+        // A second holder of the same role is a valid checker: the control is on
+        // identity, not on a separate role existing.
+        $approved = $this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/operation-account-mappings/'.$mappingPublicId.'/approve');
+        $this->assertJsonSuccess($approved);
+        $approved->assertJsonPath('data.approval_status', 'approved');
+
+        // Already decided: it cannot be approved twice.
+        $this->withApiHeaders()->actingAsSanctum($checker)
+            ->postJson('/api/v1/operation-account-mappings/'.$mappingPublicId.'/approve')
+            ->assertStatus(422);
+    }
+
+    public function test_an_agency_accountant_cannot_approve_a_posting_rule(): void
+    {
+        $agency = $this->createAgency('MAP-ACC');
+        $accountant = $this->createUserWithRole('accountant', $agency['code'], $agency['name']);
+        $admin = $this->createUserWithRole('platform-admin');
+        $debit = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571402', 'Caisse');
+
+        $mappingId = DB::table('operation_account_mappings')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'operation_code_id' => DB::table('operation_codes')->insertGetId([
+                'public_id' => (string) Str::ulid(),
+                'code' => 'acc_no_approve',
+                'label' => 'No approve',
+                'module' => 'accounting',
+                'operation_type' => 'adjustment',
+                'direction' => 'debit_credit',
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]),
+            'agency_id' => $agency['id'],
+            'debit_ledger_account_id' => DB::table('ledger_accounts')->where('public_id', $debit)->value('id'),
+            'currency' => 'XAF',
+            'status' => 'active',
+            'approval_status' => 'draft',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $mappingRow = DB::table('operation_account_mappings')->where('id', $mappingId)->first(['public_id']);
+        self::assertNotNull($mappingRow);
+        $publicId = (string) $mappingRow->public_id;
+
+        // Maintaining its agency's chart is the accountant's job; deciding which
+        // posting rules go live is not.
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->postJson('/api/v1/operation-account-mappings/'.$publicId.'/approve')
+            ->assertForbidden();
+    }
+
     public function test_chief_accountant_reaches_the_report_catalogue_without_an_agency_assignment(): void
     {
         $chief = $this->createUserWithRole('chief-accountant');
