@@ -1,0 +1,7503 @@
+{
+ "source": "Plan des Comptes HF 2026 — extrait du manuel de procédures comptables (HABIBI FINANCE S.A)",
+ "extracted_on": "2026-08-09",
+ "root_sides": {
+  "10": {
+   "label": "CAPITAL",
+   "side": "credit",
+   "confirmed": true
+  },
+  "11": {
+   "label": "RESERVES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "12": {
+   "label": "REPORT A NOUVEAU",
+   "side": "credit",
+   "confirmed": true
+  },
+  "13": {
+   "label": "RESULTAT NET DE L'EXERCICE",
+   "side": "credit",
+   "confirmed": true
+  },
+  "14": {
+   "label": "PROVISIONS ET RESERVES REGLEMENTEES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "15": {
+   "label": "SUBVENTIONS D'INVESTISSEMENT",
+   "side": "credit",
+   "confirmed": true
+  },
+  "16": {
+   "label": "FONDS DE FINANCEMENT ET DE GARANTIE",
+   "side": "credit",
+   "confirmed": true
+  },
+  "17": {
+   "label": "EMPRUNTS OBLIGATAIRES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "18": {
+   "label": "AUTRES RESSOURCES PERMANENTES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "19": {
+   "label": "PROVISIONS POUR RISQUES ET CHARGES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "20": {
+   "label": "FRAIS ET VALEURS INCORPORELLES IMMOBILISEES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "21": {
+   "label": "TERRAINS",
+   "side": "debit",
+   "confirmed": true
+  },
+  "22": {
+   "label": "AUTRES IMMOBILISATIONS CORPORELLES EN SERVICE",
+   "side": "debit",
+   "confirmed": true
+  },
+  "23": {
+   "label": "AUTRES IMMOBILISATIONS CORPORELLES EN COURS",
+   "side": "debit",
+   "confirmed": true
+  },
+  "24": {
+   "label": "AVANCES ET ACOMPTES SUR COMMANDES D'IMMOBILISATIONS",
+   "side": "debit",
+   "confirmed": true
+  },
+  "25": {
+   "label": "DEPOTS ET CAUTIONNEMENTS NON COMMERCIAUX VERSES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "26": {
+   "label": "TITRES DE PARTICIPATIONS ET AUTRES IMMOBILISATIONS FINANCIERES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "27": {
+   "label": "PRETS ET TITRES PUBLICS ET ASSIMILES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "28": {
+   "label": "AMORTISSEMENTS DES VALEURS INCORPORELLES ET CORPORELLES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "29": {
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE VALEURS IMMOBILISEES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "32": {
+   "label": "CREDITS A COURT TERME",
+   "side": "debit",
+   "confirmed": false
+  },
+  "33": {
+   "label": "CREANCES EN SOUFFRANCE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "34": {
+   "label": "AUTRES OPERATIONS ENGAGEES POUR LE COMPTE DE LA CLIENTELE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "35": {
+   "label": "COMPTES DE DEPOTS A REGIME SPECIAL",
+   "side": "credit",
+   "confirmed": false
+  },
+  "36": {
+   "label": "COMPTES DE DEPOTS A TERME",
+   "side": "credit",
+   "confirmed": false
+  },
+  "37": {
+   "label": "DECOUVERTS ET COMPTES CREDITEURS A VUE",
+   "side": "credit",
+   "confirmed": false
+  },
+  "38": {
+   "label": "AUTRES COMPTES DE LA CLIENTELE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "39": {
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE LA CLIENTELE",
+   "side": "credit",
+   "confirmed": false
+  },
+  "40": {
+   "label": "FOURNISSEURS",
+   "side": "debit",
+   "confirmed": false
+  },
+  "41": {
+   "label": "INSTRUMENTS DE PAIEMENT A L'ENCAISSEMENT",
+   "side": "debit",
+   "confirmed": false
+  },
+  "42": {
+   "label": "PERSONNEL",
+   "side": "debit",
+   "confirmed": false
+  },
+  "43": {
+   "label": "ETAT, COLLECTIVITES PUBLIQUES ET ORGANISMES INTERNATIONAUX",
+   "side": "debit",
+   "confirmed": false
+  },
+  "44": {
+   "label": "SOCIETAIRES ET ACTIONNAIRES",
+   "side": "debit",
+   "confirmed": false
+  },
+  "45": {
+   "label": "COMPTES DE LIAISON",
+   "side": "debit",
+   "confirmed": false
+  },
+  "46": {
+   "label": "AUTRES DEBITEURS ET CREDITEURS",
+   "side": "credit",
+   "confirmed": false
+  },
+  "47": {
+   "label": "COMPTES DE REGULARISATION",
+   "side": "debit",
+   "confirmed": false
+  },
+  "48": {
+   "label": "CREANCES DIVERSES EN SOUFFRANCE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "49": {
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES D'AUTRES TIERS",
+   "side": "credit",
+   "confirmed": false
+  },
+  "51": {
+   "label": "TITRES DE PLACEMENT TRANSACTION",
+   "side": "debit",
+   "confirmed": false
+  },
+  "52": {
+   "label": "MARCHE MONETAIRE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "53": {
+   "label": "AUTRES VALEURS RECUES OU DONNEES",
+   "side": "credit",
+   "confirmed": false
+  },
+  "54": {
+   "label": "PRETS, EMPRUNTS ET COMPTES A TERME DES CORRESPONDANTS",
+   "side": "credit",
+   "confirmed": false
+  },
+  "55": {
+   "label": "PRETS ET EMPRUNTS AU JOUR LE JOUR DES CORRESPONDANTS",
+   "side": "credit",
+   "confirmed": false
+  },
+  "56": {
+   "label": "COMPTES A VUE DES CORRESPONDANTS",
+   "side": "debit",
+   "confirmed": false
+  },
+  "57": {
+   "label": "CAISSE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "58": {
+   "label": "CREANCES EN SOUFFRANCE SUR LES CORRESPONDANTS",
+   "side": "debit",
+   "confirmed": false
+  },
+  "59": {
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE TRESORERIE",
+   "side": "credit",
+   "confirmed": false
+  },
+  "60": {
+   "label": "CHARGES SUR OPERATIONS DE TRESORERIE ET OPERATIONS INTERBANCAIRES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "61": {
+   "label": "INTERETS SUR OPERATIONS AVEC LA CLIENTELE OU SOCIETAIRES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "62": {
+   "label": "CHARGES DIVERSES SUR OPERATIONS BANCAIRES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "63": {
+   "label": "CHARGES SUR RESSOURCES PERMANENTES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "64": {
+   "label": "CHARGES LIEES AUX ACTIVITES ACCESSOIRES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "65": {
+   "label": "CHARGES DE PERSONNEL ET CHARGES GENERALES D'EXPLOITATION",
+   "side": "debit",
+   "confirmed": true
+  },
+  "66": {
+   "label": "IMPOTS ET TAXES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "67": {
+   "label": "PERTES EXCEPTIONNELLES ET SUR EXCERCICES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "68": {
+   "label": "DOTATIONS AUX AMORTISSEMENTS",
+   "side": "debit",
+   "confirmed": true
+  },
+  "69": {
+   "label": "DOTATIONS AUX PROVISIONS ET PERTES SUR CREANCES IRRECOUVRABLES",
+   "side": "debit",
+   "confirmed": true
+  },
+  "70": {
+   "label": "PRODUITS SUR OPERATIONS DE TRESORERIE ET INTERBANCAIRE",
+   "side": "credit",
+   "confirmed": true
+  },
+  "71": {
+   "label": "PRODUITS SUR LES OPERATIONS AVEC LA CLIENTELE OU SOCIETAIRE",
+   "side": "credit",
+   "confirmed": true
+  },
+  "72": {
+   "label": "PRODUITS SUR OPERATIONS DIVERSES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "73": {
+   "label": "PRODUITS DU PORTEFEUILLE TITRES ET DES PRETS A SOUSCRIPTION OBLIGATOIRE",
+   "side": "credit",
+   "confirmed": true
+  },
+  "74": {
+   "label": "PRODUITS ACCESSOIRES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "75": {
+   "label": "AUTRES PRODUITS751 - Jetons de présence",
+   "side": "credit",
+   "confirmed": true
+  },
+  "76": {
+   "label": "SUBVENTIONS D'EXPLOITATION ET D'EQUILIBRE",
+   "side": "credit",
+   "confirmed": true
+  },
+  "77": {
+   "label": "PROFITS EXCEPTIONNELS ET SUR EXERCICES ANTERIEURS - PRIX DE CESSION DES ELEMENTS D'ACTIF",
+   "side": "credit",
+   "confirmed": true
+  },
+  "78": {
+   "label": "REPRISES D'AMORTISSEMENTS",
+   "side": "credit",
+   "confirmed": true
+  },
+  "79": {
+   "label": "REPRISES DE PROVISIONS ET RECUPERATIONS SUR CREANCES IRRECOUVRABLES",
+   "side": "credit",
+   "confirmed": true
+  },
+  "90": {
+   "label": "ENGAGEMENTS DONNES AUX CORRESPONDANTS LOCAUX",
+   "side": "debit",
+   "confirmed": false
+  },
+  "91": {
+   "label": "ENGAGEMENTS RECUS DES CORRESPONDANTS LOCAUX",
+   "side": "credit",
+   "confirmed": false
+  },
+  "92": {
+   "label": "ENGAGEMENTS EN FAVEUR DE LA CLIENTELE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "93": {
+   "label": "ENGAGEMENTS RECUS DE LA CLIENTELE",
+   "side": "credit",
+   "confirmed": false
+  },
+  "94": {
+   "label": "ENGAGEMENTS DE CREDIT BAIL",
+   "side": "debit",
+   "confirmed": false
+  },
+  "95": {
+   "label": "OPERATIONS SUR TITRES ET VALEURS AFFECTEES EN GARANTIE DES OPERATIONS DU MARCHE MONETAIRE",
+   "side": "debit",
+   "confirmed": false
+  },
+  "96": {
+   "label": "ENGAGEMENTS RECUS DE L'ETAT ET DES ORGANISMES PUBLICS",
+   "side": "credit",
+   "confirmed": false
+  },
+  "97": {
+   "label": "OPERATIONS EN DEVISES",
+   "side": "debit",
+   "confirmed": false
+  },
+  "98": {
+   "label": "ENGAGEMENTS PAR SIGNATURE DOUTEUX",
+   "side": "debit",
+   "confirmed": false
+  },
+  "99": {
+   "label": "COMPTE GENERAL DES ENGAGEMENTS HORS-BILAN",
+   "side": "debit",
+   "confirmed": false
+  }
+ },
+ "accounts": [
+  {
+   "code": "10",
+   "label": "CAPITAL",
+   "postable": false
+  },
+  {
+   "code": "101",
+   "label": "Capital social",
+   "postable": false
+  },
+  {
+   "code": "1011",
+   "label": "Capital souscrit non appelé",
+   "postable": false
+  },
+  {
+   "code": "10111100",
+   "label": "Capital souscrit non appelé",
+   "postable": true
+  },
+  {
+   "code": "1012",
+   "label": "Capital souscrit appelé non versé",
+   "postable": false
+  },
+  {
+   "code": "10120",
+   "label": "Capital souscrit non versé EMF 2e et 3e catégorie",
+   "postable": true
+  },
+  {
+   "code": "10121100",
+   "label": "Capital souscrit appelé non versé",
+   "postable": true
+  },
+  {
+   "code": "1013",
+   "label": "Capital souscrit appelé versé non amorti",
+   "postable": false
+  },
+  {
+   "code": "10130",
+   "label": "Capital souscrit appelé verser non amorti EMF 2e et 3e Catégorie",
+   "postable": true
+  },
+  {
+   "code": "1014",
+   "label": "Capital souscrit appelé versé amorti",
+   "postable": true
+  },
+  {
+   "code": "102",
+   "label": "Fonds de dotation",
+   "postable": true
+  },
+  {
+   "code": "103",
+   "label": "Actionnaires, capital souscrit non appelé",
+   "postable": false
+  },
+  {
+   "code": "1030",
+   "label": "Actions propres détenues",
+   "postable": true
+  },
+  {
+   "code": "1031",
+   "label": "Autres actionnaires",
+   "postable": true
+  },
+  {
+   "code": "104",
+   "label": "Primes liées au capital et parts sociales",
+   "postable": false
+  },
+  {
+   "code": "1041",
+   "label": "Primes d'émission",
+   "postable": true
+  },
+  {
+   "code": "1042",
+   "label": "Primes d'apport",
+   "postable": true
+  },
+  {
+   "code": "1043",
+   "label": "Primes de fusion",
+   "postable": true
+  },
+  {
+   "code": "1044",
+   "label": "Primes de conversion",
+   "postable": true
+  },
+  {
+   "code": "1045",
+   "label": "Autres primes liées au capital",
+   "postable": true
+  },
+  {
+   "code": "11",
+   "label": "RESERVES",
+   "postable": false
+  },
+  {
+   "code": "111",
+   "label": "Réserves légales",
+   "postable": true
+  },
+  {
+   "code": "112",
+   "label": "Réserves obligatoires et réglementaires",
+   "postable": true
+  },
+  {
+   "code": "113",
+   "label": "Réserves statutaires et contractuelles",
+   "postable": true
+  },
+  {
+   "code": "114",
+   "label": "Réserves facultatives",
+   "postable": true
+  },
+  {
+   "code": "12",
+   "label": "REPORT A NOUVEAU",
+   "postable": false
+  },
+  {
+   "code": "121",
+   "label": "Report à nouveau créditeur",
+   "postable": true
+  },
+  {
+   "code": "122",
+   "label": "Report à nouveau débiteur",
+   "postable": true
+  },
+  {
+   "code": "13",
+   "label": "RESULTAT NET DE L'EXERCICE",
+   "postable": false
+  },
+  {
+   "code": "131",
+   "label": "Bénéfice de l'exercice",
+   "postable": true
+  },
+  {
+   "code": "132",
+   "label": "Perte de l'exercice",
+   "postable": true
+  },
+  {
+   "code": "14",
+   "label": "PROVISIONS ET RESERVES REGLEMENTEES",
+   "postable": false
+  },
+  {
+   "code": "141",
+   "label": "Provisions réglementées",
+   "postable": false
+  },
+  {
+   "code": "1410",
+   "label": "Amortissements dérogatoires",
+   "postable": true
+  },
+  {
+   "code": "1411",
+   "label": "Ecarts de réévaluation des immobilisations amortissables",
+   "postable": true
+  },
+  {
+   "code": "1412",
+   "label": "Ecarts de réévaluation des créances",
+   "postable": true
+  },
+  {
+   "code": "1413",
+   "label": "Plus-value de cession à réinvestir",
+   "postable": true
+  },
+  {
+   "code": "1414",
+   "label": "Autres provisions réglementées",
+   "postable": true
+  },
+  {
+   "code": "142",
+   "label": "Réserves réglementées",
+   "postable": false
+  },
+  {
+   "code": "1420",
+   "label": "Ecarts de réévaluation des immobilisations non amortissables",
+   "postable": true
+  },
+  {
+   "code": "1421",
+   "label": "Autres réserves réglementées",
+   "postable": true
+  },
+  {
+   "code": "15",
+   "label": "SUBVENTIONS D'INVESTISSEMENT",
+   "postable": false
+  },
+  {
+   "code": "151",
+   "label": "Subventions d'équipement",
+   "postable": false
+  },
+  {
+   "code": "15110",
+   "label": "Subventions d'équipement",
+   "postable": true
+  },
+  {
+   "code": "15119",
+   "label": "Subventions d'équipement réseau",
+   "postable": true
+  },
+  {
+   "code": "152",
+   "label": "Autres subventions d'Investissement",
+   "postable": false
+  },
+  {
+   "code": "15210",
+   "label": "Subventions d'investissement",
+   "postable": true
+  },
+  {
+   "code": "15219",
+   "label": "Subventions d'investissement réseau",
+   "postable": true
+  },
+  {
+   "code": "16",
+   "label": "FONDS DE FINANCEMENT ET DE GARANTIE",
+   "postable": false
+  },
+  {
+   "code": "160",
+   "label": "Fonds de solidarité réglementaire",
+   "postable": true
+  },
+  {
+   "code": "161",
+   "label": "Fonds affectés sur ressources propres",
+   "postable": false
+  },
+  {
+   "code": "16109",
+   "label": "Fonds affectés sur ressources propres réseau",
+   "postable": true
+  },
+  {
+   "code": "1611",
+   "label": "Fonds affectés de bonification des intérêts",
+   "postable": true
+  },
+  {
+   "code": "1612",
+   "label": "Fonds affectés de garantie des avals",
+   "postable": true
+  },
+  {
+   "code": "1613",
+   "label": "Fonds affectés de financement des études",
+   "postable": true
+  },
+  {
+   "code": "1614",
+   "label": "Fonds affectés de financement des participations",
+   "postable": true
+  },
+  {
+   "code": "1615",
+   "label": "Autres fonds affectés",
+   "postable": true
+  },
+  {
+   "code": "162",
+   "label": "Fonds d'affectation sur ressources extérieures",
+   "postable": false
+  },
+  {
+   "code": "16209",
+   "label": "Fonds d'affectation sur ressources extérieures réseau",
+   "postable": true
+  },
+  {
+   "code": "1621",
+   "label": "Fonds d'affectation de bonification des intérêts",
+   "postable": true
+  },
+  {
+   "code": "1622",
+   "label": "Fonds d'affectation de garantie des avals",
+   "postable": true
+  },
+  {
+   "code": "1623",
+   "label": "Fonds d'affectation de financement des études",
+   "postable": true
+  },
+  {
+   "code": "1624",
+   "label": "Fonds d'affectation de financement des participations",
+   "postable": true
+  },
+  {
+   "code": "1625",
+   "label": "Autres fonds d'affectation",
+   "postable": true
+  },
+  {
+   "code": "163",
+   "label": "Fonds de garantie et assurance mutuels",
+   "postable": false
+  },
+  {
+   "code": "16300",
+   "label": "Fonds de garantie et assurance mutuels hors réseau",
+   "postable": true
+  },
+  {
+   "code": "16309",
+   "label": "Fonds de garantie et assurance mutuels réseau",
+   "postable": true
+  },
+  {
+   "code": "17",
+   "label": "EMPRUNTS OBLIGATAIRES",
+   "postable": false
+  },
+  {
+   "code": "171",
+   "label": "Emprunts-Obligations souscrits",
+   "postable": true
+  },
+  {
+   "code": "172",
+   "label": "Obligations échues à rembourser",
+   "postable": true
+  },
+  {
+   "code": "174",
+   "label": "Dettes rattachées aux emprunts obligataires",
+   "postable": true
+  },
+  {
+   "code": "17909",
+   "label": "Emprunts obligataires réseaux",
+   "postable": true
+  },
+  {
+   "code": "18",
+   "label": "AUTRES RESSOURCES PERMANENTES",
+   "postable": false
+  },
+  {
+   "code": "181",
+   "label": "Emprunts participatifs et dettes subordonnées",
+   "postable": false
+  },
+  {
+   "code": "1811",
+   "label": "Emprunts participatifs",
+   "postable": true
+  },
+  {
+   "code": "1812",
+   "label": "Dettes subordonnées",
+   "postable": true
+  },
+  {
+   "code": "18199",
+   "label": "Emprunts participatifs et dettes subordonnées réseau",
+   "postable": true
+  },
+  {
+   "code": "182",
+   "label": "Comptes bloqués actionnaires ou associés",
+   "postable": false
+  },
+  {
+   "code": "1821",
+   "label": "Comptes bloqués actionnaires",
+   "postable": false
+  },
+  {
+   "code": "18210",
+   "label": "Comptes bloqués actionnaires hors réseau",
+   "postable": true
+  },
+  {
+   "code": "18219",
+   "label": "Comptes bloqués actionnaires réseau",
+   "postable": true
+  },
+  {
+   "code": "18220",
+   "label": "Comptes bloqués associés hors réseau",
+   "postable": true
+  },
+  {
+   "code": "183",
+   "label": "Autres comptes bloqués",
+   "postable": false
+  },
+  {
+   "code": "1831",
+   "label": "Ligne de financement reçue de l'Etat et assortie d'une clause",
+   "postable": true
+  },
+  {
+   "code": "1832",
+   "label": "Ligne de financement reçue d'organismes et assortie d'une clause",
+   "postable": true
+  },
+  {
+   "code": "1833",
+   "label": "Autres comptes bloqués",
+   "postable": true
+  },
+  {
+   "code": "184",
+   "label": "Titres de créances négociables",
+   "postable": true
+  },
+  {
+   "code": "185",
+   "label": "Emprunts à long et moyen terme",
+   "postable": false
+  },
+  {
+   "code": "1851",
+   "label": "Emprunt LT",
+   "postable": false
+  },
+  {
+   "code": "18510",
+   "label": "Emprunt LT",
+   "postable": true
+  },
+  {
+   "code": "18511",
+   "label": "Fournisseurs LT",
+   "postable": true
+  },
+  {
+   "code": "18519",
+   "label": "Emprunt LT réseau",
+   "postable": true
+  },
+  {
+   "code": "1852",
+   "label": "Emprunt MT",
+   "postable": false
+  },
+  {
+   "code": "18520",
+   "label": "Emprunt MT",
+   "postable": true
+  },
+  {
+   "code": "18521",
+   "label": "Fournisseurs MT",
+   "postable": true
+  },
+  {
+   "code": "18529",
+   "label": "Emprunt MT réseau",
+   "postable": true
+  },
+  {
+   "code": "186",
+   "label": "Dettes de crédits bail et contrats assimilés",
+   "postable": false
+  },
+  {
+   "code": "1860",
+   "label": "Emprunts équivalents de crédit-bail mobilier",
+   "postable": true
+  },
+  {
+   "code": "1861",
+   "label": "Emprunts équivalents de crédit-bail immobilier",
+   "postable": true
+  },
+  {
+   "code": "1862",
+   "label": "Emprunts équivalents - autres contrats",
+   "postable": true
+  },
+  {
+   "code": "187",
+   "label": "Dépôts et cautionnements non commerciaux reçus",
+   "postable": false
+  },
+  {
+   "code": "1870",
+   "label": "Dépôts de garantie reçus",
+   "postable": false
+  },
+  {
+   "code": "18700",
+   "label": "Dépôts de garantie reçus hors réseau",
+   "postable": true
+  },
+  {
+   "code": "18709",
+   "label": "Dépôts de garantie reçus réseau",
+   "postable": true
+  },
+  {
+   "code": "1871",
+   "label": "Cautionnements reçus",
+   "postable": false
+  },
+  {
+   "code": "18710",
+   "label": "Cautionnements reçus hors réseau",
+   "postable": true
+  },
+  {
+   "code": "18719",
+   "label": "Cautionnements reçus réseau",
+   "postable": true
+  },
+  {
+   "code": "188",
+   "label": "Dettes rattachées aux emprunts à LT & MT",
+   "postable": false
+  },
+  {
+   "code": "1882",
+   "label": "Dettes rattachées autres ressources permanentes",
+   "postable": false
+  },
+  {
+   "code": "18820",
+   "label": "Dettes rattachées autres ressources permanentes hors réseau",
+   "postable": true
+  },
+  {
+   "code": "18829",
+   "label": "Dettes rattachées autres ressources permanentes réseau",
+   "postable": true
+  },
+  {
+   "code": "19",
+   "label": "PROVISIONS POUR RISQUES ET CHARGES",
+   "postable": false
+  },
+  {
+   "code": "190",
+   "label": "Provision pour risques généraux",
+   "postable": false
+  },
+  {
+   "code": "1901",
+   "label": "Provisions pour risques bancaires généraux",
+   "postable": true
+  },
+  {
+   "code": "1902",
+   "label": "Autres provisions pour risques généraux",
+   "postable": true
+  },
+  {
+   "code": "191",
+   "label": "Provisions pour charges",
+   "postable": false
+  },
+  {
+   "code": "1911",
+   "label": "Provisions pour litiges en cours",
+   "postable": true
+  },
+  {
+   "code": "1912",
+   "label": "Provisions pour pertes sur marchés à terme",
+   "postable": true
+  },
+  {
+   "code": "1913",
+   "label": "Provisions pour pertes et change",
+   "postable": true
+  },
+  {
+   "code": "1914",
+   "label": "Provisions pour exécution d'engagements d'avals et cautions",
+   "postable": true
+  },
+  {
+   "code": "1915",
+   "label": "Provisions de propre assureur",
+   "postable": true
+  },
+  {
+   "code": "1916",
+   "label": "Provisions pour grosses réparations",
+   "postable": true
+  },
+  {
+   "code": "1917",
+   "label": "Provisions relatives au personnel",
+   "postable": true
+  },
+  {
+   "code": "19199",
+   "label": "Provisions pour charges réseau",
+   "postable": true
+  },
+  {
+   "code": "192",
+   "label": "Provisions sur opérations de crédit-bail et assimilées",
+   "postable": false
+  },
+  {
+   "code": "1921",
+   "label": "Provisions pour pertes latentes",
+   "postable": true
+  },
+  {
+   "code": "1922",
+   "label": "Provisions pour risque de non perception de loyers",
+   "postable": true
+  },
+  {
+   "code": "193",
+   "label": "Autres provisions",
+   "postable": false
+  },
+  {
+   "code": "19300",
+   "label": "Autres provisions hors réseau",
+   "postable": true
+  },
+  {
+   "code": "19399",
+   "label": "Autres provisions réseau",
+   "postable": true
+  },
+  {
+   "code": "20",
+   "label": "FRAIS ET VALEURS INCORPORELLES IMMOBILISEES",
+   "postable": false
+  },
+  {
+   "code": "201",
+   "label": "Frais immobilisés",
+   "postable": false
+  },
+  {
+   "code": "2011",
+   "label": "Frais relatifs au pacte social",
+   "postable": true
+  },
+  {
+   "code": "2012",
+   "label": "Frais d'émission des emprunts",
+   "postable": true
+  },
+  {
+   "code": "2013",
+   "label": "Frais d'acquisition des immobilisations",
+   "postable": true
+  },
+  {
+   "code": "2014",
+   "label": "Frais à étaler sur plusieurs exercices",
+   "postable": true
+  },
+  {
+   "code": "2017",
+   "label": "Primes de remboursement des emprunts obligataires",
+   "postable": true
+  },
+  {
+   "code": "202",
+   "label": "Valeurs incorporelles immobilisées",
+   "postable": false
+  },
+  {
+   "code": "2021",
+   "label": "Immobilisations incorporelles en cours",
+   "postable": true
+  },
+  {
+   "code": "2022",
+   "label": "Fonds de commerce",
+   "postable": true
+  },
+  {
+   "code": "2023",
+   "label": "Droit au bail",
+   "postable": true
+  },
+  {
+   "code": "2024",
+   "label": "Brevets, logiciels, licences, marques, procédés, modèles, dessins",
+   "postable": true
+  },
+  {
+   "code": "2025",
+   "label": "Etudes et recherches immobilisables",
+   "postable": true
+  },
+  {
+   "code": "2026",
+   "label": "Autres immobilisations incorporelles",
+   "postable": true
+  },
+  {
+   "code": "21",
+   "label": "TERRAINS",
+   "postable": false
+  },
+  {
+   "code": "211",
+   "label": "Terrains en exploitation",
+   "postable": true
+  },
+  {
+   "code": "212",
+   "label": "Terrains donnés en location simple",
+   "postable": true
+  },
+  {
+   "code": "213",
+   "label": "Terrains affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "214",
+   "label": "Terrains acquis par réalisation de garantie",
+   "postable": true
+  },
+  {
+   "code": "215",
+   "label": "Ecarts de réévaluation",
+   "postable": false
+  },
+  {
+   "code": "2151",
+   "label": "Terrains en exploitation bancaire",
+   "postable": true
+  },
+  {
+   "code": "2152",
+   "label": "Terrains donnés en location",
+   "postable": true
+  },
+  {
+   "code": "219",
+   "label": "Autres terrains",
+   "postable": true
+  },
+  {
+   "code": "22",
+   "label": "AUTRES IMMOBILISATIONS CORPORELLES EN SERVICE",
+   "postable": false
+  },
+  {
+   "code": "221",
+   "label": "Immeubles d'exploitation",
+   "postable": false
+  },
+  {
+   "code": "2211",
+   "label": "Immeubles d'exploitation construits sur sol propre",
+   "postable": true
+  },
+  {
+   "code": "2212",
+   "label": "Immeubles d'exploitation construits sur sol d'autrui",
+   "postable": true
+  },
+  {
+   "code": "222",
+   "label": "Immeubles donnés en location simple",
+   "postable": false
+  },
+  {
+   "code": "2221",
+   "label": "Immeubles donnés en location simple construits sur sol propre",
+   "postable": true
+  },
+  {
+   "code": "2222",
+   "label": "Immeubles donnés en location simple construits sur sol d'autrui",
+   "postable": true
+  },
+  {
+   "code": "223",
+   "label": "Immeubles affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "224",
+   "label": "Immeubles acquis par réalisation de garantie",
+   "postable": true
+  },
+  {
+   "code": "225",
+   "label": "Matériel et mobilier d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "226",
+   "label": "Matériel et mobilier en location simple",
+   "postable": true
+  },
+  {
+   "code": "227",
+   "label": "Matériel et mobilier affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "228",
+   "label": "Matériel et mobilier acquis en réalisation de garanties",
+   "postable": true
+  },
+  {
+   "code": "229",
+   "label": "Autres immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "23",
+   "label": "AUTRES IMMOBILISATIONS CORPORELLES EN COURS",
+   "postable": false
+  },
+  {
+   "code": "231",
+   "label": "Immeubles d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "232",
+   "label": "Immeubles destinés à la location simple",
+   "postable": true
+  },
+  {
+   "code": "233",
+   "label": "Immeubles destinés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "235",
+   "label": "Matériel et mobilier d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "236",
+   "label": "Matériel et mobilier en location simple",
+   "postable": true
+  },
+  {
+   "code": "237",
+   "label": "Matériel et mobilier destinés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "239",
+   "label": "Autres immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "24",
+   "label": "AVANCES ET ACOMPTES SUR COMMANDES D'IMMOBILISATIONS",
+   "postable": false
+  },
+  {
+   "code": "241",
+   "label": "Immeubles d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "242",
+   "label": "Immeubles en location simple",
+   "postable": true
+  },
+  {
+   "code": "243",
+   "label": "Avances et acomptes sur immeubles destinés aux crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "245",
+   "label": "Matériel et mobilier d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "246",
+   "label": "Matériel et mobilier destinés à la location",
+   "postable": true
+  },
+  {
+   "code": "247",
+   "label": "Avances et acomptes sur matériel et mobilier destinés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "249",
+   "label": "Autres immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "25",
+   "label": "DEPOTS ET CAUTIONNEMENTS NON COMMERCIAUX VERSES",
+   "postable": false
+  },
+  {
+   "code": "251",
+   "label": "Dépôts et cautionnements versés",
+   "postable": false
+  },
+  {
+   "code": "2510",
+   "label": "Dépôts de garanties",
+   "postable": false
+  },
+  {
+   "code": "25100",
+   "label": "Dépôts de garantie",
+   "postable": true
+  },
+  {
+   "code": "25109",
+   "label": "Dépôts de garantie réseau",
+   "postable": true
+  },
+  {
+   "code": "2511",
+   "label": "Cautionnements",
+   "postable": false
+  },
+  {
+   "code": "25110",
+   "label": "Cautionnements",
+   "postable": true
+  },
+  {
+   "code": "25119",
+   "label": "Cautionnements réseau",
+   "postable": true
+  },
+  {
+   "code": "26",
+   "label": "TITRES DE PARTICIPATIONS ET AUTRES IMMOBILISATIONS FINANCIERES",
+   "postable": false
+  },
+  {
+   "code": "262",
+   "label": "Actions et parts d'établissements de crédit et de microfinance",
+   "postable": false
+  },
+  {
+   "code": "2621",
+   "label": "Actions et parts sociales d'établissements de microfinance",
+   "postable": false
+  },
+  {
+   "code": "26210",
+   "label": "Actions et parts sociales hors réseau",
+   "postable": true
+  },
+  {
+   "code": "26219",
+   "label": "Actions et parts sociales réseau",
+   "postable": true
+  },
+  {
+   "code": "2622",
+   "label": "Actions et parts sociales d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "263",
+   "label": "Autres titres de participation",
+   "postable": true
+  },
+  {
+   "code": "264",
+   "label": "Titres de l'activité de portefeuille",
+   "postable": false
+  },
+  {
+   "code": "26400",
+   "label": "Titres de l'activité de portefeuille",
+   "postable": true
+  },
+  {
+   "code": "26409",
+   "label": "Titres de l'activité de portefeuille réseau",
+   "postable": true
+  },
+  {
+   "code": "265",
+   "label": "Titres d'investissement",
+   "postable": false
+  },
+  {
+   "code": "2651",
+   "label": "Titres d'investissement privés",
+   "postable": true
+  },
+  {
+   "code": "2652",
+   "label": "Titres d'investissement publics",
+   "postable": true
+  },
+  {
+   "code": "266",
+   "label": "Titres en souffrance",
+   "postable": false
+  },
+  {
+   "code": "2661",
+   "label": "Titres impayés",
+   "postable": false
+  },
+  {
+   "code": "26610",
+   "label": "Titres impayés hors réseau",
+   "postable": true
+  },
+  {
+   "code": "26619",
+   "label": "Titres impayés réseau",
+   "postable": true
+  },
+  {
+   "code": "2662",
+   "label": "Titres douteux",
+   "postable": false
+  },
+  {
+   "code": "26620",
+   "label": "Titres douteux hors réseau",
+   "postable": true
+  },
+  {
+   "code": "26629",
+   "label": "Titres douteux réseau",
+   "postable": true
+  },
+  {
+   "code": "267",
+   "label": "Actions ou parts sociales propres rachetées",
+   "postable": true
+  },
+  {
+   "code": "268",
+   "label": "Autres immobilisations financières",
+   "postable": false
+  },
+  {
+   "code": "2680",
+   "label": "Dotations des succursales",
+   "postable": true
+  },
+  {
+   "code": "2681",
+   "label": "Comptes courants associés bloqués auprès d'autres EMF",
+   "postable": false
+  },
+  {
+   "code": "26810",
+   "label": "Comptes associés bloqués auprès d'autres EMF",
+   "postable": true
+  },
+  {
+   "code": "26819",
+   "label": "Comptes associés bloqués auprès d'autres EMF du réseau",
+   "postable": true
+  },
+  {
+   "code": "2682",
+   "label": "Fonds de garanties mutuelles",
+   "postable": false
+  },
+  {
+   "code": "26820",
+   "label": "Fonds de garanties mutuelles EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "26829",
+   "label": "Fonds de garanties mutuelles EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "2683",
+   "label": "Autres comptes bloqués",
+   "postable": true
+  },
+  {
+   "code": "269",
+   "label": "Créances rattachées sur titres de participation et autres immob. Financières",
+   "postable": false
+  },
+  {
+   "code": "2691",
+   "label": "Créances rattachées sur titres de participation et autres titres immobilisés",
+   "postable": false
+  },
+  {
+   "code": "26910",
+   "label": "Créances rattachées sur titres de participation",
+   "postable": true
+  },
+  {
+   "code": "26919",
+   "label": "Créances rattachées sur titres de participation réseau",
+   "postable": true
+  },
+  {
+   "code": "2692",
+   "label": "Créances rattachées sur autres immobilisations financières",
+   "postable": false
+  },
+  {
+   "code": "26920",
+   "label": "Créances rattachées sur autres immobilisations financières",
+   "postable": true
+  },
+  {
+   "code": "26929",
+   "label": "Créances rattachées sur autres immobilisations financières réseau",
+   "postable": true
+  },
+  {
+   "code": "27",
+   "label": "PRETS ET TITRES PUBLICS ET ASSIMILES",
+   "postable": false
+  },
+  {
+   "code": "271",
+   "label": "Titres publics et assimilés",
+   "postable": true
+  },
+  {
+   "code": "272",
+   "label": "Autres prêts et titres publics",
+   "postable": true
+  },
+  {
+   "code": "273",
+   "label": "Prêts et titres impayés",
+   "postable": true
+  },
+  {
+   "code": "274",
+   "label": "Créances rattachées",
+   "postable": true
+  },
+  {
+   "code": "28",
+   "label": "AMORTISSEMENTS DES VALEURS INCORPORELLES ET CORPORELLES",
+   "postable": false
+  },
+  {
+   "code": "280",
+   "label": "Valeurs incorporelles immobilisés",
+   "postable": false
+  },
+  {
+   "code": "2801",
+   "label": "Immobilisations incorporelles",
+   "postable": false
+  },
+  {
+   "code": "28011",
+   "label": "Fonds de commerce",
+   "postable": true
+  },
+  {
+   "code": "28012",
+   "label": "Brevets, logiciels, licences, marques, procédés, modèles, dessins",
+   "postable": true
+  },
+  {
+   "code": "28013",
+   "label": "Etudes et recherches immobilisables",
+   "postable": true
+  },
+  {
+   "code": "28014",
+   "label": "Autres immobilisations incorporelles",
+   "postable": true
+  },
+  {
+   "code": "282",
+   "label": "Immobilisations corporelles",
+   "postable": false
+  },
+  {
+   "code": "2821",
+   "label": "Immeubles d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "2822",
+   "label": "Immeubles en location simple",
+   "postable": true
+  },
+  {
+   "code": "2823",
+   "label": "Immeubles affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "2824",
+   "label": "Immeubles acquis par réalisation de garantie",
+   "postable": true
+  },
+  {
+   "code": "2825",
+   "label": "Matériel et mobilier d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "2826",
+   "label": "Matériel et mobilier en location simple",
+   "postable": true
+  },
+  {
+   "code": "2827",
+   "label": "Matériel et mobilier affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "2828",
+   "label": "Matériel et mobilier acquis en réalisation de garanties",
+   "postable": true
+  },
+  {
+   "code": "2829",
+   "label": "Autres immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "29",
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE VALEURS IMMOBILISEES",
+   "postable": false
+  },
+  {
+   "code": "290",
+   "label": "Valeurs incorporelles immobilisées",
+   "postable": false
+  },
+  {
+   "code": "2902",
+   "label": "Immobilisations incorporelles",
+   "postable": false
+  },
+  {
+   "code": "29021",
+   "label": "Immobilisations incorporelles en cours",
+   "postable": true
+  },
+  {
+   "code": "29022",
+   "label": "Fonds de commerce",
+   "postable": true
+  },
+  {
+   "code": "29023",
+   "label": "Brevets, logiciels, licences, marques, procédés, modèles, dessins",
+   "postable": true
+  },
+  {
+   "code": "29024",
+   "label": "Etudes et recherches immobilisables",
+   "postable": true
+  },
+  {
+   "code": "29025",
+   "label": "Autres immobilisations incorporelles",
+   "postable": true
+  },
+  {
+   "code": "291",
+   "label": "Terrains",
+   "postable": true
+  },
+  {
+   "code": "292",
+   "label": "Immobilisations corporelles",
+   "postable": false
+  },
+  {
+   "code": "2921",
+   "label": "Immeubles d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "2922",
+   "label": "Immeubles en location simple",
+   "postable": true
+  },
+  {
+   "code": "2923",
+   "label": "Immeubles affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "2924",
+   "label": "Immeubles acquis par réalisation de garantie",
+   "postable": true
+  },
+  {
+   "code": "2925",
+   "label": "Matériel et mobilier d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "2926",
+   "label": "Matériel et mobilier en location simple",
+   "postable": true
+  },
+  {
+   "code": "2927",
+   "label": "Matériel et mobilier affectés au crédit-bail ou à la location avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "2928",
+   "label": "Matériel et mobilier acquis en réalisation de garanties",
+   "postable": true
+  },
+  {
+   "code": "2929",
+   "label": "Autres immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "293",
+   "label": "Autres immobilisations corporelles en cours",
+   "postable": true
+  },
+  {
+   "code": "294",
+   "label": "Avances et acomptes sur commandes d'immobilisations",
+   "postable": true
+  },
+  {
+   "code": "295",
+   "label": "Dépôts et cautionnements",
+   "postable": false
+  },
+  {
+   "code": "2951",
+   "label": "Dépôts de garantie",
+   "postable": false
+  },
+  {
+   "code": "29510",
+   "label": "Dépôts de garantie",
+   "postable": true
+  },
+  {
+   "code": "29519",
+   "label": "Dépôts de garantie réseau",
+   "postable": true
+  },
+  {
+   "code": "2952",
+   "label": "Cautionnements",
+   "postable": false
+  },
+  {
+   "code": "29520",
+   "label": "Cautionnements",
+   "postable": true
+  },
+  {
+   "code": "29529",
+   "label": "Cautionnements réseau",
+   "postable": true
+  },
+  {
+   "code": "296",
+   "label": "Titres de participation et autres immobilisations financières",
+   "postable": false
+  },
+  {
+   "code": "2962",
+   "label": "Actions et parts d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "2963",
+   "label": "Autres titres de participation",
+   "postable": true
+  },
+  {
+   "code": "2964",
+   "label": "Titres de l'activité de portefeuille",
+   "postable": true
+  },
+  {
+   "code": "2965",
+   "label": "Titres d'investissement",
+   "postable": false
+  },
+  {
+   "code": "29651",
+   "label": "Titres d'investissement privés",
+   "postable": true
+  },
+  {
+   "code": "29652",
+   "label": "Titres d'investissement publics",
+   "postable": true
+  },
+  {
+   "code": "2966",
+   "label": "Titres en souffrance",
+   "postable": false
+  },
+  {
+   "code": "29660",
+   "label": "Titres de participation hors réseau",
+   "postable": true
+  },
+  {
+   "code": "29669",
+   "label": "Titres de participation réseau",
+   "postable": true
+  },
+  {
+   "code": "2968",
+   "label": "Provisions pour dépréciation des autres immobilisations financières",
+   "postable": false
+  },
+  {
+   "code": "29680",
+   "label": "Prov. pour dépréciation des autres immob. Financières hors réseau",
+   "postable": true
+  },
+  {
+   "code": "29689",
+   "label": "Prov. pour dépréciation des autres immob. Financières réseau",
+   "postable": true
+  },
+  {
+   "code": "297",
+   "label": "Prêts et Titres publics et assimilés",
+   "postable": false
+  },
+  {
+   "code": "2971",
+   "label": "Titres publics et assimilés",
+   "postable": true
+  },
+  {
+   "code": "2972",
+   "label": "Autres prêts et titres publics",
+   "postable": true
+  },
+  {
+   "code": "2973",
+   "label": "Prêts et titres impayés",
+   "postable": true
+  },
+  {
+   "code": "32",
+   "label": "CREDITS A COURT TERME",
+   "postable": false
+  },
+  {
+   "code": "320",
+   "label": "Chèques et effets escomptés ou à crédit immédiat",
+   "postable": false
+  },
+  {
+   "code": "3201",
+   "label": "Effets commerciaux escomptés",
+   "postable": false
+  },
+  {
+   "code": "32011",
+   "label": "Escompte d'effets aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "32012",
+   "label": "Escompte d'effets aux clients",
+   "postable": true
+  },
+  {
+   "code": "32013",
+   "label": "Escompte d'effets aux EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "32019",
+   "label": "Escompte d'effets aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3202",
+   "label": "Affacturage",
+   "postable": false
+  },
+  {
+   "code": "32021",
+   "label": "Affacturage aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "32022",
+   "label": "Affacturage aux clients",
+   "postable": true
+  },
+  {
+   "code": "32023",
+   "label": "Affacturage aux EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "32029",
+   "label": "Affacturage aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3204",
+   "label": "Chèques locaux escomptés",
+   "postable": false
+  },
+  {
+   "code": "32041",
+   "label": "Chèques locaux escomptés aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "32042",
+   "label": "Chèques locaux escomptés aux clients",
+   "postable": true
+  },
+  {
+   "code": "32049",
+   "label": "Chèques locaux escomptés aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "321",
+   "label": "Crédits moratoriés ou consolidés sur l'Etat",
+   "postable": false
+  },
+  {
+   "code": "3211",
+   "label": "Crédits aux sociétaires moratoriés ou consolidés sur l'Etat",
+   "postable": true
+  },
+  {
+   "code": "3212",
+   "label": "Crédits aux clients moratoriés ou consolidés sur l'Etat",
+   "postable": true
+  },
+  {
+   "code": "3213",
+   "label": "Crédits aux apparentés (personnel, actionnaires...) moratoriés ou consolidés",
+   "postable": true
+  },
+  {
+   "code": "3214",
+   "label": "Crédits aux EMF moratoriés ou consolidés sur l'Etat",
+   "postable": false
+  },
+  {
+   "code": "32149",
+   "label": "Crédits aux EMF réseau moratoriés ou consolidés sur l'Etat",
+   "postable": true
+  },
+  {
+   "code": "322",
+   "label": "Crédits de trésorerie",
+   "postable": false
+  },
+  {
+   "code": "3221",
+   "label": "Crédits de trésorerie aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3222",
+   "label": "Crédits de trésorerie aux clients",
+   "postable": true
+  },
+  {
+   "code": "3223",
+   "label": "Crédits de trésorerie aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32239",
+   "label": "Crédits de trésorerie aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "323",
+   "label": "Crédits à l'équipement",
+   "postable": false
+  },
+  {
+   "code": "3231",
+   "label": "Crédits à l'équipement aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3232",
+   "label": "Crédits à l'équipement aux clients",
+   "postable": true
+  },
+  {
+   "code": "3233",
+   "label": "Crédits à l'équipement aux apparentés (personnel, actionnaires...)",
+   "postable": true
+  },
+  {
+   "code": "3234",
+   "label": "Crédits à l'équipement aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32349",
+   "label": "Crédits à l'équipement aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "324",
+   "label": "Crédits d'accompagnement sur marchés publics",
+   "postable": false
+  },
+  {
+   "code": "32411",
+   "label": "Avances sur marchés publics nantis aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "32412",
+   "label": "Avances sur marchés publics nantis aux clients",
+   "postable": true
+  },
+  {
+   "code": "324139",
+   "label": "Avances sur marchés publics nantis",
+   "postable": true
+  },
+  {
+   "code": "32419",
+   "label": "Avances sur marchés publics nantis aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3242",
+   "label": "Autres crédits d'accompagnement",
+   "postable": false
+  },
+  {
+   "code": "32421",
+   "label": "Autres crédits d'accompagnement aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "32422",
+   "label": "Autres crédits d'accompagnement aux clients",
+   "postable": true
+  },
+  {
+   "code": "32429",
+   "label": "Autres crédits d'accompagnement aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "325",
+   "label": "Crédits de campagne",
+   "postable": false
+  },
+  {
+   "code": "3250",
+   "label": "Crédits de campagne aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3251",
+   "label": "Crédits de campagne aux clients",
+   "postable": true
+  },
+  {
+   "code": "3252",
+   "label": "Crédits de campagne aux actionnaires",
+   "postable": true
+  },
+  {
+   "code": "3253",
+   "label": "Crédits de campagne aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32539",
+   "label": "Crédits de campagne aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "326",
+   "label": "Crédits à la consommation",
+   "postable": false
+  },
+  {
+   "code": "3260",
+   "label": "Crédits à la consommation aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3261",
+   "label": "Crédits à la consommation aux clients",
+   "postable": true
+  },
+  {
+   "code": "3262",
+   "label": "Crédits à la consommation aux apparentés (personnel, actionnaires...)",
+   "postable": true
+  },
+  {
+   "code": "3263",
+   "label": "Crédits à la consommation aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32639",
+   "label": "Crédits à la consommation aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "327",
+   "label": "Crédit -- bail à CT",
+   "postable": false
+  },
+  {
+   "code": "3271",
+   "label": "Crédit-bail à CT aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3272",
+   "label": "Crédit-bail à CT aux clients",
+   "postable": true
+  },
+  {
+   "code": "3273",
+   "label": "Crédit-bail à CT aux actionnaires",
+   "postable": true
+  },
+  {
+   "code": "3274",
+   "label": "Crédit-bail à CT aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32749",
+   "label": "Crédit-bail à CT aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "328",
+   "label": "Autres crédits à CT",
+   "postable": false
+  },
+  {
+   "code": "3281",
+   "label": "Autres crédits à CT aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3282",
+   "label": "Autres crédits à CT aux clients",
+   "postable": true
+  },
+  {
+   "code": "3283",
+   "label": "Autres crédits à CT aux apparentés (personnel, actionnaires...)",
+   "postable": true
+  },
+  {
+   "code": "3284",
+   "label": "Autres crédits à CT aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32849",
+   "label": "Autres crédits à CT aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "329",
+   "label": "Créances rattachées aux crédits à CT",
+   "postable": false
+  },
+  {
+   "code": "3291",
+   "label": "Créances rattachées aux crédits à CT aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3292",
+   "label": "Créances rattachées aux crédits à CT aux clients",
+   "postable": true
+  },
+  {
+   "code": "3293",
+   "label": "Créances rattachées aux crédits à CT aux apparentés (personnel actionnaires...)",
+   "postable": true
+  },
+  {
+   "code": "3294",
+   "label": "Créances rattachées aux crédits à CT aux EMF",
+   "postable": false
+  },
+  {
+   "code": "32949",
+   "label": "Créances rattachées aux crédits à CT aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "33",
+   "label": "CREANCES EN SOUFFRANCE",
+   "postable": false
+  },
+  {
+   "code": "331",
+   "label": "Créances impayées",
+   "postable": false
+  },
+  {
+   "code": "3311",
+   "label": "Créances impayées aux EMF",
+   "postable": false
+  },
+  {
+   "code": "33119",
+   "label": "Créances impayées aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3312",
+   "label": "Créances impayées autres débiteurs",
+   "postable": true
+  },
+  {
+   "code": "332",
+   "label": "Créances immobilisées",
+   "postable": false
+  },
+  {
+   "code": "3321",
+   "label": "Créances immobilisées aux EMF",
+   "postable": false
+  },
+  {
+   "code": "33219",
+   "label": "Créances immobilisées aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3322",
+   "label": "Créances immobilisées autres débiteurs",
+   "postable": true
+  },
+  {
+   "code": "333",
+   "label": "Créances douteuses couvertes par la garantie de l'Etat",
+   "postable": false
+  },
+  {
+   "code": "3331",
+   "label": "Créances douteuses aux EMF couvertes par la garantie de l'Etat",
+   "postable": false
+  },
+  {
+   "code": "33319",
+   "label": "Créances douteuses aux EMF réseau garanties par l'Etat",
+   "postable": true
+  },
+  {
+   "code": "3332",
+   "label": "Créances douteuses autres débiteurs garanties par l'Etat",
+   "postable": true
+  },
+  {
+   "code": "334",
+   "label": "Créances douteuses couvertes par des sûretés réelles",
+   "postable": false
+  },
+  {
+   "code": "3341",
+   "label": "Créances douteuses aux EMF couvertes par des sûretés réelles",
+   "postable": false
+  },
+  {
+   "code": "33419",
+   "label": "Créances douteuses aux EMF réseau couvertes par des sûretés réelles",
+   "postable": true
+  },
+  {
+   "code": "3342",
+   "label": "Créances douteuses autres débiteurs couvertes par des sûretés réelles",
+   "postable": true
+  },
+  {
+   "code": "335",
+   "label": "Autres Créances douteuses",
+   "postable": false
+  },
+  {
+   "code": "3351",
+   "label": "Autres créances douteuses aux EMF",
+   "postable": false
+  },
+  {
+   "code": "33519",
+   "label": "Autres créances douteuses aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3352",
+   "label": "Autres créances douteuses aux autres débiteurs",
+   "postable": true
+  },
+  {
+   "code": "336",
+   "label": "Créances impayées sur crédit-bail",
+   "postable": false
+  },
+  {
+   "code": "3361",
+   "label": "Créances impayées sur crédit-bail aux EMF",
+   "postable": false
+  },
+  {
+   "code": "33610",
+   "label": "Créances impayées sur crédit-bail aux EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "33619",
+   "label": "Créances impayées sur crédit-bail aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3362",
+   "label": "Créances impayées sur crédit-bail aux autres débiteurs",
+   "postable": true
+  },
+  {
+   "code": "337",
+   "label": "Créances douteuses sur crédit-bail",
+   "postable": false
+  },
+  {
+   "code": "3371",
+   "label": "Créances douteuses sur crédit-bail aux EMF",
+   "postable": false
+  },
+  {
+   "code": "33719",
+   "label": "Créances douteuses sur crédit-bail aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "3372",
+   "label": "Créances douteuses sur crédit-bail aux autres débiteurs",
+   "postable": true
+  },
+  {
+   "code": "34",
+   "label": "AUTRES OPERATIONS ENGAGEES POUR LE COMPTE DE LA CLIENTELE",
+   "postable": false
+  },
+  {
+   "code": "340",
+   "label": "Stock de marchandises",
+   "postable": false
+  },
+  {
+   "code": "34000",
+   "label": "Stock de marchandises hors réseau",
+   "postable": true
+  },
+  {
+   "code": "34009",
+   "label": "Stock de marchandises réseau",
+   "postable": true
+  },
+  {
+   "code": "341",
+   "label": "Autres opérations assimilées engagées pour le compte de la clientèle",
+   "postable": false
+  },
+  {
+   "code": "34100",
+   "label": "Autres opérations engagées pour le compte de la clientèle hors réseau",
+   "postable": true
+  },
+  {
+   "code": "34109",
+   "label": "Autres opérations engagées pour le compte de la clientèle réseau",
+   "postable": true
+  },
+  {
+   "code": "35",
+   "label": "COMPTES DE DEPOTS A REGIME SPECIAL",
+   "postable": false
+  },
+  {
+   "code": "350",
+   "label": "Dépôts des EMF affiliés auprès de l'organe faîtier",
+   "postable": false
+  },
+  {
+   "code": "35019",
+   "label": "Dépôts réglementaires des EMF affiliés",
+   "postable": true
+  },
+  {
+   "code": "35029",
+   "label": "Dépôts statutaires des EMF affiliés",
+   "postable": true
+  },
+  {
+   "code": "351",
+   "label": "Bons de caisse",
+   "postable": false
+  },
+  {
+   "code": "35100",
+   "label": "Bons de caisse hors réseau",
+   "postable": true
+  },
+  {
+   "code": "35109",
+   "label": "Bons de caisse réseau",
+   "postable": true
+  },
+  {
+   "code": "352",
+   "label": "Certificats de dépôts",
+   "postable": false
+  },
+  {
+   "code": "35210",
+   "label": "Certificat de dépôts hors réseau",
+   "postable": true
+  },
+  {
+   "code": "35219",
+   "label": "Certificat de dépôts réseau",
+   "postable": true
+  },
+  {
+   "code": "353",
+   "label": "Comptes et plans épargne logement",
+   "postable": true
+  },
+  {
+   "code": "354",
+   "label": "Plans d'épargne retraite",
+   "postable": true
+  },
+  {
+   "code": "355",
+   "label": "Autres comptes d'épargne à régime spécial",
+   "postable": true
+  },
+  {
+   "code": "359",
+   "label": "Dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "35900",
+   "label": "Dettes rattachées sur opérations hors réseau",
+   "postable": true
+  },
+  {
+   "code": "35909",
+   "label": "Dettes rattachées sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "36",
+   "label": "COMPTES DE DEPOTS A TERME",
+   "postable": false
+  },
+  {
+   "code": "361",
+   "label": "Dépôts à terme",
+   "postable": false
+  },
+  {
+   "code": "36100",
+   "label": "Dépôts à terme hors réseau 41",
+   "postable": true
+  },
+  {
+   "code": "36119",
+   "label": "Dépôts à terme réseau",
+   "postable": true
+  },
+  {
+   "code": "369",
+   "label": "Dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "36900",
+   "label": "Dettes rattachées sur opération hors réseau",
+   "postable": true
+  },
+  {
+   "code": "36909",
+   "label": "Dettes rattachées sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "37",
+   "label": "DECOUVERTS ET COMPTES CREDITEURS A VUE",
+   "postable": false
+  },
+  {
+   "code": "371",
+   "label": "Comptes courants",
+   "postable": false
+  },
+  {
+   "code": "3711",
+   "label": "Comptes courants sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3712",
+   "label": "Comptes courants clients",
+   "postable": true
+  },
+  {
+   "code": "3713",
+   "label": "Comptes courants EMF",
+   "postable": false
+  },
+  {
+   "code": "37139",
+   "label": "Comptes courants EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "372",
+   "label": "Comptes de chèques",
+   "postable": false
+  },
+  {
+   "code": "3721",
+   "label": "Comptes de chèques sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3722",
+   "label": "Comptes de chèques clients",
+   "postable": true
+  },
+  {
+   "code": "3723",
+   "label": "Comptes de chèques aux apparentés (personnel, actionnaires...)",
+   "postable": true
+  },
+  {
+   "code": "373",
+   "label": "Comptes sur livrets",
+   "postable": true
+  },
+  {
+   "code": "374",
+   "label": "Dépôts de garantie",
+   "postable": false
+  },
+  {
+   "code": "3741",
+   "label": "Dépôts de garantie sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3742",
+   "label": "Dépôts de garantie clients",
+   "postable": true
+  },
+  {
+   "code": "3743",
+   "label": "Dépôts de garantie EMF",
+   "postable": false
+  },
+  {
+   "code": "37439",
+   "label": "Dépôts de garantie EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "375",
+   "label": "Avances sur dépôts à terme",
+   "postable": false
+  },
+  {
+   "code": "3751",
+   "label": "Avances sur DAT aux sociétaires",
+   "postable": true
+  },
+  {
+   "code": "3752",
+   "label": "Avances sur DAT aux clients",
+   "postable": true
+  },
+  {
+   "code": "3753",
+   "label": "Avances sur DAT aux EMF",
+   "postable": false
+  },
+  {
+   "code": "37539",
+   "label": "Avances sur DAT aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "376",
+   "label": "Loyers de crédit-bail ou de location en instance de recouvrement",
+   "postable": true
+  },
+  {
+   "code": "377",
+   "label": "Dépôts de garantie sur opérations de crédit-bail et assimilées",
+   "postable": true
+  },
+  {
+   "code": "378",
+   "label": "Créances ou dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "37800",
+   "label": "Créances ou dettes rattachées sur opérations hors réseau",
+   "postable": true
+  },
+  {
+   "code": "37809",
+   "label": "Créances ou dettes rattachées sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "38",
+   "label": "AUTRES COMPTES DE LA CLIENTELE",
+   "postable": false
+  },
+  {
+   "code": "381",
+   "label": "Dispositions à payer",
+   "postable": true
+  },
+  {
+   "code": "382",
+   "label": "Comptes bloqués",
+   "postable": true
+  },
+  {
+   "code": "383",
+   "label": "Avoirs en cours de prescription",
+   "postable": true
+  },
+  {
+   "code": "384",
+   "label": "Autres sommes dues à la clientèle",
+   "postable": false
+  },
+  {
+   "code": "3840",
+   "label": "Dépôts et cautionnement commerciaux reçus",
+   "postable": true
+  },
+  {
+   "code": "3841",
+   "label": "Autres sommes dues",
+   "postable": true
+  },
+  {
+   "code": "386",
+   "label": "Autres sommes dues par la clientèle",
+   "postable": true
+  },
+  {
+   "code": "387",
+   "label": "Valeurs non imputées",
+   "postable": true
+  },
+  {
+   "code": "388",
+   "label": "Autres comptes de la clientèle EMF affiliés",
+   "postable": false
+  },
+  {
+   "code": "38809",
+   "label": "Autres sommes dues aux EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "38819",
+   "label": "Autres sommes dues par les EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "39",
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE LA CLIENTELE",
+   "postable": false
+  },
+  {
+   "code": "391",
+   "label": "Provisions sur créances douteuses couvertes par la garantie de l'Etat",
+   "postable": false
+  },
+  {
+   "code": "39100",
+   "label": "Provisions sur créances douteuses. Couv. Par la garantie de l'état hors réseau",
+   "postable": true
+  },
+  {
+   "code": "39109",
+   "label": "Provisions sur créances douteuses. Couv. Par la garantie de l'Etat réseau",
+   "postable": true
+  },
+  {
+   "code": "392",
+   "label": "Provisions sur créances douteuses couvertes par des sûretés réelles",
+   "postable": false
+  },
+  {
+   "code": "3921",
+   "label": "Prov. sur créances couv. Par des sûretés réelles douteuses depuis moins d'un an",
+   "postable": true
+  },
+  {
+   "code": "3922",
+   "label": "Prov. sur créances couv. Par des sûretés réelles douteuses depuis 1 à 2 ans",
+   "postable": true
+  },
+  {
+   "code": "3923",
+   "label": "Prov. sur créances couv. Par des sûretés réelles douteuses depuis 2 à 3 ans",
+   "postable": true
+  },
+  {
+   "code": "3924",
+   "label": "Prov. sur créances couv. Par des sûretés réelles douteuses depuis plus de 3 ans",
+   "postable": true
+  },
+  {
+   "code": "39299",
+   "label": "Prov. sur créances douteuses. Couv. Par des sûretés réelles réseau",
+   "postable": true
+  },
+  {
+   "code": "393",
+   "label": "Provisions sur autres créances douteuses",
+   "postable": false
+  },
+  {
+   "code": "3931",
+   "label": "Provisions sur autres créances douteuses depuis moins d'un an",
+   "postable": true
+  },
+  {
+   "code": "3932",
+   "label": "Provisions sur autres créances douteuses depuis 1 à 2 ans",
+   "postable": true
+  },
+  {
+   "code": "3933",
+   "label": "Provisions sur autres créances douteuses depuis plus de 2 ans",
+   "postable": true
+  },
+  {
+   "code": "39399",
+   "label": "Provisions sur autres créances douteuses réseau",
+   "postable": true
+  },
+  {
+   "code": "394",
+   "label": "Provisions sur créances douteuses sur le crédit-bail",
+   "postable": false
+  },
+  {
+   "code": "39400",
+   "label": "Provisions sur créances douteuses sur le crédit-bail hors réseau",
+   "postable": true
+  },
+  {
+   "code": "39409",
+   "label": "Provisions sur créances douteuses sur le crédit-bail réseau",
+   "postable": true
+  },
+  {
+   "code": "397",
+   "label": "Provisions sur dépréciation de stocks",
+   "postable": false
+  },
+  {
+   "code": "39700",
+   "label": "Provisions sur dépréciation des stocks hors réseau",
+   "postable": true
+  },
+  {
+   "code": "39709",
+   "label": "Provisions sur dépréciation des stocks réseau",
+   "postable": true
+  },
+  {
+   "code": "40",
+   "label": "FOURNISSEURS",
+   "postable": false
+  },
+  {
+   "code": "401",
+   "label": "Fournisseurs, dettes en compte",
+   "postable": false
+  },
+  {
+   "code": "40110",
+   "label": "Fournisseurs, dettes en compte hors réseau",
+   "postable": true
+  },
+  {
+   "code": "40119",
+   "label": "Fournisseurs, dettes en compte réseau",
+   "postable": true
+  },
+  {
+   "code": "402",
+   "label": "Fournisseurs, effets à payer",
+   "postable": false
+  },
+  {
+   "code": "40210",
+   "label": "Fournisseurs, effets à payer hors réseau",
+   "postable": true
+  },
+  {
+   "code": "40219",
+   "label": "Fournisseurs, effets à payer réseau",
+   "postable": true
+  },
+  {
+   "code": "403",
+   "label": "Fournisseurs, factures non parvenues",
+   "postable": false
+  },
+  {
+   "code": "40310",
+   "label": "Fournisseurs, factures non parvenues hors réseau",
+   "postable": true
+  },
+  {
+   "code": "40319",
+   "label": "Fournisseurs, factures non parvenues réseau",
+   "postable": true
+  },
+  {
+   "code": "409",
+   "label": "Fournisseurs débiteurs",
+   "postable": false
+  },
+  {
+   "code": "40910",
+   "label": "Fournisseurs débiteurs hors réseau",
+   "postable": true
+  },
+  {
+   "code": "40919",
+   "label": "Fournisseurs débiteurs réseau",
+   "postable": true
+  },
+  {
+   "code": "41",
+   "label": "INSTRUMENTS DE PAIEMENT A L'ENCAISSEMENT",
+   "postable": false
+  },
+  {
+   "code": "4110",
+   "label": "Instruments de paiement à recouvrer auprès des correspondants",
+   "postable": true
+  },
+  {
+   "code": "4111",
+   "label": "Chèques à recouvrer",
+   "postable": false
+  },
+  {
+   "code": "41111",
+   "label": "Chèques à recouvrer reçus des correspondants",
+   "postable": true
+  },
+  {
+   "code": "41112",
+   "label": "Chèques à recouvrer reçus des clients",
+   "postable": true
+  },
+  {
+   "code": "41119",
+   "label": "Chèques à recouvrer reçus des EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "4112",
+   "label": "Cartes de paiement à recouvrer",
+   "postable": false
+  },
+  {
+   "code": "41121",
+   "label": "Cartes à recouvrer reçues des correspondants",
+   "postable": true
+  },
+  {
+   "code": "41122",
+   "label": "Cartes à recouvrer reçues des clients",
+   "postable": true
+  },
+  {
+   "code": "41129",
+   "label": "Cartes à recouvrer reçues des EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "4113",
+   "label": "Effets à recouvrer",
+   "postable": false
+  },
+  {
+   "code": "41131",
+   "label": "Effets à recouvrer reçus des correspondants",
+   "postable": true
+  },
+  {
+   "code": "41132",
+   "label": "Effets à recouvrer reçus des clients",
+   "postable": true
+  },
+  {
+   "code": "41139",
+   "label": "Effets à recouvrer EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "4121",
+   "label": "Compte d'encaissement client",
+   "postable": true
+  },
+  {
+   "code": "4122",
+   "label": "Compte d'encaissement correspondant",
+   "postable": true
+  },
+  {
+   "code": "4123",
+   "label": "Compte d'encaissement EMF",
+   "postable": false
+  },
+  {
+   "code": "41239",
+   "label": "Compte d'encaissement EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "4191",
+   "label": "Valeurs non payées à présentation client",
+   "postable": true
+  },
+  {
+   "code": "4192",
+   "label": "Valeurs non payées à présentation correspondant",
+   "postable": true
+  },
+  {
+   "code": "4193",
+   "label": "Valeurs non payées à présentation EMF",
+   "postable": false
+  },
+  {
+   "code": "41939",
+   "label": "Valeurs non payées à présentation EMF réseau44",
+   "postable": true
+  },
+  {
+   "code": "42",
+   "label": "PERSONNEL",
+   "postable": false
+  },
+  {
+   "code": "421",
+   "label": "Acomptes et avances mensuels sur traitement",
+   "postable": true
+  },
+  {
+   "code": "422",
+   "label": "Rémunérations dues",
+   "postable": true
+  },
+  {
+   "code": "423",
+   "label": "Oppositions sur traitement et salaire",
+   "postable": true
+  },
+  {
+   "code": "424",
+   "label": "Congés payés",
+   "postable": true
+  },
+  {
+   "code": "425",
+   "label": "Autres",
+   "postable": true
+  },
+  {
+   "code": "43",
+   "label": "ETAT, COLLECTIVITES PUBLIQUES ET ORGANISMES INTERNATIONAUX",
+   "postable": false
+  },
+  {
+   "code": "430",
+   "label": "Etat, impôts et taxes",
+   "postable": false
+  },
+  {
+   "code": "4301",
+   "label": "Etat, impôt sur le bénéfice",
+   "postable": true
+  },
+  {
+   "code": "4302",
+   "label": "Etat, autres impôts et taxes",
+   "postable": true
+  },
+  {
+   "code": "4303",
+   "label": "Etat, TVA facturée",
+   "postable": true
+  },
+  {
+   "code": "4304",
+   "label": "Etat, TVA due ou crédit de TVA",
+   "postable": true
+  },
+  {
+   "code": "4305",
+   "label": "Etat, TVA déductible",
+   "postable": true
+  },
+  {
+   "code": "4306",
+   "label": "Etat, autres impôts sur le chiffre d'affaires",
+   "postable": true
+  },
+  {
+   "code": "4307",
+   "label": "Etat, impôts retenus à la source sur le revenu",
+   "postable": true
+  },
+  {
+   "code": "431",
+   "label": "Etat, charges à payer ou produits à recevoir",
+   "postable": false
+  },
+  {
+   "code": "4311",
+   "label": "Etat, charges à payer",
+   "postable": true
+  },
+  {
+   "code": "4312",
+   "label": "Etat, produits à recevoir",
+   "postable": true
+  },
+  {
+   "code": "432",
+   "label": "Collectivités publiques",
+   "postable": true
+  },
+  {
+   "code": "433",
+   "label": "Organismes internationaux",
+   "postable": true
+  },
+  {
+   "code": "434",
+   "label": "Subventions et fonds de dotation à recevoir",
+   "postable": false
+  },
+  {
+   "code": "4341",
+   "label": "Subventions d'équipement à recevoir",
+   "postable": true
+  },
+  {
+   "code": "4342",
+   "label": "Subventions d'exploitation à recevoir",
+   "postable": true
+  },
+  {
+   "code": "4343",
+   "label": "Subvention d'équilibre à recevoir",
+   "postable": true
+  },
+  {
+   "code": "4344",
+   "label": "Avance sur subvention à obtenir",
+   "postable": true
+  },
+  {
+   "code": "4346",
+   "label": "Fonds de dotations à recevoir",
+   "postable": true
+  },
+  {
+   "code": "435",
+   "label": "Fonds d'affectation à recevoir",
+   "postable": true
+  },
+  {
+   "code": "44",
+   "label": "SOCIETAIRES ET ACTIONNAIRES",
+   "postable": false
+  },
+  {
+   "code": "441",
+   "label": "Sociétaires et actionnaires, opérations sur le capital",
+   "postable": false
+  },
+  {
+   "code": "4410",
+   "label": "Sociétaires et actionnaires, apport en nature",
+   "postable": true
+  },
+  {
+   "code": "4411",
+   "label": "Sociétaires, apports en numéraire",
+   "postable": true
+  },
+  {
+   "code": "4412",
+   "label": "Actionnaires, apports en numéraire",
+   "postable": true
+  },
+  {
+   "code": "4413",
+   "label": "Actionnaires, capital appelé non versé",
+   "postable": true
+  },
+  {
+   "code": "4414",
+   "label": "Actionnaires défaillants",
+   "postable": true
+  },
+  {
+   "code": "4415",
+   "label": "Actionnaires, versements reçus sur augmentation de capital",
+   "postable": true
+  },
+  {
+   "code": "4416",
+   "label": "Actionnaires, versements anticipés",
+   "postable": true
+  },
+  {
+   "code": "4417",
+   "label": "Sociétaires et actionnaires- capital à rembourser",
+   "postable": true
+  },
+  {
+   "code": "44199",
+   "label": "Sociétaires et actionnaires, opérations sur le capital réseau",
+   "postable": true
+  },
+  {
+   "code": "44200",
+   "label": "Sociétaires et actionnaires, comptes courant hors réseau",
+   "postable": true
+  },
+  {
+   "code": "44209",
+   "label": "Sociétaires et actionnaires, comptes courant réseau",
+   "postable": true
+  },
+  {
+   "code": "44300",
+   "label": "Actionnaires, dividendes à payer hors réseau",
+   "postable": true
+  },
+  {
+   "code": "44309",
+   "label": "Actionnaires, dividendes à payer réseau",
+   "postable": true
+  },
+  {
+   "code": "444",
+   "label": "Sociétaires, ristournes à verser",
+   "postable": false
+  },
+  {
+   "code": "44400",
+   "label": "Sociétaires, ristournes à verser hors réseau",
+   "postable": true
+  },
+  {
+   "code": "44409",
+   "label": "Sociétaires, ristourne à verser réseau",
+   "postable": true
+  },
+  {
+   "code": "445",
+   "label": "Sociétaires et actionnaires jetons de présences et autres rémunérations",
+   "postable": false
+  },
+  {
+   "code": "44500",
+   "label": "Sociétaires et actionnaires jetons de présences et autres rémunérations hors",
+   "postable": true
+  },
+  {
+   "code": "44509",
+   "label": "Sociétaires et actionnaires jetons de présences et autres rémunérations réseau",
+   "postable": true
+  },
+  {
+   "code": "447",
+   "label": "Sociétaires et actionnaires subventions à recevoir",
+   "postable": false
+  },
+  {
+   "code": "44700",
+   "label": "Sociétaires et actionnaires subventions à recevoir hors réseau",
+   "postable": true
+  },
+  {
+   "code": "44709",
+   "label": "Sociétaires et actionnaires subventions à recevoir réseau",
+   "postable": true
+  },
+  {
+   "code": "448",
+   "label": "Sociétaires et actionnaires, créances rattachées",
+   "postable": false
+  },
+  {
+   "code": "44800",
+   "label": "Sociétaires et actionnaires, créances rattachées hors réseau",
+   "postable": true
+  },
+  {
+   "code": "44809",
+   "label": "Sociétaires et actionnaires, créances rattachées réseau",
+   "postable": true
+  },
+  {
+   "code": "449",
+   "label": "Sociétaires et actionnaires, dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "44900",
+   "label": "Sociétaires et actionnaires, dettes rattachées hors réseau",
+   "postable": true
+  },
+  {
+   "code": "44909",
+   "label": "Sociétaires et actionnaires, dettes rattachées réseau",
+   "postable": true
+  },
+  {
+   "code": "45",
+   "label": "COMPTES DE LIAISON",
+   "postable": false
+  },
+  {
+   "code": "451",
+   "label": "Siège et agences locales/organe faîtier et EMF affiliés",
+   "postable": false
+  },
+  {
+   "code": "45100",
+   "label": "Opérations de liaison siège et agences",
+   "postable": true
+  },
+  {
+   "code": "45109",
+   "label": "Opérations de liaison organe faîtier et EMF affiliés",
+   "postable": true
+  },
+  {
+   "code": "452",
+   "label": "Comptes de liaison entre agences ou entre EMF affiliés",
+   "postable": false
+  },
+  {
+   "code": "45200",
+   "label": "Opérations de liaison entre agences",
+   "postable": true
+  },
+  {
+   "code": "45209",
+   "label": "Opérations de liaison entre EMF affiliés",
+   "postable": true
+  },
+  {
+   "code": "459",
+   "label": "Mouvements de fonds et autres virements internes",
+   "postable": true
+  },
+  {
+   "code": "46",
+   "label": "AUTRES DEBITEURS ET CREDITEURS",
+   "postable": false
+  },
+  {
+   "code": "460",
+   "label": "Subventions, fonds de dotation, dons et libéralités à recevoir (autre qu'Etat, organismes",
+   "postable": false
+  },
+  {
+   "code": "46010",
+   "label": "Subventions, fonds de dotation, dons et libéralités à recevoir hors réseau",
+   "postable": true
+  },
+  {
+   "code": "46019",
+   "label": "Subventions, fonds de dotation, dons et libéralités à recevoir réseau",
+   "postable": true
+  },
+  {
+   "code": "461",
+   "label": "Sociétés d'Assurance et de Capitalisation",
+   "postable": true
+  },
+  {
+   "code": "462",
+   "label": "Organismes de Prévoyance ou de Sécurité Sociale",
+   "postable": true
+  },
+  {
+   "code": "463",
+   "label": "Erreurs, vols et détournements",
+   "postable": false
+  },
+  {
+   "code": "4631",
+   "label": "Erreurs (manquants)",
+   "postable": true
+  },
+  {
+   "code": "4632",
+   "label": "Erreurs (excédents)",
+   "postable": true
+  },
+  {
+   "code": "4633",
+   "label": "Ecarts d'inventaires (manquants)",
+   "postable": true
+  },
+  {
+   "code": "4634",
+   "label": "Ecarts d'inventaires (excédents)",
+   "postable": true
+  },
+  {
+   "code": "4635",
+   "label": "Vols et détournements",
+   "postable": true
+  },
+  {
+   "code": "464",
+   "label": "Obligataires, opérations sur les emprunts obligations",
+   "postable": true
+  },
+  {
+   "code": "465",
+   "label": "Versements restant à effectuer sur des titres en portefeuille (créditeur)",
+   "postable": false
+  },
+  {
+   "code": "46500",
+   "label": "Vers. Restant à effectuer sur des titres en portefeuille hors réseau",
+   "postable": true
+  },
+  {
+   "code": "46509",
+   "label": "Vers. Restant à effectuer sur des titres en portefeuille réseau",
+   "postable": true
+  },
+  {
+   "code": "466",
+   "label": "Créances sur cession d'immobilisations",
+   "postable": false
+  },
+  {
+   "code": "46600",
+   "label": "Créances sur cession d'immobilisations hors réseau",
+   "postable": true
+  },
+  {
+   "code": "46609",
+   "label": "Créances sur cession d'immobilisations réseau",
+   "postable": true
+  },
+  {
+   "code": "467",
+   "label": "Créances sur cession de valeurs mobilières",
+   "postable": false
+  },
+  {
+   "code": "46700",
+   "label": "Créances sur cession de valeurs mobilières hors réseau",
+   "postable": true
+  },
+  {
+   "code": "46709",
+   "label": "Créances sur cession de valeurs mobilières réseau",
+   "postable": true
+  },
+  {
+   "code": "468",
+   "label": "Autres débiteurs et créditeurs",
+   "postable": false
+  },
+  {
+   "code": "46800",
+   "label": "Autres débiteurs et créditeurs hors réseau",
+   "postable": true
+  },
+  {
+   "code": "46809",
+   "label": "Autres débiteurs et créditeurs réseau",
+   "postable": true
+  },
+  {
+   "code": "469",
+   "label": "Débiteurs litigieux ou douteux",
+   "postable": false
+  },
+  {
+   "code": "46900",
+   "label": "Débiteurs litigieux ou douteux hors réseau",
+   "postable": true
+  },
+  {
+   "code": "46909",
+   "label": "Débiteurs litigieux ou douteux réseau",
+   "postable": true
+  },
+  {
+   "code": "47",
+   "label": "COMPTES DE REGULARISATION",
+   "postable": false
+  },
+  {
+   "code": "471",
+   "label": "Comptes de régularisation actif",
+   "postable": false
+  },
+  {
+   "code": "4711",
+   "label": "Charges payées ou comptabilisées d'avance",
+   "postable": false
+  },
+  {
+   "code": "47110",
+   "label": "Charges payées ou comptabilisées d'avance hors réseau",
+   "postable": true
+  },
+  {
+   "code": "47119",
+   "label": "Charges payées ou comptabilisées d'avance réseau",
+   "postable": true
+  },
+  {
+   "code": "4712",
+   "label": "Produits à recevoir",
+   "postable": false
+  },
+  {
+   "code": "47120",
+   "label": "Produits à recevoir hors réseau",
+   "postable": true
+  },
+  {
+   "code": "47129",
+   "label": "Produits à recevoir réseau",
+   "postable": true
+  },
+  {
+   "code": "4713",
+   "label": "Loyers de crédit-bail à recevoir",
+   "postable": true
+  },
+  {
+   "code": "472",
+   "label": "Comptes de régularisation passif",
+   "postable": false
+  },
+  {
+   "code": "4721",
+   "label": "Charges à payer",
+   "postable": false
+  },
+  {
+   "code": "47210",
+   "label": "Charges à payer hors réseau",
+   "postable": true
+  },
+  {
+   "code": "47219",
+   "label": "Charges à payer réseau",
+   "postable": true
+  },
+  {
+   "code": "4722",
+   "label": "Produits perçus ou comptabilisés d'avance",
+   "postable": false
+  },
+  {
+   "code": "47220",
+   "label": "Produits perçus ou comptabilisés d'avance hors réseau",
+   "postable": true
+  },
+  {
+   "code": "47223",
+   "label": "Intérêts consolidés à percevoir",
+   "postable": true
+  },
+  {
+   "code": "47229",
+   "label": "Produits perçus ou comptabilisés d'avance réseau",
+   "postable": true
+  },
+  {
+   "code": "4723",
+   "label": "Loyers de crédit-bail perçus ou comptabilisés d'avance",
+   "postable": true
+  },
+  {
+   "code": "473",
+   "label": "Subventions et fonds de dotation obtenus non encore encaissées",
+   "postable": false
+  },
+  {
+   "code": "4731",
+   "label": "Subventions d'équipement obtenues non encore encaissées",
+   "postable": true
+  },
+  {
+   "code": "4732",
+   "label": "Subventions d'exploitation obtenues non encore encaissées",
+   "postable": true
+  },
+  {
+   "code": "4733",
+   "label": "Avance sur subventions à obtenir",
+   "postable": true
+  },
+  {
+   "code": "4736",
+   "label": "Fonds de dotation obtenu, non encore encaissé",
+   "postable": true
+  },
+  {
+   "code": "47399",
+   "label": "Subventions obtenues non encore encaissées réseau",
+   "postable": true
+  },
+  {
+   "code": "474",
+   "label": "Fonds d'affectation obtenus non encore encaissés",
+   "postable": false
+  },
+  {
+   "code": "47400",
+   "label": "Fonds d'affectation obtenus non encore encaissés hors réseau",
+   "postable": true
+  },
+  {
+   "code": "47409",
+   "label": "Fonds d'affectation obtenus non encore encaissés réseau",
+   "postable": true
+  },
+  {
+   "code": "475",
+   "label": "Position de change",
+   "postable": true
+  },
+  {
+   "code": "476",
+   "label": "Contre-valeur de la position de change",
+   "postable": true
+  },
+  {
+   "code": "4780",
+   "label": "Différés ordinateurs",
+   "postable": true
+  },
+  {
+   "code": "48",
+   "label": "CREANCES DIVERSES EN SOUFFRANCE",
+   "postable": false
+  },
+  {
+   "code": "480",
+   "label": "Avances aux fournisseurs de biens et services en souffrance",
+   "postable": true
+  },
+  {
+   "code": "481",
+   "label": "Valeurs à l'encaissement en souffrance",
+   "postable": true
+  },
+  {
+   "code": "482",
+   "label": "Avances consenties au personnel en souffrance",
+   "postable": true
+  },
+  {
+   "code": "483",
+   "label": "Créances sur les débiteurs divers en souffrance",
+   "postable": true
+  },
+  {
+   "code": "485",
+   "label": "Opérations entre sièges et agences en souffrance",
+   "postable": false
+  },
+  {
+   "code": "48500",
+   "label": "Opérations entre sièges et agences en souffrance",
+   "postable": true
+  },
+  {
+   "code": "48509",
+   "label": "Opérations entre EMF de même réseau",
+   "postable": true
+  },
+  {
+   "code": "49",
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES D'AUTRES TIERS",
+   "postable": false
+  },
+  {
+   "code": "490",
+   "label": "Provisions pour dépréciation des comptes fournisseurs débiteurs",
+   "postable": true
+  },
+  {
+   "code": "491",
+   "label": "Provisions pour dépréciation des comptes de recouvrement",
+   "postable": true
+  },
+  {
+   "code": "493",
+   "label": "Provisions pour dépréciation des comptes de débiteurs divers",
+   "postable": true
+  },
+  {
+   "code": "495",
+   "label": "Provisions pour dépréciation des comptes de liaison",
+   "postable": false
+  },
+  {
+   "code": "49500",
+   "label": "Provisions pour dépréciation des comptes de liaison hors réseau",
+   "postable": true
+  },
+  {
+   "code": "49509",
+   "label": "Provisions pour dépréciation des comptes de liaison réseau",
+   "postable": true
+  },
+  {
+   "code": "49999",
+   "label": "Provisions pour dépréciation des comptes d'autres tiers réseau",
+   "postable": true
+  },
+  {
+   "code": "51",
+   "label": "TITRES DE PLACEMENT TRANSACTION",
+   "postable": false
+  },
+  {
+   "code": "511",
+   "label": "Portefeuille de placement",
+   "postable": false
+  },
+  {
+   "code": "5111",
+   "label": "Actions et parts d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "5112",
+   "label": "Bons du trésor",
+   "postable": true
+  },
+  {
+   "code": "5113",
+   "label": "Autres actions et parts négociables",
+   "postable": true
+  },
+  {
+   "code": "5114",
+   "label": "Obligations et bons assimilés",
+   "postable": true
+  },
+  {
+   "code": "5115",
+   "label": "Obligations propres rachetées par anticipation",
+   "postable": true
+  },
+  {
+   "code": "5116",
+   "label": "Autres titres à court terme",
+   "postable": true
+  },
+  {
+   "code": "5117",
+   "label": "Titres douteux",
+   "postable": true
+  },
+  {
+   "code": "5118",
+   "label": "Créances rattachées",
+   "postable": true
+  },
+  {
+   "code": "512",
+   "label": "Portefeuille de transaction",
+   "postable": false
+  },
+  {
+   "code": "5121",
+   "label": "Actions et parts d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "5122",
+   "label": "Bons du trésor",
+   "postable": true
+  },
+  {
+   "code": "5123",
+   "label": "Autres actions et parts négociables",
+   "postable": true
+  },
+  {
+   "code": "5124",
+   "label": "Obligations et bons assimilés",
+   "postable": true
+  },
+  {
+   "code": "5125",
+   "label": "Obligations propres rachetées par anticipation",
+   "postable": true
+  },
+  {
+   "code": "5126",
+   "label": "Autres titres à court terme",
+   "postable": true
+  },
+  {
+   "code": "5128",
+   "label": "Créances rattachées",
+   "postable": true
+  },
+  {
+   "code": "52",
+   "label": "MARCHE MONETAIRE",
+   "postable": false
+  },
+  {
+   "code": "521",
+   "label": "Opérations interbancaires",
+   "postable": false
+  },
+  {
+   "code": "5211",
+   "label": "Prêts au jour le jour",
+   "postable": true
+  },
+  {
+   "code": "5212",
+   "label": "Prêts à terme",
+   "postable": true
+  },
+  {
+   "code": "5213",
+   "label": "Valeurs reçues en pension",
+   "postable": true
+  },
+  {
+   "code": "5214",
+   "label": "Emprunts au jour le jour",
+   "postable": true
+  },
+  {
+   "code": "5215",
+   "label": "Emprunts à terme",
+   "postable": true
+  },
+  {
+   "code": "5216",
+   "label": "Valeurs données en pension",
+   "postable": true
+  },
+  {
+   "code": "522",
+   "label": "Refinancement au guichet A",
+   "postable": false
+  },
+  {
+   "code": "5221",
+   "label": "Emprunts sur appel d'offres",
+   "postable": true
+  },
+  {
+   "code": "5222",
+   "label": "Emprunts sur mise en pension",
+   "postable": true
+  },
+  {
+   "code": "5223",
+   "label": "Emprunts sur interventions ponctuelles",
+   "postable": true
+  },
+  {
+   "code": "5224",
+   "label": "Emprunts exceptionnels sur placement",
+   "postable": true
+  },
+  {
+   "code": "5225",
+   "label": "Autres emprunts au guichet A",
+   "postable": true
+  },
+  {
+   "code": "524",
+   "label": "Avances au taux de pénalité",
+   "postable": false
+  },
+  {
+   "code": "5241",
+   "label": "Dépassement de la faculté d'avances sur guichet A",
+   "postable": true
+  },
+  {
+   "code": "5242",
+   "label": "Sanctions disciplinaires",
+   "postable": true
+  },
+  {
+   "code": "5243",
+   "label": "Autres avances au taux de pénalité",
+   "postable": true
+  },
+  {
+   "code": "525",
+   "label": "Placements à la BEAC",
+   "postable": false
+  },
+  {
+   "code": "5251",
+   "label": "Placements à 7 jours",
+   "postable": true
+  },
+  {
+   "code": "5252",
+   "label": "Placements à 28 jours",
+   "postable": true
+  },
+  {
+   "code": "5253",
+   "label": "Placements à 84 jours",
+   "postable": true
+  },
+  {
+   "code": "5254",
+   "label": "Autres placements",
+   "postable": true
+  },
+  {
+   "code": "526",
+   "label": "Réserves obligatoires",
+   "postable": true
+  },
+  {
+   "code": "528",
+   "label": "Créances rattachées",
+   "postable": true
+  },
+  {
+   "code": "529",
+   "label": "Dettes rattachées",
+   "postable": true
+  },
+  {
+   "code": "53",
+   "label": "AUTRES VALEURS RECUES OU DONNEES",
+   "postable": false
+  },
+  {
+   "code": "531",
+   "label": "Autres valeurs reçues en pension ou achetées ferme",
+   "postable": true
+  },
+  {
+   "code": "532",
+   "label": "Autres valeurs données en pension ou vendues ferme",
+   "postable": true
+  },
+  {
+   "code": "538",
+   "label": "Créances rattachées",
+   "postable": true
+  },
+  {
+   "code": "539",
+   "label": "Dettes rattachées",
+   "postable": true
+  },
+  {
+   "code": "54",
+   "label": "PRETS, EMPRUNTS ET COMPTES A TERME DES CORRESPONDANTS",
+   "postable": false
+  },
+  {
+   "code": "541",
+   "label": "Prêts à terme",
+   "postable": false
+  },
+  {
+   "code": "5410",
+   "label": "Prêts à terme, Banque Centrale",
+   "postable": true
+  },
+  {
+   "code": "5411",
+   "label": "Prêts à terme, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5412",
+   "label": "Prêts à terme, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5413",
+   "label": "Prêts à terme, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5414",
+   "label": "Prêts à terme, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5415",
+   "label": "Prêts à terme, Etablissements financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5416",
+   "label": "Prêts à terme, Etablissements financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5417",
+   "label": "Prêts à terme, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5418",
+   "label": "Prêts à terme, Autres institutions financières",
+   "postable": true
+  },
+  {
+   "code": "5419",
+   "label": "Prêts à terme EMF",
+   "postable": false
+  },
+  {
+   "code": "54190",
+   "label": "Prêts à terme, EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "54199",
+   "label": "Prêts à terme, EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "542",
+   "label": "Comptes à terme nostri",
+   "postable": false
+  },
+  {
+   "code": "5420",
+   "label": "Comptes à terme nostri, Banque Centrale",
+   "postable": true
+  },
+  {
+   "code": "5421",
+   "label": "Comptes à terme nostri, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5422",
+   "label": "Comptes à terme nostri, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5423",
+   "label": "Comptes à terme nostri, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5424",
+   "label": "Comptes à terme nostri, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5425",
+   "label": "Comptes à terme nostri, Etablissements financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5426",
+   "label": "Comptes à terme nostri, Etablissements financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5427",
+   "label": "Comptes à terme nostri, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5428",
+   "label": "Comptes à terme nostri, Autres institutions financières",
+   "postable": true
+  },
+  {
+   "code": "5429",
+   "label": "Comptes à terme nostri, EMF",
+   "postable": false
+  },
+  {
+   "code": "54290",
+   "label": "Comptes à terme nostri, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "54299",
+   "label": "Comptes à terme nostri, réseau",
+   "postable": true
+  },
+  {
+   "code": "543",
+   "label": "Comptes à terme lori",
+   "postable": false
+  },
+  {
+   "code": "5430",
+   "label": "Comptes à terme lori, Banque Centrale",
+   "postable": true
+  },
+  {
+   "code": "5431",
+   "label": "Comptes à terme lori, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5432",
+   "label": "Comptes à terme lori, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5433",
+   "label": "Comptes à terme lori, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5434",
+   "label": "Comptes à terme lori, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5435",
+   "label": "Comptes à terme lori, Etablissements financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5436",
+   "label": "Comptes à terme lori, Etablissements financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5437",
+   "label": "Comptes à terme lori, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5438",
+   "label": "Comptes à terme lori, Autres institutions financières",
+   "postable": true
+  },
+  {
+   "code": "5439",
+   "label": "Comptes à terme lori, EMF",
+   "postable": false
+  },
+  {
+   "code": "54390",
+   "label": "Comptes à terme lori, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "54399",
+   "label": "Comptes à terme lori, réseau",
+   "postable": true
+  },
+  {
+   "code": "544",
+   "label": "Emprunts à terme",
+   "postable": false
+  },
+  {
+   "code": "5440",
+   "label": "Emprunts à terme, Banque Centrale",
+   "postable": true
+  },
+  {
+   "code": "5441",
+   "label": "Emprunts à terme, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5442",
+   "label": "Emprunts à terme, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5443",
+   "label": "Emprunts à terme, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5444",
+   "label": "Emprunts à terme, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5445",
+   "label": "Emprunts à terme, Etablissements financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5446",
+   "label": "Emprunts à terme, Etablissements financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5447",
+   "label": "Emprunts à terme, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5448",
+   "label": "Emprunts à terme, Autres institutions financières",
+   "postable": true
+  },
+  {
+   "code": "5449",
+   "label": "Emprunts à terme, EMF",
+   "postable": false
+  },
+  {
+   "code": "54490",
+   "label": "Emprunts à terme, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "54499",
+   "label": "Emprunts à terme, réseau",
+   "postable": true
+  },
+  {
+   "code": "548",
+   "label": "Créances rattachées",
+   "postable": false
+  },
+  {
+   "code": "54810",
+   "label": "Créances rattachées, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "54819",
+   "label": "Créances rattachées, réseau",
+   "postable": true
+  },
+  {
+   "code": "549",
+   "label": "Dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "54910",
+   "label": "Dettes rattachées, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "54919",
+   "label": "Dettes rattachées, réseau",
+   "postable": true
+  },
+  {
+   "code": "55",
+   "label": "PRETS ET EMPRUNTS AU JOUR LE JOUR DES CORRESPONDANTS",
+   "postable": false
+  },
+  {
+   "code": "551",
+   "label": "Prêts au jour le jour",
+   "postable": false
+  },
+  {
+   "code": "5511",
+   "label": "Prêts au jour le jour, Banques Centrales",
+   "postable": true
+  },
+  {
+   "code": "5512",
+   "label": "Prêts au jour le jour, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5513",
+   "label": "Prêts au jour le jour, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5514",
+   "label": "Prêts au jour le jour, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5515",
+   "label": "Prêts au jour le jour, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5516",
+   "label": "Prêts au jour le jour, Etablissements Financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5517",
+   "label": "Prêts au jour le jour, Etablissements Financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5518",
+   "label": "Prêts au jour le jour, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5519",
+   "label": "Prêts au jour le jour, EMF",
+   "postable": false
+  },
+  {
+   "code": "55190",
+   "label": "Prêts au jour le jour, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "55199",
+   "label": "Prêts au jour le jour, réseau",
+   "postable": true
+  },
+  {
+   "code": "552",
+   "label": "Emprunts au jour le jour",
+   "postable": false
+  },
+  {
+   "code": "5521",
+   "label": "Emprunts au jour le jour, Banques Centrales",
+   "postable": true
+  },
+  {
+   "code": "5522",
+   "label": "Emprunts au jour le jour, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5523",
+   "label": "Emprunts au jour le jour, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5524",
+   "label": "Emprunts au jour le jour, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5525",
+   "label": "Emprunts au jour le jour, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5526",
+   "label": "Emprunts au jour le jour, Etablissements Financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5527",
+   "label": "Emprunts au jour le jour, Etablissements Financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5528",
+   "label": "Emprunts au jour le jour, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5529",
+   "label": "Emprunts au jour le jour, EMF",
+   "postable": false
+  },
+  {
+   "code": "55290",
+   "label": "Emprunts au jour le jour, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "55299",
+   "label": "Emprunts au jour le jour, réseau",
+   "postable": true
+  },
+  {
+   "code": "558",
+   "label": "Créances rattachées",
+   "postable": false
+  },
+  {
+   "code": "55810",
+   "label": "Créances rattachées, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "55819",
+   "label": "Créances rattachées, réseau",
+   "postable": true
+  },
+  {
+   "code": "559",
+   "label": "Dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "55910",
+   "label": "Dettes rattachées, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "55919",
+   "label": "Dettes rattachées, réseau",
+   "postable": true
+  },
+  {
+   "code": "56",
+   "label": "COMPTES A VUE DES CORRESPONDANTS",
+   "postable": false
+  },
+  {
+   "code": "560",
+   "label": "Comptes à vue nostri",
+   "postable": false
+  },
+  {
+   "code": "5600",
+   "label": "Comptes à vue nostri, Banque Centrale",
+   "postable": true
+  },
+  {
+   "code": "5601",
+   "label": "Comptes à vue nostri, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5602",
+   "label": "Comptes à vue nostri, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5603",
+   "label": "Comptes à vue nostri, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5604",
+   "label": "Comptes à vue nostri, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5605",
+   "label": "Comptes à vue nostri, Etablissements financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5606",
+   "label": "Comptes à vue nostri, Etablissements financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5607",
+   "label": "Comptes à vue nostri, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5608",
+   "label": "Comptes à vue nostri, Autres institutions financières",
+   "postable": true
+  },
+  {
+   "code": "5609",
+   "label": "Comptes à vue nostri, EMF",
+   "postable": false
+  },
+  {
+   "code": "56090",
+   "label": "Comptes à vue nostri, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "56099",
+   "label": "Comptes à vue nostri, réseau",
+   "postable": true
+  },
+  {
+   "code": "561",
+   "label": "Comptes à vue lori",
+   "postable": false
+  },
+  {
+   "code": "5610",
+   "label": "Comptes à vue lori, Banque Centrale",
+   "postable": true
+  },
+  {
+   "code": "5611",
+   "label": "Comptes à vue lori, Institutions financières spécialisées",
+   "postable": true
+  },
+  {
+   "code": "5612",
+   "label": "Comptes à vue lori, Banques associées",
+   "postable": true
+  },
+  {
+   "code": "5613",
+   "label": "Comptes à vue lori, Banques non associées",
+   "postable": true
+  },
+  {
+   "code": "5614",
+   "label": "Comptes à vue lori, Chèques postaux",
+   "postable": true
+  },
+  {
+   "code": "5615",
+   "label": "Comptes à vue lori, Etablissements financiers associés",
+   "postable": true
+  },
+  {
+   "code": "5616",
+   "label": "Comptes à vue lori, Etablissements financiers non associés",
+   "postable": true
+  },
+  {
+   "code": "5617",
+   "label": "Comptes à vue lori, Caisse d'Epargne Postale",
+   "postable": true
+  },
+  {
+   "code": "5618",
+   "label": "Comptes à vue lori, Autres institutions financières",
+   "postable": true
+  },
+  {
+   "code": "5619",
+   "label": "Comptes à vue lori, EMF",
+   "postable": false
+  },
+  {
+   "code": "56190",
+   "label": "Comptes à vue lori, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "56199",
+   "label": "Comptes à vue lori, réseau",
+   "postable": true
+  },
+  {
+   "code": "563",
+   "label": "Dépôts de garantie donnés",
+   "postable": false
+  },
+  {
+   "code": "56310",
+   "label": "Dépôts de garantie donnés, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "56319",
+   "label": "Dépôts de garantie donnés, réseau",
+   "postable": true
+  },
+  {
+   "code": "564",
+   "label": "Dépôts de garantie reçus",
+   "postable": false
+  },
+  {
+   "code": "56410",
+   "label": "Dépôts de garantie reçus, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "56419",
+   "label": "Dépôts de garantie reçus, réseau",
+   "postable": true
+  },
+  {
+   "code": "568",
+   "label": "Créances rattachées",
+   "postable": false
+  },
+  {
+   "code": "56810",
+   "label": "Créances rattachées, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "56819",
+   "label": "Créances rattachées, réseau",
+   "postable": true
+  },
+  {
+   "code": "569",
+   "label": "Dettes rattachées",
+   "postable": false
+  },
+  {
+   "code": "56910",
+   "label": "Dettes rattachées, hors réseau",
+   "postable": true
+  },
+  {
+   "code": "56919",
+   "label": "Dettes rattachées, réseau",
+   "postable": true
+  },
+  {
+   "code": "57",
+   "label": "CAISSE",
+   "postable": false
+  },
+  {
+   "code": "571",
+   "label": "Billets et Monnaies",
+   "postable": false
+  },
+  {
+   "code": "5710",
+   "label": "Caisse FCFA",
+   "postable": true
+  },
+  {
+   "code": "5711",
+   "label": "Caisse devises",
+   "postable": true
+  },
+  {
+   "code": "572",
+   "label": "Avoirs en or et pierres précieuses",
+   "postable": true
+  },
+  {
+   "code": "573",
+   "label": "Chèques de voyage",
+   "postable": true
+  },
+  {
+   "code": "574",
+   "label": "Timbres postaux et fiscaux",
+   "postable": true
+  },
+  {
+   "code": "58",
+   "label": "CREANCES EN SOUFFRANCE SUR LES CORRESPONDANTS",
+   "postable": false
+  },
+  {
+   "code": "581",
+   "label": "Créances impayées sur les correspondants",
+   "postable": false
+  },
+  {
+   "code": "58110",
+   "label": "Créances impayées sur les corresp. Hors réseau",
+   "postable": true
+  },
+  {
+   "code": "58119",
+   "label": "Créances impayées sur les corresp. Réseau",
+   "postable": true
+  },
+  {
+   "code": "582",
+   "label": "Créances immobilisées",
+   "postable": false
+  },
+  {
+   "code": "58210",
+   "label": "Créances immobilisées sur les corresp. Hors réseau",
+   "postable": true
+  },
+  {
+   "code": "58219",
+   "label": "Créances immobilisées sur les corresp. Réseau",
+   "postable": true
+  },
+  {
+   "code": "583",
+   "label": "Créances douteuses",
+   "postable": false
+  },
+  {
+   "code": "58310",
+   "label": "Créances douteuses sur les corresp. hors réseau",
+   "postable": true
+  },
+  {
+   "code": "58319",
+   "label": "Créances douteuses sur les corresp. Réseau",
+   "postable": true
+  },
+  {
+   "code": "59",
+   "label": "PROVISIONS POUR DEPRECIATION DES COMPTES DE TRESORERIE",
+   "postable": false
+  },
+  {
+   "code": "591",
+   "label": "Provisions pour dépréciation des titres de placement",
+   "postable": false
+  },
+  {
+   "code": "5911",
+   "label": "Provisions pour dépréciation des actions et parts d'Ets de crédit",
+   "postable": true
+  },
+  {
+   "code": "5912",
+   "label": "Provisions pour dépréciation des Bons du Trésor",
+   "postable": true
+  },
+  {
+   "code": "5913",
+   "label": "Prov. pour dépréciation des autres actions et parts négociables",
+   "postable": true
+  },
+  {
+   "code": "5914",
+   "label": "Provisions pour dépréciation des obligations et bons assimilés",
+   "postable": true
+  },
+  {
+   "code": "5915",
+   "label": "Provisions pour dépréciation des obligations propres rachetées par anticipation",
+   "postable": true
+  },
+  {
+   "code": "5916",
+   "label": "Provisions pour dépréciation des autres titres à court terme",
+   "postable": true
+  },
+  {
+   "code": "5917",
+   "label": "Provisions pour dépréciation des titres douteux",
+   "postable": true
+  },
+  {
+   "code": "592",
+   "label": "Provisions pour dépréciation des comptes de correspondants 5921 -- Provisions pour dépréciation des créances douteuses sur les correspondants",
+   "postable": false
+  },
+  {
+   "code": "5921",
+   "label": "Provisions pour dépréciation des créances douteuses sur les corresp. hors réseau",
+   "postable": true
+  },
+  {
+   "code": "60",
+   "label": "CHARGES SUR OPERATIONS DE TRESORERIE ET OPERATIONS INTERBANCAIRES",
+   "postable": false
+  },
+  {
+   "code": "601",
+   "label": "Intérêts sur opérations interbancaires",
+   "postable": false
+  },
+  {
+   "code": "6011",
+   "label": "Opérations interbancaires",
+   "postable": true
+  },
+  {
+   "code": "6012",
+   "label": "BEAC",
+   "postable": true
+  },
+  {
+   "code": "602",
+   "label": "Intérêts sur autres valeurs données en pension",
+   "postable": true
+  },
+  {
+   "code": "603",
+   "label": "Intérêts sur emprunts et comptes à terme",
+   "postable": true
+  },
+  {
+   "code": "604",
+   "label": "Intérêts sur emprunts au jour le jour",
+   "postable": true
+  },
+  {
+   "code": "605",
+   "label": "Intérêts sur comptes à vue",
+   "postable": true
+  },
+  {
+   "code": "606",
+   "label": "Commissions sur opérations de trésorerie et interbancaires 6061 -- Commissions sur opérations du marché monétaire",
+   "postable": false
+  },
+  {
+   "code": "6062",
+   "label": "Commissions sur autres valeurs données en pension",
+   "postable": true
+  },
+  {
+   "code": "6063",
+   "label": "Commissions sur emprunts et comptes à terme",
+   "postable": true
+  },
+  {
+   "code": "6064",
+   "label": "Commissions sur emprunts au jour le jour",
+   "postable": true
+  },
+  {
+   "code": "6065",
+   "label": "Commissions sur comptes à vue",
+   "postable": true
+  },
+  {
+   "code": "607",
+   "label": "Charges sur opérations de trésorerie réseau",
+   "postable": false
+  },
+  {
+   "code": "60709",
+   "label": "Intérêts sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "60719",
+   "label": "Commissions sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "61",
+   "label": "INTERETS SUR OPERATIONS AVEC LA CLIENTELE OU SOCIETAIRES",
+   "postable": false
+  },
+  {
+   "code": "611",
+   "label": "Intérêts sur dépôts à régime spécial",
+   "postable": false
+  },
+  {
+   "code": "6111",
+   "label": "Intérêts sur bons de caisse",
+   "postable": true
+  },
+  {
+   "code": "6112",
+   "label": "Intérêts sur certificats de dépôts",
+   "postable": true
+  },
+  {
+   "code": "6113",
+   "label": "Intérêts sur comptes et plans épargne-logement",
+   "postable": true
+  },
+  {
+   "code": "6114",
+   "label": "Intérêts sur plans d'épargne-retraite",
+   "postable": true
+  },
+  {
+   "code": "6115",
+   "label": "Intérêts sur autres comptes d'épargne à régime spécial",
+   "postable": true
+  },
+  {
+   "code": "612",
+   "label": "Intérêts sur dépôts à terme",
+   "postable": true
+  },
+  {
+   "code": "613",
+   "label": "Intérêts sur comptes sur livrets",
+   "postable": true
+  },
+  {
+   "code": "614",
+   "label": "Intérêts sur autres comptes à vue",
+   "postable": true
+  },
+  {
+   "code": "615",
+   "label": "Intérêts sur opération avec EMF",
+   "postable": false
+  },
+  {
+   "code": "61510",
+   "label": "Intérêts sur opérations à vue hors réseau",
+   "postable": true
+  },
+  {
+   "code": "61511",
+   "label": "Intérêts sur opérations à terme hors réseau",
+   "postable": true
+  },
+  {
+   "code": "61519",
+   "label": "Intérêts sur opérations à vue réseau",
+   "postable": true
+  },
+  {
+   "code": "61529",
+   "label": "Intérêts sur opérations à terme réseau",
+   "postable": true
+  },
+  {
+   "code": "616",
+   "label": "Charges sur opérations de location",
+   "postable": true
+  },
+  {
+   "code": "619",
+   "label": "Intérêts sur autres comptes de la clientèle",
+   "postable": true
+  },
+  {
+   "code": "62",
+   "label": "CHARGES DIVERSES SUR OPERATIONS BANCAIRES",
+   "postable": false
+  },
+  {
+   "code": "621",
+   "label": "Frais engagés et commissions sur instruments de paiement",
+   "postable": true
+  },
+  {
+   "code": "622",
+   "label": "Commissions et frais sur titres",
+   "postable": true
+  },
+  {
+   "code": "623",
+   "label": "Commissions, frais et pertes sur opération de change effectuées à titre principal",
+   "postable": true
+  },
+  {
+   "code": "624",
+   "label": "Commissions et frais versés sur opérations de transfert de fonds",
+   "postable": true
+  },
+  {
+   "code": "625",
+   "label": "Commissions sur engagements par signature",
+   "postable": true
+  },
+  {
+   "code": "626",
+   "label": "Autres commissions et frais bancaires",
+   "postable": true
+  },
+  {
+   "code": "627",
+   "label": "Pertes sur titres de placement ou de transaction",
+   "postable": true
+  },
+  {
+   "code": "628",
+   "label": "Charges diverses sur opérations avec EMF",
+   "postable": false
+  },
+  {
+   "code": "62810",
+   "label": "Charges diverses sur opérations hors réseau",
+   "postable": true
+  },
+  {
+   "code": "62819",
+   "label": "Charges diverses sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "63",
+   "label": "CHARGES SUR RESSOURCES PERMANENTES",
+   "postable": false
+  },
+  {
+   "code": "631",
+   "label": "Intérêts sur ressources permanentes",
+   "postable": false
+  },
+  {
+   "code": "6311",
+   "label": "Intérêts sur emprunts obligataires",
+   "postable": true
+  },
+  {
+   "code": "6312",
+   "label": "Intérêts sur emprunts participatifs",
+   "postable": true
+  },
+  {
+   "code": "6313",
+   "label": "Intérêts sur dettes subordonnées",
+   "postable": true
+  },
+  {
+   "code": "6314",
+   "label": "Intérêts sur comptes bloqués des actionnaires ou sociétaires",
+   "postable": true
+  },
+  {
+   "code": "6315",
+   "label": "Intérêts sur autres comptes bloqués",
+   "postable": true
+  },
+  {
+   "code": "6316",
+   "label": "Intérêts sur titres de créances négociables",
+   "postable": true
+  },
+  {
+   "code": "6317",
+   "label": "Intérêts sur autres emprunts à moyen et long terme",
+   "postable": true
+  },
+  {
+   "code": "6318",
+   "label": "Intérêts payés sur emprunts équivalents crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "6319",
+   "label": "Intérêts sur ressources permanentes EMF",
+   "postable": false
+  },
+  {
+   "code": "63190",
+   "label": "Intérêts sur ressources permanentes hors réseau",
+   "postable": true
+  },
+  {
+   "code": "63199",
+   "label": "Intérêts sur ressources permanentes réseau",
+   "postable": true
+  },
+  {
+   "code": "632",
+   "label": "Commissions :",
+   "postable": false
+  },
+  {
+   "code": "6321",
+   "label": "sur emprunts obligataires",
+   "postable": true
+  },
+  {
+   "code": "6322",
+   "label": "sur emprunts participatifs",
+   "postable": true
+  },
+  {
+   "code": "6323",
+   "label": "sur dettes subordonnées",
+   "postable": true
+  },
+  {
+   "code": "6324",
+   "label": "sur comptes bloqués des actionnaires",
+   "postable": true
+  },
+  {
+   "code": "6325",
+   "label": "sur autres comptes bloqués",
+   "postable": true
+  },
+  {
+   "code": "6326",
+   "label": "sur titres de créances négociables",
+   "postable": true
+  },
+  {
+   "code": "6327",
+   "label": "sur autres emprunts à moyen et long terme",
+   "postable": true
+  },
+  {
+   "code": "6328",
+   "label": "Commissions sur ressources permanentes EMF",
+   "postable": false
+  },
+  {
+   "code": "63280",
+   "label": "Comm. sur ressources permanentes hors réseau",
+   "postable": true
+  },
+  {
+   "code": "63289",
+   "label": "Comm. sur ressources permanentes réseau",
+   "postable": true
+  },
+  {
+   "code": "64",
+   "label": "CHARGES LIEES AUX ACTIVITES ACCESSOIRES",
+   "postable": false
+  },
+  {
+   "code": "640",
+   "label": "Achats et variations de stock de marchandises",
+   "postable": false
+  },
+  {
+   "code": "6401",
+   "label": "Achats de marchandises",
+   "postable": false
+  },
+  {
+   "code": "64010",
+   "label": "Achats de marchandises hors réseau",
+   "postable": true
+  },
+  {
+   "code": "64019",
+   "label": "Achats de marchandises réseau",
+   "postable": true
+  },
+  {
+   "code": "6402",
+   "label": "Variations de stocks",
+   "postable": false
+  },
+  {
+   "code": "64020",
+   "label": "Variations de stocks hors réseau",
+   "postable": true
+  },
+  {
+   "code": "64029",
+   "label": "Variations de stocks réseau",
+   "postable": true
+  },
+  {
+   "code": "6403",
+   "label": "Rabais, remises, ristournes obtenus hors facture (-)",
+   "postable": false
+  },
+  {
+   "code": "64030",
+   "label": "RRR obtenus hors facture hors réseau",
+   "postable": true
+  },
+  {
+   "code": "64039",
+   "label": "RRR obtenus hors facture réseau",
+   "postable": true
+  },
+  {
+   "code": "641",
+   "label": "Autres charges liées aux activités accessoires",
+   "postable": false
+  },
+  {
+   "code": "6410",
+   "label": "Charges sur location de coffre-fort",
+   "postable": true
+  },
+  {
+   "code": "6411",
+   "label": "Charges sur opérations de change",
+   "postable": true
+  },
+  {
+   "code": "6412",
+   "label": "Charges sur les actions de formations",
+   "postable": true
+  },
+  {
+   "code": "6413",
+   "label": "Charges liées aux conseils et assistance de gestion",
+   "postable": true
+  },
+  {
+   "code": "6414",
+   "label": "Autres charges liées aux opérations de crédit-bail avec option d'achat",
+   "postable": true
+  },
+  {
+   "code": "6415",
+   "label": "Charges liées aux opérations de location simple des valeurs immobilisées",
+   "postable": true
+  },
+  {
+   "code": "6416",
+   "label": "Autres charges liées aux activités accessoires EMF",
+   "postable": false
+  },
+  {
+   "code": "64160",
+   "label": "Autres charges liées aux activités Access. Hors réseau",
+   "postable": true
+  },
+  {
+   "code": "64169",
+   "label": "Autres charges liées aux activités Access. Réseau",
+   "postable": true
+  },
+  {
+   "code": "642",
+   "label": "Charges sur opérations de crédit-bail et opérations assimilées",
+   "postable": false
+  },
+  {
+   "code": "64291",
+   "label": "Dotations aux provisions pour non-perception de loyer de CB",
+   "postable": true
+  },
+  {
+   "code": "64292",
+   "label": "Dotations aux amortissements des biens en crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "64293",
+   "label": "Dotations aux provisions sur biens en crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "64294",
+   "label": "Dotations aux provisions pour perte latente de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "64297",
+   "label": "Moins-value de cession sur bien en crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "64298",
+   "label": "Autres charges sur opérations de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "643",
+   "label": "Charges sur opérations de location simple",
+   "postable": true
+  },
+  {
+   "code": "65",
+   "label": "CHARGES DE PERSONNEL ET CHARGES GENERALES D'EXPLOITATION",
+   "postable": false
+  },
+  {
+   "code": "651",
+   "label": "Charges de personnel",
+   "postable": false
+  },
+  {
+   "code": "6510",
+   "label": "Rémunérations directes des cadres permanents",
+   "postable": false
+  },
+  {
+   "code": "65101",
+   "label": "Rémunérations directes des cadres supérieurs",
+   "postable": true
+  },
+  {
+   "code": "65102",
+   "label": "Rémunérations directes des agents de maîtrise",
+   "postable": true
+  },
+  {
+   "code": "6511",
+   "label": "Rémunérations directes des employés permanents",
+   "postable": true
+  },
+  {
+   "code": "6512",
+   "label": "Rémunérations directes du personnel de service",
+   "postable": true
+  },
+  {
+   "code": "6513",
+   "label": "Rémunérations directes du personnel temporaire",
+   "postable": true
+  },
+  {
+   "code": "6514",
+   "label": "Cotisations sociales (part patronale)",
+   "postable": true
+  },
+  {
+   "code": "6515",
+   "label": "Indemnités sociales",
+   "postable": true
+  },
+  {
+   "code": "6516",
+   "label": "Avantages en nature",
+   "postable": true
+  },
+  {
+   "code": "6517",
+   "label": "Indemnités de fonction",
+   "postable": true
+  },
+  {
+   "code": "6518",
+   "label": "Droits à congé",
+   "postable": true
+  },
+  {
+   "code": "6519",
+   "label": "Charges du personnel transféré",
+   "postable": false
+  },
+  {
+   "code": "65190",
+   "label": "Charges du personnel transféré hors réseau",
+   "postable": true
+  },
+  {
+   "code": "65199",
+   "label": "Charges du personnel transféré EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "652",
+   "label": "Charges générales d'exploitation",
+   "postable": false
+  },
+  {
+   "code": "6521",
+   "label": "Fournitures consommées",
+   "postable": false
+  },
+  {
+   "code": "65211",
+   "label": "Eau, électricité, gaz et carburants",
+   "postable": true
+  },
+  {
+   "code": "65212",
+   "label": "Petit outillage",
+   "postable": true
+  },
+  {
+   "code": "65213",
+   "label": "Fournitures de bureau et documentation générale",
+   "postable": true
+  },
+  {
+   "code": "65214",
+   "label": "Fournitures d'entretien",
+   "postable": true
+  },
+  {
+   "code": "65215",
+   "label": "Fournitures non ventilées",
+   "postable": true
+  },
+  {
+   "code": "65219",
+   "label": "Fournitures consommées EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "6522",
+   "label": "Transports et déplacements",
+   "postable": false
+  },
+  {
+   "code": "65220",
+   "label": "Transports et déplacements hors réseau",
+   "postable": true
+  },
+  {
+   "code": "65229",
+   "label": "Transports et déplacements EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "6523",
+   "label": "Autres services consommés",
+   "postable": false
+  },
+  {
+   "code": "65231",
+   "label": "Affranchissements, téléphone, télex",
+   "postable": true
+  },
+  {
+   "code": "65232",
+   "label": "Frais de mission",
+   "postable": true
+  },
+  {
+   "code": "65233",
+   "label": "Réceptions, publicité",
+   "postable": true
+  },
+  {
+   "code": "65234",
+   "label": "Loyers et charges locatives",
+   "postable": true
+  },
+  {
+   "code": "65235",
+   "label": "Honoraires et frais de contentieux",
+   "postable": true
+  },
+  {
+   "code": "65236",
+   "label": "Entretien et réparation",
+   "postable": true
+  },
+  {
+   "code": "65237",
+   "label": "Informatique (Location de matériel et assistance)",
+   "postable": true
+  },
+  {
+   "code": "65238",
+   "label": "Autres services",
+   "postable": true
+  },
+  {
+   "code": "6524",
+   "label": "Assistance technique et frais d'inspection",
+   "postable": false
+  },
+  {
+   "code": "65241",
+   "label": "Assistance technique",
+   "postable": true
+  },
+  {
+   "code": "65242",
+   "label": "Inspection",
+   "postable": true
+  },
+  {
+   "code": "65249",
+   "label": "Assistance technique et frais d'inspection EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "6525",
+   "label": "Charges diverses d'exploitation",
+   "postable": false
+  },
+  {
+   "code": "65251",
+   "label": "Assemblée Générale, Conseil d'Administration, jetons de présence",
+   "postable": true
+  },
+  {
+   "code": "65252",
+   "label": "Assurances",
+   "postable": true
+  },
+  {
+   "code": "65254",
+   "label": "Cotisations professionnelles",
+   "postable": true
+  },
+  {
+   "code": "65255",
+   "label": "Formation du personnel",
+   "postable": true
+  },
+  {
+   "code": "65256",
+   "label": "Charges diverses",
+   "postable": true
+  },
+  {
+   "code": "65259",
+   "label": "Charges diverses d'exploitation EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "66",
+   "label": "IMPOTS ET TAXES",
+   "postable": false
+  },
+  {
+   "code": "661",
+   "label": "Etat, impôts et taxes directs",
+   "postable": true
+  },
+  {
+   "code": "662",
+   "label": "Etat, impôts et taxes indirects",
+   "postable": true
+  },
+  {
+   "code": "663",
+   "label": "Etat, droits d'enregistrement",
+   "postable": true
+  },
+  {
+   "code": "664",
+   "label": "Etat, pénalités et amendes fiscales",
+   "postable": true
+  },
+  {
+   "code": "665",
+   "label": "Etat, autres impôts et taxes",
+   "postable": true
+  },
+  {
+   "code": "67",
+   "label": "PERTES EXCEPTIONNELLES ET SUR EXCERCICES",
+   "postable": false
+  },
+  {
+   "code": "671",
+   "label": "Charges d'exploitation bancaire sur exercices antérieurs",
+   "postable": false
+  },
+  {
+   "code": "6710",
+   "label": "Charges sur opérations de trésorerie",
+   "postable": true
+  },
+  {
+   "code": "6711",
+   "label": "Charges sur opérations avec la clientèle et de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "6712",
+   "label": "Charges sur opérations bancaires diverses",
+   "postable": true
+  },
+  {
+   "code": "6713",
+   "label": "Charges sur ressources permanentes",
+   "postable": true
+  },
+  {
+   "code": "6714",
+   "label": "Charges d'exploitation bancaire sur exercices antérieurs EMF",
+   "postable": false
+  },
+  {
+   "code": "67140",
+   "label": "Charges d'exploitation bancaire sur exercice antérieur hors réseau",
+   "postable": true
+  },
+  {
+   "code": "67149",
+   "label": "Charges d d'exploitation bancaire sur exercice antérieur réseau",
+   "postable": true
+  },
+  {
+   "code": "672",
+   "label": "Charges générales d'exploitation sur exercices antérieurs",
+   "postable": false
+  },
+  {
+   "code": "6721",
+   "label": "Fournitures consommées",
+   "postable": true
+  },
+  {
+   "code": "6722",
+   "label": "Transports et déplacements",
+   "postable": true
+  },
+  {
+   "code": "6723",
+   "label": "Autres services consommés",
+   "postable": true
+  },
+  {
+   "code": "6724",
+   "label": "Charges diverses d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "6725",
+   "label": "Assistance technique et frais d'inspection",
+   "postable": true
+  },
+  {
+   "code": "6726",
+   "label": "Charges générales d'exploitation sur exercices antérieurs EMF",
+   "postable": false
+  },
+  {
+   "code": "67260",
+   "label": "Charges générales d'expl. surexerc. ant. hors réseau",
+   "postable": true
+  },
+  {
+   "code": "67269",
+   "label": "Charges générales d'expl. surexerc. ant. Réseau",
+   "postable": true
+  },
+  {
+   "code": "673",
+   "label": "Autres charges sur exercices antérieurs",
+   "postable": false
+  },
+  {
+   "code": "6731",
+   "label": "Frais de personnel",
+   "postable": true
+  },
+  {
+   "code": "6732",
+   "label": "Impôts et taxes",
+   "postable": true
+  },
+  {
+   "code": "6733",
+   "label": "Autres charges sur exercices antérieurs EMF",
+   "postable": false
+  },
+  {
+   "code": "67330",
+   "label": "Autres charges sur exercices antérieurs hors réseau",
+   "postable": true
+  },
+  {
+   "code": "67339",
+   "label": "Autres charges sur exercices antérieurs réseau",
+   "postable": true
+  },
+  {
+   "code": "676",
+   "label": "Valeurs nettes comptables des éléments d'actif cédés",
+   "postable": false
+  },
+  {
+   "code": "6761",
+   "label": "Val. Nettes comptables des titres de participation cédés",
+   "postable": true
+  },
+  {
+   "code": "6762",
+   "label": "Valeurs nettes comptables des autres éléments d'actif cédés",
+   "postable": true
+  },
+  {
+   "code": "6763",
+   "label": "Valeurs nettes comptables des éléments d'actif cédés EMF",
+   "postable": false
+  },
+  {
+   "code": "67630",
+   "label": "VNC des éléments d'actif cédés hors réseau",
+   "postable": true
+  },
+  {
+   "code": "67639",
+   "label": "VNC des éléments d'actif cédés réseau",
+   "postable": true
+  },
+  {
+   "code": "677",
+   "label": "Subventions accordées",
+   "postable": false
+  },
+  {
+   "code": "6771",
+   "label": "Subventions d'investissement",
+   "postable": true
+  },
+  {
+   "code": "6772",
+   "label": "Subventions d'exploitation et d'équilibre",
+   "postable": true
+  },
+  {
+   "code": "6773",
+   "label": "Subventions accordées aux EMF",
+   "postable": false
+  },
+  {
+   "code": "67730",
+   "label": "Subventions accordées hors réseau",
+   "postable": true
+  },
+  {
+   "code": "67739",
+   "label": "Subventions accordées réseau",
+   "postable": true
+  },
+  {
+   "code": "678",
+   "label": "Dons et libéralités accordés",
+   "postable": true
+  },
+  {
+   "code": "679",
+   "label": "Pertes exceptionnelles",
+   "postable": false
+  },
+  {
+   "code": "6790",
+   "label": "Pertes sur opérations de trésorerie",
+   "postable": true
+  },
+  {
+   "code": "6791",
+   "label": "Pertes sur opérations avec la clientèle",
+   "postable": true
+  },
+  {
+   "code": "6792",
+   "label": "Pertes sur opérations bancaires diverses",
+   "postable": true
+  },
+  {
+   "code": "6793",
+   "label": "Pertes exceptionnelles liées au personnel",
+   "postable": true
+  },
+  {
+   "code": "6794",
+   "label": "Amendes et pénalités fiscales",
+   "postable": true
+  },
+  {
+   "code": "6795",
+   "label": "Déficits de caisse non récupérés",
+   "postable": true
+  },
+  {
+   "code": "6796",
+   "label": "Manquants sur stocks de fournitures",
+   "postable": true
+  },
+  {
+   "code": "6797",
+   "label": "Mise au rebut d'immobilisations",
+   "postable": true
+  },
+  {
+   "code": "6798",
+   "label": "Autres pertes exceptionnelles",
+   "postable": true
+  },
+  {
+   "code": "6799",
+   "label": "Pertes exceptionnelles EMF",
+   "postable": false
+  },
+  {
+   "code": "67990",
+   "label": "Pertes exceptionnelles hors réseau",
+   "postable": true
+  },
+  {
+   "code": "67999",
+   "label": "Pertes exceptionnelles réseau",
+   "postable": true
+  },
+  {
+   "code": "68",
+   "label": "DOTATIONS AUX AMORTISSEMENTS",
+   "postable": false
+  },
+  {
+   "code": "680",
+   "label": "Dotations aux amortissements des frais et valeurs incorporelles immobilisés",
+   "postable": false
+  },
+  {
+   "code": "6801",
+   "label": "Dotations aux amortissements des frais immobilisés",
+   "postable": true
+  },
+  {
+   "code": "6802",
+   "label": "Dotations aux amortissements des immobilisations incorporelles",
+   "postable": true
+  },
+  {
+   "code": "6807",
+   "label": "Dotations aux amortissements des primes de remboursement des emprunts obligataires",
+   "postable": true
+  },
+  {
+   "code": "682",
+   "label": "Dotations aux amortissements des immobilisations corporelles",
+   "postable": false
+  },
+  {
+   "code": "6820",
+   "label": "Dotations aux amortissements des biens acquis en crédit-bail",
+   "postable": false
+  },
+  {
+   "code": "68201",
+   "label": "Immeubles",
+   "postable": true
+  },
+  {
+   "code": "68202",
+   "label": "Matériel et mobilier",
+   "postable": true
+  },
+  {
+   "code": "6821",
+   "label": "Dotations aux amortissements des immeubles d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "6822",
+   "label": "Dot. aux amortissements des Immeubles donnés en location simple",
+   "postable": true
+  },
+  {
+   "code": "6823",
+   "label": "Dot. aux amortissements des immeubles acquis par réalisation de garantie",
+   "postable": true
+  },
+  {
+   "code": "6824",
+   "label": "Dot. aux amortissements du matériel et mobilier d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "6825",
+   "label": "Dot. aux amortissements du matériel et mobilier donnés en location simple",
+   "postable": true
+  },
+  {
+   "code": "6826",
+   "label": "Dot. aux amortissements du mat. et mob acquis en réalisation de garanties",
+   "postable": true
+  },
+  {
+   "code": "6827",
+   "label": "Dot. aux amortissements des autres immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "69",
+   "label": "DOTATIONS AUX PROVISIONS ET PERTES SUR CREANCES IRRECOUVRABLES",
+   "postable": false
+  },
+  {
+   "code": "691",
+   "label": "Dotations aux provisions",
+   "postable": false
+  },
+  {
+   "code": "6911",
+   "label": "Dotations aux provisions pour risques et charges",
+   "postable": true
+  },
+  {
+   "code": "6912",
+   "label": "Dot. aux provisions pour dépréciation des valeurs incorporelles et corporelles Immobilisées",
+   "postable": true
+  },
+  {
+   "code": "6913",
+   "label": "Dotations aux provisions pour dépréciation des comptes de clientèle",
+   "postable": true
+  },
+  {
+   "code": "6914",
+   "label": "Dotations aux provisions pour dépréciation des comptes de tiers et de régularisation",
+   "postable": true
+  },
+  {
+   "code": "6915",
+   "label": "Dotations aux provisions pour dépréciation des comptes de trésorerie",
+   "postable": true
+  },
+  {
+   "code": "6916",
+   "label": "Dotations aux provisions des comptes d'EMF",
+   "postable": false
+  },
+  {
+   "code": "69160",
+   "label": "Dotations aux provisions des comptes d'EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "69169",
+   "label": "Dotations aux provisions des comptes d'EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "6917",
+   "label": "Dotations aux provisions pour dépréciation des stocks",
+   "postable": false
+  },
+  {
+   "code": "69170",
+   "label": "Dot. aux provisions pour dépréciation des stocks hors réseau",
+   "postable": true
+  },
+  {
+   "code": "69179",
+   "label": "Dot. aux provisions pour dépréciation des stocks réseau",
+   "postable": true
+  },
+  {
+   "code": "692",
+   "label": "Pertes sur créances irrécouvrables",
+   "postable": false
+  },
+  {
+   "code": "6921",
+   "label": "Pertes sur créances irrécouvrables couvertes par des provisions",
+   "postable": true
+  },
+  {
+   "code": "6922",
+   "label": "Pertes sur créances irrécouvrables non couvertes par des provisions",
+   "postable": true
+  },
+  {
+   "code": "6923",
+   "label": "Pertes sur créances irrécouvrables d'EMF",
+   "postable": false
+  },
+  {
+   "code": "69230",
+   "label": "Pertes sur créances irrécouvrables d'EMF hors réseau",
+   "postable": true
+  },
+  {
+   "code": "69239",
+   "label": "Pertes sur créances irrécouvrables d'EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "694",
+   "label": "Dotation aux provisions pour risques généraux",
+   "postable": true
+  },
+  {
+   "code": "697",
+   "label": "Dotation aux provisions réglementées",
+   "postable": false
+  },
+  {
+   "code": "6971",
+   "label": "Dotation aux provisions pour amortissements dérogatoires",
+   "postable": true
+  },
+  {
+   "code": "6972",
+   "label": "Dotation aux autres provisions réglementées",
+   "postable": true
+  },
+  {
+   "code": "698",
+   "label": "Autres dotations aux provisions",
+   "postable": true
+  },
+  {
+   "code": "70",
+   "label": "PRODUITS SUR OPERATIONS DE TRESORERIE ET INTERBANCAIRE",
+   "postable": false
+  },
+  {
+   "code": "7011",
+   "label": "Intérêts sur placements interbancaires",
+   "postable": true
+  },
+  {
+   "code": "7012",
+   "label": "Intérêts sur placements à la BEAC",
+   "postable": true
+  },
+  {
+   "code": "702",
+   "label": "Intérêts sur autres valeurs reçues en pension",
+   "postable": true
+  },
+  {
+   "code": "703",
+   "label": "Intérêts sur prêts et comptes à terme",
+   "postable": true
+  },
+  {
+   "code": "704",
+   "label": "Intérêts sur prêts au jour le jour",
+   "postable": true
+  },
+  {
+   "code": "705",
+   "label": "Intérêts sur comptes à vue",
+   "postable": true
+  },
+  {
+   "code": "706",
+   "label": "Commissions sur opérations de trésorerie et interbancaires",
+   "postable": false
+  },
+  {
+   "code": "7061",
+   "label": "Commissions sur opérations du marché monétaire",
+   "postable": true
+  },
+  {
+   "code": "7062",
+   "label": "Commissions sur opérations de refinancement",
+   "postable": true
+  },
+  {
+   "code": "7063",
+   "label": "Commissions sur prêts et comptes à terme",
+   "postable": true
+  },
+  {
+   "code": "7064",
+   "label": "Commissions sur prêts au jour le jour",
+   "postable": true
+  },
+  {
+   "code": "7065",
+   "label": "Commissions sur comptes à vue",
+   "postable": true
+  },
+  {
+   "code": "707",
+   "label": "Produits sur opérations de trésorerie réseau",
+   "postable": false
+  },
+  {
+   "code": "70709",
+   "label": "Intérêts sur opérations de trésorerie réseau",
+   "postable": true
+  },
+  {
+   "code": "70719",
+   "label": "Commissions sur opérations de trésorerie réseau",
+   "postable": true
+  },
+  {
+   "code": "71",
+   "label": "PRODUITS SUR LES OPERATIONS AVEC LA CLIENTELE OU SOCIETAIRE",
+   "postable": false
+  },
+  {
+   "code": "711",
+   "label": "Intérêts sur les crédits à long terme",
+   "postable": true
+  },
+  {
+   "code": "712",
+   "label": "Intérêts sur les crédits à moyen terme",
+   "postable": true
+  },
+  {
+   "code": "713",
+   "label": "Intérêts sur les crédits à court terme",
+   "postable": true
+  },
+  {
+   "code": "714",
+   "label": "Intérêts sur comptes débiteurs de la clientèle",
+   "postable": true
+  },
+  {
+   "code": "715",
+   "label": "Commissions sur opérations avec la clientèle",
+   "postable": false
+  },
+  {
+   "code": "7151",
+   "label": "Commissions sur crédits à long terme",
+   "postable": true
+  },
+  {
+   "code": "7152",
+   "label": "Commissions sur crédits à moyen terme",
+   "postable": true
+  },
+  {
+   "code": "7153",
+   "label": "Commissions sur crédits à court terme",
+   "postable": true
+  },
+  {
+   "code": "7154",
+   "label": "Commissions sur comptes débiteurs de la clientèle",
+   "postable": true
+  },
+  {
+   "code": "716",
+   "label": "Autres produits et produits sur opérations de location simple",
+   "postable": true
+  },
+  {
+   "code": "717",
+   "label": "Produits sur opérations avec la clientèle des EMF",
+   "postable": false
+  },
+  {
+   "code": "71710",
+   "label": "Produits sur opérations hors réseau",
+   "postable": true
+  },
+  {
+   "code": "71719",
+   "label": "Produits sur opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "719",
+   "label": "Autres produis",
+   "postable": true
+  },
+  {
+   "code": "72",
+   "label": "PRODUITS SUR OPERATIONS DIVERSES",
+   "postable": false
+  },
+  {
+   "code": "720",
+   "label": "Commissions de tenue de compte",
+   "postable": true
+  },
+  {
+   "code": "721",
+   "label": "Commissions sur instruments de paiement",
+   "postable": true
+  },
+  {
+   "code": "722",
+   "label": "Commissions sur engagements par signature",
+   "postable": true
+  },
+  {
+   "code": "723",
+   "label": "Commissions et profits sur opérations de change effectuées à titre principal",
+   "postable": true
+  },
+  {
+   "code": "724",
+   "label": "Commissions et frais perçus sur opérations de transfert de fonds",
+   "postable": true
+  },
+  {
+   "code": "725",
+   "label": "Commissions de gestion de portefeuille titres pour compte de tiers",
+   "postable": true
+  },
+  {
+   "code": "726",
+   "label": "Profits sur titres de placement et transaction",
+   "postable": true
+  },
+  {
+   "code": "727",
+   "label": "Récupération et refacturation de charges d'exploitation bancaire",
+   "postable": true
+  },
+  {
+   "code": "728",
+   "label": "Produits sur moyens de paiements",
+   "postable": false
+  },
+  {
+   "code": "7283",
+   "label": "Produits sur moyens de paiement",
+   "postable": true
+  },
+  {
+   "code": "7284",
+   "label": "Autres prestations diverses",
+   "postable": true
+  },
+  {
+   "code": "72910",
+   "label": "Produits divers sur opérations bancaires hors réseau",
+   "postable": true
+  },
+  {
+   "code": "72919",
+   "label": "Produits divers sur opérations bancaires réseau",
+   "postable": true
+  },
+  {
+   "code": "73",
+   "label": "PRODUITS DU PORTEFEUILLE TITRES ET DES PRETS A SOUSCRIPTION OBLIGATOIRE",
+   "postable": false
+  },
+  {
+   "code": "731",
+   "label": "Revenus du portefeuille de participation",
+   "postable": false
+  },
+  {
+   "code": "7311",
+   "label": "Revenus des actions propres détenues",
+   "postable": true
+  },
+  {
+   "code": "7312",
+   "label": "Revenus d'actions et parts d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "7313",
+   "label": "Revenus d'actions et parts d'autres sociétés",
+   "postable": true
+  },
+  {
+   "code": "7314",
+   "label": "Revenus des titres publics immobilisés",
+   "postable": true
+  },
+  {
+   "code": "7315",
+   "label": "Revenus des titres privés immobilisés",
+   "postable": true
+  },
+  {
+   "code": "7316",
+   "label": "Revenus des titres en souffrance",
+   "postable": true
+  },
+  {
+   "code": "7317",
+   "label": "Revenus du portefeuille de participation EMF",
+   "postable": false
+  },
+  {
+   "code": "73170",
+   "label": "Revenus du portefeuille de participation hors réseau",
+   "postable": true
+  },
+  {
+   "code": "73179",
+   "label": "Revenus du portefeuille de participation réseau",
+   "postable": true
+  },
+  {
+   "code": "732",
+   "label": "Revenus des prêts et titres à souscription obligatoire",
+   "postable": false
+  },
+  {
+   "code": "7321",
+   "label": "Revenus des bons d'équipement et assimilés",
+   "postable": true
+  },
+  {
+   "code": "7322",
+   "label": "Revenus des créances titrisées sur l'Etat",
+   "postable": true
+  },
+  {
+   "code": "7323",
+   "label": "Revenus des autres prêts et titres à souscription obligatoire",
+   "postable": true
+  },
+  {
+   "code": "7326",
+   "label": "Revenus des prêts et titres impayés",
+   "postable": true
+  },
+  {
+   "code": "7327",
+   "label": "Revenus des prêts et titres à souscription obligatoire EMF",
+   "postable": false
+  },
+  {
+   "code": "73270",
+   "label": "Revenus des prêts et titres à souscription obligatoire hors réseau",
+   "postable": true
+  },
+  {
+   "code": "73279",
+   "label": "Revenus des prêts et titres à souscription obligatoire réseau",
+   "postable": true
+  },
+  {
+   "code": "733",
+   "label": "Revenus du portefeuille de placement",
+   "postable": false
+  },
+  {
+   "code": "7331",
+   "label": "Revenus d'actions et parts d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "7332",
+   "label": "Revenus de bons du trésor",
+   "postable": true
+  },
+  {
+   "code": "7333",
+   "label": "Revenus d'autres actions et parts négociables",
+   "postable": true
+  },
+  {
+   "code": "7334",
+   "label": "Revenus d'obligations et bons assimilés",
+   "postable": true
+  },
+  {
+   "code": "7335",
+   "label": "Revenus d'obligations propres rachetées par anticipation",
+   "postable": true
+  },
+  {
+   "code": "7336",
+   "label": "Revenus d'autres titres à court terme",
+   "postable": true
+  },
+  {
+   "code": "7337",
+   "label": "Revenus de titres douteux",
+   "postable": true
+  },
+  {
+   "code": "7338",
+   "label": "Revenus du portefeuille de placement EMF",
+   "postable": false
+  },
+  {
+   "code": "73380",
+   "label": "Revenus du portefeuille de placement hors réseau",
+   "postable": true
+  },
+  {
+   "code": "73389",
+   "label": "Revenus du portefeuille de placement réseau",
+   "postable": true
+  },
+  {
+   "code": "734",
+   "label": "Revenus du portefeuille de transaction",
+   "postable": false
+  },
+  {
+   "code": "7341",
+   "label": "Revenus d'actions et parts d'établissements de crédit",
+   "postable": true
+  },
+  {
+   "code": "7342",
+   "label": "Revenus de bons du trésor",
+   "postable": true
+  },
+  {
+   "code": "7343",
+   "label": "Revenus d'autres actions et parts négociables",
+   "postable": true
+  },
+  {
+   "code": "7344",
+   "label": "Revenus d'obligations et bons assimilés",
+   "postable": true
+  },
+  {
+   "code": "7345",
+   "label": "Revenus d'obligations propres rachetées par anticipation",
+   "postable": true
+  },
+  {
+   "code": "7346",
+   "label": "Revenus d'autres titres à court terme",
+   "postable": true
+  },
+  {
+   "code": "7347",
+   "label": "Revenus du portefeuille de transaction EMF",
+   "postable": false
+  },
+  {
+   "code": "73470",
+   "label": "Revenus du portefeuille de transaction hors réseau",
+   "postable": true
+  },
+  {
+   "code": "73479",
+   "label": "Revenus du portefeuille de transaction réseau",
+   "postable": true
+  },
+  {
+   "code": "74",
+   "label": "PRODUITS ACCESSOIRES",
+   "postable": false
+  },
+  {
+   "code": "740",
+   "label": "Ventes de marchandises",
+   "postable": false
+  },
+  {
+   "code": "7401",
+   "label": "Ventes de marchandises",
+   "postable": false
+  },
+  {
+   "code": "74010",
+   "label": "Vente de marchandises hors réseau",
+   "postable": true
+  },
+  {
+   "code": "74019",
+   "label": "Vente de marchandises EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "7402",
+   "label": "RRR accordées hors factures (-)",
+   "postable": false
+  },
+  {
+   "code": "74020",
+   "label": "RRR accordées hors factures hors réseau",
+   "postable": true
+  },
+  {
+   "code": "74029",
+   "label": "RRR accordées hors factures EMF réseau",
+   "postable": true
+  },
+  {
+   "code": "741",
+   "label": "Autres produits liés aux activités accessoires",
+   "postable": false
+  },
+  {
+   "code": "7410",
+   "label": "Produits de location de coffre-fort",
+   "postable": true
+  },
+  {
+   "code": "7411",
+   "label": "Produits sur opérations de change",
+   "postable": true
+  },
+  {
+   "code": "7412",
+   "label": "Produits de formation",
+   "postable": true
+  },
+  {
+   "code": "7413",
+   "label": "Produits de conseil et assistance de gestion",
+   "postable": true
+  },
+  {
+   "code": "7414",
+   "label": "Produits sur opération de crédit-bail",
+   "postable": false
+  },
+  {
+   "code": "74140",
+   "label": "Intérêts sur opération de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "74141",
+   "label": "Plus-value sur opération de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "74142",
+   "label": "Autres produits sur opération de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "7415",
+   "label": "Produits de location simple des valeurs immobilisées",
+   "postable": true
+  },
+  {
+   "code": "7416",
+   "label": "Produits accessoires sur opération avec EMF",
+   "postable": false
+  },
+  {
+   "code": "74160",
+   "label": "Produits accessoires sur opération hors réseau",
+   "postable": true
+  },
+  {
+   "code": "74169",
+   "label": "Produits accessoires sur opération réseau",
+   "postable": true
+  },
+  {
+   "code": "7417",
+   "label": "Autres produits accessoires",
+   "postable": true
+  },
+  {
+   "code": "742",
+   "label": "Produits sur opérations de crédit-bail et d'opérations assimilées",
+   "postable": false
+  },
+  {
+   "code": "74290",
+   "label": "Loyers",
+   "postable": true
+  },
+  {
+   "code": "74291",
+   "label": "Reprises de provisions pour risque de non-perception de loyers",
+   "postable": true
+  },
+  {
+   "code": "74292",
+   "label": "Reprises d'amortissements de biens en crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "74293",
+   "label": "Reprises de provisions sur biens en crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "74294",
+   "label": "Reprise de provisions pour perte latente",
+   "postable": true
+  },
+  {
+   "code": "74297",
+   "label": "Plus-value de cession de biens en crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "74298",
+   "label": "Autres produits des opérations de crédit-bail",
+   "postable": true
+  },
+  {
+   "code": "743",
+   "label": "Produits sur opérations de location simple",
+   "postable": true
+  },
+  {
+   "code": "75",
+   "label": "AUTRES PRODUITS751 - Jetons de présence",
+   "postable": false
+  },
+  {
+   "code": "752",
+   "label": "Etudes cédées",
+   "postable": true
+  },
+  {
+   "code": "753",
+   "label": "Production immobilisée",
+   "postable": true
+  },
+  {
+   "code": "754",
+   "label": "Récupération et refacturation des charges d'exploitation non bancaires",
+   "postable": true
+  },
+  {
+   "code": "755",
+   "label": "Autres produits de la clientèle ou sociétaires",
+   "postable": false
+  },
+  {
+   "code": "7551",
+   "label": "Droits d'adhésion des sociétaires",
+   "postable": true
+  },
+  {
+   "code": "7552",
+   "label": "Divers produits",
+   "postable": true
+  },
+  {
+   "code": "756",
+   "label": "Autres produits d'opérations EMF",
+   "postable": false
+  },
+  {
+   "code": "75610",
+   "label": "Autres produits d'opérations hors réseau",
+   "postable": true
+  },
+  {
+   "code": "75619",
+   "label": "Autres produits d'opérations réseau",
+   "postable": true
+  },
+  {
+   "code": "76",
+   "label": "SUBVENTIONS D'EXPLOITATION ET D'EQUILIBRE",
+   "postable": false
+  },
+  {
+   "code": "761",
+   "label": "Subventions d'exploitation",
+   "postable": true
+  },
+  {
+   "code": "762",
+   "label": "Subventions d'équilibre",
+   "postable": true
+  },
+  {
+   "code": "763",
+   "label": "Subventions d'exploitation et d'équilibre EMF",
+   "postable": false
+  },
+  {
+   "code": "76310",
+   "label": "Subvention d'exploitation et d'équilibre hors réseau",
+   "postable": true
+  },
+  {
+   "code": "76319",
+   "label": "Subvention d'exploitation et d'équilibre réseau",
+   "postable": true
+  },
+  {
+   "code": "77",
+   "label": "PROFITS EXCEPTIONNELS ET SUR EXERCICES ANTERIEURS - PRIX DE CESSION DES ELEMENTS D'ACTIF",
+   "postable": false
+  },
+  {
+   "code": "770",
+   "label": "Produits d'exploitation bancaire sur exercices antérieurs",
+   "postable": false
+  },
+  {
+   "code": "7701",
+   "label": "Produits sur opérations de trésorerie",
+   "postable": true
+  },
+  {
+   "code": "7702",
+   "label": "Produits sur opérations avec la clientèle et de crédit bail",
+   "postable": true
+  },
+  {
+   "code": "7703",
+   "label": "Produits sur opérations bancaires diverses",
+   "postable": true
+  },
+  {
+   "code": "771",
+   "label": "Produits divers sur exercices antérieurs",
+   "postable": false
+  },
+  {
+   "code": "7711",
+   "label": "Produits du portefeuille titres",
+   "postable": true
+  },
+  {
+   "code": "7712",
+   "label": "Produits accessoires",
+   "postable": true
+  },
+  {
+   "code": "7713",
+   "label": "Subventions d'exploitation et d'équilibre",
+   "postable": true
+  },
+  {
+   "code": "7719",
+   "label": "Autres produits divers",
+   "postable": true
+  },
+  {
+   "code": "772",
+   "label": "Indemnités d'assurance",
+   "postable": true
+  },
+  {
+   "code": "773",
+   "label": "Provisions spéciales et réserves de réévaluation reprises",
+   "postable": true
+  },
+  {
+   "code": "774",
+   "label": "Subventions d'investissement reprises",
+   "postable": true
+  },
+  {
+   "code": "775",
+   "label": "Prix de cession des éléments d'actif immobilisés",
+   "postable": true
+  },
+  {
+   "code": "776",
+   "label": "Transferts et refacturation de charges exceptionnelles et sur exercices antérieurs",
+   "postable": true
+  },
+  {
+   "code": "777",
+   "label": "Salaires et indemnités abandonnés",
+   "postable": true
+  },
+  {
+   "code": "778",
+   "label": "Divers profits exceptionnels",
+   "postable": false
+  },
+  {
+   "code": "7781",
+   "label": "Profits sur opérations de trésorerie",
+   "postable": true
+  },
+  {
+   "code": "7782",
+   "label": "Profits sur opérations avec la clientèle",
+   "postable": true
+  },
+  {
+   "code": "7783",
+   "label": "Produits sur opérations bancaires diverses",
+   "postable": true
+  },
+  {
+   "code": "7786",
+   "label": "Excédents de caisse",
+   "postable": true
+  },
+  {
+   "code": "7787",
+   "label": "Escompte de règlement",
+   "postable": true
+  },
+  {
+   "code": "7788",
+   "label": "Dons et libéralités effectivement obtenus",
+   "postable": true
+  },
+  {
+   "code": "779",
+   "label": "Profits exceptionnels et sur exercices antérieurs -- prix de cession d'éléments d'actif EMF",
+   "postable": false
+  },
+  {
+   "code": "77910",
+   "label": "Profits exceptionnels et sur exercices antérieurs -- prix de",
+   "postable": true
+  },
+  {
+   "code": "77919",
+   "label": "Profits exceptionnels et sur exercices antérieurs -- prix de",
+   "postable": true
+  },
+  {
+   "code": "78",
+   "label": "REPRISES D'AMORTISSEMENTS",
+   "postable": false
+  },
+  {
+   "code": "780",
+   "label": "Reprises d'amortissements des frais et valeurs immobilisées",
+   "postable": true
+  },
+  {
+   "code": "782",
+   "label": "Reprises d'amortissements des immobilisations corporelles",
+   "postable": true
+  },
+  {
+   "code": "79",
+   "label": "REPRISES DE PROVISIONS ET RECUPERATIONS SUR CREANCES IRRECOUVRABLES",
+   "postable": false
+  },
+  {
+   "code": "791",
+   "label": "Reprises de provisions",
+   "postable": false
+  },
+  {
+   "code": "7911",
+   "label": "Reprises de provisions pour risques et charges",
+   "postable": true
+  },
+  {
+   "code": "7912",
+   "label": "Reprises de provisions pour dépréciation des valeurs immobilisées",
+   "postable": true
+  },
+  {
+   "code": "7913",
+   "label": "Reprises de provisions pour dépréciation des comptes de clientèle",
+   "postable": true
+  },
+  {
+   "code": "7914",
+   "label": "Reprises de provisions pour dépréciation des comptes de tiers et de régularisation",
+   "postable": true
+  },
+  {
+   "code": "7915",
+   "label": "Reprises de provisions pour dépréciation des comptes de trésorerie",
+   "postable": true
+  },
+  {
+   "code": "7917",
+   "label": "Reprises de provisions pour dépréciation des stocks",
+   "postable": false
+  },
+  {
+   "code": "79170",
+   "label": "Reprises de provisions pour dépréciation des stocks hors réseau",
+   "postable": true
+  },
+  {
+   "code": "79179",
+   "label": "Reprises de provisions pour dépréciation des stocks réseau",
+   "postable": true
+  },
+  {
+   "code": "792",
+   "label": "Récupération sur créances abandonnées",
+   "postable": true
+  },
+  {
+   "code": "794",
+   "label": "Reprise de provisions pour risque généraux",
+   "postable": true
+  },
+  {
+   "code": "797",
+   "label": "Reprises de provisions réglementées",
+   "postable": false
+  },
+  {
+   "code": "7971",
+   "label": "Reprises d'amortissements dérogatoires",
+   "postable": true
+  },
+  {
+   "code": "7972",
+   "label": "Reprises autres provisions réglementées",
+   "postable": true
+  },
+  {
+   "code": "798",
+   "label": "Autres reprises de provisions",
+   "postable": true
+  },
+  {
+   "code": "799",
+   "label": "Reprises de provisions et récupération sur créances irrécouvrables",
+   "postable": false
+  },
+  {
+   "code": "79910",
+   "label": "Reprises de provisions et récupération sur créances irrécouvrables hors réseau",
+   "postable": true
+  },
+  {
+   "code": "79919",
+   "label": "Reprises de provisions et récupération sur créances irrécouvrables réseau",
+   "postable": true
+  },
+  {
+   "code": "90",
+   "label": "ENGAGEMENTS DONNES AUX CORRESPONDANTS LOCAUX",
+   "postable": false
+  },
+  {
+   "code": "901",
+   "label": "Accords de refinancement donnés",
+   "postable": true
+  },
+  {
+   "code": "902",
+   "label": "Cautions et avals par actes séparés et endos",
+   "postable": true
+  },
+  {
+   "code": "903",
+   "label": "Acceptations à payer",
+   "postable": true
+  },
+  {
+   "code": "904",
+   "label": "Autres garanties irrévocables ou inconditionnelles",
+   "postable": true
+  },
+  {
+   "code": "905",
+   "label": "Contre garanties en faveur des correspondants locaux",
+   "postable": true
+  },
+  {
+   "code": "907",
+   "label": "Encaisses déposées auprès des correspondants locaux et à récupérer",
+   "postable": false
+  },
+  {
+   "code": "90710",
+   "label": "Encaisses déposées auprès des correspondants locaux et à récupérer hors réseau",
+   "postable": true
+  },
+  {
+   "code": "90719",
+   "label": "Encaisses déposées auprès des correspondants locaux et à récupérer réseau",
+   "postable": true
+  },
+  {
+   "code": "90909",
+   "label": "Engagements donnés aux correspondants locaux en réseau",
+   "postable": true
+  },
+  {
+   "code": "91",
+   "label": "ENGAGEMENTS RECUS DES CORRESPONDANTS LOCAUX",
+   "postable": false
+  },
+  {
+   "code": "911",
+   "label": "Accords de refinancement reçus",
+   "postable": true
+  },
+  {
+   "code": "912",
+   "label": "Contre garanties sur prêts aux institutions financières",
+   "postable": true
+  },
+  {
+   "code": "913",
+   "label": "Contre garanties sur crédits par caisse",
+   "postable": true
+  },
+  {
+   "code": "914",
+   "label": "Contre garanties sur autres engagements par signature",
+   "postable": true
+  },
+  {
+   "code": "915",
+   "label": "Contre garanties sur titres en portefeuille",
+   "postable": true
+  },
+  {
+   "code": "916",
+   "label": "Valeurs gérées pour compte des correspondants locaux",
+   "postable": true
+  },
+  {
+   "code": "917",
+   "label": "Encaisses détenues pour le compte des correspondants locaux et à restituer",
+   "postable": false
+  },
+  {
+   "code": "91710",
+   "label": "Encaisses détenues pour le compte des correspondants locaux et à restituer hors réseau",
+   "postable": true
+  },
+  {
+   "code": "91719",
+   "label": "Encaisses détenues pour le compte des correspondants locaux et à restituer réseau",
+   "postable": true
+  },
+  {
+   "code": "918",
+   "label": "Autres engagements",
+   "postable": true
+  },
+  {
+   "code": "91909",
+   "label": "Engagements reçus des correspondants locaux réseau",
+   "postable": true
+  },
+  {
+   "code": "92",
+   "label": "ENGAGEMENTS EN FAVEUR DE LA CLIENTELE",
+   "postable": false
+  },
+  {
+   "code": "921",
+   "label": "Engagements donnés sur ordre de la clientèle",
+   "postable": false
+  },
+  {
+   "code": "9210",
+   "label": "Acceptations à payer",
+   "postable": true
+  },
+  {
+   "code": "9211",
+   "label": "Cautions, avals",
+   "postable": true
+  },
+  {
+   "code": "9212",
+   "label": "Garanties de remboursement de crédits",
+   "postable": true
+  },
+  {
+   "code": "922",
+   "label": "Accords de financement donnés à la clientèle",
+   "postable": true
+  },
+  {
+   "code": "923",
+   "label": "Engagements donnés à la clientèle en contrepartie des valeurs gérées pour son compte",
+   "postable": true
+  },
+  {
+   "code": "924",
+   "label": "Garantie de remboursement de crédit clientèle",
+   "postable": true
+  },
+  {
+   "code": "929",
+   "label": "Autres engagements",
+   "postable": true
+  },
+  {
+   "code": "93",
+   "label": "ENGAGEMENTS RECUS DE LA CLIENTELE",
+   "postable": false
+  },
+  {
+   "code": "931",
+   "label": "Hypothèques",
+   "postable": false
+  },
+  {
+   "code": "9311",
+   "label": "Hypothèques fermes de premier rang ou de deuxième rang sur des immeubles",
+   "postable": true
+  },
+  {
+   "code": "9312",
+   "label": "Autres hypothèques",
+   "postable": true
+  },
+  {
+   "code": "932",
+   "label": "Nantissement de prêts subordonnés et de dépôts",
+   "postable": false
+  },
+  {
+   "code": "9321",
+   "label": "Garantie de crédits par caisse",
+   "postable": true
+  },
+  {
+   "code": "9322",
+   "label": "Garantie d'autres engagements par signature",
+   "postable": true
+  },
+  {
+   "code": "9323",
+   "label": "Garantie d'engagements multiples",
+   "postable": true
+  },
+  {
+   "code": "933",
+   "label": "Gages",
+   "postable": true
+  },
+  {
+   "code": "934",
+   "label": "Avals et cautions",
+   "postable": true
+  },
+  {
+   "code": "935",
+   "label": "Valeurs gérées pour compte de la clientèle",
+   "postable": true
+  },
+  {
+   "code": "939",
+   "label": "Autres garanties",
+   "postable": true
+  },
+  {
+   "code": "94",
+   "label": "ENGAGEMENTS DE CREDIT BAIL",
+   "postable": false
+  },
+  {
+   "code": "941",
+   "label": "Engagements de crédit-bail donnés",
+   "postable": true
+  },
+  {
+   "code": "942",
+   "label": "Engagements de crédit-bail reçus",
+   "postable": false
+  },
+  {
+   "code": "9421",
+   "label": "Encours financiers",
+   "postable": true
+  },
+  {
+   "code": "9423",
+   "label": "Autres engagements",
+   "postable": true
+  },
+  {
+   "code": "9424",
+   "label": "Marge perçue d'avance",
+   "postable": true
+  },
+  {
+   "code": "9425",
+   "label": "Marge à recevoir",
+   "postable": true
+  },
+  {
+   "code": "95",
+   "label": "OPERATIONS SUR TITRES ET VALEURS AFFECTEES EN GARANTIE DES OPERATIONS DU MARCHE MONETAIRE",
+   "postable": false
+  },
+  {
+   "code": "951",
+   "label": "Effets publics affectés en garantie des opérations du marché monétaire",
+   "postable": true
+  },
+  {
+   "code": "952",
+   "label": "Effets privés déposés en garantie des opérations du marché monétaire",
+   "postable": true
+  },
+  {
+   "code": "96",
+   "label": "ENGAGEMENTS RECUS DE L'ETAT ET DES ORGANISMES PUBLICS",
+   "postable": false
+  },
+  {
+   "code": "961",
+   "label": "Garanties reçues de l'Etat",
+   "postable": true
+  },
+  {
+   "code": "962",
+   "label": "Garanties reçues des organismes publics",
+   "postable": true
+  },
+  {
+   "code": "97",
+   "label": "OPERATIONS EN DEVISES",
+   "postable": false
+  },
+  {
+   "code": "971",
+   "label": "Opérations de change au comptant",
+   "postable": false
+  },
+  {
+   "code": "9711",
+   "label": "FCFA achetés comptant non encore reçus",
+   "postable": true
+  },
+  {
+   "code": "9712",
+   "label": "Devises achetées comptant non encore reçues",
+   "postable": true
+  },
+  {
+   "code": "9713",
+   "label": "FCFA vendus comptant non encore livrés",
+   "postable": true
+  },
+  {
+   "code": "9714",
+   "label": "Devises vendues comptant non encore livrées",
+   "postable": true
+  },
+  {
+   "code": "972",
+   "label": "Position de change hors-bilan",
+   "postable": true
+  },
+  {
+   "code": "973",
+   "label": "Contre valeur de la position de change hors-bilan",
+   "postable": true
+  },
+  {
+   "code": "974",
+   "label": "Compte d'ajustement sur devises hors-bilan",
+   "postable": true
+  },
+  {
+   "code": "98",
+   "label": "ENGAGEMENTS PAR SIGNATURE DOUTEUX",
+   "postable": false
+  },
+  {
+   "code": "981",
+   "label": "Engagements par signature douteux avec les correspondants",
+   "postable": false
+  },
+  {
+   "code": "98109",
+   "label": "Engagements par signature douteux avec les correspondants en réseau",
+   "postable": true
+  },
+  {
+   "code": "9811",
+   "label": "Engagements donnés",
+   "postable": true
+  },
+  {
+   "code": "9812",
+   "label": "Engagements reçus",
+   "postable": true
+  },
+  {
+   "code": "982",
+   "label": "Engagements par signature douteux avec la clientèle",
+   "postable": false
+  },
+  {
+   "code": "9821",
+   "label": "Engagements donnés",
+   "postable": true
+  },
+  {
+   "code": "9822",
+   "label": "Engagements reçus",
+   "postable": true
+  },
+  {
+   "code": "983",
+   "label": "Engagements par signature douteux avec les organismes publics",
+   "postable": true
+  },
+  {
+   "code": "984",
+   "label": "Produits et taxes à recouvrer sur créances en souffrance et engagements par signature douteux",
+   "postable": false
+  },
+  {
+   "code": "9841",
+   "label": "Intérêts sur créances en souffrance",
+   "postable": true
+  },
+  {
+   "code": "9842",
+   "label": "Commissions sur engagements par signature douteux",
+   "postable": true
+  },
+  {
+   "code": "9843",
+   "label": "Taxes à recouvrer sur créances en souffrance et sur engagements par signature douteux",
+   "postable": true
+  },
+  {
+   "code": "9844",
+   "label": "Loyers échus sur engagements douteux de crédit-bail et opération de location",
+   "postable": true
+  },
+  {
+   "code": "9845",
+   "label": "Indemnités de résiliation à recouvrer",
+   "postable": true
+  },
+  {
+   "code": "98499",
+   "label": "Produits et taxes à recouvrer sur créances en souffrance et engagements par signature douteux réseau",
+   "postable": true
+  },
+  {
+   "code": "99",
+   "label": "COMPTE GENERAL DES ENGAGEMENTS HORS-BILAN",
+   "postable": false
+  },
+  {
+   "code": "990",
+   "label": "Compte général des engagements donnés sur ordre des corresp. Locaux",
+   "postable": false
+  },
+  {
+   "code": "9901",
+   "label": "Compte général des accords de refinancement donnés",
+   "postable": true
+  },
+  {
+   "code": "9902",
+   "label": "Compte général des cautions et avals par actes séparés et endos",
+   "postable": true
+  },
+  {
+   "code": "9903",
+   "label": "Compte général des acceptations à payer",
+   "postable": true
+  },
+  {
+   "code": "9904",
+   "label": "Compte général des autres garanties irrévocables ou inconditionnelles",
+   "postable": true
+  },
+  {
+   "code": "9905",
+   "label": "Compte général des contre-garanties en faveur des correspondants locaux",
+   "postable": true
+  },
+  {
+   "code": "9907",
+   "label": "Compte général des encaisses déposées auprès des correspondants locaux et à récupérer",
+   "postable": true
+  },
+  {
+   "code": "9909",
+   "label": "Compte général des engagements donnés aux correspondants locaux en réseau",
+   "postable": true
+  },
+  {
+   "code": "991",
+   "label": "Compte général des engagements reçus des correspondants",
+   "postable": false
+  },
+  {
+   "code": "9911",
+   "label": "Compte général des accords de refinancement reçus",
+   "postable": true
+  },
+  {
+   "code": "9912",
+   "label": "Compte général des contre garanties sur prêts aux institutions",
+   "postable": true
+  },
+  {
+   "code": "9913",
+   "label": "Compte général des contre garanties sur crédits par caisse",
+   "postable": true
+  },
+  {
+   "code": "9914",
+   "label": "Compte général des contre garanties sur autres engagements par signature",
+   "postable": true
+  },
+  {
+   "code": "9915",
+   "label": "Compte général des contre garanties sur titres en portefeuille",
+   "postable": true
+  },
+  {
+   "code": "9916",
+   "label": "Compte général des valeurs gérées pour compte des correspondants",
+   "postable": true
+  },
+  {
+   "code": "9917",
+   "label": "Compte général des encaisses détenues pour le comptes des correspondants locaux et à restituer",
+   "postable": true
+  },
+  {
+   "code": "9918",
+   "label": "Compte général des autres engagements",
+   "postable": true
+  },
+  {
+   "code": "9919",
+   "label": "Compte général des engagements reçus des correspondants locaux en réseau",
+   "postable": true
+  },
+  {
+   "code": "992",
+   "label": "Compte général des engagements en faveur de la clientèle",
+   "postable": false
+  },
+  {
+   "code": "9922",
+   "label": "compte général des accords de financement donnés à la clientèle",
+   "postable": true
+  },
+  {
+   "code": "9923",
+   "label": "Compte général des engagements donnés à la clientèle en contrepartie des valeurs gérées pour son compte",
+   "postable": true
+  },
+  {
+   "code": "9924",
+   "label": "Compte général des garanties de remboursements des crédits clientèle",
+   "postable": true
+  },
+  {
+   "code": "9925",
+   "label": "Compte général des acceptations à payer",
+   "postable": true
+  },
+  {
+   "code": "9926",
+   "label": "Compte général des cautions avals",
+   "postable": true
+  },
+  {
+   "code": "9927",
+   "label": "Compte général des garanties de remboursements des crédits sur ordre de la Clientèle",
+   "postable": true
+  },
+  {
+   "code": "9929",
+   "label": "Compte général des autres engagements",
+   "postable": true
+  },
+  {
+   "code": "993",
+   "label": "Compte général des engagements reçus de la clientèle",
+   "postable": false
+  },
+  {
+   "code": "9931",
+   "label": "Compte général des engagements reçus par hypothèques",
+   "postable": true
+  },
+  {
+   "code": "9932",
+   "label": "Compte gén. Des eng. Reçus par nantissement de prêts subord. Et de dépôts",
+   "postable": true
+  },
+  {
+   "code": "9933",
+   "label": "Compte général des engagements reçus par gage",
+   "postable": true
+  },
+  {
+   "code": "9934",
+   "label": "Compte général des engagements reçus par avals et cautions",
+   "postable": true
+  },
+  {
+   "code": "9935",
+   "label": "Compte gén. Des eng. Reçus par valeurs gérées pour compte de la clientèle",
+   "postable": true
+  },
+  {
+   "code": "9939",
+   "label": "Compte général des engagements reçus par autres garanties",
+   "postable": true
+  },
+  {
+   "code": "994",
+   "label": "Compte général des engagements de crédit-bail",
+   "postable": false
+  },
+  {
+   "code": "9941",
+   "label": "Compte général des engagements de crédit-bail reçus",
+   "postable": true
+  },
+  {
+   "code": "9942",
+   "label": "Compte général des engagements de crédit-bail donnés",
+   "postable": true
+  },
+  {
+   "code": "995",
+   "label": "Compte général des opérations sur titres et des valeurs affectées en garantie des opérations du marché monétaire",
+   "postable": false
+  },
+  {
+   "code": "9951",
+   "label": "Compte gén. Des effets publics affectés en gar. des op. du marché monétaire",
+   "postable": true
+  },
+  {
+   "code": "9952",
+   "label": "Compte gén. des effets privés déposés en gar. des op. du marché monétaire",
+   "postable": true
+  },
+  {
+   "code": "996",
+   "label": "Compte général des engagements reçus de l'Etat et des organismes publics",
+   "postable": false
+  },
+  {
+   "code": "9961",
+   "label": "Compte général des engagements de l'Etat",
+   "postable": true
+  },
+  {
+   "code": "9962",
+   "label": "Compte général des engagements des organismes publics",
+   "postable": true
+  },
+  {
+   "code": "997",
+   "label": "Compte général des opérations en devises",
+   "postable": false
+  },
+  {
+   "code": "9971",
+   "label": "Compte général des opérations de change au comptant",
+   "postable": true
+  },
+  {
+   "code": "9972",
+   "label": "Compte général des positions de change hors bilan",
+   "postable": true
+  },
+  {
+   "code": "9973",
+   "label": "Compte général des contres valeurs de la position de change hors bilan",
+   "postable": true
+  },
+  {
+   "code": "9974",
+   "label": "Compte général des comptes d'",
+   "postable": true
+  },
+  {
+   "code": "998",
+   "label": "Compte général des engagements douteux par signature",
+   "postable": false
+  },
+  {
+   "code": "9981",
+   "label": "Compte général des engagements par signature douteux portés sur les correspondants",
+   "postable": true
+  },
+  {
+   "code": "9982",
+   "label": "Compte général des engagements par signature douteux portés sur la clientèle",
+   "postable": true
+  },
+  {
+   "code": "9983",
+   "label": "Compte général des engagements par signature douteux portés sur les organismes publics",
+   "postable": true
+  },
+  {
+   "code": "9984",
+   "label": "Compte général des produits et taxes à recouvrer sur créances en souffrance et engagements par signature douteux",
+   "postable": true
+  },
+  {
+   "code": "99909",
+   "label": "Engagements donnés en réseau",
+   "postable": true
+  },
+  {
+   "code": "99919",
+   "label": "Engagements reçus en réseau",
+   "postable": true
+  }
+ ]
+}
