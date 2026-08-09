@@ -142,6 +142,31 @@ final class PcemfChartSeederTest extends TestCase
         self::assertSame([], $wrong);
     }
 
+    public function test_no_account_name_has_another_account_buried_in_it(): void
+    {
+        $this->createAgency('PCEMF-MERGE');
+        $this->seed(PcemfChartSeeder::class);
+
+        // The source .docx loses a line break in a few places, gluing an account
+        // onto the end of its parent's name: « 75 – AUTRES PRODUITS751 - Jetons
+        // de présence » is two accounts on one line. Imported verbatim, the
+        // parent gets a nonsense name and the child is never created at all —
+        // 751 and 6061 went missing exactly that way, and nothing complained,
+        // because a chart with a missing account looks identical to a chart that
+        // never had one.
+        //
+        // A name carrying a digit sequence followed by a dash is the signature.
+        $merged = [];
+        foreach (DB::table('ledger_accounts')->distinct()->pluck('name') as $name) {
+            $name = is_string($name) ? $name : '';
+            if (preg_match('/[\p{L})]\s*\d{2,8}\s*[-–]\s*\S/u', $name) === 1) {
+                $merged[] = $name;
+            }
+        }
+
+        self::assertSame([], $merged, 'An account name contains another account code: a lost line break in the chart.');
+    }
+
     public function test_the_hierarchy_is_connected_and_agency_leaves_hang_off_the_institution_tree(): void
     {
         $agency = $this->createAgency('PCEMF-D');
