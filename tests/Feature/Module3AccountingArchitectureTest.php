@@ -2572,6 +2572,44 @@ final class Module3AccountingArchitectureTest extends TestCase
             ->patchJson('/api/v1/institution', ['legal_name' => 'Habis Microfinance SA']));
     }
 
+    public function test_consolidated_trial_balance_needs_the_same_institution_read_as_a_consolidated_balance(): void
+    {
+        $this->seed(StandardReportDefinitionSeeder::class);
+        $definitionPublicId = DB::table('report_definitions')->where('code', 'trial_balance')->value('public_id');
+        self::assertIsString($definitionPublicId);
+
+        // `auditor` holds accounting.audit.view but not ledger.scope.institution.read.
+        $auditor = $this->createUserWithRole('auditor');
+
+        $payload = [
+            'report_definition_public_id' => $definitionPublicId,
+            'currency' => 'XAF',
+            'parameters' => ['consolidated' => true],
+        ];
+
+        // The consolidated rollup is cross-agency information, and this same actor
+        // is already refused it on /ledger-accounts/{id}/balance. Generating it as
+        // a report must not be the way around that.
+        $this->withApiHeaders()->actingAsSanctum($auditor)
+            ->postJson('/api/v1/report-runs', $payload)
+            ->assertForbidden();
+
+        // The ordinary trial balance stays available: only consolidation is gated.
+        $this->assertJsonSuccess(
+            $this->withApiHeaders()->actingAsSanctum($auditor)->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definitionPublicId,
+                'currency' => 'XAF',
+            ]),
+            201,
+        );
+
+        // The chief accountant holds institution read, and consolidates.
+        $chief = $this->createUserWithRole('chief-accountant');
+        $run = $this->withApiHeaders()->actingAsSanctum($chief)->postJson('/api/v1/report-runs', $payload);
+        $this->assertJsonSuccess($run, 201);
+        $run->assertJsonPath('data.summary.consolidated', true);
+    }
+
     public function test_a_posting_rule_cannot_be_authored_and_approved_by_the_same_person(): void
     {
         $author = $this->createUserWithRole('chief-accountant');

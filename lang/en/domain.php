@@ -57,6 +57,7 @@ return [
     'code_taken_at_institution' => 'This code is already used at institution level.',
     'operation_mapping_not_pending_decision' => 'Only a draft or submitted mapping can be approved or rejected.',
     'operation_mapping_reviewer_must_differ' => 'Approving a posting rule requires a reviewer different from the author.',
+    'report_consolidated_requires_institution_read' => 'A consolidated trial balance spans every agency, so it requires institution-wide ledger read access.',
     'ledger_account_structure_locked_by_movements' => 'This account already carries movements, so its class and normal balance side can no longer be changed: doing so would restate figures already reported. Open a correctly classified account and transfer the balance with a reclassification entry.',
     'ledger_account_class_contradicts_code' => 'In the PCEMF chart the class is the leading digit of the code. This code starts with :digit, so the account belongs to :expected.',
     'ledger_account_class_capitaux_permanents' => 'class 1 — Capitaux permanents',

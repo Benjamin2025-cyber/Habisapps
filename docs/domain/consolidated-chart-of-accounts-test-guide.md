@@ -299,6 +299,17 @@ remboursements — ne se saisissent pas à la main : elles sont générées auto
 imputations d'opérations. Ce que vous saisissez ici, ce sont les écritures que personne
 n'automatise.
 
+> **Les imputations d'opérations obéissent à la même règle des quatre yeux.** Une imputation
+> (*Comptabilité › Codes opération & imputations*) est créée en **brouillon** ; tant qu'un
+> **autre** utilisateur ne l'a pas approuvée — action *Approuver* dans le menu de la ligne,
+> permission `operation.mappings.approve` — elle n'est jamais utilisée. Un décaissement ou une
+> perception de frais échouera alors avec « l'imputation n'est pas approuvée ».
+>
+> Ce n'est pas une anomalie : ces règles décident où l'argent est comptabilisé
+> automatiquement, pour toutes les opérations futures, donc leur auteur ne peut pas les
+> valider lui-même. Prévoyez **deux comptes** pour configurer les imputations, comme pour les
+> écritures. Si vous testez seul, vous verrez systématiquement ce blocage.
+
 Donc, pour ce passage :
 
 | Rôle dans le test | Utilisateur |
@@ -478,6 +489,9 @@ En tant que `test.cookbook.accountant@example.test` :
 | *« L'approbation du journal nécessite un réviseur différent de l'auteur. »* | Fonctionne comme prévu. Approuvez avec l'**autre** utilisateur (§4). |
 | Le compte que je cherche est absent d'une liste déroulante | C'est presque toujours correct : c'est un compte de regroupement, ou il appartient à une autre agence. Vérifiez la colonne **Structure**. |
 | Un compte est devenu « Compte de regroupement » tout seul | Correct — il a acquis un compte fils (Annexe A). |
+| *« L'imputation n'est pas approuvée »* au décaissement | L'imputation est encore en brouillon. Faites-la **approuver par un autre utilisateur** (§4) : son auteur ne peut pas la valider lui-même. |
+| *« L'approbation d'une règle d'imputation nécessite un réviseur différent de l'auteur. »* | Fonctionne comme prévu. Approuvez avec le second compte. |
+| La balance **consolidée** est refusée (403) alors que la balance simple passe | Le cumul consolidé couvre toutes les agences : il demande `ledger.scope.institution.read`, que l'auditeur et le contrôleur n'ont pas. Utilisez le chef comptable ou l'administrateur plateforme. |
 | **La classe ne correspond pas à ce que je voulais** | Elle découle du code : changez le **code** et la classe suivra. On ne peut plus créer un compte dont la classe contredit son code — c'est refusé à la saisie. |
 | **Un compte existant porte une classe manifestement fausse** | Cela ne peut venir que d'un compte antérieur à cette règle ou repris d'un plan importé. Ouvrez-le et remettez la **Classe** sur celle qu'impose le code ; c'est accepté tant que le compte ne porte **aucun mouvement**. Dès qu'il en porte, la classe et le sens normal se figent — les changer reviendrait à modifier des états déjà produits ; la réponse comptable est alors un nouveau compte correctement classé et une **écriture de reclassement**. |
 | **J'ai archivé un compte et je ne peux plus créer le même code** | Normal : le code reste réservé même archivé, sinon l'historique deviendrait ambigu. N'inventez pas un autre code — filtrez la liste sur **Statut = Archivé**, puis **Activer** le compte et corrigez-le. Archiver n'est pas définitif. |

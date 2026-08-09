@@ -115,6 +115,20 @@ final class ReportRunController extends BaseController
             return $this->respondUnprocessable(errors: ['report_definition_public_id' => [__('EMF/COBAC reports require a regulatory source snapshot.')]]);
         }
 
+        // A consolidated trial balance rolls every agency's postings up into the
+        // institution grouping accounts, so it is cross-agency information —
+        // exactly what AccountingBalanceWorkflow::canReadInstitutionAggregate()
+        // withholds on `/ledger-accounts/{id}/balance`. Without the same gate an
+        // auditor or compliance-officer, who hold `accounting.audit.view` but not
+        // `ledger.scope.institution.read`, could read here what they are refused
+        // there. Ordinary (unconsolidated) trial balances are unaffected.
+        if ($definition->report_type === ReportDefinition::TYPE_TRIAL_BALANCE
+            && $this->consolidatedRequested($validated['parameters'] ?? [])
+            && ! $actor->hasRole('platform-admin')
+            && ! $actor->can('ledger.scope.institution.read')) {
+            return $this->respondForbidden(__('domain.report_consolidated_requires_institution_read'));
+        }
+
         $agency = isset($validated['agency_public_id'])
             ? Agency::query()->where('public_id', $validated['agency_public_id'])->first()
             : null;

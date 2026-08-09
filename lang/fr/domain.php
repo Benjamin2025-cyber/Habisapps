@@ -57,6 +57,7 @@ return [
     'code_taken_at_institution' => 'Ce code est déjà utilisé au niveau institution.',
     'operation_mapping_not_pending_decision' => 'Seule une imputation en brouillon ou soumise peut être approuvée ou rejetée.',
     'operation_mapping_reviewer_must_differ' => 'L’approbation d’une règle d’imputation nécessite un réviseur différent de l’auteur.',
+    'report_consolidated_requires_institution_read' => 'Une balance consolidée couvre toutes les agences : elle requiert un accès en lecture au niveau institution.',
     'ledger_account_structure_locked_by_movements' => 'Ce compte porte déjà des mouvements : sa classe et son sens normal ne peuvent plus être modifiés, cela reviendrait à modifier des états déjà produits. Ouvrez un compte correctement classé et transférez le solde par une écriture de reclassement.',
     'ledger_account_class_contradicts_code' => 'Dans le plan PCEMF, la classe est le premier chiffre du code. Ce code commence par :digit : le compte relève donc de la :expected.',
     'ledger_account_class_capitaux_permanents' => 'classe 1 — Capitaux permanents',
