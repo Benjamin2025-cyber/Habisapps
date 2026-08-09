@@ -30,6 +30,11 @@ final class DatabaseSeeder extends Seeder
 
         $this->call(BatchProcedureSeeder::class);
 
+        // The BEAC's notes and coins: fixed by the currency, not chosen by the
+        // institution, and a till that requires denominations cannot be opened
+        // without them.
+        $this->call(DenominationSeeder::class);
+
         $this->call(BootstrapAdminSeeder::class);
 
         // Order matters from here: the chart puts every postable account under

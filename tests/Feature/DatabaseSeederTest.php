@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DefaultAgencySeeder;
+use Database\Seeders\DenominationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -59,6 +60,32 @@ final class DatabaseSeederTest extends TestCase
         // completed per agency once the network is created.
         self::assertGreaterThan(300, DB::table('ledger_accounts')->whereNull('agency_id')->count());
         self::assertSame(0, DB::table('ledger_accounts')->whereNotNull('agency_id')->count());
+    }
+
+    public function test_it_seeds_the_beac_notes_and_coins_at_the_account_scale(): void
+    {
+        $this->seed(DenominationSeeder::class);
+
+        // One row per face value: UNIQUE (currency, value_minor) means the 500,
+        // which circulates as both a note and a coin, is listed once.
+        // Gamme 2020 notes 500–10 000, Type 2024 coins 1–200.
+        self::assertSame(5, DB::table('denominations')->where('type', 'banknote')->count());
+        self::assertSame(8, DB::table('denominations')->where('type', 'coin')->count());
+        self::assertSame(1, DB::table('denominations')->where('type', 'coin')->where('value_minor', 200 * 100)->count());
+
+        // There is no 10-franc note: the 10 is a coin.
+        self::assertSame(0, DB::table('denominations')->where('type', 'banknote')->where('value_minor', 10 * 100)->count());
+
+        // Face value is stored in minor units at the account scale, because
+        // TellerSessionWorkflow compares `value_minor * count` against the
+        // declared opening float. A 1 000 note counted once must be 1 000 francs.
+        $note1000 = DB::table('denominations')->where('code', 'XAF-1000-B')->first(['value_minor']);
+        self::assertNotNull($note1000);
+        self::assertSame(100000, (int) $note1000->value_minor);
+
+        // Idempotent: re-running adds nothing.
+        $this->seed(DenominationSeeder::class);
+        self::assertSame(13, DB::table('denominations')->count());
     }
 
     public function test_the_first_agency_seeder_never_adds_to_an_existing_network(): void
