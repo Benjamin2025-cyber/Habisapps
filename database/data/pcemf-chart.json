@@ -4716,7 +4716,17 @@
     },
     {
       "code": "5921",
+      "label": "Provisions pour dépréciation des créances douteuses sur les correspondants",
+      "postable": false
+    },
+    {
+      "code": "59210",
       "label": "Provisions pour dépréciation des créances douteuses sur les corresp. hors réseau",
+      "postable": true
+    },
+    {
+      "code": "59219",
+      "label": "Provisions pour dépréciation des créances douteuses sur les corresp. réseau",
       "postable": true
     },
     {
@@ -7511,5 +7521,15 @@
     }
   ],
   "confirmed_on": "2026-08-09",
-  "confirmed_by": "HABIBI FINANCE accounting team (SAMANTHA), Plan_des_Comptes_HF_2026_Réponse du 09082026"
+  "confirmed_by": "HABIBI FINANCE accounting team (SAMANTHA), Plan_des_Comptes_HF_2026_Réponse du 09082026",
+  "derived_corrections": [
+    {
+      "codes": [
+        "59210",
+        "59219"
+      ],
+      "reason": "Source lists both accounts under the single code 5921. Split using the chart's own hors reseau/reseau convention (X0/X9), which holds for 100 of its 104 pairs, e.g. 756 -> 75610/75619.",
+      "needs_confirmation": true
+    }
+  ]
 }
