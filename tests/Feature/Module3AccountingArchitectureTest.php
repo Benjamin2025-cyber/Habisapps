@@ -2277,6 +2277,66 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->assertJsonSuccess($reused, 201);
     }
 
+    public function test_a_bivalent_account_can_be_configured_through_the_api(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-BIV');
+
+        // The accounting team named eight bivalent roots and flagged five more as
+        // candidates (37, 46, 53, 54, 55). Promoting one of those must not mean
+        // editing seed data and re-seeding, so `null` has to be expressible here.
+        $created = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'agency',
+                'agency_public_id' => $agency['public_id'],
+                'code' => '451000',
+                'name' => 'Opérations de liaison siège et agences',
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_TIERS,
+                'normal_balance_side' => null,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.normal_balance_side', null);
+
+        $publicId = $this->requireStringJsonPath($created, 'data.public_id');
+        self::assertNull(DB::table('ledger_accounts')->where('public_id', $publicId)->value('normal_balance_side'));
+
+        // An existing account can be made bivalent, and back again.
+        $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, ['normal_balance_side' => 'debit']));
+        $backToBivalent = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/ledger-accounts/'.$publicId, ['normal_balance_side' => null]);
+        $this->assertJsonSuccess($backToBivalent);
+        $backToBivalent->assertJsonPath('data.normal_balance_side', null);
+    }
+
+    public function test_a_bivalent_balance_names_the_side_it_actually_sits_on(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-POS');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $liaison = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '571500', 'Liaison');
+        DB::table('ledger_accounts')->where('public_id', $liaison)->update(['normal_balance_side' => null]);
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '571501', 'Contrepartie');
+
+        // A transfer *out*: the liaison account is credited, so it sits on the
+        // credit side this period even though no side was imposed on it.
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-BIV', '2026-05-01', [
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 7500, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $liaison, 'debit_minor' => 0, 'credit_minor' => 7500],
+        ]);
+
+        $balance = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->getJson('/api/v1/ledger-accounts/'.$liaison.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+        $balance->assertJsonPath('data.normal_balance_side', null);
+        // Reported rather than left for the reader to infer from a sign.
+        $balance->assertJsonPath('data.balance_side', 'credit');
+        $balance->assertJsonPath('data.credit_total_minor', 7500);
+    }
+
     public function test_a_mistyped_account_class_is_correctable_until_the_account_has_movements(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

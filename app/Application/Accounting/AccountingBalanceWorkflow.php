@@ -286,6 +286,24 @@ final class AccountingBalanceWorkflow extends BaseController
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Which side the totals land on: debit when debits exceed credits, credit
+     * when they do not, null when they cancel out.
+     */
+    private function positionSide(int $debitTotal, int $creditTotal): ?string
+    {
+        if ($debitTotal === $creditTotal) {
+            return null;
+        }
+
+        return $debitTotal > $creditTotal
+            ? LedgerAccount::NORMAL_BALANCE_DEBIT
+            : LedgerAccount::NORMAL_BALANCE_CREDIT;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function ledgerStatementSummary(LedgerAccount $ledgerAccount, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
     {
         $openingDate = $from ?? $accountingDay?->business_date?->toDateString();
@@ -309,6 +327,13 @@ final class AccountingBalanceWorkflow extends BaseController
             'to' => $to,
             ...$this->accountingDayMetadata($accountingDay),
             'opening_balance_minor' => $opening,
+            // The side the account actually sits on over the period. The arrêté
+            // is precisely where a bivalent account's position has to be named
+            // rather than inferred from a sign.
+            'balance_side' => $this->positionSide(
+                $period['debit_total_minor'],
+                $period['credit_total_minor'],
+            ),
             'debit_total_minor' => $period['debit_total_minor'],
             'credit_total_minor' => $period['credit_total_minor'],
             'closing_balance_minor' => $opening + $period['balance_minor'],

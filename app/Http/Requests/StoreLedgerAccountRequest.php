@@ -36,7 +36,11 @@ final class StoreLedgerAccountRequest extends FormRequest
             'account_type' => ['nullable', 'string', 'max:64'],
             'is_postable' => ['nullable', 'boolean'],
             'parent_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
-            'normal_balance_side' => ['required', Rule::in([
+            // Nullable is meaningful: no imposed side, for an account that
+            // takes entries both ways by nature (comptes de liaison, de
+            // régularisation, hors bilan). Without this the only way to
+            // configure one would be to edit the seed data and re-seed.
+            'normal_balance_side' => ['present', 'nullable', Rule::in([
                 LedgerAccount::NORMAL_BALANCE_DEBIT,
                 LedgerAccount::NORMAL_BALANCE_CREDIT,
             ])],

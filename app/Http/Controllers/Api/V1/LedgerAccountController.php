@@ -152,7 +152,10 @@ final class LedgerAccountController extends BaseController
                 'account_type' => $request->input('account_type'),
                 'is_postable' => ! $institutionScoped && $request->boolean('is_postable', true),
                 'parent_account_id' => $parent?->id,
-                'normal_balance_side' => $request->string('normal_balance_side')->toString(),
+                // Null, not '': a bivalent account has no side, and ->string()
+                // would coerce that to an empty string the column would accept
+                // while meaning nothing.
+                'normal_balance_side' => $this->normalBalanceSideInput($request->input('normal_balance_side')),
                 'status' => $request->input('status', LedgerAccount::STATUS_ACTIVE),
             ]);
         } catch (UniqueConstraintViolationException) {
@@ -309,6 +312,18 @@ final class LedgerAccountController extends BaseController
      * deploying the institution chart across agencies requires. Everyone else
      * writes only into the agency they are assigned to.
      */
+    /**
+     * The requested normal side, or null for a bivalent account.
+     *
+     * Validation has already restricted this to 'debit', 'credit' or null; this
+     * only keeps an empty string from reaching a column where it would be
+     * indistinguishable from a real value.
+     */
+    private function normalBalanceSideInput(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
     /**
      * Why the class contradicts the code, or null when they agree.
      *

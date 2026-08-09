@@ -27,6 +27,11 @@ final class AccountingBalanceResource extends JsonResource
             'credit_total_minor' => $balance['credit_total_minor'],
             'balance_minor' => $balance['balance_minor'],
             'normal_balance_side' => $balance['normal_balance_side'],
+            // The side the account is actually on for this period, as distinct
+            // from the side it is expected to be on. Null when debits and
+            // credits cancel out. For a bivalent account — no imposed side —
+            // this is the only side there is.
+            'balance_side' => $balance['balance_side'] ?? null,
         ];
     }
 }
