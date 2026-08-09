@@ -27,6 +27,14 @@ final class OperationAccountMappingResource extends JsonResource
             'agency_public_id' => $mapping->relationLoaded('agency') ? $mapping->agency?->public_id : null,
             'debit_ledger_account_public_id' => $mapping->relationLoaded('debitLedgerAccount') ? $mapping->debitLedgerAccount?->public_id : null,
             'credit_ledger_account_public_id' => $mapping->relationLoaded('creditLedgerAccount') ? $mapping->creditLedgerAccount?->public_id : null,
+            // Sent alongside the ids so a mapping can be labelled without
+            // resolving them against the chart. Resolving them client-side meant
+            // loading a page of accounts and matching locally, which stops
+            // working as soon as the chart exceeds one page.
+            'debit_ledger_account_code' => $mapping->relationLoaded('debitLedgerAccount') ? $mapping->debitLedgerAccount?->code : null,
+            'debit_ledger_account_name' => $mapping->relationLoaded('debitLedgerAccount') ? $mapping->debitLedgerAccount?->name : null,
+            'credit_ledger_account_code' => $mapping->relationLoaded('creditLedgerAccount') ? $mapping->creditLedgerAccount?->code : null,
+            'credit_ledger_account_name' => $mapping->relationLoaded('creditLedgerAccount') ? $mapping->creditLedgerAccount?->name : null,
             'currency' => $mapping->currency,
             'effective_from' => $this->dateOnly($mapping->effective_from),
             'effective_to' => $this->dateOnly($mapping->effective_to),
