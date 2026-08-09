@@ -2373,6 +2373,119 @@ final class Module3AccountingArchitectureTest extends TestCase
         $backToBivalent->assertJsonPath('data.normal_balance_side', null);
     }
 
+    public function test_the_trial_balance_reports_the_side_each_account_actually_lands_on(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-ARR');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // « calculer le signe du solde (D ou C) selon la position réelle à
+        // chaque arrêté ». The trial balance is the arrêté, so it is the one
+        // place that sentence has to hold. It reported normal_balance_side —
+        // the side an account was told to sit on — and never the side it
+        // actually reached, which for a bivalent account is the only side there
+        // is.
+        $liaison = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '575100', 'Liaison');
+        DB::table('ledger_accounts')->where('public_id', $liaison)->update(['normal_balance_side' => null]);
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '575101', 'Contrepartie');
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-ARR', '2026-05-01', [
+            ['ledger_account_public_id' => $liaison, 'debit_minor' => 9000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 9000],
+        ]);
+
+        $definitionId = DB::table('report_definitions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'TB-ARRETE',
+            'name' => 'Trial Balance Arrete',
+            'report_type' => 'trial_balance',
+            'module' => 'accounting',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $definition = DB::table('report_definitions')->where('id', $definitionId)->first(['public_id']);
+        self::assertIsObject($definition);
+        self::assertIsString($definition->public_id);
+
+        $run = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/report-runs', [
+                'report_definition_public_id' => $definition->public_id,
+                'agency_public_id' => $agency['public_id'],
+                'period_starts_on' => '2026-05-01',
+                'period_ends_on' => '2026-05-01',
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($run, 201);
+
+        $rows = $run->json('data.summary.rows');
+        self::assertIsArray($rows);
+
+        $seen = [];
+        foreach ($rows as $row) {
+            self::assertIsArray($row);
+            $code = $row['ledger_account_code'] ?? null;
+            if (! is_string($code)) {
+                continue;
+            }
+            $normal = $row['normal_balance_side'] ?? null;
+            $position = $row['balance_side'] ?? null;
+            $seen[] = $code.':'.(is_string($normal) ? $normal : 'none').'/'.(is_string($position) ? $position : 'none');
+        }
+        sort($seen);
+
+        // The bivalent account has no imposed side and lands on debit; its
+        // counterpart was given debit and sits on credit — exactly the case the
+        // team described for 37, 46, 53, 54 and 55, and the reason the imposed
+        // side alone cannot be read as the position.
+        self::assertSame(['575100:none/debit', '575101:debit/credit'], $seen);
+    }
+
+    public function test_a_single_sided_account_still_accepts_the_opposite_side(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-DOM');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // The accounting team's « remarques libres »: 37, 46, 53, 54 and 55 also
+        // mix the two sides, and they kept the dominant one (C) « pour
+        // simplifier », to be revisited « si des écritures dans l'autre sens
+        // sont bloquées lors des tests ».
+        //
+        // This is that test, and it answers their condition: a debit on a
+        // credit-side account posts exactly like any other. Nothing validates an
+        // entry against normal_balance_side — the column is read only to decide
+        // which way round to present a total — so no écriture will ever be
+        // blocked for being on the "wrong" side, on these five or on any other
+        // account. Their trigger cannot fire, so the five must be judged on the
+        // figures instead.
+        $mixed = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '530000', 'Autres valeurs reçues ou données');
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '530001', 'Contrepartie');
+
+        DB::table('ledger_accounts')->where('public_id', $mixed)
+            ->update(['normal_balance_side' => LedgerAccount::NORMAL_BALANCE_CREDIT]);
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-DOM-D', '2026-05-01', [
+            ['ledger_account_public_id' => $mixed, 'debit_minor' => 12000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 12000],
+        ]);
+
+        $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$mixed.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+
+        // Accepted, and the position is reported honestly. balance_minor is
+        // signed against the *imposed* side, so a credit-side account sitting on
+        // debit reports a negative total — which is why balance_side exists and
+        // why a reader must take the side from it rather than from the sign.
+        $balance->assertJsonPath('data.debit_total_minor', 12000);
+        $balance->assertJsonPath('data.balance_minor', -12000);
+        $balance->assertJsonPath('data.normal_balance_side', LedgerAccount::NORMAL_BALANCE_CREDIT);
+        $balance->assertJsonPath('data.balance_side', LedgerAccount::NORMAL_BALANCE_DEBIT);
+    }
+
     public function test_a_bivalent_account_takes_entries_on_either_side_and_reports_where_it_lands(): void
     {
         $maker = $this->createUserWithRole('platform-admin');

@@ -22,6 +22,7 @@ use App\Models\LoanRepaymentAllocation;
 use App\Models\ReportDefinition;
 use App\Models\ReportRun;
 use App\Models\User;
+use App\Support\Accounting\AccountingBalanceCalculator;
 use App\Support\Accounting\LedgerAccountHierarchy;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\FormulaPolicyNotApproved;
@@ -51,6 +52,7 @@ final class ReportRunController extends BaseController
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
         private readonly UserNotificationFeed $notifications,
         private readonly LedgerAccountHierarchy $ledgerHierarchy,
+        private readonly AccountingBalanceCalculator $balances,
     ) {}
 
     public function index(Request $request): ReportRunCollection|JsonResponse
@@ -442,6 +444,10 @@ final class ReportRunController extends BaseController
                 'debit_total_minor' => $debit,
                 'credit_total_minor' => $credit,
                 'balance_minor' => $row->normal_balance_side === LedgerAccount::NORMAL_BALANCE_CREDIT ? $credit - $debit : $debit - $credit,
+                // The side the account actually lands on at this arrêté, which
+                // is the only side a bivalent account has, and the one that
+                // tells a reader a single-sided account has swung the other way.
+                'balance_side' => $this->balances->positionSide($debit, $credit),
             ];
         })->all();
 
@@ -502,7 +508,10 @@ final class ReportRunController extends BaseController
                 continue;
             }
 
-            $normalBalanceSide = $this->rowString($account, 'normal_balance_side');
+            // Nullable: a bivalent account has no imposed side, and rowString
+            // would report that as '' — a value the reader cannot tell apart
+            // from a side that simply failed to load.
+            $normalBalanceSide = $this->rowNullableString($account, 'normal_balance_side');
             $rows[] = [
                 'ledger_account_public_id' => $this->rowString($account, 'public_id'),
                 'ledger_account_code' => $this->rowString($account, 'code'),
@@ -515,6 +524,7 @@ final class ReportRunController extends BaseController
                 'debit_total_minor' => $debit,
                 'credit_total_minor' => $credit,
                 'balance_minor' => $normalBalanceSide === LedgerAccount::NORMAL_BALANCE_CREDIT ? $credit - $debit : $debit - $credit,
+                'balance_side' => $this->balances->positionSide($debit, $credit),
             ];
         }
 

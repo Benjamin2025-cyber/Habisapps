@@ -164,7 +164,16 @@ final class AccountingBalanceCalculator
      * when the credits exceed the debits. Null only when the two cancel out,
      * which is a position on neither side.
      */
-    private function positionSide(int $debitTotal, int $creditTotal): ?string
+    /**
+     * Which side an account actually sits on for a period, from the figures
+     * alone — as opposed to the side it was told to sit on. Null when the two
+     * totals square, because that is a position on neither side.
+     *
+     * Public because the arrêté needs the identical answer: a trial balance that
+     * derived the side its own way would eventually disagree with the account
+     * screen about the same account on the same day.
+     */
+    public function positionSide(int $debitTotal, int $creditTotal): ?string
     {
         if ($debitTotal === $creditTotal) {
             return null;
