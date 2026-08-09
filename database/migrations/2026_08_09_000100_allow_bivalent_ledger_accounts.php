@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -38,8 +39,31 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Bivalent accounts have no side to fall back to, and inventing one
-        // would silently flip the sign of their balance. Settle them first.
+        // Reversible only while no account actually uses the freedom this granted.
+        // A bivalent account has no side to fall back to, and picking one for it
+        // would invert the presented sign of every balance it carries — 45 and 47
+        // are liaison and régularisation accounts, so that is real money reported
+        // backwards, not a cosmetic default.
+        //
+        // Postgres would refuse the column change anyway, but with a bare NOT NULL
+        // violation naming neither the accounts nor the remedy. Fail first, and
+        // say what has to happen: decide a side for each of these accounts (which
+        // is an accounting decision, not a schema one) before reverting.
+        $bivalent = DB::table('ledger_accounts')
+            ->whereNull('normal_balance_side')
+            ->pluck('code')
+            ->all();
+
+        if ($bivalent !== []) {
+            throw new RuntimeException(sprintf(
+                'Cannot revert: %d ledger account(s) have no imposed balance side (%s). '
+                .'Reverting would force a side on them and flip the reported sign of their balances. '
+                .'Assign each an explicit debit or credit side first, then roll back.',
+                count($bivalent),
+                implode(', ', array_slice($bivalent, 0, 10)).(count($bivalent) > 10 ? ', …' : '')
+            ));
+        }
+
         Schema::table('ledger_accounts', function (Blueprint $table): void {
             $table->string('normal_balance_side', 6)->nullable(false)->change();
         });

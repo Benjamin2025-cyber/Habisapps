@@ -443,7 +443,14 @@ final class AccountingBalanceWorkflow extends BaseController
     /**
      * @return array<string, mixed>
      */
-    private function movementPayload(object $row, string $normalBalanceSide): array
+    /**
+     * A movement, signed against the account's normal side so a well-behaved one
+     * reads positive. A bivalent account (null side) has no side to orient to,
+     * so its movements carry the natural signed amount: debits positive.
+     *
+     * @return array<string, mixed>
+     */
+    private function movementPayload(object $row, ?string $normalBalanceSide): array
     {
         $debit = $this->rowInt($row, 'debit_minor');
         $credit = $this->rowInt($row, 'credit_minor');
@@ -468,7 +475,7 @@ final class AccountingBalanceWorkflow extends BaseController
     /**
      * @return array{debit_total_minor:int, credit_total_minor:int, balance_minor:int}
      */
-    private function periodTotals(Builder $query, string $normalBalanceSide): array
+    private function periodTotals(Builder $query, ?string $normalBalanceSide): array
     {
         $totals = $query
             ->cloneWithout(['columns', 'orders', 'limit', 'offset'])

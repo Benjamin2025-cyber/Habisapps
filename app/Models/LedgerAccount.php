@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $account_type
  * @property bool $is_postable
  * @property int|null $parent_account_id
- * @property string $normal_balance_side
+ * @property string|null $normal_balance_side Null for a bivalent account: no imposed side.
  * @property string $status
  */
 #[Fillable([

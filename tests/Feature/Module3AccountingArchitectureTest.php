@@ -2310,6 +2310,65 @@ final class Module3AccountingArchitectureTest extends TestCase
         $backToBivalent->assertJsonPath('data.normal_balance_side', null);
     }
 
+    public function test_a_bivalent_account_takes_entries_on_either_side_and_reports_where_it_lands(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-BOTH');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $liaison = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '571600', 'Liaison');
+        DB::table('ledger_accounts')->where('public_id', $liaison)->update(['normal_balance_side' => null]);
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '571601', 'Contrepartie');
+
+        // « le système doit accepter des écritures aussi bien au débit qu'au
+        // crédit sur chacun d'eux […] sans blocage ni rejet d'écriture pour
+        // non-conformité de sens » — so post both directions to the same
+        // account and require both to succeed. Asserting only one direction, or
+        // only that no code reads the side, would not have shown this.
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-BOTH-CR', '2026-05-01', [
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 9000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $liaison, 'debit_minor' => 0, 'credit_minor' => 9000],
+        ]);
+
+        $afterCredit = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->getJson('/api/v1/ledger-accounts/'.$liaison.'/balance?currency=XAF');
+        $this->assertJsonSuccess($afterCredit);
+        $afterCredit->assertJsonPath('data.balance_side', 'credit');
+
+        // The other direction, on the same account, in a second entry.
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-BOTH-DR', '2026-05-01', [
+            ['ledger_account_public_id' => $liaison, 'debit_minor' => 14000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 14000],
+        ]);
+
+        $afterDebit = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->getJson('/api/v1/ledger-accounts/'.$liaison.'/balance?currency=XAF');
+        $this->assertJsonSuccess($afterDebit);
+        // 14 000 debit against 9 000 credit: the position moved to debit, which
+        // is the "signe du solde selon la position réelle" they asked for.
+        $afterDebit->assertJsonPath('data.debit_total_minor', 14000);
+        $afterDebit->assertJsonPath('data.credit_total_minor', 9000);
+        $afterDebit->assertJsonPath('data.balance_side', 'debit');
+
+        // And the statement — the arrêté — agrees.
+        $statement = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->getJson('/api/v1/ledger-accounts/'.$liaison.'/movements?currency=XAF');
+        $this->assertJsonSuccess($statement);
+        $statement->assertJsonPath('data.statement.balance_side', 'debit');
+
+        // Equal in both directions is a position on neither side, not a default.
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-BOTH-EQ', '2026-05-01', [
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 5000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $liaison, 'debit_minor' => 0, 'credit_minor' => 5000],
+        ]);
+        $levelled = $this->withApiHeaders()->actingAsSanctum($maker)
+            ->getJson('/api/v1/ledger-accounts/'.$liaison.'/balance?currency=XAF');
+        $this->assertJsonSuccess($levelled);
+        $levelled->assertJsonPath('data.balance_side', null);
+        $levelled->assertJsonPath('data.balance_minor', 0);
+    }
+
     public function test_a_bivalent_balance_names_the_side_it_actually_sits_on(): void
     {
         $maker = $this->createUserWithRole('platform-admin');
