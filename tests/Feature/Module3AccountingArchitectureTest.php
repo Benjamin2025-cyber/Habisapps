@@ -3164,6 +3164,80 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response->assertJsonValidationErrors(['agency_public_id']);
     }
 
+    public function test_the_net_result_is_all_produits_less_all_charges(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-ID');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // The eight formulas partition classes 6 and 7, and the 6611 term appears
+        // twice with opposite signs — added into 82, taken out again at 87 through
+        // solde 86. So however elaborate the intermediate soldes, the résultat net
+        // has to reduce to the plainest statement in accounting: everything earned
+        // less everything spent.
+        //
+        // Asserting the identity rather than re-deriving the formulas in the test:
+        // a test that recomputes them only proves the arithmetic agrees with
+        // itself. This one would fail if the tax add-back stopped cancelling,
+        // which would put the résultat out by exactly the corporate tax — big
+        // enough to matter, plausible enough to go unquestioned.
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+
+        // One account in every root of both classes, so nothing can hide in a
+        // root the formulas forgot. Two entries rather than twenty: the journal
+        // write throttle is real, and a balanced entry may carry many lines.
+        $produitLines = [];
+        $produits = 0;
+        foreach (range(70, 79) as $index => $root) {
+            $amount = 1000 * ($index + 1);
+            $produitLines[] = [
+                'ledger_account_public_id' => $this->createResultAccount($admin, $agency['public_id'], $root.'1000', 'Produit '.$root, 'produits', 'credit'),
+                'debit_minor' => 0,
+                'credit_minor' => $amount,
+            ];
+            $produits += $amount;
+        }
+        $produitLines[] = ['ledger_account_public_id' => $cash, 'debit_minor' => $produits, 'credit_minor' => 0];
+
+        $chargeLines = [];
+        $charges = 0;
+        foreach (range(60, 69) as $index => $root) {
+            $amount = 500 * ($index + 1);
+            $chargeLines[] = [
+                'ledger_account_public_id' => $this->createResultAccount($admin, $agency['public_id'], $root.'1000', 'Charge '.$root, 'charges', 'debit'),
+                'debit_minor' => $amount,
+                'credit_minor' => 0,
+            ];
+            $charges += $amount;
+        }
+
+        // And the corporate income tax specifically, the one amount the formulas
+        // handle twice.
+        $chargeLines[] = [
+            'ledger_account_public_id' => $this->createResultAccount($admin, $agency['public_id'], '661100', 'Impôt sur les sociétés', 'charges', 'debit'),
+            'debit_minor' => 12000,
+            'credit_minor' => 0,
+        ];
+        $charges += 12000;
+        $chargeLines[] = ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => $charges];
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-PRODUITS', '2026-05-01', $produitLines);
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-CHARGES', '2026-05-01', $chargeLines);
+
+        $response = $this->postIncomeStatement($admin, $agency['public_id']);
+        $response->assertJsonPath('data.summary.net_result_minor', $produits - $charges);
+
+        // The tax reaches solde 86 in full, and leaves the résultat d'exploitation
+        // rather than being counted there as well.
+        $soldes = $this->soldesFrom($response->json('data.summary.soldes'));
+        self::assertSame(12000, $this->soldeAmount($soldes, '86'));
+        self::assertSame(
+            $this->soldeAmount($soldes, '85') - 12000,
+            $this->soldeAmount($soldes, '87'),
+        );
+    }
+
     public function test_no_class_eight_account_can_be_created_at_all(): void
     {
         $admin = $this->createUserWithRole('platform-admin');

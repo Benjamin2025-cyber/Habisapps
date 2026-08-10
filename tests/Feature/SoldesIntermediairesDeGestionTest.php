@@ -127,6 +127,54 @@ final class SoldesIntermediairesDeGestionTest extends TestCase
         self::assertSame([], $courant['minus']);
     }
 
+    public function test_classes_six_and_seven_are_covered_exactly_once(): void
+    {
+        // The table the accounting team returned gives eight formulas but never
+        // says they partition classes 6 and 7 — that is a property of the answer
+        // rather than a line in it, and it is the property a typo breaks. A root
+        // left out is a charge or a produit the compte de résultat silently
+        // ignores; a root used twice counts the same money in two soldes. Either
+        // way the report still prints, still looks orderly, and is wrong.
+        $usage = [];
+        foreach (Sig::definitions() as $definition) {
+            foreach ([...$definition['plus'], ...$definition['minus']] as $term) {
+                $usage[] = $term;
+            }
+        }
+
+        $roots = [];
+        foreach (range(60, 69) as $root) {
+            $roots[] = (string) $root;
+        }
+        foreach (range(70, 79) as $root) {
+            $roots[] = (string) $root;
+        }
+
+        $missing = [];
+        $repeated = [];
+        foreach ($roots as $root) {
+            $count = count(array_filter($usage, static fn (string $term): bool => $term === $root));
+            if ($count === 0) {
+                $missing[] = $root;
+            }
+            if ($count > 1) {
+                $repeated[] = $root;
+            }
+        }
+
+        self::assertSame([], $missing, 'A class 6 or 7 root never reaches the compte de résultat.');
+        self::assertSame([], $repeated, 'A class 6 or 7 root is counted in more than one solde.');
+
+        // Only two terms are not roots: 6611, added back to 82 so that solde 86
+        // may hold the corporate tax alone, and 86 itself, which 87 subtracts.
+        $soldeCodes = array_column(Sig::definitions(), 'code');
+        $extras = array_values(array_unique(array_diff($usage, $roots)));
+        // SORT_STRING, or PHP compares these numerically and puts 86 before 6611.
+        sort($extras, SORT_STRING);
+        self::assertSame(['6611', '86'], $extras);
+        self::assertContains('86', $soldeCodes);
+    }
+
     /**
      * @return array{code: string, label: string, from: array<int, string>, plus: array<int, string>, minus: array<int, string>}
      */
