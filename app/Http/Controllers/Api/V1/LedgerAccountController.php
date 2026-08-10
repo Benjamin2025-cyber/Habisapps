@@ -121,6 +121,23 @@ final class LedgerAccountController extends BaseController
             return $this->respondUnprocessable(errors: ['account_class' => [$classError]]);
         }
 
+        // Class 8 is in the chart, with its intitulés, like every other class —
+        // but as the accounting team put it, « aucun compte de la classe 8 n'est
+        // créé dans la table des comptes sur lesquels on peut saisir une
+        // écriture, parce qu'on n'y saisit jamais rien directement ». The eight
+        // soldes are computed from classes 6 and 7 when the compte de résultat is
+        // drawn.
+        //
+        // The seeder honours that and is tested for it, but it is not the only
+        // way an account appears. A class 8 account created here would be a place
+        // to file entries that the income statement never reads, because it sums
+        // classes 6 and 7 — so those amounts would vanish from the résultat while
+        // still balancing perfectly in the journal. Nothing downstream would look
+        // wrong.
+        if (LedgerAccount::classImpliedByCode($code) === LedgerAccount::ACCOUNT_CLASS_SOLDES_INTERMEDIAIRES_GESTION) {
+            return $this->respondUnprocessable(errors: ['code' => [__('domain.ledger_class_eight_is_computed')]]);
+        }
+
         if ($this->codeTakenInScope($code, $agency?->id)) {
             return $this->respondUnprocessable(errors: ['code' => [
                 $agency instanceof Agency

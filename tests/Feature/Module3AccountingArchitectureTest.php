@@ -3164,6 +3164,46 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response->assertJsonValidationErrors(['agency_public_id']);
     }
 
+    public function test_no_class_eight_account_can_be_created_at_all(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-C8');
+
+        // « Aucun compte de la classe 8 n'est créé dans la table des comptes sur
+        // lesquels on peut saisir une écriture, parce qu'on n'y saisit jamais
+        // rien directement. » The seeder honours that, but the seeder is not the
+        // only way an account appears: a class 8 code posted here would create
+        // somewhere to file entries that the compte de résultat computes from
+        // classes 6 and 7 and would never read, so the money would leave the
+        // income statement entirely.
+        $postable = $this->withApiHeaders()->actingAsSanctum($admin)
+            ->postJson('/api/v1/ledger-accounts', [
+                'agency_public_id' => $agency['public_id'],
+                'code' => '800000',
+                'name' => 'Produit net financier',
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_SOLDES_INTERMEDIAIRES_GESTION,
+                'normal_balance_side' => 'credit',
+            ]);
+        $postable->assertStatus(422);
+        $postable->assertJsonValidationErrors(['code']);
+
+        // Not even as an institution grouping account. Those are legitimate
+        // elsewhere, but a class 8 grouping consolidates by parent_account_id and
+        // the soldes aggregate classes 6 and 7 instead, so it could only ever
+        // report zero — « ils resteraient toujours vides ».
+        $grouping = $this->withApiHeaders()->actingAsSanctum($admin)
+            ->postJson('/api/v1/ledger-accounts', [
+                'scope' => 'institution',
+                'code' => '80',
+                'name' => 'Soldes intermédiaires de gestion',
+                'account_class' => LedgerAccount::ACCOUNT_CLASS_SOLDES_INTERMEDIAIRES_GESTION,
+                'normal_balance_side' => null,
+            ]);
+        $grouping->assertStatus(422);
+
+        self::assertSame(0, DB::table('ledger_accounts')->whereRaw('left(code, 1) = ?', ['8'])->count());
+    }
+
     public function test_the_income_statement_builds_the_eight_soldes_from_classes_six_and_seven(): void
     {
         $admin = $this->createUserWithRole('platform-admin');

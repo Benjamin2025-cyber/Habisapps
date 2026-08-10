@@ -52,6 +52,7 @@ return [
     'ledger_account_not_postable' => 'The selected ledger account is a grouping account and cannot receive entries.',
     'ledger_parent_has_movements' => 'The selected parent account already carries movements and cannot become a grouping account.',
     'ledger_account_code_taken_in_agency' => 'This code is already used in the chart of accounts of :agency.',
+    'ledger_class_eight_is_computed' => 'Class 8 accounts are the soldes intermédiaires de gestion. They are computed from classes 6 and 7 when the compte de résultat is produced, and never carry entries, so no account can be created for them.',
     'ledger_account_code_taken_at_institution' => 'This code is already used by an institution-level account.',
     'code_taken_in_agency' => 'This code is already used in :agency.',
     'code_taken_at_institution' => 'This code is already used at institution level.',

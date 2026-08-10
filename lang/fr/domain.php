@@ -52,6 +52,7 @@ return [
     'ledger_account_not_postable' => 'Le compte du grand livre sélectionné est un compte de regroupement et ne peut pas recevoir d’écritures.',
     'ledger_parent_has_movements' => 'Le compte parent sélectionné porte déjà des mouvements et ne peut pas devenir un compte de regroupement.',
     'ledger_account_code_taken_in_agency' => 'Ce code est déjà utilisé dans le plan comptable de :agency.',
+    'ledger_class_eight_is_computed' => 'Les comptes de classe 8 sont les soldes intermédiaires de gestion. Ils sont calculés à partir des classes 6 et 7 à l\'édition du compte de résultat et ne reçoivent jamais d\'écriture : aucun compte ne peut donc être créé pour eux.',
     'ledger_account_code_taken_at_institution' => 'Ce code est déjà utilisé par un compte de niveau institution.',
     'code_taken_in_agency' => 'Ce code est déjà utilisé dans :agency.',
     'code_taken_at_institution' => 'Ce code est déjà utilisé au niveau institution.',
