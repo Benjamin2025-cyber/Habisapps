@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\CustomerAccountSignatureController;
 use App\Http\Controllers\Api\V1\DenominationController;
 use App\Http\Controllers\Api\V1\EmfLedgerAccountMappingController;
 use App\Http\Controllers\Api\V1\EmfRegulatoryAccountController;
+use App\Http\Controllers\Api\V1\ExerciseClosingController;
 use App\Http\Controllers\Api\V1\JournalEntryController;
 use App\Http\Controllers\Api\V1\JournalLineController;
 use App\Http\Controllers\Api\V1\LedgerAccountController;
@@ -122,6 +123,10 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::post('journal-entries/{journalEntry}/post', [JournalEntryController::class, 'post'])->middleware('throttle:journal.write');
     Route::post('journal-entries/{journalEntry}/reverse', [JournalEntryController::class, 'reverse'])->middleware('throttle:journal.write');
     Route::delete('journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy']);
+
+    // Clôture annuelle: transfers solde 87 into 131 or 132.
+    Route::get('exercise-closings', [ExerciseClosingController::class, 'index']);
+    Route::post('exercise-closings', [ExerciseClosingController::class, 'store'])->middleware('throttle:journal.write');
 
     Route::get('journal-lines', [JournalLineController::class, 'index']);
     Route::post('journal-lines', [JournalLineController::class, 'store'])->middleware('throttle:journal.write');

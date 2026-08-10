@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Accounting\ExerciseClosingWorkflow;
 use App\Application\Notifications\UserNotificationFeed;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\ReportRunCollection;
@@ -453,6 +454,16 @@ final class ReportRunController extends BaseController
         // which the SIG test asserts against the seeded chart.
         $rows = $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
             ->whereRaw("left(ledger_accounts.code, 1) in ('6', '7')")
+            // The clôture annuelle solde's classes 6 and 7 and is dated the last
+            // day of the exercise, as it should be. Counted here it would cancel
+            // the very activity it closes, and the annual accounts would read nil
+            // across the board from the moment they were closed — once a year, at
+            // the worst possible moment. The trial balance still shows it, because
+            // that report has to show the ledger as it stands.
+            ->where(function (Builder $entries): void {
+                $entries->whereNull('journal_entries.source_type')
+                    ->orWhere('journal_entries.source_type', '!=', ExerciseClosingWorkflow::SOURCE_TYPE);
+            })
             ->selectRaw('ledger_accounts.code AS code')
             ->selectRaw('ledger_accounts.normal_balance_side AS normal_balance_side')
             ->selectRaw('COALESCE(SUM(journal_lines.debit_minor), 0) AS debit_total_minor')

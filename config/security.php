@@ -131,6 +131,7 @@ return [
                 'batch.runs.view',
                 'batch.runs.manage',
                 'accounting.scope.institution.manage',
+                'accounting.exercise.close',
                 'accounting.days.view',
                 'accounting.days.open',
                 'accounting.days.close',
@@ -590,6 +591,7 @@ return [
                 // (the arrêté comptable). Reopening a closed period is withheld
                 // on purpose — see accounting.days.reopen, platform-admin only.
                 'accounting.scope.institution.manage',
+                'accounting.exercise.close',
                 'accounting.days.view',
                 'accounting.days.open',
                 'accounting.days.close',

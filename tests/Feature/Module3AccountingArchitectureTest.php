@@ -3202,6 +3202,161 @@ final class Module3AccountingArchitectureTest extends TestCase
         self::assertSame(50000, $this->soldeAmount($soldes, '87'));
     }
 
+    public function test_closing_an_exercise_carries_the_benefice_to_131_and_soldes_classes_six_and_seven(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CLO-A');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $paid = $this->createResultAccount($chief, $agency['public_id'], '601000', 'Intérêts payés', 'charges', 'debit');
+        $benefice = $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-CLO-1', '2026-12-31', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 90000],
+            ['ledger_account_public_id' => $paid, 'debit_minor' => 30000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 60000, 'credit_minor' => 0],
+        ]);
+
+        $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($closing, 201);
+
+        // 90 000 earned less 30 000 paid: a bénéfice, so it carries to 131.
+        $closing->assertJsonPath('data.net_result_minor', 60000);
+        $closing->assertJsonPath('data.result_account_code', '131');
+
+        // Created submitted, not posted. The largest entry of the year is exactly
+        // the one that should need a second pair of eyes, so the clôture uses the
+        // ordinary maker-checker rather than posting itself.
+        $closing->assertJsonPath('data.status', JournalEntry::STATUS_SUBMITTED);
+        $closing->assertJsonPath('data.posted', false);
+
+        $entryPublicId = $this->requireStringJsonPath($closing, 'data.journal_entry_public_id');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/post')->assertStatus(200);
+
+        // Classes 6 and 7 now stand at nil: that is what a clôture is for.
+        foreach ([$earned, $paid] as $publicId) {
+            $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+                ->getJson('/api/v1/ledger-accounts/'.$publicId.'/balance?currency=XAF');
+            $this->assertJsonSuccess($balance);
+            $balance->assertJsonPath('data.balance_minor', 0);
+            $balance->assertJsonPath('data.balance_side', null);
+        }
+
+        // And the result is sitting in 131, on the credit side.
+        $resultBalance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$benefice.'/balance?currency=XAF');
+        $this->assertJsonSuccess($resultBalance);
+        $resultBalance->assertJsonPath('data.balance_minor', 60000);
+        $resultBalance->assertJsonPath('data.balance_side', LedgerAccount::NORMAL_BALANCE_CREDIT);
+
+        // The exercise is still readable after being closed. The clôture is dated
+        // its last day, as it must be, so counting it would cancel the activity it
+        // closes and the annual accounts would read nil from the moment they were
+        // signed off.
+        $statement = $this->postIncomeStatement($reviewer, $agency['public_id'], businessDate: '2026-12-31');
+        $statement->assertJsonPath('data.summary.net_result_minor', 60000);
+        $soldes = $this->soldesFrom($statement->json('data.summary.soldes'));
+        self::assertSame(60000, $this->soldeAmount($soldes, '80'));
+
+        // Closing it a second time would transfer the result twice and leave
+        // classes 6 and 7 negative by the same amount.
+        $again = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'currency' => 'XAF',
+            ]);
+        $again->assertStatus(422);
+        $again->assertJsonValidationErrors(['fiscal_year']);
+    }
+
+    public function test_closing_a_loss_making_exercise_carries_it_to_132(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CLO-B');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+
+        $staff = $this->createResultAccount($chief, $agency['public_id'], '651000', 'Charges de personnel', 'charges', 'debit');
+        $perte = $this->createResultAccount($chief, $agency['public_id'], '132', "Perte de l'exercice", 'capitaux_permanents', 'debit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-CLO-2', '2026-12-31', [
+            ['ledger_account_public_id' => $staff, 'debit_minor' => 45000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 45000],
+        ]);
+
+        $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $this->assertJsonSuccess($closing, 201);
+        $closing->assertJsonPath('data.net_result_minor', -45000);
+        $closing->assertJsonPath('data.result_account_code', '132');
+
+        $entryPublicId = $this->requireStringJsonPath($closing, 'data.journal_entry_public_id');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entryPublicId.'/post')->assertStatus(200);
+
+        // A perte lands on the debit side of 132, and the charge is soldé.
+        $perteBalance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$perte.'/balance?currency=XAF');
+        $this->assertJsonSuccess($perteBalance);
+        $perteBalance->assertJsonPath('data.balance_minor', 45000);
+        $perteBalance->assertJsonPath('data.balance_side', LedgerAccount::NORMAL_BALANCE_DEBIT);
+
+        $staffBalance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$staff.'/balance?currency=XAF');
+        $this->assertJsonSuccess($staffBalance);
+        $staffBalance->assertJsonPath('data.balance_minor', 0);
+    }
+
+    public function test_closing_refuses_an_empty_exercise_and_needs_the_permission(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $accountant = $this->createUserWithRole('accountant');
+        $agency = $this->createAgency('CLO-C');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+
+        // Nothing posted: there is no result to carry, and inventing a nil entry
+        // would put an empty clôture on the record and block the real one.
+        $empty = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $empty->assertStatus(422);
+        $empty->assertJsonValidationErrors(['fiscal_year']);
+
+        // An accountant may keep the books but not close the year.
+        $this->withApiHeaders()->actingAsSanctum($accountant)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ])->assertForbidden();
+
+        // And a year the institution cannot have traded in is refused outright.
+        $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 12,
+            ])->assertStatus(422);
+    }
+
     public function test_the_net_result_names_its_destination_without_being_fed_by_it(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
@@ -3708,12 +3863,12 @@ final class Module3AccountingArchitectureTest extends TestCase
         return $this->requireStringJsonPath($response, 'data.public_id');
     }
 
-    private function postIncomeStatement(User $actor, ?string $agencyPublicId, bool $expectSuccess = true): TestResponse
+    private function postIncomeStatement(User $actor, ?string $agencyPublicId, bool $expectSuccess = true, string $businessDate = '2026-05-01'): TestResponse
     {
         $payload = [
             'report_definition_public_id' => $this->incomeStatementDefinitionPublicId(),
-            'period_starts_on' => '2026-05-01',
-            'period_ends_on' => '2026-05-01',
+            'period_starts_on' => $businessDate,
+            'period_ends_on' => $businessDate,
             'currency' => 'XAF',
         ];
         if ($agencyPublicId !== null) {
