@@ -38,6 +38,19 @@ final class StandardReportDefinitionSeeder extends Seeder
                 'requires_period' => true,
             ],
             [
+                'code' => 'income_statement',
+                'name' => 'Compte de résultat',
+                'report_type' => ReportDefinition::TYPE_INCOME_STATEMENT,
+                'module' => 'accounting',
+                'description' => "Compte de résultat: the eight PCEMF soldes intermédiaires de gestion (80 to 87) computed from classes 6 and 7. Omit the agency for the institution's result across every agency, which requires ledger.scope.institution.read. Each solde reports the side its own figure lands on: crédit for a bénéfice, débit for a perte.",
+                'supported_parameters' => ['agency', 'currency', 'period'],
+                // Optional, deliberately: without one the report is the
+                // institution's, which is the form a chef comptable needs.
+                'requires_agency' => false,
+                'requires_currency' => true,
+                'requires_period' => true,
+            ],
+            [
                 'code' => 'emf_trial_balance',
                 'name' => 'EMF Trial Balance',
                 'report_type' => ReportDefinition::TYPE_EMF_TRIAL_BALANCE,

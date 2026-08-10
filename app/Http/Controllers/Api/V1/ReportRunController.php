@@ -24,6 +24,7 @@ use App\Models\ReportRun;
 use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
 use App\Support\Accounting\LedgerAccountHierarchy;
+use App\Support\Accounting\SoldesIntermediairesDeGestion;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\FormulaPolicyNotApproved;
 use App\Support\Finance\FormulaPolicyRegistry;
@@ -134,6 +135,18 @@ final class ReportRunController extends BaseController
         $agency = isset($validated['agency_public_id'])
             ? Agency::query()->where('public_id', $validated['agency_public_id'])->first()
             : null;
+
+        // A compte de résultat naming no agency is the institution's, drawn from
+        // every agency's postings — the same cross-agency information the
+        // consolidated trial balance withholds just above. Gated identically, or
+        // an agency accountant could read the institution's result here while
+        // being refused a consolidated balance.
+        if ($definition->report_type === ReportDefinition::TYPE_INCOME_STATEMENT
+            && ! $agency instanceof Agency
+            && ! $actor->hasRole('platform-admin')
+            && ! $actor->can('ledger.scope.institution.read')) {
+            return $this->respondForbidden(__('domain.report_consolidated_requires_institution_read'));
+        }
         $accountingDay = $this->resolveAccountingDay($validated['accounting_day_public_id'] ?? null);
         if ($accountingDay instanceof AccountingDay && ! $this->supportsAccountingDayFilter($definition->report_type)) {
             return $this->respondUnprocessable(errors: [
@@ -169,6 +182,7 @@ final class ReportRunController extends BaseController
             $summary = match ($definition->report_type) {
                 ReportDefinition::TYPE_TRIAL_BALANCE => $this->trialBalanceSummary($agency, $currency, $from, $to, $accountingDay, $this->consolidatedRequested($validated['parameters'] ?? [])),
                 ReportDefinition::TYPE_EMF_TRIAL_BALANCE => $this->emfTrialBalanceSummary($agency, $currency, $from, $to, $accountingDay),
+                ReportDefinition::TYPE_INCOME_STATEMENT => $this->incomeStatementSummary($agency, $currency, $from, $to, $accountingDay),
                 ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING => $this->creditPortfolioOutstandingSummary($agency, $currency, $from, $to),
                 ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY => $this->creditParDelinquencySummary($agency, $currency, $to ?? now()->toDateString()),
                 ReportDefinition::TYPE_CREDIT_COLLECTION_PERFORMANCE => $this->creditCollectionPerformanceSummary($agency, $currency, $from, $to),
@@ -252,6 +266,7 @@ final class ReportRunController extends BaseController
             ReportDefinition::TYPE_TRIAL_BALANCE,
             ReportDefinition::TYPE_GENERAL_LEDGER,
             ReportDefinition::TYPE_EMF_TRIAL_BALANCE,
+            ReportDefinition::TYPE_INCOME_STATEMENT,
             ReportDefinition::TYPE_CREDIT_PORTFOLIO_OUTSTANDING,
             ReportDefinition::TYPE_CREDIT_PAR_DELINQUENCY,
             ReportDefinition::TYPE_CREDIT_COLLECTION_PERFORMANCE,
@@ -412,6 +427,163 @@ final class ReportRunController extends BaseController
         }
 
         return $this->respondSuccess(ReportRunResource::make($reportRun->loadMissing(['reportDefinition', 'agency', 'document'])));
+    }
+
+    /**
+     * Compte de résultat: the eight soldes intermédiaires de gestion, built from
+     * classes 6 and 7 in one pass.
+     *
+     * No class 8 account exists to post to — the accounting team was explicit
+     * that these are computed « au moment de sortir le compte de résultat » — so
+     * this method is where the soldes come into being. The formulas live in
+     * SoldesIntermediairesDeGestion, not here: they were negotiated with the
+     * accounting team and belong somewhere a reader can check them against the
+     * answer, rather than spread across arithmetic.
+     *
+     * Each term is a code prefix summed in the account's own direction: a charge
+     * is debit minus credit, a produit credit minus debit. That is what lets the
+     * formulas read as plain accounting — « (70 + 71 + 72 + 73) − (60 + 61 + 62 +
+     * 63) » — with every term a positive magnitude.
+     *
+     * @return array<string, mixed>
+     */
+    private function incomeStatementSummary(?Agency $agency, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): array
+    {
+        // Classes 6 and 7 only: every prefix the definitions name lives there,
+        // which the SIG test asserts against the seeded chart.
+        $rows = $this->postedLineQuery($agency, $currency, $from, $to, $accountingDay)
+            ->whereRaw("left(ledger_accounts.code, 1) in ('6', '7')")
+            ->selectRaw('ledger_accounts.code AS code')
+            ->selectRaw('ledger_accounts.normal_balance_side AS normal_balance_side')
+            ->selectRaw('COALESCE(SUM(journal_lines.debit_minor), 0) AS debit_total_minor')
+            ->selectRaw('COALESCE(SUM(journal_lines.credit_minor), 0) AS credit_total_minor')
+            ->groupBy('ledger_accounts.code', 'ledger_accounts.normal_balance_side')
+            ->orderBy('ledger_accounts.code')
+            ->get();
+
+        /** @var array<int, array{code: string, amount: int}> $accounts */
+        $accounts = [];
+        foreach ($rows as $row) {
+            $debit = (int) (((array) $row)['debit_total_minor'] ?? 0);
+            $credit = (int) (((array) $row)['credit_total_minor'] ?? 0);
+            $side = $this->rowNullableString($row, 'normal_balance_side');
+
+            $accounts[] = [
+                'code' => $this->rowString($row, 'code'),
+                // Mirrors AccountingBalanceCalculator: only an explicit credit
+                // inverts the subtraction, so a null side reads debit-first
+                // rather than silently reporting backwards.
+                'amount' => $side === LedgerAccount::NORMAL_BALANCE_CREDIT ? $credit - $debit : $debit - $credit,
+            ];
+        }
+
+        $soldeCodes = array_column(SoldesIntermediairesDeGestion::definitions(), 'code');
+
+        /** @var array<int, array{code: string, amount: int}> $computed */
+        $computed = [];
+        $soldes = [];
+        foreach (SoldesIntermediairesDeGestion::definitions() as $definition) {
+            $amount = 0;
+            foreach ($definition['from'] as $source) {
+                $amount += $this->computedSoldeAmount($computed, $source);
+            }
+            foreach ($definition['plus'] as $term) {
+                $amount += $this->soldeTermAmount($term, $accounts, $computed, $soldeCodes);
+            }
+            foreach ($definition['minus'] as $term) {
+                $amount -= $this->soldeTermAmount($term, $accounts, $computed, $soldeCodes);
+            }
+
+            $computed[] = ['code' => $definition['code'], 'amount' => $amount];
+            $soldes[] = [
+                'code' => $definition['code'],
+                'label' => $definition['label'],
+                'amount_minor' => $amount,
+                // « Un résultat peut être positif (bénéfice = crédit) ou négatif
+                // (perte = débit) selon la période. » The side is read off the
+                // figure, never imposed. Nil is a position on neither side, the
+                // same answer a squared-off bivalent account gives.
+                'balance_side' => $this->soldeSide($amount),
+            ];
+        }
+
+        $netResult = $this->computedSoldeAmount($computed, SoldesIntermediairesDeGestion::NET_RESULT);
+
+        return [
+            'report_type' => ReportDefinition::TYPE_INCOME_STATEMENT,
+            'currency' => $currency,
+            'from' => $from,
+            'to' => $to,
+            // An income statement without an agency is the institution's, summed
+            // across every agency; naming one narrows it to that agency's books.
+            'scope' => $agency instanceof Agency ? LedgerAccount::SCOPE_AGENCY : LedgerAccount::SCOPE_INSTITUTION,
+            ...$this->accountingDayMetadata($accountingDay),
+            'row_count' => count($soldes),
+            'account_count' => count($accounts),
+            'soldes' => $soldes,
+            'net_result_minor' => $netResult,
+            'net_result_side' => $this->soldeSide($netResult),
+            // Where the result is carried at year end. The chart keeps bénéfice
+            // and perte as two accounts, so the sign chooses the destination
+            // rather than being stored with the figure. Nil is carried as a
+            // bénéfice of nothing: breaking even is not a loss.
+            'net_result_account_code' => SoldesIntermediairesDeGestion::resultAccountFor($netResult),
+        ];
+    }
+
+    /**
+     * A solde is credit when positive (bénéfice) and debit when negative (perte).
+     * This is the reverse of an account position, where a debit total makes the
+     * side debit — a solde is already signed in its own favour.
+     */
+    private function soldeSide(int $amountMinor): ?string
+    {
+        if ($amountMinor === 0) {
+            return null;
+        }
+
+        return $amountMinor > 0
+            ? LedgerAccount::NORMAL_BALANCE_CREDIT
+            : LedgerAccount::NORMAL_BALANCE_DEBIT;
+    }
+
+    /**
+     * @param  array<int, array{code: string, amount: int}>  $accounts
+     * @param  array<int, array{code: string, amount: int}>  $computed
+     * @param  array<int, string>  $soldeCodes
+     */
+    private function soldeTermAmount(string $term, array $accounts, array $computed, array $soldeCodes): int
+    {
+        // 87 subtracts 86, which is another solde rather than a chart prefix.
+        if (in_array($term, $soldeCodes, true)) {
+            return $this->computedSoldeAmount($computed, $term);
+        }
+
+        $total = 0;
+        foreach ($accounts as $account) {
+            if (str_starts_with($account['code'], $term)) {
+                $total += $account['amount'];
+            }
+        }
+
+        return $total;
+    }
+
+    /**
+     * @param  array<int, array{code: string, amount: int}>  $computed
+     */
+    private function computedSoldeAmount(array $computed, string $code): int
+    {
+        foreach ($computed as $solde) {
+            if ($solde['code'] === $code) {
+                return $solde['amount'];
+            }
+        }
+
+        // Unreachable while the definitions stay in dependency order, which
+        // SoldesIntermediairesDeGestionTest asserts. Zero rather than a throw
+        // would hide a reordering as a wrong figure.
+        throw new InvalidArgumentException("Solde {$code} is referenced before it is computed.");
     }
 
     /**
@@ -973,6 +1145,7 @@ final class ReportRunController extends BaseController
             ReportDefinition::TYPE_TRIAL_BALANCE,
             ReportDefinition::TYPE_GENERAL_LEDGER,
             ReportDefinition::TYPE_EMF_TRIAL_BALANCE,
+            ReportDefinition::TYPE_INCOME_STATEMENT,
         ], true);
     }
 

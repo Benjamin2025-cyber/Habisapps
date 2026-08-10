@@ -777,7 +777,7 @@ final class RegulatoryReportingTest extends TestCase
         $this->assertJsonSuccess($response);
         $definitions = $response->json('data.report_definitions');
         self::assertIsArray($definitions);
-        self::assertCount(7, $definitions);
+        self::assertCount(8, $definitions);
 
         $codes = [];
         foreach ($definitions as $d) {
@@ -792,6 +792,7 @@ final class RegulatoryReportingTest extends TestCase
             'credit_portfolio_outstanding',
             'emf_trial_balance',
             'general_ledger',
+            'income_statement',
             'trial_balance',
         ], $codes);
 

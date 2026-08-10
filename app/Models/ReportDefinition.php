@@ -25,6 +25,14 @@ final class ReportDefinition extends Model
 
     public const string TYPE_EMF_TRIAL_BALANCE = 'emf_trial_balance';
 
+    /**
+     * Compte de résultat. Builds the eight soldes intermédiaires de gestion from
+     * classes 6 and 7 — see SoldesIntermediairesDeGestion for the formulas and
+     * the answers they come from. Nothing posts to class 8; this report is where
+     * those totals exist.
+     */
+    public const string TYPE_INCOME_STATEMENT = 'income_statement';
+
     public const string TYPE_CREDIT_PORTFOLIO_OUTSTANDING = 'credit_portfolio_outstanding';
 
     public const string TYPE_CREDIT_PAR_DELINQUENCY = 'credit_par_delinquency';

@@ -12,6 +12,7 @@ use App\Models\CustomerAccountSignature;
 use App\Models\Document;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
+use App\Models\ReportDefinition;
 use App\Models\User;
 use Database\Seeders\BatchProcedureSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -3161,6 +3162,297 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['agency_public_id']);
+    }
+
+    public function test_the_income_statement_builds_the_eight_soldes_from_classes_six_and_seven(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-A');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // A small but complete exercise: interest earned and paid, staff costs,
+        // corporate income tax, one other direct tax, and an exceptional loss.
+        // Enough that every solde has something to say.
+        $earned = $this->createResultAccount($admin, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $paid = $this->createResultAccount($admin, $agency['public_id'], '601000', 'Intérêts payés', 'charges', 'debit');
+        $staff = $this->createResultAccount($admin, $agency['public_id'], '651000', 'Charges de personnel', 'charges', 'debit');
+        $incomeTax = $this->createResultAccount($admin, $agency['public_id'], '661100', 'Impôt sur les sociétés', 'charges', 'debit');
+        $patente = $this->createResultAccount($admin, $agency['public_id'], '661200', 'Patente', 'charges', 'debit');
+        $exceptional = $this->createResultAccount($admin, $agency['public_id'], '671000', 'Perte exceptionnelle', 'charges', 'debit');
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-1', '2026-05-01', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 120000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 120000, 'credit_minor' => 0],
+        ]);
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-2', '2026-05-01', [
+            ['ledger_account_public_id' => $paid, 'debit_minor' => 30000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 30000],
+        ]);
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-3', '2026-05-01', [
+            ['ledger_account_public_id' => $staff, 'debit_minor' => 40000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 40000],
+        ]);
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-4', '2026-05-01', [
+            ['ledger_account_public_id' => $incomeTax, 'debit_minor' => 9000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $patente, 'debit_minor' => 5000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 14000],
+        ]);
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-5', '2026-05-01', [
+            ['ledger_account_public_id' => $exceptional, 'debit_minor' => 7000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 7000],
+        ]);
+
+        $soldes = $this->runIncomeStatement($admin, $agency['public_id']);
+
+        // 80 = produits 120 000 − charges financières 30 000
+        self::assertSame(90000, $this->soldeAmount($soldes, '80'));
+        // 81 = 80: nothing accessory posted
+        self::assertSame(90000, $this->soldeAmount($soldes, '81'));
+        // 82 = 81 − 65 (40 000) − 66 (14 000) + 6611 (9 000). The corporate tax
+        // is added back and the patente is not: that is the point of the split.
+        self::assertSame(45000, $this->soldeAmount($soldes, '82'));
+        // 83 = 82, confirmed by the accounting team on 2026-08-10
+        self::assertSame(45000, $this->soldeAmount($soldes, '83'));
+        // 84 = 77 − 67 = 0 − 7 000
+        self::assertSame(-7000, $this->soldeAmount($soldes, '84'));
+        self::assertSame(38000, $this->soldeAmount($soldes, '85'));
+        // 86 carries the isolated corporate tax and nothing else
+        self::assertSame(9000, $this->soldeAmount($soldes, '86'));
+        self::assertSame(29000, $this->soldeAmount($soldes, '87'));
+
+        // « bénéfice = crédit »
+        self::assertSame(LedgerAccount::NORMAL_BALANCE_CREDIT, $this->soldeSideOf($soldes, '87'));
+    }
+
+    public function test_a_loss_reads_as_debit_and_carries_to_the_loss_account(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-B');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $staff = $this->createResultAccount($admin, $agency['public_id'], '651000', 'Charges de personnel', 'charges', 'debit');
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+
+        // Charges only: the exercise is a loss.
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-LOSS', '2026-05-01', [
+            ['ledger_account_public_id' => $staff, 'debit_minor' => 25000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 25000],
+        ]);
+
+        $response = $this->postIncomeStatement($admin, $agency['public_id']);
+        $response->assertJsonPath('data.summary.net_result_minor', -25000);
+        $response->assertJsonPath('data.summary.net_result_side', LedgerAccount::NORMAL_BALANCE_DEBIT);
+        $response->assertJsonPath('data.summary.net_result_account_code', '132');
+
+        $soldes = $this->soldesFrom($response->json('data.summary.soldes'));
+
+        // A solde nobody touched sits on neither side rather than defaulting to
+        // one: 84 has no exceptional profit and no exceptional loss.
+        self::assertSame(0, $this->soldeAmount($soldes, '84'));
+        self::assertNull($this->soldeSideOf($soldes, '84'));
+    }
+
+    public function test_an_exercise_that_breaks_even_is_a_nil_profit_not_a_loss(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-C');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $earned = $this->createResultAccount($admin, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $paid = $this->createResultAccount($admin, $agency['public_id'], '601000', 'Intérêts payés', 'charges', 'debit');
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-IS-EVEN', '2026-05-01', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 15000],
+            ['ledger_account_public_id' => $paid, 'debit_minor' => 15000, 'credit_minor' => 0],
+        ]);
+
+        // Neither side, and carried as a bénéfice of nothing: filing nil in 132
+        // would report the institution as loss-making for the year.
+        $response = $this->postIncomeStatement($admin, $agency['public_id']);
+        $response->assertJsonPath('data.summary.net_result_minor', 0);
+        $response->assertJsonPath('data.summary.net_result_side', null);
+        $response->assertJsonPath('data.summary.net_result_account_code', '131');
+    }
+
+    public function test_the_institution_wide_income_statement_needs_institution_read(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-D');
+        // An auditor holds accounting.audit.view — so may run reports — but not
+        // ledger.scope.institution.read. That is the exact pair the consolidated
+        // trial balance gate was written for, so it is the pair to test with.
+        $auditor = $this->createUserWithRole('auditor', $agency['code'], $agency['name']);
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // Omitting the agency asks for the institution's result, summed across
+        // every agency — the same cross-agency reach the consolidated trial
+        // balance gates. Ungated, an auditor could read here what they are
+        // refused there.
+        $this->postIncomeStatement($auditor, null, expectSuccess: false)->assertForbidden();
+
+        // Their own agency is their own book, and is allowed — which also proves
+        // the refusal above came from the institution gate and not from a missing
+        // permission to run reports at all.
+        $own = $this->postIncomeStatement($auditor, $agency['public_id']);
+        $own->assertJsonPath('data.summary.scope', LedgerAccount::SCOPE_AGENCY);
+
+        $wide = $this->postIncomeStatement($admin, null);
+        $wide->assertJsonPath('data.summary.scope', LedgerAccount::SCOPE_INSTITUTION);
+    }
+
+    public function test_the_institution_income_statement_sums_every_agency(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('IS-E');
+        $agencyB = $this->createAgency('IS-F');
+
+        foreach ([[$agencyA, 60000], [$agencyB, 40000]] as [$agency, $amount]) {
+            $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+            $earned = $this->createResultAccount($admin, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+            $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+            $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-'.$agency['code'], '2026-05-01', [
+                ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => $amount],
+                ['ledger_account_public_id' => $cash, 'debit_minor' => $amount, 'credit_minor' => 0],
+            ]);
+        }
+
+        // Each agency keeps its own 701000 under the same code, so the
+        // institution's PNF is the two added together rather than either one.
+        self::assertSame(100000, $this->soldeAmount($this->runIncomeStatement($admin, null), '80'));
+        self::assertSame(60000, $this->soldeAmount($this->runIncomeStatement($admin, $agencyA['public_id']), '80'));
+    }
+
+    private function createResultAccount(User $actor, string $agencyPublicId, string $code, string $name, string $class, string $side): string
+    {
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/ledger-accounts', [
+            'agency_public_id' => $agencyPublicId,
+            'code' => $code,
+            'name' => $name,
+            'account_class' => $class,
+            'normal_balance_side' => $side,
+        ]);
+        $this->assertJsonSuccess($response, 201);
+
+        return $this->requireStringJsonPath($response, 'data.public_id');
+    }
+
+    private function postIncomeStatement(User $actor, ?string $agencyPublicId, bool $expectSuccess = true): TestResponse
+    {
+        $payload = [
+            'report_definition_public_id' => $this->incomeStatementDefinitionPublicId(),
+            'period_starts_on' => '2026-05-01',
+            'period_ends_on' => '2026-05-01',
+            'currency' => 'XAF',
+        ];
+        if ($agencyPublicId !== null) {
+            $payload['agency_public_id'] = $agencyPublicId;
+        }
+
+        $response = $this->withApiHeaders()->actingAsSanctum($actor)->postJson('/api/v1/report-runs', $payload);
+        if ($expectSuccess) {
+            $this->assertJsonSuccess($response, 201);
+        }
+
+        return $response;
+    }
+
+    /**
+     * @return array<int, array{code: string, amount_minor: int, balance_side: string|null}>
+     */
+    private function runIncomeStatement(User $actor, ?string $agencyPublicId): array
+    {
+        $response = $this->postIncomeStatement($actor, $agencyPublicId);
+        $response->assertJsonPath('data.summary.report_type', ReportDefinition::TYPE_INCOME_STATEMENT);
+
+        return $this->soldesFrom($response->json('data.summary.soldes'));
+    }
+
+    /**
+     * Kept as a list rather than keyed by code: PHP turns the key '80' into the
+     * integer 80, so a map would hand back integers and every string lookup
+     * would miss.
+     *
+     * @return array<int, array{code: string, amount_minor: int, balance_side: string|null}>
+     */
+    private function soldesFrom(mixed $rows): array
+    {
+        self::assertIsArray($rows);
+
+        $soldes = [];
+        foreach ($rows as $row) {
+            self::assertIsArray($row);
+            $code = $row['code'] ?? null;
+            self::assertIsString($code);
+            $amount = $row['amount_minor'] ?? null;
+            self::assertIsInt($amount);
+            $side = $row['balance_side'] ?? null;
+            $soldes[] = [
+                'code' => $code,
+                'amount_minor' => $amount,
+                'balance_side' => is_string($side) ? $side : null,
+            ];
+        }
+
+        self::assertCount(8, $soldes);
+
+        return $soldes;
+    }
+
+    /**
+     * @param  array<int, array{code: string, amount_minor: int, balance_side: string|null}>  $soldes
+     */
+    private function soldeAmount(array $soldes, string $code): int
+    {
+        foreach ($soldes as $solde) {
+            if ($solde['code'] === $code) {
+                return $solde['amount_minor'];
+            }
+        }
+
+        self::fail("The report has no solde {$code}.");
+    }
+
+    /**
+     * @param  array<int, array{code: string, amount_minor: int, balance_side: string|null}>  $soldes
+     */
+    private function soldeSideOf(array $soldes, string $code): ?string
+    {
+        foreach ($soldes as $solde) {
+            if ($solde['code'] === $code) {
+                return $solde['balance_side'];
+            }
+        }
+
+        self::fail("The report has no solde {$code}.");
+    }
+
+    private function incomeStatementDefinitionPublicId(): string
+    {
+        $existing = DB::table('report_definitions')->where('code', 'income_statement')->first(['public_id']);
+        if ($existing !== null) {
+            return (string) $existing->public_id;
+        }
+
+        $id = DB::table('report_definitions')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => 'income_statement',
+            'name' => 'Compte de résultat',
+            'report_type' => ReportDefinition::TYPE_INCOME_STATEMENT,
+            'module' => 'accounting',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $row = DB::table('report_definitions')->where('id', $id)->first(['public_id']);
+        self::assertNotNull($row);
+
+        return (string) $row->public_id;
     }
 
     private function createInstitutionLedgerAccount(User $actor, string $code, string $name): string
