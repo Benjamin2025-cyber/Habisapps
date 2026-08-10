@@ -3190,7 +3190,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $cash, 'debit_minor' => 50000, 'credit_minor' => 0],
         ]);
 
-        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.rows'));
 
         // The PNF is untouched: nothing financial happened.
         self::assertSame(0, $this->soldeAmount($soldes, '80'));
@@ -3266,7 +3266,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         // signed off.
         $statement = $this->postIncomeStatement($reviewer, $agency['public_id'], businessDate: '2026-12-31');
         $statement->assertJsonPath('data.summary.net_result_minor', 60000);
-        $soldes = $this->soldesFrom($statement->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($statement->json('data.summary.rows'));
         self::assertSame(60000, $this->soldeAmount($soldes, '80'));
 
         // Closing it a second time would transfer the result twice and leave
@@ -3406,7 +3406,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         // And the 131 posting itself contributed nothing: class 1 is not read by
         // the compte de résultat, so the result was zeroed by closing the produit,
         // not doubled by crediting the bénéfice.
-        $soldes = $this->soldesFrom($after->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($after->json('data.summary.rows'));
         self::assertSame(0, $this->soldeAmount($soldes, '80'));
         self::assertSame(0, $this->soldeAmount($soldes, '87'));
 
@@ -3444,7 +3444,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 17000],
         ]);
 
-        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.rows'));
 
         // Subtracted with the rest of class 66, then returned in full: no trace.
         self::assertSame(0, $this->soldeAmount($soldes, '82'));
@@ -3462,7 +3462,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 4000],
         ]);
 
-        $after = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+        $after = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.rows'));
 
         // « les autres impôts directs restent bien dans le 82 »: the patente is a
         // cost of operating and stays charged there.
@@ -3511,7 +3511,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $reprise, 'debit_minor' => 0, 'credit_minor' => 8000],
         ]);
 
-        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.rows'));
 
         // Not financial, not accessory: the PNF and the produit d'exploitation
         // global are untouched.
@@ -3560,7 +3560,7 @@ final class Module3AccountingArchitectureTest extends TestCase
             ['ledger_account_public_id' => $cash, 'debit_minor' => 19000, 'credit_minor' => 0],
         ]);
 
-        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.rows'));
 
         // Nothing exceptional touches the ordinary business.
         foreach (['80', '81', '82', '83'] as $ordinary) {
@@ -3638,7 +3638,7 @@ final class Module3AccountingArchitectureTest extends TestCase
 
         // The tax reaches solde 86 in full, and leaves the résultat d'exploitation
         // rather than being counted there as well.
-        $soldes = $this->soldesFrom($response->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($response->json('data.summary.rows'));
         self::assertSame(12000, $this->soldeAmount($soldes, '86'));
         self::assertSame(
             $this->soldeAmount($soldes, '85') - 12000,
@@ -3769,7 +3769,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response->assertJsonPath('data.summary.net_result_side', LedgerAccount::NORMAL_BALANCE_DEBIT);
         $response->assertJsonPath('data.summary.net_result_carries_to_code', '132');
 
-        $soldes = $this->soldesFrom($response->json('data.summary.soldes'));
+        $soldes = $this->soldesFrom($response->json('data.summary.rows'));
 
         // A solde nobody touched sits on neither side rather than defaulting to
         // one: 84 has no exceptional profit and no exceptional loss.
@@ -3891,7 +3891,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response = $this->postIncomeStatement($actor, $agencyPublicId);
         $response->assertJsonPath('data.summary.report_type', ReportDefinition::TYPE_INCOME_STATEMENT);
 
-        return $this->soldesFrom($response->json('data.summary.soldes'));
+        return $this->soldesFrom($response->json('data.summary.rows'));
     }
 
     /**

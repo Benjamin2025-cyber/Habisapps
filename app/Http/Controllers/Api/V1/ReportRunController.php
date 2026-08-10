@@ -531,7 +531,10 @@ final class ReportRunController extends BaseController
             ...$this->accountingDayMetadata($accountingDay),
             'row_count' => count($soldes),
             'account_count' => count($accounts),
-            'soldes' => $soldes,
+            // Named `rows` like every other report's detail, not `soldes`: the
+            // report viewer is generic over this envelope, so a bespoke key would
+            // have rendered the compte de résultat as an empty table.
+            'rows' => $soldes,
             'net_result_minor' => $netResult,
             'net_result_side' => $this->soldeSide($netResult),
             // Where the result is *to be* carried at year end, not where it has
