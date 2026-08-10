@@ -523,11 +523,14 @@ final class ReportRunController extends BaseController
             'soldes' => $soldes,
             'net_result_minor' => $netResult,
             'net_result_side' => $this->soldeSide($netResult),
-            // Where the result is carried at year end. The chart keeps bénéfice
-            // and perte as two accounts, so the sign chooses the destination
-            // rather than being stored with the figure. Nil is carried as a
-            // bénéfice of nothing: breaking even is not a loss.
-            'net_result_account_code' => SoldesIntermediairesDeGestion::resultAccountFor($netResult),
+            // Where the result is *to be* carried at year end, not where it has
+            // been: the clôture that performs the transfer does not exist yet, and
+            // a name like net_result_account_code invited reading this as the
+            // account already holding the result. The chart keeps bénéfice and
+            // perte as two accounts, so the sign chooses the destination rather
+            // than being stored with the figure. Nil is carried as a bénéfice of
+            // nothing: breaking even is not a loss.
+            'net_result_carries_to_code' => SoldesIntermediairesDeGestion::resultAccountFor($netResult),
         ];
     }
 

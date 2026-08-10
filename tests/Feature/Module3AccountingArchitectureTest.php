@@ -3202,6 +3202,67 @@ final class Module3AccountingArchitectureTest extends TestCase
         self::assertSame(50000, $this->soldeAmount($soldes, '87'));
     }
 
+    public function test_the_net_result_names_its_destination_without_being_fed_by_it(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-CARRY');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // Their remarque, confirmed: « à la fin de l'exercice, le résultat du 87
+        // doit être transféré dans le 131 s'il est positif (bénéfice) ou dans le
+        // 132 s'il est négatif (perte) ».
+        //
+        // The transfer itself is a clôture annuelle and does not exist yet. What
+        // must hold before it is written is that the two directions do not meet:
+        // the compte de résultat reads classes 6 and 7, and 131/132 are class 1,
+        // so carrying the result must not alter the result. Otherwise the first
+        // closing would either double the bénéfice or wipe the soldes, depending
+        // on which way the feedback ran, and the figure would move every time the
+        // report was re-run.
+        $earned = $this->createResultAccount($admin, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+        $benefice = $this->createResultAccount($admin, $agency['public_id'], '131000', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-CARRY-1', '2026-05-01', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 60000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 60000, 'credit_minor' => 0],
+        ]);
+
+        $before = $this->postIncomeStatement($admin, $agency['public_id']);
+        $before->assertJsonPath('data.summary.net_result_minor', 60000);
+        // Names where it goes; does not claim to have sent it there.
+        $before->assertJsonPath('data.summary.net_result_carries_to_code', '131');
+
+        // Now carry it, the way a clôture eventually will.
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-CARRY-2', '2026-05-01', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 60000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $benefice, 'debit_minor' => 0, 'credit_minor' => 60000],
+        ]);
+
+        // The produit is now closed out, so the exercise reads nil — correct, and
+        // the reason a clôture entry has to fall outside the period the report
+        // covers, or on the far side of its own cut-off. Whoever writes the
+        // closing needs to know this: dating it inside the exercise it closes
+        // empties the very statement it was drawn from.
+        $after = $this->postIncomeStatement($admin, $agency['public_id']);
+        $after->assertJsonPath('data.summary.net_result_minor', 0);
+
+        // And the 131 posting itself contributed nothing: class 1 is not read by
+        // the compte de résultat, so the result was zeroed by closing the produit,
+        // not doubled by crediting the bénéfice.
+        $soldes = $this->soldesFrom($after->json('data.summary.soldes'));
+        self::assertSame(0, $this->soldeAmount($soldes, '80'));
+        self::assertSame(0, $this->soldeAmount($soldes, '87'));
+
+        // The bénéfice is where it was put, untouched by any of this.
+        $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$benefice.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+        $balance->assertJsonPath('data.balance_minor', 60000);
+        $balance->assertJsonPath('data.balance_side', LedgerAccount::NORMAL_BALANCE_CREDIT);
+    }
+
     public function test_the_corporate_tax_leaves_the_operating_result_untouched_and_the_patente_does_not(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
@@ -3551,7 +3612,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response = $this->postIncomeStatement($admin, $agency['public_id']);
         $response->assertJsonPath('data.summary.net_result_minor', -25000);
         $response->assertJsonPath('data.summary.net_result_side', LedgerAccount::NORMAL_BALANCE_DEBIT);
-        $response->assertJsonPath('data.summary.net_result_account_code', '132');
+        $response->assertJsonPath('data.summary.net_result_carries_to_code', '132');
 
         $soldes = $this->soldesFrom($response->json('data.summary.soldes'));
 
@@ -3581,7 +3642,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response = $this->postIncomeStatement($admin, $agency['public_id']);
         $response->assertJsonPath('data.summary.net_result_minor', 0);
         $response->assertJsonPath('data.summary.net_result_side', null);
-        $response->assertJsonPath('data.summary.net_result_account_code', '131');
+        $response->assertJsonPath('data.summary.net_result_carries_to_code', '131');
     }
 
     public function test_the_institution_wide_income_statement_needs_institution_read(): void
