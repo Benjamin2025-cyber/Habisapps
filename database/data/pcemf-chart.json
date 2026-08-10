@@ -5462,6 +5462,16 @@
     {
       "code": "661",
       "label": "Etat, impôts et taxes directs",
+      "postable": false
+    },
+    {
+      "code": "6611",
+      "label": "Impôt sur les sociétés",
+      "postable": true
+    },
+    {
+      "code": "6612",
+      "label": "Etat, autres impôts et taxes directs",
       "postable": true
     },
     {
@@ -7530,6 +7540,14 @@
       ],
       "reason": "Source lists both accounts under the single code 5921. Split using the chart's own hors reseau/reseau convention (X0/X9), which holds for 100 of its 104 pairs, e.g. 756 -> 75610/75619.",
       "needs_confirmation": true
+    },
+    {
+      "codes": [
+        "6612"
+      ],
+      "reason": "Team asked for 6611 (impot sur les societes) under 661. A parent account refuses entries, so splitting 661 leaves patente/taxe fonciere with nowhere to post while the team requires them to stay in solde 82. 6612 is the catch-all sibling that keeps them postable, following the chart's own 755 -> 7551/7552 pattern.",
+      "needs_confirmation": true
     }
-  ]
+  ],
+  "confirmed_on_sig": "2026-08-10"
 }
