@@ -357,9 +357,11 @@ final class ExerciseClosingWorkflow extends BaseController
      * The earliest exercise before $fiscalYear that carries activity and has no
      * posted clôture, or null when the year is the next one due.
      *
-     * Years with no activity are skipped rather than demanded: there is nothing
-     * to close in them, so requiring a clôture would deadlock — the closing would
-     * be refused as empty and the refusal would block every later year.
+     * A year is only demanded when a clôture could actually be drawn for it —
+     * decided by the same function that draws one. Years with nothing to solde are
+     * skipped: an agency that had not opened yet, or one whose entries for the
+     * year cancelled out. Demanding those would deadlock, since the closing would
+     * be refused as empty and the refusal would block every later year for good.
      */
     private function earliestUnclosedExercise(int $agencyId, string $currency, int $fiscalYear): ?int
     {
@@ -369,9 +371,16 @@ final class ExerciseClosingWorkflow extends BaseController
         }
 
         for ($year = $this->fiscalYearOf($firstActivity); $year < $fiscalYear; $year++) {
-            [$opensOn, $closesOn] = $this->exercisePeriod($year);
+            [, $closesOn] = $this->exercisePeriod($year);
 
-            if (! $this->hasResultActivityBetween($agencyId, $currency, $opensOn, $closesOn)) {
+            // Asked with the very function that builds the clôture, not with a
+            // cheaper "are there any lines" test. The two must agree: a year whose
+            // entries cancel out — an erroneous posting and its correction, say —
+            // has lines but nothing to solde, so a lines-based blocker would
+            // demand a clôture that the closing itself refuses as empty, and every
+            // later exercise would be blocked for good, with no way out but a
+            // database edit.
+            if ($this->resultAccountBalances($agencyId, $currency, $closesOn) === []) {
                 continue;
             }
 
@@ -417,14 +426,6 @@ final class ExerciseClosingWorkflow extends BaseController
         }
 
         return Carbon::parse($earliest);
-    }
-
-    private function hasResultActivityBetween(int $agencyId, string $currency, Carbon $from, Carbon $to): bool
-    {
-        return $this->resultActivityQuery($agencyId, $currency)
-            ->whereDate('journal_entries.business_date', '>=', $from->toDateString())
-            ->whereDate('journal_entries.business_date', '<=', $to->toDateString())
-            ->exists();
     }
 
     private function resultActivityQuery(int $agencyId, string $currency): Builder

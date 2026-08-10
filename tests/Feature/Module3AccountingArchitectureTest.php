@@ -3407,6 +3407,61 @@ final class Module3AccountingArchitectureTest extends TestCase
         $closing2026->assertJsonPath('data.net_result_minor', 25000);
     }
 
+    public function test_an_exercise_whose_entries_cancel_out_does_not_block_the_next_one(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CLO-NIL');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        // 2025: an entry and its correction. Lines exist for the year, but every
+        // class 6 and 7 account ends it at nil, so there is no result to carry.
+        $this->ensureOpenAccountingDay($agency['id'], '2025-06-30');
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-NIL-1', '2025-06-30', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 18000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 18000, 'credit_minor' => 0],
+        ]);
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-NIL-2', '2025-06-30', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 18000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 18000],
+        ]);
+
+        // 2026: real activity.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-06-30');
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-NIL-3', '2026-06-30', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 31000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 31000, 'credit_minor' => 0],
+        ]);
+
+        // There is nothing to close in 2025 — correctly refused rather than
+        // recorded as an empty clôture.
+        $this->ensureOpenAccountingDay($agency['id'], '2025-12-31');
+        $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2025,
+            ])->assertStatus(422);
+
+        // And 2025 must therefore not block 2026. Deciding "is a clôture owed for
+        // this year?" with a cheaper test than the one that draws it would leave
+        // 2026 demanding a 2025 closing that can never be created — a deadlock with
+        // no way out but a database edit.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+        $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $this->assertJsonSuccess($closing, 201);
+
+        // 2026's own result, and only its own: 2025's entries cancelled, so the
+        // cumulative balance carries nothing forward.
+        $closing->assertJsonPath('data.net_result_minor', 31000);
+    }
+
     public function test_closing_refuses_an_empty_exercise_and_needs_the_permission(): void
     {
         $chief = $this->createUserWithRole('chief-accountant');
