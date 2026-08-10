@@ -3407,6 +3407,202 @@ final class Module3AccountingArchitectureTest extends TestCase
         $closing2026->assertJsonPath('data.net_result_minor', 25000);
     }
 
+    public function test_the_result_is_allocated_out_of_131_by_the_general_assembly_decision(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AFF-A');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $benefice = $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $reserveLegale = $this->createResultAccount($chief, $agency['public_id'], '111', 'Réserves légales', 'capitaux_permanents', 'credit');
+        $reportANouveau = $this->createResultAccount($chief, $agency['public_id'], '121', 'Report à nouveau créditeur', 'capitaux_permanents', 'credit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        $this->ensureOpenAccountingDay($agency['id'], '2026-06-30');
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-AFF', '2026-06-30', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 100000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 100000, 'credit_minor' => 0],
+        ]);
+
+        // Close 2026 and post the transfer: 100 000 now sits in 131.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+        $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $this->assertJsonSuccess($closing, 201);
+        $closingEntry = $this->requireStringJsonPath($closing, 'data.journal_entry_public_id');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$closingEntry.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$closingEntry.'/post')->assertStatus(200);
+
+        // The AG meets in the following exercise and decides the split. The system
+        // does not compute it: the réserve légale rate and what goes to report à
+        // nouveau are the assembly's decision, recorded in its minutes.
+        $this->ensureOpenAccountingDay($agency['id'], '2027-06-30');
+
+        // A split that does not add up to the result is refused. Posting it would
+        // leave 131 holding a remainder that no later allocation could clear,
+        // because the exercise is then marked as allocated.
+        $short = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'decided_on' => '2027-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $reserveLegale, 'amount_minor' => 20000],
+                ],
+            ]);
+        $short->assertStatus(422);
+        $short->assertJsonValidationErrors(['allocations']);
+
+        // Nor may the result be allocated back into 131 itself: the entry would
+        // balance and achieve nothing.
+        $circular = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'decided_on' => '2027-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $benefice, 'amount_minor' => 100000],
+                ],
+            ]);
+        $circular->assertStatus(422);
+
+        $appropriation = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'decided_on' => '2027-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $reserveLegale, 'amount_minor' => 20000],
+                    ['ledger_account_public_id' => $reportANouveau, 'amount_minor' => 80000],
+                ],
+            ]);
+        $this->assertJsonSuccess($appropriation, 201);
+        $appropriation->assertJsonPath('data.source_account_code', '131');
+        $appropriation->assertJsonPath('data.amount_minor', 100000);
+        // Submitted, like the clôture: the allocation is the assembly's decision
+        // being recorded, and a second pair of eyes confirms it reached the ledger.
+        $appropriation->assertJsonPath('data.posted', false);
+
+        $entry = $this->requireStringJsonPath($appropriation, 'data.journal_entry_public_id');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entry.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entry.'/post')->assertStatus(200);
+
+        // 131 is empty — the whole point. Left as it was, a second exercise's
+        // result would pile on top of the first and the balance sheet would
+        // overstate "Bénéfice de l'exercice" for good.
+        $beneficeBalance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$benefice.'/balance?currency=XAF');
+        $this->assertJsonSuccess($beneficeBalance);
+        $beneficeBalance->assertJsonPath('data.balance_minor', 0);
+        $beneficeBalance->assertJsonPath('data.balance_side', null);
+
+        // And the réserves have grown by exactly what the assembly awarded them.
+        foreach ([[$reserveLegale, 20000], [$reportANouveau, 80000]] as [$account, $expected]) {
+            $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+                ->getJson('/api/v1/ledger-accounts/'.$account.'/balance?currency=XAF');
+            $this->assertJsonSuccess($balance);
+            $balance->assertJsonPath('data.balance_minor', $expected);
+        }
+
+        // Allocated once: a second decision on the same exercise would overdraw
+        // 131 and credit the réserves with money never earned.
+        $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'decided_on' => '2027-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $reserveLegale, 'amount_minor' => 100000],
+                ],
+            ])->assertStatus(422);
+    }
+
+    public function test_allocating_is_refused_while_an_earlier_result_is_still_held(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('AFF-B');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $reserveLegale = $this->createResultAccount($chief, $agency['public_id'], '111', 'Réserves légales', 'capitaux_permanents', 'credit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        // Two exercises closed and posted, neither allocated: 131 holds both.
+        foreach ([['2025', 40000], ['2026', 25000]] as [$year, $amount]) {
+            $this->ensureOpenAccountingDay($agency['id'], $year.'-06-30');
+            $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-AFF-'.$year, $year.'-06-30', [
+                ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => $amount],
+                ['ledger_account_public_id' => $cash, 'debit_minor' => $amount, 'credit_minor' => 0],
+            ]);
+            $this->ensureOpenAccountingDay($agency['id'], $year.'-12-31');
+            $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+                ->postJson('/api/v1/exercise-closings', [
+                    'agency_public_id' => $agency['public_id'],
+                    'fiscal_year' => (int) $year,
+                ]);
+            $this->assertJsonSuccess($closing, 201);
+            $entry = $this->requireStringJsonPath($closing, 'data.journal_entry_public_id');
+            $this->withApiHeaders()->actingAsSanctum($reviewer)
+                ->postJson('/api/v1/journal-entries/'.$entry.'/approve')->assertStatus(200);
+            $this->withApiHeaders()->actingAsSanctum($reviewer)
+                ->postJson('/api/v1/journal-entries/'.$entry.'/post')->assertStatus(200);
+        }
+
+        // Allocating 2026 alone would empty only its share and leave 2025's 40 000
+        // stranded in 131 with the exercise marked allocated — unreachable
+        // afterwards. The account is checked against the exercise's own figure, so
+        // the divergence is reported instead.
+        $this->ensureOpenAccountingDay($agency['id'], '2027-06-30');
+        $refused = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'decided_on' => '2027-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $reserveLegale, 'amount_minor' => 25000],
+                ],
+            ]);
+        $refused->assertStatus(422);
+        $refused->assertJsonValidationErrors(['fiscal_year']);
+
+        // 2025 first, and then 2026 goes through.
+        $first = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2025,
+                'decided_on' => '2026-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $reserveLegale, 'amount_minor' => 40000],
+                ],
+            ]);
+        $this->assertJsonSuccess($first, 201);
+        $firstEntry = $this->requireStringJsonPath($first, 'data.journal_entry_public_id');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$firstEntry.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$firstEntry.'/post')->assertStatus(200);
+
+        $second = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/result-appropriations', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+                'decided_on' => '2027-06-15',
+                'allocations' => [
+                    ['ledger_account_public_id' => $reserveLegale, 'amount_minor' => 25000],
+                ],
+            ]);
+        $this->assertJsonSuccess($second, 201);
+    }
+
     public function test_an_unclosed_exercise_never_stops_an_agency_from_operating(): void
     {
         $chief = $this->createUserWithRole('chief-accountant');

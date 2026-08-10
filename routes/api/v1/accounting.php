@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\LedgerAccountController;
 use App\Http\Controllers\Api\V1\OperationAccountMappingController;
 use App\Http\Controllers\Api\V1\OperationCodeController;
 use App\Http\Controllers\Api\V1\ReportRunController;
+use App\Http\Controllers\Api\V1\ResultAppropriationController;
 use App\Http\Controllers\Api\V1\SectorController;
 use App\Http\Controllers\Api\V1\SubSectorController;
 use App\Http\Controllers\Api\V1\TellerSessionController;
@@ -125,6 +126,10 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::delete('journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy']);
 
     // Clôture annuelle: transfers solde 87 into 131 or 132.
+    // Affectation du résultat: empties 131/132 per the AG's decision.
+    Route::get('result-appropriations', [ResultAppropriationController::class, 'index']);
+    Route::post('result-appropriations', [ResultAppropriationController::class, 'store'])->middleware('throttle:journal.write');
+
     Route::get('exercise-closings', [ExerciseClosingController::class, 'index']);
     Route::post('exercise-closings', [ExerciseClosingController::class, 'store'])->middleware('throttle:journal.write');
 

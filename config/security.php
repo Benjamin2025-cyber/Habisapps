@@ -132,6 +132,7 @@ return [
                 'batch.runs.manage',
                 'accounting.scope.institution.manage',
                 'accounting.exercise.close',
+                'accounting.exercise.appropriate',
                 'accounting.days.view',
                 'accounting.days.open',
                 'accounting.days.close',
@@ -592,6 +593,7 @@ return [
                 // on purpose — see accounting.days.reopen, platform-admin only.
                 'accounting.scope.institution.manage',
                 'accounting.exercise.close',
+                'accounting.exercise.appropriate',
                 'accounting.days.view',
                 'accounting.days.open',
                 'accounting.days.close',
