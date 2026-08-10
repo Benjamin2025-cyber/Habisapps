@@ -3202,6 +3202,64 @@ final class Module3AccountingArchitectureTest extends TestCase
         self::assertSame(50000, $this->soldeAmount($soldes, '87'));
     }
 
+    public function test_the_corporate_tax_leaves_the_operating_result_untouched_and_the_patente_does_not(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-TAX2');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // Their answer to question 3, stated precisely: « le calcul du 82 garde
+        // alors sa formule normale (moins toute la classe 66) et on lui rajoute
+        // + 6611 pour annuler juste cette ligne là ».
+        //
+        // "Annuler juste cette ligne là" is an exact claim, and a stronger one
+        // than the mixed exercise elsewhere in this file checks: the corporate
+        // income tax must leave the résultat d'exploitation at precisely the value
+        // it would have had if the tax had never been posted. Each half is
+        // therefore posted alone, where any leakage shows up as the whole amount
+        // rather than as a discrepancy someone has to spot.
+        $tax = $this->createResultAccount($admin, $agency['public_id'], '661100', 'Impôt sur les sociétés', 'charges', 'debit');
+        $patente = $this->createResultAccount($admin, $agency['public_id'], '661200', 'Patente', 'charges', 'debit');
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-TAX-ONLY', '2026-05-01', [
+            ['ledger_account_public_id' => $tax, 'debit_minor' => 17000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 17000],
+        ]);
+
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+
+        // Subtracted with the rest of class 66, then returned in full: no trace.
+        self::assertSame(0, $this->soldeAmount($soldes, '82'));
+        self::assertNull($this->soldeSideOf($soldes, '82'));
+        self::assertSame(0, $this->soldeAmount($soldes, '85'));
+
+        // It appears once, at 86, and once only — which is what makes solde 86
+        // credible as the tax line.
+        self::assertSame(17000, $this->soldeAmount($soldes, '86'));
+        self::assertSame(-17000, $this->soldeAmount($soldes, '87'));
+
+        // Now the other direct tax, which must behave the opposite way.
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-PATENTE', '2026-05-01', [
+            ['ledger_account_public_id' => $patente, 'debit_minor' => 4000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 4000],
+        ]);
+
+        $after = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+
+        // « les autres impôts directs restent bien dans le 82 »: the patente is a
+        // cost of operating and stays charged there.
+        self::assertSame(-4000, $this->soldeAmount($after, '82'));
+        self::assertSame(LedgerAccount::NORMAL_BALANCE_DEBIT, $this->soldeSideOf($after, '82'));
+
+        // And it never reaches the tax line, which still shows only the 6611
+        // amount. Had the add-back been written as the whole of 661, this would
+        // read 21 000 and the patente would have been charged twice over.
+        self::assertSame(17000, $this->soldeAmount($after, '86'));
+        self::assertSame(-21000, $this->soldeAmount($after, '87'));
+    }
+
     public function test_credit_provisions_are_ordinary_business_and_never_exceptional(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
