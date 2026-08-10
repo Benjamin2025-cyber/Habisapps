@@ -3407,6 +3407,75 @@ final class Module3AccountingArchitectureTest extends TestCase
         $closing2026->assertJsonPath('data.net_result_minor', 25000);
     }
 
+    public function test_a_settled_exercise_takes_no_further_entries(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('LOCK-A');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $prior = $this->createResultAccount($chief, $agency['public_id'], '671000', 'Pertes sur exercices antérieurs', 'charges', 'debit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        $this->ensureOpenAccountingDay($agency['id'], '2026-06-30');
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-LOCK', '2026-06-30', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 70000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 70000, 'credit_minor' => 0],
+        ]);
+
+        // Close 2026 and post the transfer. The clôture's own entry is dated
+        // 31/12/2026 and must not be blocked by the guard it switches on.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+        $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $this->assertJsonSuccess($closing, 201);
+        $entry = $this->requireStringJsonPath($closing, 'data.journal_entry_public_id');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entry.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entry.'/post')->assertStatus(200);
+
+        // 2026's figures have now been reported. An entry dated inside it is
+        // refused: the next clôture would sweep it into 2027's result, so the
+        // filed accounts and the ledger would disagree and 2027 would be wrong
+        // too.
+        $refused = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/journal-entries', [
+                'agency_public_id' => $agency['public_id'],
+                'reference' => 'JE-LATE-2026',
+                'business_date' => '2026-12-31',
+            ]);
+        $refused->assertStatus(422);
+        $refused->assertJsonValidationErrors(['business_date']);
+
+        // And the back door is shut: the day cannot be reopened to let one in.
+        $day = DB::table('accounting_days')
+            ->where('agency_id', $agency['id'])
+            ->whereRaw("to_char(business_date, 'YYYY-MM-DD') = ?", ['2026-06-30'])
+            ->first(['public_id']);
+        self::assertNotNull($day);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/accounting-days/'.$day->public_id.'/reopen', ['reason' => 'Correction tardive'])
+            ->assertStatus(422);
+
+        // What was found afterwards goes into the current exercise instead, which
+        // is what 67 is for. The next year is untouched by the lock.
+        $this->ensureOpenAccountingDay($agency['id'], '2027-03-15');
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-PRIOR', '2027-03-15', [
+            ['ledger_account_public_id' => $prior, 'debit_minor' => 5000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 0, 'credit_minor' => 5000],
+        ]);
+
+        $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$prior.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+        $balance->assertJsonPath('data.balance_minor', 5000);
+    }
+
     public function test_the_result_is_allocated_out_of_131_by_the_general_assembly_decision(): void
     {
         $chief = $this->createUserWithRole('chief-accountant');

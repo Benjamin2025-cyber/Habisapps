@@ -14,6 +14,7 @@ use App\Models\Agency;
 use App\Models\JournalEntry;
 use App\Models\TellerTransaction;
 use App\Models\User;
+use App\Support\Accounting\ClosedExerciseGuard;
 use App\Support\AccountingDay\AccountingDayException;
 use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\AccountingDay\AccountingScopeAccess;
@@ -34,6 +35,7 @@ final class JournalEntryWorkflow extends BaseController
         private readonly JournalEntryListQuery $journalEntryListQuery,
         private readonly AccountingScopeAccess $scopeAccess,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly ClosedExerciseGuard $closedExerciseGuard,
     ) {}
 
     public function index(Request $request): JournalEntryCollection|JsonResponse
@@ -96,6 +98,17 @@ final class JournalEntryWorkflow extends BaseController
             $request,
         );
         $businessDate = $accountingDay->business_date->toDateString();
+
+        // A settled exercise takes no more entries: its figures have been reported
+        // and the next clôture would sweep anything added here into the following
+        // year's result. What is found afterwards belongs to the current exercise,
+        // through 67 or 77 — pertes and profits sur exercices antérieurs.
+        $settled = $this->closedExerciseGuard->settledExerciseFor($agency->id, $businessDate);
+        if ($settled !== null) {
+            return $this->respondUnprocessable(errors: ['business_date' => [
+                __('domain.journal_entry_exercise_settled', ['year' => (string) $settled]),
+            ]]);
+        }
 
         $journalEntry = JournalEntry::query()->create([
             'public_id' => (string) Str::ulid(),

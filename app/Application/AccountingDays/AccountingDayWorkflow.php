@@ -17,6 +17,7 @@ use App\Models\Agency;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\User;
+use App\Support\Accounting\ClosedExerciseGuard;
 use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\AccountingDay\CloseControlService;
 use App\Support\Security\SecurityAudit;
@@ -48,6 +49,7 @@ final class AccountingDayWorkflow extends BaseController
         private readonly AccountingScopeAccess $scopeAccess,
         private readonly CloseControlService $closeControls,
         private readonly ExecuteRegisteredBatchRun $executeRegisteredBatchRun,
+        private readonly ClosedExerciseGuard $closedExerciseGuard,
     ) {}
 
     public function index(Request $request): AccountingDayCollection|JsonResponse
@@ -443,6 +445,22 @@ final class AccountingDayWorkflow extends BaseController
                 'code' => 'accounting_day_invalid_transition',
                 'status' => $accountingDay->status,
             ]);
+        }
+
+        // Reopening a day inside a settled exercise is the back door to the same
+        // problem: the day would accept entries the clôture has already accounted
+        // for. Refused here rather than at the entry, so the operator is told
+        // before they start rather than after they have keyed one in.
+        if ($accountingDay->agency_id !== null) {
+            $settled = $this->closedExerciseGuard->settledExerciseFor(
+                $accountingDay->agency_id,
+                $accountingDay->business_date->toDateString(),
+            );
+            if ($settled !== null) {
+                return $this->respondUnprocessable(__('domain.accounting_day_exercise_settled', ['year' => (string) $settled]), [
+                    'code' => 'accounting_day_exercise_settled',
+                ]);
+            }
         }
 
         // Reopen must not race with a newly opened day for the same scope.
