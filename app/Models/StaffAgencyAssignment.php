@@ -40,6 +40,56 @@ final class StaffAgencyAssignment extends Model
     public const string STATUS_ENDED = 'ended';
 
     /**
+     * Point a user's single open primary assignment at an agency, creating it on
+     * first call and updating it afterwards.
+     *
+     * `staff_primary_assignment_no_overlap` excludes two active primary
+     * assignments whose date ranges overlap for the same user, and an assignment
+     * with no `ends_on` runs to infinity. So there is at most one open primary
+     * assignment per user, and the idempotent operation is to move it rather than
+     * to add another.
+     *
+     * Keyed on the user, deliberately not on (user, agency, starts_on): keying on
+     * a date that moves means a second run on a later day matches nothing, tries
+     * to insert another open-ended row, and is refused by the exclusion
+     * constraint. That is a seeder that works the day it is written and fails
+     * every deployment after it.
+     *
+     * `starts_on` is left alone when the assignment already exists — the staff
+     * member has been there since the original date, not since the last deploy.
+     */
+    public static function assignPrimary(int $userId, int $agencyId, string $roleAtAgency): self
+    {
+        // whereNull is a forwarded builder method larastan reports as a dynamic
+        // static call; `where(..., null)` compiles to the same IS NULL.
+        $existing = self::query()
+            ->where('user_id', $userId)
+            ->where('is_primary', true)
+            ->where('status', self::STATUS_ACTIVE)
+            ->where('ends_on', null)
+            ->first();
+
+        if ($existing instanceof self) {
+            $existing->forceFill([
+                'agency_id' => $agencyId,
+                'role_at_agency' => $roleAtAgency,
+            ])->save();
+
+            return $existing;
+        }
+
+        return self::query()->create([
+            'user_id' => $userId,
+            'agency_id' => $agencyId,
+            'role_at_agency' => $roleAtAgency,
+            'starts_on' => now()->toDateString(),
+            'ends_on' => null,
+            'is_primary' => true,
+            'status' => self::STATUS_ACTIVE,
+        ]);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

@@ -146,19 +146,7 @@ final class TestStaffAccountsSeeder extends Seeder
                     $user->givePermissionTo('loans.update');
                 }
 
-                StaffAgencyAssignment::query()->updateOrCreate(
-                    [
-                        'user_id' => $user->id,
-                        'agency_id' => $agency->id,
-                        'starts_on' => now()->toDateString(),
-                    ],
-                    [
-                        'role_at_agency' => $roleName,
-                        'ends_on' => null,
-                        'is_primary' => true,
-                        'status' => StaffAgencyAssignment::STATUS_ACTIVE,
-                    ]
-                );
+                StaffAgencyAssignment::assignPrimary($user->id, $agency->id, $roleName);
 
                 $users[$roleName] = $user->refresh();
             }
