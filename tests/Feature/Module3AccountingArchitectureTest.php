@@ -3407,6 +3407,54 @@ final class Module3AccountingArchitectureTest extends TestCase
         $closing2026->assertJsonPath('data.net_result_minor', 25000);
     }
 
+    public function test_an_unclosed_exercise_never_stops_an_agency_from_operating(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CLO-IDLE');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        // An agency that opened in 2025 and did nothing in it. 2025 has no result
+        // to carry, so there is no clôture to draw for it.
+        $this->ensureOpenAccountingDay($agency['id'], '2025-12-31');
+        $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2025,
+            ])->assertStatus(422);
+
+        // It trades normally in 2026 regardless. Nothing outside the closing
+        // endpoint consults exercise_closings, so an unclosed exercise cannot stop
+        // an agency working — the sequencing rule governs when a year may be
+        // settled, never whether business may be recorded.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-06-30');
+        $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-IDLE', '2026-06-30', [
+            ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => 52000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 52000, 'credit_minor' => 0],
+        ]);
+
+        $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$earned.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+        $balance->assertJsonPath('data.balance_minor', 52000);
+
+        // And 2026 closes without 2025 ever having been settled: an idle year is
+        // skipped, not owed. Refusing here would strand the agency permanently for
+        // the sake of a year in which nothing happened.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+        $closing = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $this->assertJsonSuccess($closing, 201);
+        $closing->assertJsonPath('data.net_result_minor', 52000);
+        $closing->assertJsonPath('data.fiscal_year', 2026);
+    }
+
     public function test_an_exercise_whose_entries_cancel_out_does_not_block_the_next_one(): void
     {
         $chief = $this->createUserWithRole('chief-accountant');
