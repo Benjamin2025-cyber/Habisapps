@@ -53,6 +53,7 @@ return [
     'ledger_parent_has_movements' => 'The selected parent account already carries movements and cannot become a grouping account.',
     'ledger_account_code_taken_in_agency' => 'This code is already used in the chart of accounts of :agency.',
     'exercise_fiscal_year_invalid' => 'The fiscal year must be a four-digit year the institution could plausibly have traded in.',
+    'exercise_earlier_year_still_open' => 'Exercise :year carries activity and has not been closed yet. Exercises must be closed in order, or its charges and products would be counted in this one.',
     'exercise_already_closed' => 'This exercise has already been closed for this agency and currency.',
     'exercise_nothing_to_close' => 'No class 6 or 7 account carries a balance for this exercise, so there is nothing to close.',
     'exercise_result_account_missing' => 'Account :code is required to carry the result of the exercise, and this agency has no active postable account with that code.',

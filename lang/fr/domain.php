@@ -53,6 +53,7 @@ return [
     'ledger_parent_has_movements' => 'Le compte parent sélectionné porte déjà des mouvements et ne peut pas devenir un compte de regroupement.',
     'ledger_account_code_taken_in_agency' => 'Ce code est déjà utilisé dans le plan comptable de :agency.',
     'exercise_fiscal_year_invalid' => 'L\'exercice doit être une année sur quatre chiffres durant laquelle l\'institution a pu exercer.',
+    'exercise_earlier_year_still_open' => "L'exercice :year comporte des mouvements et n'a pas encore été clôturé. Les exercices se clôturent dans l'ordre, sinon ses charges et produits seraient comptés dans celui-ci.",
     'exercise_already_closed' => 'Cet exercice a déjà été clôturé pour cette agence et cette devise.',
     'exercise_nothing_to_close' => 'Aucun compte de classe 6 ou 7 ne présente de solde pour cet exercice : il n\'y a rien à clôturer.',
     'exercise_result_account_missing' => 'Le compte :code est nécessaire pour recevoir le résultat de l\'exercice, et cette agence n\'a aucun compte imputable actif portant ce code.',

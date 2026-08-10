@@ -19,6 +19,7 @@ use App\Support\AccountingDay\AccountingDayGuard;
 use App\Support\AccountingDay\AccountingScopeAccess;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -88,6 +89,23 @@ final class ExerciseClosingWorkflow extends BaseController
             ->exists();
         if ($existing) {
             return $this->respondUnprocessable(errors: ['fiscal_year' => [__('domain.exercise_already_closed')]]);
+        }
+
+        // Exercises close in order. An EMF's exercise is approved by the
+        // assemblée générale and filed with COBAC one year at a time, and the
+        // arithmetic here depends on it: balances are cumulative, so closing 2026
+        // while 2025 is still open would sweep 2025's charges and produits into
+        // 2026's result. Both years would be misstated, and 2025 could never be
+        // closed afterwards because nothing would be left in it to close.
+        //
+        // The earlier closing must be posted, not merely drawn up. A clôture
+        // waiting for review has moved nothing, so its exercise is still sitting
+        // in classes 6 and 7.
+        $blocking = $this->earliestUnclosedExercise($agency->id, $currency, $fiscalYear);
+        if ($blocking !== null) {
+            return $this->respondUnprocessable(errors: ['fiscal_year' => [
+                __('domain.exercise_earlier_year_still_open', ['year' => (string) $blocking]),
+            ]]);
         }
 
         $balances = $this->resultAccountBalances($agency->id, $currency, $closesOn);
@@ -272,13 +290,7 @@ final class ExerciseClosingWorkflow extends BaseController
      */
     private function exercisePeriod(int $fiscalYear): array
     {
-        $profile = InstitutionProfile::query()->first();
-        $startMonth = $profile?->fiscal_year_start_month;
-        if ($startMonth === null || $startMonth < 1 || $startMonth > 12) {
-            $startMonth = 1;
-        }
-
-        $opensOn = Carbon::create($fiscalYear, $startMonth, 1);
+        $opensOn = Carbon::create($fiscalYear, $this->fiscalYearStartMonth(), 1);
         if (! $opensOn instanceof Carbon) {
             throw new RuntimeException("Cannot resolve the exercise opening for {$fiscalYear}.");
         }
@@ -339,6 +351,91 @@ final class ExerciseClosingWorkflow extends BaseController
         }
 
         return $balances;
+    }
+
+    /**
+     * The earliest exercise before $fiscalYear that carries activity and has no
+     * posted clôture, or null when the year is the next one due.
+     *
+     * Years with no activity are skipped rather than demanded: there is nothing
+     * to close in them, so requiring a clôture would deadlock — the closing would
+     * be refused as empty and the refusal would block every later year.
+     */
+    private function earliestUnclosedExercise(int $agencyId, string $currency, int $fiscalYear): ?int
+    {
+        $firstActivity = $this->firstResultActivityDate($agencyId, $currency);
+        if ($firstActivity === null) {
+            return null;
+        }
+
+        for ($year = $this->fiscalYearOf($firstActivity); $year < $fiscalYear; $year++) {
+            [$opensOn, $closesOn] = $this->exercisePeriod($year);
+
+            if (! $this->hasResultActivityBetween($agencyId, $currency, $opensOn, $closesOn)) {
+                continue;
+            }
+
+            $closed = DB::table('exercise_closings')
+                ->join('journal_entries', 'journal_entries.id', '=', 'exercise_closings.journal_entry_id')
+                ->where('exercise_closings.agency_id', $agencyId)
+                ->where('exercise_closings.fiscal_year', $year)
+                ->where('exercise_closings.currency', $currency)
+                ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+                ->exists();
+
+            if (! $closed) {
+                return $year;
+            }
+        }
+
+        return null;
+    }
+
+    /** The exercise a date falls in, named by the calendar year the exercise opens in. */
+    private function fiscalYearOf(Carbon $date): int
+    {
+        $startMonth = $this->fiscalYearStartMonth();
+
+        return $date->month >= $startMonth ? $date->year : $date->year - 1;
+    }
+
+    private function fiscalYearStartMonth(): int
+    {
+        $startMonth = InstitutionProfile::query()->first()?->fiscal_year_start_month;
+
+        return $startMonth === null || $startMonth < 1 || $startMonth > 12 ? 1 : $startMonth;
+    }
+
+    private function firstResultActivityDate(int $agencyId, string $currency): ?Carbon
+    {
+        $earliest = $this->resultActivityQuery($agencyId, $currency)
+            ->selectRaw('MIN(journal_entries.business_date) AS earliest')
+            ->value('earliest');
+
+        if (! is_string($earliest) || $earliest === '') {
+            return null;
+        }
+
+        return Carbon::parse($earliest);
+    }
+
+    private function hasResultActivityBetween(int $agencyId, string $currency, Carbon $from, Carbon $to): bool
+    {
+        return $this->resultActivityQuery($agencyId, $currency)
+            ->whereDate('journal_entries.business_date', '>=', $from->toDateString())
+            ->whereDate('journal_entries.business_date', '<=', $to->toDateString())
+            ->exists();
+    }
+
+    private function resultActivityQuery(int $agencyId, string $currency): Builder
+    {
+        return DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
+            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->where('journal_entries.agency_id', $agencyId)
+            ->where('journal_lines.currency', $currency)
+            ->whereRaw("left(ledger_accounts.code, 1) in ('6', '7')");
     }
 
     private function postableAccount(int $agencyId, string $code): ?LedgerAccount

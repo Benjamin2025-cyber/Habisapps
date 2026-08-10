@@ -3325,6 +3325,88 @@ final class Module3AccountingArchitectureTest extends TestCase
         $staffBalance->assertJsonPath('data.balance_minor', 0);
     }
 
+    public function test_exercises_must_be_closed_in_order(): void
+    {
+        $chief = $this->createUserWithRole('chief-accountant');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CLO-SEQ');
+
+        $earned = $this->createResultAccount($chief, $agency['public_id'], '701000', 'Intérêts reçus', 'produits', 'credit');
+        $benefice = $this->createResultAccount($chief, $agency['public_id'], '131', "Bénéfice de l'exercice", 'capitaux_permanents', 'credit');
+        $cash = $this->createAgencyLedgerAccount($chief, $agency['public_id'], '571000', 'Caisse');
+
+        // Activity in two consecutive exercises.
+        foreach ([['2025-06-30', 40000], ['2026-06-30', 25000]] as [$date, $amount]) {
+            $this->ensureOpenAccountingDay($agency['id'], $date);
+            $this->createPostedJournalEntryWithLines($chief, $reviewer, $agency['public_id'], 'JE-SEQ-'.$date, $date, [
+                ['ledger_account_public_id' => $earned, 'debit_minor' => 0, 'credit_minor' => $amount],
+                ['ledger_account_public_id' => $cash, 'debit_minor' => $amount, 'credit_minor' => 0],
+            ]);
+        }
+        // A clôture is posted into the accounting day of its own closing date, so
+        // each step below opens the day it needs. That is also why the assertions
+        // name the `fiscal_year` field: a closing refused because the wrong day is
+        // open fails on `closes_on`, and would otherwise pass for the wrong reason.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+
+        // 2026 cannot be closed while 2025 is open. Balances are cumulative, so
+        // allowing it would report 65 000 as 2026's result — 2025's 40 000 folded
+        // into it — and leave 2025 with nothing to close afterwards.
+        $premature = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $premature->assertStatus(422);
+        $premature->assertJsonValidationErrors(['fiscal_year']);
+
+        $this->ensureOpenAccountingDay($agency['id'], '2025-12-31');
+        $closing2025 = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2025,
+            ]);
+        $this->assertJsonSuccess($closing2025, 201);
+        $closing2025->assertJsonPath('data.net_result_minor', 40000);
+
+        // Drawn up but awaiting review, so it has moved nothing: 2025 is still
+        // sitting in classes 6 and 7 and 2026 stays blocked.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+        $stillBlocked = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $stillBlocked->assertStatus(422);
+        $stillBlocked->assertJsonValidationErrors(['fiscal_year']);
+
+        // Post 2025's transfer, which needs its own day open again.
+        $entry2025 = $this->requireStringJsonPath($closing2025, 'data.journal_entry_public_id');
+        $this->ensureOpenAccountingDay($agency['id'], '2025-12-31');
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entry2025.'/approve')->assertStatus(200);
+        $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->postJson('/api/v1/journal-entries/'.$entry2025.'/post')->assertStatus(200);
+
+        // 2025's result is now in 131, and only 2025's.
+        $beneficeBalance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$benefice.'/balance?currency=XAF');
+        $this->assertJsonSuccess($beneficeBalance);
+        $beneficeBalance->assertJsonPath('data.balance_minor', 40000);
+
+        // 2026 is now the next one due.
+        $this->ensureOpenAccountingDay($agency['id'], '2026-12-31');
+        $closing2026 = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->postJson('/api/v1/exercise-closings', [
+                'agency_public_id' => $agency['public_id'],
+                'fiscal_year' => 2026,
+            ]);
+        $this->assertJsonSuccess($closing2026, 201);
+        // Its own 25 000, not 65 000: closing 2025 returned those accounts to nil,
+        // which is what makes a cumulative balance equal one exercise's activity.
+        $closing2026->assertJsonPath('data.net_result_minor', 25000);
+    }
+
     public function test_closing_refuses_an_empty_exercise_and_needs_the_permission(): void
     {
         $chief = $this->createUserWithRole('chief-accountant');
