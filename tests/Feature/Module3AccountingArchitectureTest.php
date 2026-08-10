@@ -3164,6 +3164,79 @@ final class Module3AccountingArchitectureTest extends TestCase
         $response->assertJsonValidationErrors(['agency_public_id']);
     }
 
+    public function test_a_subvention_is_an_operating_product_and_not_financial_income(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-SUB');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // Confirmed by the accounting team: « le compte 76 reste dans le calcul du
+        // 81. C'est une subvention pour faire fonctionner l'activité (pas un
+        // revenu d'intérêts), donc elle va avec les autres produits
+        // d'exploitation. »
+        //
+        // Worth its own test because moving a root between soldes is invisible to
+        // every other check here: 76 counted in 80 instead of 81 still appears
+        // exactly once, and still leaves the résultat net untouched, since it is
+        // a produit either way. Only the PNF would be wrong — the figure the
+        // regulator reads as the institution's financial margin, inflated by a
+        // grant that earned nothing.
+        $subvention = $this->createResultAccount($admin, $agency['public_id'], '761000', "Subvention d'exploitation", 'produits', 'credit');
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-SUB', '2026-05-01', [
+            ['ledger_account_public_id' => $subvention, 'debit_minor' => 0, 'credit_minor' => 50000],
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 50000, 'credit_minor' => 0],
+        ]);
+
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+
+        // The PNF is untouched: nothing financial happened.
+        self::assertSame(0, $this->soldeAmount($soldes, '80'));
+        self::assertNull($this->soldeSideOf($soldes, '80'));
+
+        // It enters at the produit d'exploitation global and carries down.
+        self::assertSame(50000, $this->soldeAmount($soldes, '81'));
+        self::assertSame(50000, $this->soldeAmount($soldes, '82'));
+        self::assertSame(50000, $this->soldeAmount($soldes, '87'));
+    }
+
+    public function test_exceptional_items_reach_the_exceptional_result_and_nothing_above_it(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-EXC');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // 77 and 67 are the only roots of classes 6 and 7 that bypass the
+        // operating soldes entirely: « 84 = 77 − 67 ». The same blind spot applies
+        // — an exceptional profit counted in 81 would leave the résultat net
+        // correct and the résultat d'exploitation overstated, which is precisely
+        // the figure used to judge whether the ordinary business is viable.
+        $exceptionalGain = $this->createResultAccount($admin, $agency['public_id'], '771000', 'Profit exceptionnel', 'produits', 'credit');
+        $exceptionalLoss = $this->createResultAccount($admin, $agency['public_id'], '671000', 'Perte exceptionnelle', 'charges', 'debit');
+        $cash = $this->createAgencyLedgerAccount($admin, $agency['public_id'], '571000', 'Caisse');
+
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-EXC', '2026-05-01', [
+            ['ledger_account_public_id' => $exceptionalGain, 'debit_minor' => 0, 'credit_minor' => 30000],
+            ['ledger_account_public_id' => $exceptionalLoss, 'debit_minor' => 11000, 'credit_minor' => 0],
+            // Net of the two, so the entry balances: 11 000 + 19 000 = 30 000.
+            ['ledger_account_public_id' => $cash, 'debit_minor' => 19000, 'credit_minor' => 0],
+        ]);
+
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+
+        // Nothing exceptional touches the ordinary business.
+        foreach (['80', '81', '82', '83'] as $ordinary) {
+            self::assertSame(0, $this->soldeAmount($soldes, $ordinary), "Solde {$ordinary} must ignore exceptional items.");
+        }
+
+        self::assertSame(19000, $this->soldeAmount($soldes, '84'));
+        self::assertSame(19000, $this->soldeAmount($soldes, '85'));
+        self::assertSame(19000, $this->soldeAmount($soldes, '87'));
+    }
+
     public function test_the_net_result_is_all_produits_less_all_charges(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
