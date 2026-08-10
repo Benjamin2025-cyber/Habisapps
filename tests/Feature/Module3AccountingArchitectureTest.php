@@ -3202,6 +3202,67 @@ final class Module3AccountingArchitectureTest extends TestCase
         self::assertSame(50000, $this->soldeAmount($soldes, '87'));
     }
 
+    public function test_credit_provisions_are_ordinary_business_and_never_exceptional(): void
+    {
+        $admin = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('IS-PROV');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        // Their answer to question 2: « les comptes 69 et 79 restent dans le
+        // calcul du 82. Les provisions pour risque de crédit et les pertes sur
+        // créances font partie du métier normal d'un établissement qui prête de
+        // l'argent : ce n'est pas un événement exceptionnel. »
+        //
+        // The literal placement cannot be tested, because 83 equals 82 and the two
+        // are indistinguishable from outside. What can be tested is the reason
+        // they gave, which is the part that carries consequences: a provision is
+        // not exceptional, so it must reach the résultat d'exploitation and never
+        // solde 84. Booked as exceptional, a lender's loan losses would leave the
+        // résultat d'exploitation showing a business that never loses money on
+        // lending — the single figure that says whether the lending itself works.
+        $dotation = $this->createResultAccount($admin, $agency['public_id'], '691000', 'Dotations aux provisions', 'charges', 'debit');
+        $reprise = $this->createResultAccount($admin, $agency['public_id'], '791000', 'Reprises de provisions', 'produits', 'credit');
+        $provision = $this->createResultAccount($admin, $agency['public_id'], '391000', 'Provisions sur créances douteuses', 'operations_clientele', 'credit');
+
+        // The real double entry: a dotation raises the provision, a reprise
+        // releases it. The counterpart is class 3, which the compte de résultat
+        // does not read, so only the charge and the produit reach the soldes.
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-DOT', '2026-05-01', [
+            ['ledger_account_public_id' => $dotation, 'debit_minor' => 20000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $provision, 'debit_minor' => 0, 'credit_minor' => 20000],
+        ]);
+        $this->createPostedJournalEntryWithLines($admin, $reviewer, $agency['public_id'], 'JE-REP', '2026-05-01', [
+            ['ledger_account_public_id' => $provision, 'debit_minor' => 8000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $reprise, 'debit_minor' => 0, 'credit_minor' => 8000],
+        ]);
+
+        $soldes = $this->soldesFrom($this->postIncomeStatement($admin, $agency['public_id'])->json('data.summary.soldes'));
+
+        // Not financial, not accessory: the PNF and the produit d'exploitation
+        // global are untouched.
+        self::assertSame(0, $this->soldeAmount($soldes, '80'));
+        self::assertSame(0, $this->soldeAmount($soldes, '81'));
+
+        // The net cost of credit risk lands in the résultat d'exploitation, as a
+        // charge: 8 000 released against 20 000 provided.
+        self::assertSame(-12000, $this->soldeAmount($soldes, '82'));
+        self::assertSame(LedgerAccount::NORMAL_BALANCE_DEBIT, $this->soldeSideOf($soldes, '82'));
+
+        // And nothing reaches the exceptional result — the assertion their reason
+        // actually makes.
+        self::assertSame(0, $this->soldeAmount($soldes, '84'));
+        self::assertNull($this->soldeSideOf($soldes, '84'));
+
+        // 83 carries 82 unchanged, which is their answer to question 4 seen from
+        // the report rather than from the definitions.
+        self::assertSame(
+            $this->soldeAmount($soldes, '82'),
+            $this->soldeAmount($soldes, '83'),
+        );
+        self::assertSame(-12000, $this->soldeAmount($soldes, '87'));
+    }
+
     public function test_exceptional_items_reach_the_exceptional_result_and_nothing_above_it(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
