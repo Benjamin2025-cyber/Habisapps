@@ -142,6 +142,37 @@ final class PcemfChartSeederTest extends TestCase
         self::assertSame([], $wrong);
     }
 
+    public function test_the_correspondent_provisions_keep_their_split_numbering(): void
+    {
+        $this->createAgency('PCEMF-5921');
+        $this->seed(PcemfChartSeeder::class);
+
+        // The COBAC text that fixes this chart writes 5921 three times in a row
+        // and never gives the five-digit numbers — the accounting team checked the
+        // official text and confirmed the defect is in the regulation, not in the
+        // cabinet's document. So 59210 and 59219 are ours, confirmed 2026-08-11 as
+        // the correct reading of the chart's own hors réseau / réseau convention.
+        //
+        // Which is exactly why this is asserted: the source will still say 5921
+        // three times the next time it is imported, and taking it at face value
+        // would once again leave provisions on réseau correspondents with no
+        // account of their own — a silent loss, since a chart missing an account
+        // looks just like one that never had it.
+        $parent = DB::table('ledger_accounts')->where('code', '5921')->first(['is_postable']);
+        self::assertNotNull($parent, 'The parent 5921 must exist.');
+        self::assertFalse((bool) $parent->is_postable, '5921 is the parent and takes no entries.');
+
+        foreach (['59210' => 'hors réseau', '59219' => 'réseau'] as $code => $expected) {
+            $rows = DB::table('ledger_accounts')->where('code', $code)->get(['agency_id', 'is_postable', 'name']);
+            self::assertGreaterThan(0, $rows->count(), "Account {$code} is missing.");
+            foreach ($rows as $row) {
+                self::assertTrue((bool) $row->is_postable, "Account {$code} must accept entries.");
+                self::assertNotNull($row->agency_id, "Account {$code} is a detail account, held per agency.");
+                self::assertStringContainsString($expected, (string) $row->name);
+            }
+        }
+    }
+
     public function test_no_account_name_has_another_account_buried_in_it(): void
     {
         $this->createAgency('PCEMF-MERGE');
