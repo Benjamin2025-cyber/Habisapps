@@ -61,6 +61,42 @@ final class AccountingDayLifecycleTest extends TestCase
         $open->assertJsonPath('data.business_date', '2026-06-01');
     }
 
+    public function test_starting_the_institution_close_is_refused_while_an_agency_is_open(): void
+    {
+        $agency = $this->createAgency('AD-SEQ');
+        $admin = $this->createUserWithRole('platform-admin', $agency['code']);
+
+        $this->openInstitutionAccountingDay('2026-06-01');
+        $agencyDay = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
+
+        $institutionDay = AccountingDay::query()
+            ->where('scope_type', AccountingDay::SCOPE_INSTITUTION)
+            ->where('business_date', '2026-06-01')
+            ->firstOrFail();
+
+        // Refused at start rather than at the last statement. A trigger already
+        // stops the close itself, but reaching it means the day is parked in
+        // `closing`, close-control batch runs have been created, and the operator
+        // gets a database error naming nothing they can act on.
+        $blocked = $this->actingAsSanctum($admin)
+            ->postJson("/api/v1/accounting-days/{$institutionDay->public_id}/start-close");
+        $blocked->assertStatus(422);
+        $blocked->assertJsonPath('errors.code', 'accounting_day_agencies_still_open');
+
+        // Untouched: still open, no close-control runs created.
+        self::assertSame(AccountingDay::STATUS_OPEN, $institutionDay->refresh()->status);
+
+        // Agencies close first, then head office may proceed.
+        $this->closeAccountingDay($agencyDay);
+        $this->assertJsonSuccess(
+            $this->actingAsSanctum($admin)
+                ->postJson("/api/v1/accounting-days/{$institutionDay->public_id}/start-close"),
+        );
+        self::assertSame(AccountingDay::STATUS_CLOSING, $institutionDay->refresh()->status);
+    }
+
     public function test_the_institution_day_cannot_close_while_an_agency_is_still_open_on_it(): void
     {
         $agency = $this->createAgency('AD-CLOSE');

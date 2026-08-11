@@ -237,6 +237,21 @@ final class AccountingDayWorkflow extends BaseController
             ]);
         }
 
+        // The institution cannot leave a date its agencies are still trading in —
+        // otherwise it declares the date finished while tills keep posting into it,
+        // and the figures reported for that date go on moving after they were drawn.
+        // A trigger enforces this; refusing here names the agencies instead of
+        // failing at the last statement with a database error.
+        $stillOpen = $this->agencyDaysStillOpenOn($accountingDay);
+        if ($stillOpen !== []) {
+            return $this->respondUnprocessable(__('domain.accounting_day_agencies_still_open', [
+                'count' => (string) count($stillOpen),
+            ]), [
+                'code' => 'accounting_day_agencies_still_open',
+                'open_agency_business_dates' => $stillOpen,
+            ]);
+        }
+
         // Preflight: starting close must not trap the day in `closing` while teller
         // sessions are still open. Run this BEFORE any status change so a blocked
         // start-close leaves the day open/reopened, does not bump write_lock_version,
@@ -367,6 +382,21 @@ final class AccountingDayWorkflow extends BaseController
             ]);
         }
 
+        // The institution cannot leave a date its agencies are still trading in —
+        // otherwise it declares the date finished while tills keep posting into it,
+        // and the figures reported for that date go on moving after they were drawn.
+        // A trigger enforces this; refusing here names the agencies instead of
+        // failing at the last statement with a database error.
+        $stillOpen = $this->agencyDaysStillOpenOn($accountingDay);
+        if ($stillOpen !== []) {
+            return $this->respondUnprocessable(__('domain.accounting_day_agencies_still_open', [
+                'count' => (string) count($stillOpen),
+            ]), [
+                'code' => 'accounting_day_agencies_still_open',
+                'open_agency_business_dates' => $stillOpen,
+            ]);
+        }
+
         $batchSummary = $this->executeCloseControlRuns($accountingDay, $actor);
         $batchBlocked = $batchSummary['failed_controls'] !== [];
 
@@ -458,6 +488,36 @@ final class AccountingDayWorkflow extends BaseController
             $this->daySummaryPayload($day->refresh()),
             __('domain.accounting_day_closed_successfully'),
         );
+    }
+
+    /**
+     * Public ids of agency days still active on this day's date, empty unless the
+     * day is the institution's. An agency day carries no such dependency: it closes
+     * on its own, and is in fact what has to close first.
+     *
+     * @return array<int, string>
+     */
+    private function agencyDaysStillOpenOn(AccountingDay $day): array
+    {
+        if ($day->scope_type !== AccountingDay::SCOPE_INSTITUTION) {
+            return [];
+        }
+
+        $query = AccountingDay::query()
+            ->where('scope_type', AccountingDay::SCOPE_AGENCY)
+            ->where('business_date', $day->business_date->toDateString());
+        $query->getQuery()->whereIn('status', [
+            AccountingDay::STATUS_OPEN,
+            AccountingDay::STATUS_REOPENED,
+            AccountingDay::STATUS_CLOSING,
+        ]);
+
+        $ids = [];
+        foreach ($query->get(['public_id']) as $row) {
+            $ids[] = $row->public_id;
+        }
+
+        return $ids;
     }
 
     public function reopen(ReopenAccountingDayRequest $request, AccountingDay $accountingDay): JsonResponse

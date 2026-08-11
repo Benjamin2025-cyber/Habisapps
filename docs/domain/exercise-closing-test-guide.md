@@ -34,7 +34,9 @@ approuvée puis comptabilisée par **une autre personne**.
   propre écriture. Prévoyez un « chef comptable » et un second utilisateur
   (platform-admin fait l'affaire) pour approuver.
 - **Une base fraîchement migrée et semée.** Le plan comptable PCEMF complet est
-  créé par agence.
+  créé par agence, et **trois journées comptables sont déjà ouvertes** à la date du
+  semis (l'établissement et chaque agence). L'étape 2 part de cet état : il n'y a
+  rien à défaire au préalable.
 - **Aucune écriture existante.** Sur une base neuve il n'y a aucune écriture : c'est
   normal, et c'est pourquoi les premières étapes en créent.
 
@@ -56,39 +58,74 @@ Comptes réellement présents dans le plan semé, à utiliser tel quel :
 ## 2. La hiérarchie des journées comptables
 
 **But : vérifier qu'une agence ne peut pas travailler hors de la date de
-l'institution.**
+l'institution, et que l'institution ne peut pas quitter une date où une agence
+travaille encore.**
 
 Allez dans **Administration › Journée comptable**.
 
-### 2.1 Une agence seule est refusée
+### 2.0 D'où vous partez
 
-1. Assurez-vous qu'**aucune journée d'institution** n'est ouverte.
-2. Cliquez **Ouvrir une journée**, choisissez la portée **Agence**.
+Sur une base fraîchement semée, **trois journées sont déjà ouvertes** à la date du
+semis : celle de l'établissement et celle de chaque agence. C'est le semeur de banc
+de test qui les crée, et c'est cohérent avec la règle — l'établissement d'abord, les
+agences à l'intérieur.
+
+Vous le voyez dans **Historique des journées** : trois lignes, même date, statut
+*Ouverte*, périmètres *Établissement*, *Agence*, *Agence*.
+
+Le test consiste donc à **déplacer** cette date, pas à partir de zéro. C'est aussi
+ce que vous devrez faire de toute façon pour atteindre le 31/12/2026.
+
+### 2.1 L'institution ne peut pas partir avant ses agences
+
+1. Périmètre consulté : **Établissement**.
+2. Cliquez **Démarrer la clôture**.
+
+**Attendu :** refus, avec un message indiquant que des journées d'agence sont
+encore ouvertes sur cette date, et que les agences clôturent d'abord.
+
+**Vérifiez aussi** que la journée de l'établissement est **restée *Ouverte*** — elle
+ne doit pas être passée en *Clôture en cours*.
+
+> *Pourquoi* : c'est la règle de Finacle. Sinon l'établissement déclare la date
+> terminée alors que les guichets y enregistrent encore, et les chiffres arrêtés
+> pour cette date continuent de bouger après avoir été produits.
+
+### 2.2 Les agences clôturent, puis l'institution
+
+3. Périmètre consulté : chaque **agence** à son tour → **Démarrer la clôture**, puis
+   **Clôturer**.
+4. Revenez sur **Établissement** → **Démarrer la clôture**, puis **Clôturer**.
+
+**Attendu :** cette fois l'établissement se clôture.
+
+### 2.3 Une agence seule est maintenant refusée
+
+Plus aucune journée n'est ouverte.
+
+5. **Ouvrir une journée**, portée **Agence**.
 
 **Attendu :** le champ de date est remplacé par un message expliquant que
 l'institution n'a aucune journée ouverte, et le bouton d'envoi est **désactivé**.
 
-> *Pourquoi* : la date de l'institution est déplacée par le siège, pour tout le
-> réseau. Ce n'est pas un effet de bord de l'ouverture d'un guichet.
+> *Pourquoi* : déplacer la date de l'institution est une décision du siège, pour
+> tout le réseau. Ce n'est pas un effet de bord de l'ouverture d'un guichet.
 
-### 2.2 Le siège ouvre la date
+### 2.4 Le siège ouvre la date, l'agence suit
 
-3. Même écran, portée **Institution**, date **31/12/2026**. Validez.
+6. **Ouvrir une journée**, portée **Établissement**, date **31/12/2026**. Validez.
 
-**Attendu :** journée ouverte au 31/12/2026. Le bandeau en haut affiche
+**Attendu :** journée ouverte au 31/12/2026, et le bandeau en haut affiche
 « Journée ouverte · **Siège** · 31 décembre 2026 ».
 
 > Le mot **Siège** compte : c'est la journée de l'institution, pas celle d'une
 > agence. Deux personnes voyaient auparavant « Journée ouverte » en parlant de deux
 > journées différentes.
 
-### 2.3 L'agence suit, sans choisir sa date
-
-4. **Ouvrir une journée**, portée **Agence**, choisissez une agence.
+7. **Ouvrir une journée**, portée **Agence**, choisissez une agence.
 
 **Attendu :** le champ date affiche **31/12/2026 en lecture seule**, avec la mention
-que la journée d'agence s'ouvre à la date de l'institution. Validez : la journée
-s'ouvre.
+que la journée d'agence s'ouvre à la date de l'institution. Validez.
 
 ---
 
@@ -290,4 +327,6 @@ Ce ne sont pas des anomalies à signaler — ils sont connus :
 | Une écriture datée de 2026 **acceptée** après clôture | Le verrou de période ne fonctionne plus |
 | `131` **non nul** après affectation | Le résultat s'empilera d'une année sur l'autre |
 | Une journée d'agence ouvrable à une **autre date** que l'institution | La date unique n'est plus garantie |
+| L'établissement **clôturable** alors qu'une agence est ouverte | Les chiffres arrêtés continueront de bouger |
+| Une erreur technique (500) au lieu d'un refus lisible | Le garde-fou n'existe qu'en base, pas dans l'application |
 | Statut **Comptabilisée** sans avoir approuvé | Le contrôle à quatre yeux est contourné |
