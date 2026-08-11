@@ -61,6 +61,50 @@ final class AccountingDayLifecycleTest extends TestCase
         $open->assertJsonPath('data.business_date', '2026-06-01');
     }
 
+    public function test_the_whole_date_closes_agencies_first_then_the_institution(): void
+    {
+        $agencyA = $this->createAgency('AD-END1');
+        $agencyB = $this->createAgency('AD-END2');
+        $chief = $this->createUserWithRole('chief-accountant', null);
+
+        $this->openInstitutionAccountingDay('2026-06-01');
+        $dayA = $this->openAccountingDayForAgency($agencyA['id'], '2026-06-01');
+        $dayB = $this->openAccountingDayForAgency($agencyB['id'], '2026-06-01');
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
+
+        $institutionDay = AccountingDay::query()
+            ->where('scope_type', AccountingDay::SCOPE_INSTITUTION)
+            ->where('business_date', '2026-06-01')
+            ->firstOrFail();
+
+        // The real end-of-date run: every agency closes, then head office closes the
+        // institution. Each close executes the same two control procedures, so the
+        // three closes touch the same procedures on the same business date.
+        foreach ([$dayA, $dayB] as $agencyDay) {
+            $this->assertJsonSuccess(
+                $this->actingAsSanctum($chief)
+                    ->postJson("/api/v1/accounting-days/{$agencyDay->public_id}/start-close"),
+            );
+            $this->assertJsonSuccess(
+                $this->actingAsSanctum($chief)
+                    ->postJson("/api/v1/accounting-days/{$agencyDay->public_id}/close"),
+            );
+            self::assertSame(AccountingDay::STATUS_CLOSED, $agencyDay->refresh()->status);
+        }
+
+        $this->assertJsonSuccess(
+            $this->actingAsSanctum($chief)
+                ->postJson("/api/v1/accounting-days/{$institutionDay->public_id}/start-close"),
+        );
+        $this->assertJsonSuccess(
+            $this->actingAsSanctum($chief)
+                ->postJson("/api/v1/accounting-days/{$institutionDay->public_id}/close"),
+        );
+
+        self::assertSame(AccountingDay::STATUS_CLOSED, $institutionDay->refresh()->status);
+    }
+
     public function test_head_office_manages_an_agency_day_and_an_agency_stays_in_its_own_scope(): void
     {
         $agency = $this->createAgency('AD-HO');

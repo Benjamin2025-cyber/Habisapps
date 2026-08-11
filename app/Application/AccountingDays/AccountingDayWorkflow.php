@@ -674,10 +674,22 @@ final class AccountingDayWorkflow extends BaseController
             $run = BatchRun::query()
                 ->where('batch_procedure_id', $procedure->id)
                 ->where('business_date', $day->business_date->toDateString())
+                // Both callbacks return nothing on purpose. `when()` substitutes a
+                // callback's return value for the builder when it is not null, and
+                // `$query->getQuery()->whereNull(...)` returns the *underlying query*
+                // builder — so the chain stopped being an Eloquent builder, `first()`
+                // handed back a stdClass, `$run instanceof BatchRun` was false, and a
+                // fresh global run was created on every institution close. The second
+                // one then tried to succeed on a date that already had a successful
+                // global run for that procedure, which is uniq_successful_global_batch_run.
                 ->when(
                     $day->scope_type === AccountingDay::SCOPE_AGENCY,
-                    fn ($query) => $query->where('agency_id', $day->agency_id),
-                    fn ($query) => $query->getQuery()->whereNull('agency_id'),
+                    function ($query) use ($day): void {
+                        $query->where('agency_id', $day->agency_id);
+                    },
+                    function ($query): void {
+                        $query->getQuery()->whereNull('agency_id');
+                    },
                 )
                 ->latest('id')
                 ->first();
