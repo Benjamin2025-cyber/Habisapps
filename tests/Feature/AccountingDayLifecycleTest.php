@@ -28,10 +28,84 @@ final class AccountingDayLifecycleTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
+    public function test_an_agency_day_runs_inside_the_institution_date(): void
+    {
+        $agency = $this->createAgency('AD-HIER');
+        $accountant = $this->createUserWithRole('accountant', $agency['code']);
+
+        // One accounting date for the EMF, agency days beneath it. Apache Fineract
+        // keeps a single tenant-wide business date and puts period locking per
+        // office; Finacle will not close the data centre for a date until every
+        // branch is closed for it. Two peer dates, which is what this was, means
+        // there is no answer to "what date is the institution on".
+        $refused = $this->actingAsSanctum($accountant)->postJson('/api/v1/accounting-days/open', [
+            'business_date' => '2026-06-01',
+        ]);
+        $refused->assertStatus(422);
+        $refused->assertJsonPath('errors.code', 'accounting_day_institution_not_open');
+
+        $this->openInstitutionAccountingDay('2026-06-01');
+
+        // Not a different date, either: the branch cannot trade on the 2nd while
+        // the institution is on the 1st.
+        $mismatched = $this->actingAsSanctum($accountant)->postJson('/api/v1/accounting-days/open', [
+            'business_date' => '2026-06-02',
+        ]);
+        $mismatched->assertStatus(422);
+        $mismatched->assertJsonPath('errors.code', 'accounting_day_must_match_institution');
+
+        $open = $this->actingAsSanctum($accountant)->postJson('/api/v1/accounting-days/open', [
+            'business_date' => '2026-06-01',
+        ]);
+        $this->assertJsonSuccess($open, 201);
+        $open->assertJsonPath('data.business_date', '2026-06-01');
+    }
+
+    public function test_the_institution_day_cannot_close_while_an_agency_is_still_open_on_it(): void
+    {
+        $agency = $this->createAgency('AD-CLOSE');
+
+        $institutionDay = $this->openInstitutionAccountingDay('2026-06-01');
+        $agencyDay = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+
+        // Finacle's rule. Without it the institution can declare a date finished
+        // while tills are still transacting into it, and the figures reported for
+        // that date keep moving after they were drawn.
+        // Wrapped in a nested transaction so the refusal rolls back to a savepoint:
+        // a failed statement aborts the surrounding test transaction, and the rest
+        // of this test still has work to do.
+        try {
+            DB::transaction(function () use ($institutionDay): void {
+                $institutionDay->forceFill([
+                    'status' => AccountingDay::STATUS_CLOSED,
+                    'calendar_closed_at' => now(),
+                ])->save();
+            });
+
+            self::fail('Closing the institution day with an agency still open must be refused.');
+        } catch (QueryException $exception) {
+            self::assertStringContainsString('agency day(s) are still open', $exception->getMessage());
+        }
+
+        // Once the agency has closed, the institution may follow.
+        $this->closeAccountingDay($agencyDay);
+        $institutionDay->refresh()->forceFill([
+            'status' => AccountingDay::STATUS_CLOSED,
+            'calendar_closed_at' => now(),
+        ])->save();
+
+        self::assertSame(AccountingDay::STATUS_CLOSED, $institutionDay->refresh()->status);
+    }
+
     public function test_accountant_can_open_close_and_reopen_an_accounting_day(): void
     {
         $agency = $this->createAgency('AD-OPEN');
         $accountant = $this->createUserWithRole('accountant', $agency['code']);
+
+        // Head office puts the institution on the date first; an agency then opens
+        // its own day inside it. The order is the point — a branch cannot start
+        // trading on a date the institution is not on.
+        $this->openInstitutionAccountingDay('2026-06-01');
 
         $open = $this->actingAsSanctum($accountant)->postJson('/api/v1/accounting-days/open', [
             'business_date' => '2026-06-01',

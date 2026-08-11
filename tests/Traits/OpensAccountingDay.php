@@ -19,6 +19,11 @@ trait OpensAccountingDay
 {
     protected function openAccountingDayForAgency(int $agencyId, ?string $businessDate = null): AccountingDay
     {
+        // "The agency is trading on this date" now implies the institution is on
+        // it too, so this helper puts it there. Callers asked for an agency day,
+        // not for a lesson in the hierarchy.
+        $this->ensureOpenInstitutionAccountingDay($businessDate ?? now()->toDateString());
+
         return AccountingDay::query()->create([
             'public_id' => (string) Str::ulid(),
             'scope_type' => AccountingDay::SCOPE_AGENCY,
@@ -56,6 +61,12 @@ trait OpensAccountingDay
     {
         $businessDate ??= now()->toDateString();
 
+        // An agency day only exists inside the institution's date, so the
+        // institution has to be on this date first. Done here rather than in every
+        // test: a database trigger enforces it, and the alternative is each test
+        // opening two days by hand to say "the agency is trading".
+        $this->ensureOpenInstitutionAccountingDay($businessDate);
+
         $activeQuery = AccountingDay::query()
             ->where('scope_type', AccountingDay::SCOPE_AGENCY)
             ->where('agency_id', $agencyId);
@@ -90,6 +101,60 @@ trait OpensAccountingDay
         }
 
         return $this->openAccountingDayForAgency($agencyId, $businessDate);
+    }
+
+    /**
+     * Ensure the institution is on $businessDate, rolling it there if it is on
+     * another date. Agency days on the old date are closed first, because the
+     * institution cannot leave a date its agencies are still trading in.
+     */
+    protected function ensureOpenInstitutionAccountingDay(?string $businessDate = null): AccountingDay
+    {
+        $businessDate ??= now()->toDateString();
+
+        $activeQuery = AccountingDay::query()->where('scope_type', AccountingDay::SCOPE_INSTITUTION);
+        $activeQuery->getQuery()->whereIn('status', [
+            AccountingDay::STATUS_OPEN,
+            AccountingDay::STATUS_REOPENED,
+            AccountingDay::STATUS_CLOSING,
+        ]);
+        $active = $activeQuery->first();
+
+        if ($active instanceof AccountingDay) {
+            if ($active->business_date->toDateString() === $businessDate) {
+                return $active;
+            }
+
+            $staleQuery = AccountingDay::query()
+                ->where('scope_type', AccountingDay::SCOPE_AGENCY)
+                ->where('business_date', $active->business_date->toDateString());
+            $staleQuery->getQuery()->whereIn('status', [
+                AccountingDay::STATUS_OPEN,
+                AccountingDay::STATUS_REOPENED,
+                AccountingDay::STATUS_CLOSING,
+            ]);
+            foreach ($staleQuery->get() as $agencyDay) {
+                $this->closeAccountingDay($agencyDay);
+            }
+
+            $this->closeAccountingDay($active);
+        }
+
+        $existing = AccountingDay::query()
+            ->where('scope_type', AccountingDay::SCOPE_INSTITUTION)
+            ->where('business_date', $businessDate)
+            ->first();
+
+        if ($existing instanceof AccountingDay) {
+            $existing->forceFill([
+                'status' => AccountingDay::STATUS_OPEN,
+                'calendar_closed_at' => null,
+            ])->save();
+
+            return $existing->refresh();
+        }
+
+        return $this->openInstitutionAccountingDay($businessDate);
     }
 
     /**

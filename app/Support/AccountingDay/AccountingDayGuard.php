@@ -248,10 +248,15 @@ final class AccountingDayGuard
         return (bool) config('security.accounting_day.auto_open_on_missing', false);
     }
 
-    private function autoOpenDay(string $scopeType, ?int $agencyId, ?Request $request, User $actor): AccountingDay
+    /**
+     * @param  string|null  $forDate  Overrides the date sniffed from the request, so
+     *                                the institution day opened alongside an agency
+     *                                day lands on exactly the same date.
+     */
+    private function autoOpenDay(string $scopeType, ?int $agencyId, ?Request $request, User $actor, ?string $forDate = null): AccountingDay
     {
-        $requestedDate = null;
-        if ($request instanceof Request) {
+        $requestedDate = $forDate;
+        if ($requestedDate === null && $request instanceof Request) {
             foreach (['business_date', 'transaction_date', 'value_date', 'date'] as $candidate) {
                 $value = $request->input($candidate);
                 if (is_string($value) && $value !== '') {
@@ -262,6 +267,21 @@ final class AccountingDayGuard
         }
 
         $businessDate = $requestedDate ?? now()->toDateString();
+
+        // The institution's date wins for an agency day. Auto-open otherwise takes
+        // its date from the request — business_date, transaction_date and the like
+        // — which under one shared accounting date would let an operation invent
+        // one: a back-dated loan would silently open an agency day in May while the
+        // institution sat in August, and the branch would be trading outside the
+        // institution's books. A request may say which date it believes it is
+        // acting on, but it does not get to move the network.
+        if ($scopeType === AccountingDay::SCOPE_AGENCY) {
+            $institutionDay = $this->findActiveDay(AccountingDay::SCOPE_INSTITUTION, null);
+            if ($institutionDay instanceof AccountingDay) {
+                $businessDate = $institutionDay->business_date->toDateString();
+            }
+        }
+
         $existingQuery = AccountingDay::query()->where('scope_type', $scopeType);
         $this->applyScope($existingQuery, $scopeType, $agencyId);
         $existingQuery->getQuery()
@@ -272,6 +292,15 @@ final class AccountingDayGuard
 
         if ($existing instanceof AccountingDay) {
             return $existing;
+        }
+
+        // An agency day only exists inside the institution's date, so opening one
+        // means the institution is on that date first. Auto-open is the path a
+        // fresh install takes on its very first write, where neither day exists
+        // yet; opening the agency's alone would leave the institution with no date
+        // at all and the agency trading outside it.
+        if ($scopeType === AccountingDay::SCOPE_AGENCY) {
+            $this->autoOpenDay(AccountingDay::SCOPE_INSTITUTION, null, $request, $actor, $businessDate);
         }
 
         return AccountingDay::query()->create([
@@ -302,6 +331,31 @@ final class AccountingDayGuard
             return $target;
         }
 
+        // The whole network moves together. Rolling an agency day on its own would
+        // leave the branch on a date the institution is not on, so the institution
+        // is carried to the same date first — and in this order, because the
+        // institution cannot leave a date its agencies are still trading in.
+        if ($day->scope_type === AccountingDay::SCOPE_AGENCY) {
+            $this->closeAutoManagedDay($day, $requestedDate, $actor);
+
+            $institutionDay = $this->findActiveDay(AccountingDay::SCOPE_INSTITUTION, null);
+            if ($institutionDay instanceof AccountingDay
+                && $institutionDay->business_date->toDateString() !== $requestedDate) {
+                $this->reconcileAutoManagedDay($institutionDay, $requestedDate, $actor);
+            } elseif (! $institutionDay instanceof AccountingDay) {
+                $this->autoOpenDay(AccountingDay::SCOPE_INSTITUTION, null, null, $actor, $requestedDate);
+            }
+
+            return $this->openAutoManagedDay($day->scope_type, $day->agency_id, $requestedDate, $actor);
+        }
+
+        $this->closeAutoManagedDay($day, $requestedDate, $actor);
+
+        return $this->openAutoManagedDay($day->scope_type, $day->agency_id, $requestedDate, $actor);
+    }
+
+    private function closeAutoManagedDay(AccountingDay $day, string $requestedDate, User $actor): void
+    {
         $day->forceFill([
             'status' => AccountingDay::STATUS_CLOSED,
             'calendar_closed_at' => now(),
@@ -311,12 +365,15 @@ final class AccountingDayGuard
             ]),
             'write_lock_version' => $day->write_lock_version + 1,
         ])->save();
+    }
 
+    private function openAutoManagedDay(string $scopeType, ?int $agencyId, string $businessDate, User $actor): AccountingDay
+    {
         return AccountingDay::query()->create([
             'public_id' => (string) Str::ulid(),
-            'scope_type' => $day->scope_type,
-            'agency_id' => $day->scope_type === AccountingDay::SCOPE_AGENCY ? $day->agency_id : null,
-            'business_date' => $requestedDate,
+            'scope_type' => $scopeType,
+            'agency_id' => $scopeType === AccountingDay::SCOPE_AGENCY ? $agencyId : null,
+            'business_date' => $businessDate,
             'calendar_opened_at' => now(),
             'status' => AccountingDay::STATUS_OPEN,
             'is_holiday' => false,

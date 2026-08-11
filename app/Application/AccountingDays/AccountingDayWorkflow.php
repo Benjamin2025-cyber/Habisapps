@@ -142,6 +142,33 @@ final class AccountingDayWorkflow extends BaseController
         }
 
         $businessDate = $this->resolveBusinessDateForOpen($request, $scopeType, $agencyId);
+
+        // An agency trades inside the institution's date, so that date has to be
+        // open first and has to be this one. Refused rather than opened on the
+        // agency's behalf: moving the institution to a new date is head office's
+        // decision — the whole network follows it — not a side effect of one branch
+        // opening its till. A database trigger enforces the same rule; this is here
+        // so an operator gets told what to do instead of a 500.
+        if ($scopeType === AccountingDay::SCOPE_AGENCY) {
+            $institutionDay = $this->findActiveDay(AccountingDay::SCOPE_INSTITUTION, null);
+            if (! $institutionDay instanceof AccountingDay) {
+                return $this->respondUnprocessable(__('domain.accounting_day_institution_not_open'), [
+                    'code' => 'accounting_day_institution_not_open',
+                ]);
+            }
+
+            $institutionDate = $institutionDay->business_date->toDateString();
+            if ($institutionDate !== $businessDate) {
+                return $this->respondUnprocessable(__('domain.accounting_day_must_match_institution', [
+                    'institution_date' => $institutionDate,
+                    'requested_date' => $businessDate,
+                ]), [
+                    'code' => 'accounting_day_must_match_institution',
+                    'institution_business_date' => $institutionDate,
+                ]);
+            }
+        }
+
         $holiday = $this->holidayForDate($scopeType, $agencyId, $businessDate);
 
         try {
