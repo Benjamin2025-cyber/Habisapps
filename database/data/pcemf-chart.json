@@ -7548,7 +7548,9 @@
         "6612"
       ],
       "reason": "Team asked for 6611 (impot sur les societes) under 661. A parent account refuses entries, so splitting 661 leaves patente/taxe fonciere with nowhere to post while the team requires them to stay in solde 82. 6612 is the catch-all sibling that keeps them postable, following the chart's own 755 -> 7551/7552 pattern.",
-      "needs_confirmation": true
+      "needs_confirmation": false,
+      "confirmed_on": "2026-08-11",
+      "confirmed_by": "HABIBI FINANCE accounting team"
     }
   ],
   "confirmed_on_sig": "2026-08-10"
