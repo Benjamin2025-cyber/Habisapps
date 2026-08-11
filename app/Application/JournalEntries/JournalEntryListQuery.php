@@ -51,7 +51,7 @@ final class JournalEntryListQuery extends BaseController
         }
 
         $query = JournalEntry::query()
-            ->with(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])
+            ->with(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])
             ->latest();
 
         $scopeError = $this->applyActorScope($query, $actor, $request);

@@ -131,7 +131,7 @@ final class JournalEntryWorkflow extends BaseController
 
         $this->securityAudit->record('journal_entry.created', actor: $request->user(), subject: $journalEntry, request: $request);
 
-        return $this->respondCreated(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry created successfully');
+        return $this->respondCreated(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])), 'Journal entry created successfully');
     }
 
     public function show(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -141,7 +141,7 @@ final class JournalEntryWorkflow extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])));
+        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])));
     }
 
     public function update(UpdateJournalEntryRequest $request, JournalEntry $journalEntry): JsonResponse
@@ -163,7 +163,7 @@ final class JournalEntryWorkflow extends BaseController
             'changed_fields' => array_keys($request->validated()),
         ], request: $request);
 
-        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry updated successfully');
+        return $this->respondSuccess(JournalEntryResource::make($journalEntry->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])), 'Journal entry updated successfully');
     }
 
     public function submit(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -197,7 +197,7 @@ final class JournalEntryWorkflow extends BaseController
         ]);
         $this->securityAudit->record('journal_entry.submitted_for_review', actor: $request->user(), subject: $journalEntry, request: $request);
 
-        return $this->respondSuccess(JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal entry submitted for review successfully');
+        return $this->respondSuccess(JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])), 'Journal entry submitted for review successfully');
     }
 
     public function approve(Request $request, JournalEntry $journalEntry): JsonResponse
@@ -232,7 +232,7 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.approved', actor: $actor, subject: $journalEntry, request: $request);
 
         return $this->respondSuccess(
-            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
+            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])),
             'Journal entry approved successfully'
         );
     }
@@ -271,7 +271,7 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.rejected', actor: $actor, subject: $journalEntry, request: $request);
 
         return $this->respondSuccess(
-            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
+            JournalEntryResource::make($journalEntry->refresh()->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])),
             'Journal entry rejected successfully'
         );
     }
@@ -333,7 +333,7 @@ final class JournalEntryWorkflow extends BaseController
         $this->securityAudit->record('journal_entry.posted', actor: $actor, subject: $posted, request: $request);
 
         return $this->respondSuccess(
-            JournalEntryResource::make($posted->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])),
+            JournalEntryResource::make($posted->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])),
             'Journal entry posted successfully'
         );
     }
@@ -355,7 +355,7 @@ final class JournalEntryWorkflow extends BaseController
             'reversal_of_reference' => $journalEntry->reference,
         ], request: $request);
 
-        return $this->respondCreated(JournalEntryResource::make($reversal->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'submittedBy', 'reviewedBy'])), 'Journal reversal created successfully');
+        return $this->respondCreated(JournalEntryResource::make($reversal->loadMissing(['agency', 'accountingDay', 'lines', 'reversalOf', 'createdBy', 'submittedBy', 'reviewedBy'])), 'Journal reversal created successfully');
     }
 
     public function destroy(Request $request, JournalEntry $journalEntry): JsonResponse

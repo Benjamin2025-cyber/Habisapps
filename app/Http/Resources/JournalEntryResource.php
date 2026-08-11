@@ -38,6 +38,7 @@ final class JournalEntryResource extends JsonResource
             'status' => $entry->status,
             'description' => $entry->description,
             'submitted_at' => $entry->submitted_at !== null ? Carbon::parse($entry->submitted_at)->toAtomString() : null,
+            'created_by_user_public_id' => $entry->relationLoaded('createdBy') ? $entry->createdBy?->public_id : null,
             'submitted_by_user_public_id' => $entry->relationLoaded('submittedBy') ? $entry->submittedBy?->public_id : null,
             'reviewed_at' => $entry->reviewed_at !== null ? Carbon::parse($entry->reviewed_at)->toAtomString() : null,
             'reviewed_by_user_public_id' => $entry->relationLoaded('reviewedBy') ? $entry->reviewedBy?->public_id : null,

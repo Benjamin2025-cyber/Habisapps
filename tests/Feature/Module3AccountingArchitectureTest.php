@@ -637,6 +637,7 @@ final class Module3AccountingArchitectureTest extends TestCase
         $this->assertJsonSuccess($entry, 201);
         $entryPublicId = $this->requireStringJsonPath($entry, 'data.public_id');
         $entry->assertJsonPath('data.reference', 'JE-1001');
+        $entry->assertJsonPath('data.created_by_user_public_id', $actor->public_id);
 
         $line = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('journal-line')->plainTextToken])
             ->postJson('/api/v1/journal-lines', [
