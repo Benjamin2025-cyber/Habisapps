@@ -14,6 +14,7 @@ use App\Models\LedgerAccount;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -29,6 +30,7 @@ final class LedgerAccountController extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
     ) {}
 
+    #[QueryParameter('agency_public_id', 'Limit the list to one agency chart. The actor must be allowed to read that agency.', type: 'string')]
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{ledger_accounts: array<int, \App\Http\Resources\LedgerAccountResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
     public function index(Request $request): LedgerAccountCollection|JsonResponse
     {
@@ -48,6 +50,26 @@ final class LedgerAccountController extends BaseController
             $query->where(function ($builder) use ($agencyId): void {
                 $builder->where('agency_id', $agencyId)->orWhere('agency_id', null);
             });
+        }
+
+        // Account pickers know the agency of the document they are editing.
+        // Apply that scope before pagination; otherwise the first page can be
+        // made entirely of institution grouping accounts, which are correctly
+        // removed by the picker and leave an apparently empty list.
+        $agencyPublicId = $request->query('agency_public_id');
+        if (is_string($agencyPublicId) && trim($agencyPublicId) !== '') {
+            $agency = Agency::query()->where('public_id', trim($agencyPublicId))->first();
+            if (! $agency instanceof Agency) {
+                return $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]]);
+            }
+
+            if (! $actor->hasRole('platform-admin')
+                && ! $actor->can('ledger.scope.institution.read')
+                && $this->staffAgencyScope->currentAgencyId($actor) !== $agency->id) {
+                return $this->respondForbidden('You can only read the ledger chart for your current agency.');
+            }
+
+            $query->where('agency_id', $agency->id);
         }
 
         $search = $request->query('search');

@@ -66,6 +66,27 @@ final class Module3AccountingArchitectureTest extends TestCase
         $show->assertJsonPath('data.account_class', 'capitaux_permanents');
     }
 
+    public function test_ledger_account_index_can_scope_to_an_agency_before_pagination(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyA = $this->createAgency('ACCT-LIST-A');
+        $agencyB = $this->createAgency('ACCT-LIST-B');
+        $accountA = $this->createAgencyLedgerAccount($actor, $agencyA['public_id'], '571001', 'Agency A cash');
+        $this->createAgencyLedgerAccount($actor, $agencyB['public_id'], '571002', 'Agency B cash');
+
+        $list = $this->withApiHeaders()
+            ->actingAsSanctum($actor)
+            ->getJson('/api/v1/ledger-accounts?agency_public_id='.$agencyA['public_id'].'&per_page=100');
+
+        $list->assertOk();
+        $rows = $list->json('data.ledger_accounts');
+        self::assertIsArray($rows);
+        self::assertCount(1, $rows);
+        self::assertSame($accountA, $rows[0]['public_id']);
+        self::assertSame($agencyA['public_id'], $rows[0]['agency_public_id']);
+        $list->assertJsonPath('meta.total', 1);
+    }
+
     public function test_ledger_account_creation_requires_agency_scope(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

@@ -30,7 +30,8 @@ use Spatie\Permission\Models\Role;
  * hand is the point of the guide's §3. Use ConsolidatedChartDemoSeeder to skip
  * ahead to the numbers instead.
  *
- * Test data, never called from DatabaseSeeder.
+ * Test data, called from DatabaseSeeder only after the installation chart. It
+ * remains chart-free when run on its own for the manual guide.
  */
 final class ConsolidatedChartBenchSeeder extends Seeder
 {

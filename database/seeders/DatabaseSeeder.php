@@ -38,8 +38,8 @@ final class DatabaseSeeder extends Seeder
         $this->call(BootstrapAdminSeeder::class);
 
         // Order matters from here: the chart puts every postable account under
-        // an agency, so with none it can only create the institution-level
-        // grouping accounts and would need re-running after the first agency.
+        // the configured first agency. The local test bench below is deliberately
+        // created afterwards and does not receive the installation chart.
         $this->call(DefaultAgencySeeder::class);
 
         $this->call(PcemfChartSeeder::class);
