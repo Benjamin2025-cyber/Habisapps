@@ -59,6 +59,18 @@ final class AccountingDayPolicy
             return true;
         }
 
+        // Head office reaches an agency's day as well as its own period. The
+        // accounting team was explicit that some operations are keyed remotely from
+        // the siège, directly into the agencies, and journal entries already work
+        // that way — the same institution-scope permission grants cross-agency
+        // posting. Withholding the day while granting the entry left the chef
+        // comptable able to record into an agency's books but unable to see the day
+        // governing them, and unable to close the agencies that the institution's
+        // own close now waits on.
+        if (app(AccountingScopeAccess::class)->canManageInstitutionScope($user)) {
+            return true;
+        }
+
         return app(StaffAgencyScope::class)->currentAgencyId($user) === $accountingDay->agency_id;
     }
 }

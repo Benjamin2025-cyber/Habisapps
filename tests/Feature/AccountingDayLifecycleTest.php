@@ -61,6 +61,44 @@ final class AccountingDayLifecycleTest extends TestCase
         $open->assertJsonPath('data.business_date', '2026-06-01');
     }
 
+    public function test_head_office_manages_an_agency_day_and_an_agency_stays_in_its_own_scope(): void
+    {
+        $agency = $this->createAgency('AD-HO');
+        $other = $this->createAgency('AD-HO2');
+        // No agency assignment: head office proper.
+        $chief = $this->createUserWithRole('chief-accountant', null);
+        $agencyAccountant = $this->createUserWithRole('accountant', $agency['code']);
+
+        $this->openInstitutionAccountingDay('2026-06-01');
+        $agencyDay = $this->openAccountingDayForAgency($agency['id'], '2026-06-01');
+
+        // Head office reaches an agency's day. It already posts journal entries
+        // into agency books on the same institution-scope permission — « certaines
+        // opérations doivent même pouvoir être saisies à distance depuis le siège,
+        // directement dans les pôles installés dans les agences » — so withholding
+        // the day that governs those entries was inconsistent, and left the chef
+        // comptable unable to close the agencies the institution's own close waits
+        // on.
+        $viewed = $this->actingAsSanctum($chief)
+            ->getJson("/api/v1/accounting-days/{$agencyDay->public_id}");
+        $this->assertJsonSuccess($viewed);
+        $viewed->assertJsonPath('data.scope', AccountingDay::SCOPE_AGENCY);
+
+        $this->createBatchProcedure('ACCOUNTING_CLOSE_VERIFICATION');
+        $this->createBatchProcedure('CASH_CLOSE_VERIFICATION');
+        $this->assertJsonSuccess(
+            $this->actingAsSanctum($chief)
+                ->postJson("/api/v1/accounting-days/{$agencyDay->public_id}/start-close"),
+        );
+
+        // The reach is head office's, not everyone's: an agency accountant stays
+        // inside their own agency.
+        $otherDay = $this->openAccountingDayForAgency($other['id'], '2026-06-01');
+        $this->actingAsSanctum($agencyAccountant)
+            ->getJson("/api/v1/accounting-days/{$otherDay->public_id}")
+            ->assertForbidden();
+    }
+
     public function test_starting_the_institution_close_is_refused_while_an_agency_is_open(): void
     {
         $agency = $this->createAgency('AD-SEQ');
@@ -806,8 +844,23 @@ final class AccountingDayLifecycleTest extends TestCase
         return ['id' => $id, 'code' => $code, 'public_id' => $publicId];
     }
 
-    private function createUserWithRole(string $role, string $agencyCode): User
+    /**
+     * @param  string|null  $agencyCode  Null for head office, which carries no agency
+     *                                   assignment — the state that makes an actor
+     *                                   resolve to the institution scope.
+     */
+    private function createUserWithRole(string $role, ?string $agencyCode): User
     {
+        if ($agencyCode === null) {
+            $headOffice = User::factory()->createOne([
+                'status' => User::STATUS_ACTIVE,
+                'phone_verified_at' => now(),
+            ]);
+            $headOffice->assignRole($role);
+
+            return $headOffice->refresh();
+        }
+
         $agency = DB::table('agencies')->where('code', $agencyCode)->first(['id', 'code', 'name']);
         self::assertIsObject($agency);
         $agencyValues = get_object_vars($agency);

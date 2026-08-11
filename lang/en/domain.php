@@ -66,6 +66,7 @@ return [
     'appropriation_allocation_not_result_account' => 'The result cannot be allocated back into :code, which is the account being emptied.',
     'appropriation_allocation_duplicated' => 'Account :code appears twice in the allocation.',
     'journal_entry_exercise_settled' => 'Exercise :year is closed and its result has been transferred, so it takes no further entries. Record this in the current exercise, using 67 for a loss on a prior year or 77 for a profit on one.',
+    'accounting_day_outside_agency_scope' => 'You can only manage accounting days inside your agency scope.',
     'accounting_day_agencies_still_open' => "The institution cannot close this date while :count agency day(s) are still open on it. Agencies close their day first; head office then closes the institution's.",
     'accounting_day_institution_not_open' => "No institution accounting day is open. Head office opens the institution's date first; agencies then open their day within it.",
     'accounting_day_must_match_institution' => 'The institution is on :institution_date, so an agency day cannot be opened for :requested_date. The whole network works within one accounting date.',

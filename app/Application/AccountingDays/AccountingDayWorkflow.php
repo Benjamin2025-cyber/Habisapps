@@ -800,8 +800,12 @@ final class AccountingDayWorkflow extends BaseController
                 return ['', null, $this->respondUnprocessable(errors: ['agency_public_id' => [__('domain.staff_selected_agency_invalid')]])];
             }
 
-            if (! $actor->hasRole('platform-admin') && $this->staffAgencyScope->currentAgencyId($actor) !== $agency->id) {
-                return ['', null, $this->respondForbidden('You can only manage accounting days inside your agency scope.')];
+            // Same rule as the policy and as journal entries: institution scope
+            // reaches every agency, everyone else only their own.
+            if (! $actor->hasRole('platform-admin')
+                && ! $this->scopeAccess->canManageInstitutionScope($actor)
+                && $this->staffAgencyScope->currentAgencyId($actor) !== $agency->id) {
+                return ['', null, $this->respondForbidden(__('domain.accounting_day_outside_agency_scope'))];
             }
 
             return [AccountingDay::SCOPE_AGENCY, $agency->id, null];

@@ -66,6 +66,7 @@ return [
     'appropriation_allocation_not_result_account' => 'Le résultat ne peut pas être affecté au :code lui-même, qui est le compte à solder.',
     'appropriation_allocation_duplicated' => "Le compte :code figure deux fois dans l'affectation.",
     'journal_entry_exercise_settled' => "L'exercice :year est clôturé et son résultat a été transféré : il n'accepte plus d'écriture. Enregistrez celle-ci sur l'exercice courant, au 67 pour une perte sur exercice antérieur ou au 77 pour un profit.",
+    'accounting_day_outside_agency_scope' => "Vous ne pouvez gérer que les journées comptables de votre périmètre d'agence.",
     'accounting_day_agencies_still_open' => "L'institution ne peut pas clôturer cette date tant que :count journée(s) d'agence y sont encore ouvertes. Les agences clôturent d'abord leur journée ; le siège clôture ensuite celle de l'institution.",
     'accounting_day_institution_not_open' => "Aucune journée comptable d'institution n'est ouverte. Le siège ouvre d'abord la date de l'institution ; les agences ouvrent ensuite leur journée à l'intérieur de celle-ci.",
     'accounting_day_must_match_institution' => "L'institution est au :institution_date : une journée d'agence ne peut donc pas être ouverte au :requested_date. Tout le réseau travaille sur une seule date comptable.",
