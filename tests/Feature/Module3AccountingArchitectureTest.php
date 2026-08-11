@@ -82,8 +82,10 @@ final class Module3AccountingArchitectureTest extends TestCase
         $rows = $list->json('data.ledger_accounts');
         self::assertIsArray($rows);
         self::assertCount(1, $rows);
-        self::assertSame($accountA, $rows[0]['public_id']);
-        self::assertSame($agencyA['public_id'], $rows[0]['agency_public_id']);
+        $firstRow = $rows[0] ?? null;
+        self::assertIsArray($firstRow);
+        self::assertSame($accountA, $firstRow['public_id'] ?? null);
+        self::assertSame($agencyA['public_id'], $firstRow['agency_public_id'] ?? null);
         $list->assertJsonPath('meta.total', 1);
     }
 
