@@ -248,7 +248,6 @@ final class AccountingDayWorkflow extends BaseController
                 'count' => (string) count($stillOpen),
             ]), [
                 'code' => 'accounting_day_agencies_still_open',
-                'open_agency_business_dates' => $stillOpen,
             ]);
         }
 
@@ -393,7 +392,6 @@ final class AccountingDayWorkflow extends BaseController
                 'count' => (string) count($stillOpen),
             ]), [
                 'code' => 'accounting_day_agencies_still_open',
-                'open_agency_business_dates' => $stillOpen,
             ]);
         }
 

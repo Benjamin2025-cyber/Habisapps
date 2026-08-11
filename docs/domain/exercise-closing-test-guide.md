@@ -30,9 +30,15 @@ approuvée puis comptabilisée par **une autre personne**.
 
 ## 1. Ce qu'il faut avant de commencer
 
-- **Deux comptes utilisateurs.** Le contrôle à quatre yeux interdit d'approuver sa
-  propre écriture. Prévoyez un « chef comptable » et un second utilisateur
-  (platform-admin fait l'affaire) pour approuver.
+- **Deux comptes utilisateurs**, dont un **platform-admin**. Deux raisons :
+  1. Le contrôle à quatre yeux interdit d'approuver sa propre écriture.
+  2. Le chef comptable **ne voit et ne clôture que la journée de l'établissement**.
+     Les journées d'agence relèvent du personnel de l'agence, ou d'un
+     platform-admin. C'est voulu : une agence clôture sa journée, le siège clôture
+     ensuite celle de l'institution.
+
+  Concrètement : connectez-vous en **platform-admin** pour l'étape 2, et en **chef
+  comptable** pour la clôture et l'affectation.
 - **Une base fraîchement migrée et semée.** Le plan comptable PCEMF complet est
   créé par agence, et **trois journées comptables sont déjà ouvertes** à la date du
   semis (l'établissement et chaque agence). L'étape 2 part de cet état : il n'y a
@@ -76,6 +82,10 @@ Vous le voyez dans **Historique des journées** : trois lignes, même date, stat
 Le test consiste donc à **déplacer** cette date, pas à partir de zéro. C'est aussi
 ce que vous devrez faire de toute façon pour atteindre le 31/12/2026.
 
+> **Connectez-vous en platform-admin pour toute cette section.** En chef comptable,
+> la liste « Périmètre consulté » ne propose que *Établissement* — c'est correct, il
+> n'a pas la main sur les journées d'agence.
+
 ### 2.1 L'institution ne peut pas partir avant ses agences
 
 1. Périmètre consulté : **Établissement**.
@@ -94,7 +104,8 @@ ne doit pas être passée en *Clôture en cours*.
 ### 2.2 Les agences clôturent, puis l'institution
 
 3. Périmètre consulté : chaque **agence** à son tour → **Démarrer la clôture**, puis
-   **Clôturer**.
+   **Clôturer**. (En production c'est le personnel de l'agence qui le fait ; ici le
+   platform-admin en tient le rôle.)
 4. Revenez sur **Établissement** → **Démarrer la clôture**, puis **Clôturer**.
 
 **Attendu :** cette fois l'établissement se clôture.
@@ -329,4 +340,6 @@ Ce ne sont pas des anomalies à signaler — ils sont connus :
 | Une journée d'agence ouvrable à une **autre date** que l'institution | La date unique n'est plus garantie |
 | L'établissement **clôturable** alors qu'une agence est ouverte | Les chiffres arrêtés continueront de bouger |
 | Une erreur technique (500) au lieu d'un refus lisible | Le garde-fou n'existe qu'en base, pas dans l'application |
+| Un **code technique** affiché à la place d'une phrase (« accounting_day_… ») | Le message localisé de l'API n'est plus repris |
+| Le chef comptable pouvant clôturer une journée d'**agence** | La séparation agence / siège est perdue |
 | Statut **Comptabilisée** sans avoir approuvé | Le contrôle à quatre yeux est contourné |
