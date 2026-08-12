@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
 # Resets the QA database back to the state a fresh deployment produces, while
-# preserving a small allowlist of user accounts.
+# preserving ALL user accounts, sectors and sub-sectors.
 #
 # Kept:    everything DatabaseSeeder installs -- roles and permissions, the
 #          institution profile, report definitions, batch procedures, BEAC
 #          denominations, the bootstrap admin, the default agency and the PCEMF
-#          chart of accounts -- plus the accounts listed in KEEP_EMAILS, with
-#          their password hashes, public_ids and role assignments intact.
+#          chart of accounts -- plus every user account with its password hash,
+#          public_id and role assignments, and all sectors and sub-sectors.
 # Dropped: every other row. Clients, accounts, loans, journals, teller sessions,
-#          accounting days, operation-code mappings, products, all other users
-#          and all access tokens are tester-created and do NOT come back.
+#          accounting days, operation-code mappings, products, and all access
+#          tokens are tester-created and do NOT come back.
 #
 # The default agency and the bootstrap admin are opt-in through env
 # (SEED_DEFAULT_AGENCY, SEED_BOOTSTRAP_ADMIN) and no-op unless enabled. Note
@@ -30,7 +30,6 @@ set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/srv/habis-finance-api}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/db-backups}"
-KEEP_EMAILS="${KEEP_EMAILS:-alimronaldo1234@gmail.com,sbellaessomba@gmail.com,samanthalizaymone@gmail.com}"
 
 ASSUME_YES=0
 SKIP_BACKUP=0
@@ -39,20 +38,19 @@ KEPT_JSON=/tmp/qa-reset-kept-users.json
 
 usage() {
     cat <<'USAGE'
-Resets the QA database to the state a fresh deployment produces, preserving an
-allowlist of user accounts (password hashes, public_ids and roles intact).
+Resets the QA database to the state a fresh deployment produces, preserving all
+user accounts, sectors and sub-sectors (password hashes, public_ids and roles
+intact).
 
 Everything else is destroyed: agencies, chart of accounts, operation mappings,
-products, clients, loans, journals, teller sessions, accounting days, all other
-users and all access tokens. None of that is seeded by the pipeline, so testers
-must rebuild the accounting config afterwards.
+products, clients, loans, journals, teller sessions, accounting days, and all
+access tokens. None of that is seeded by the pipeline, so testers must rebuild
+the accounting config afterwards.
 
 Usage: ./reset-qa-db.sh [options]     (run this on the VPS)
 
 Options:
   --yes, -y          Skip the interactive confirmation.
-  --keep=LIST        Comma-separated emails to preserve. Overrides KEEP_EMAILS.
-                     The bootstrap admin is always preserved automatically.
   --no-backup        Skip the pre-reset pg_dump. Not recommended.
   --database=NAME    Rehearsal mode: run the whole reset against NAME instead of
                      the live database. Leaves the real database untouched and
@@ -138,10 +136,10 @@ if (( ! ASSUME_YES )); then
     cat <<CONFIRM
 
 This DESTROYS all data in database '${target}'.
-  Preserved : deploy-seeded reference data + bootstrap admin + ${KEEP_EMAILS}
+  Preserved : deploy-seeded reference data + all user accounts + sectors + sub-sectors
   Destroyed : agencies, chart of accounts, operation mappings, products,
               clients, accounts, loans, journals, teller sessions,
-              accounting days, all other users, all access tokens.
+              accounting days, and all access tokens.
 CONFIRM
     read -r -p "Type 'reset' to continue: " reply
     [[ "$reply" == "reset" ]] || die "Aborted."
@@ -167,10 +165,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Export the accounts to preserve
+# 2. Export the data to preserve (accounts, sectors, sub_sectors)
 # ---------------------------------------------------------------------------
-log "Exporting accounts to preserve"
-dc exec -T "${EXEC_ENV[@]}" -e KEEP_EMAILS="$KEEP_EMAILS" -e KEPT_JSON="$KEPT_JSON" api php <<'PHP'
+log "Exporting data to preserve"
+dc exec -T "${EXEC_ENV[@]}" -e KEPT_JSON="$KEPT_JSON" api php <<'PHP'
 <?php
 require '/var/www/html/vendor/autoload.php';
 $app = require '/var/www/html/bootstrap/app.php';
@@ -179,37 +177,42 @@ $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
 
-$emails = array_values(array_filter(array_map('trim', explode(',', (string) getenv('KEEP_EMAILS')))));
+$out = ['users' => [], 'sectors' => [], 'sub_sectors' => []];
 
-// The bootstrap admin is recreated by BootstrapAdminSeeder, but export it too so
-// any hand-granted roles or a changed password survive the reset.
-$adminEmail = (string) config('security.bootstrap_admin.email');
-if ($adminEmail !== '' && ! in_array($adminEmail, $emails, true)) {
-    $emails[] = $adminEmail;
+// --- sectors ---
+$sectors = DB::table('sectors')->orderBy('id')->get();
+foreach ($sectors as $row) {
+    $out['sectors'][] = (array) $row;
+    printf("  export sector %-6s %s\n", $row->code, $row->name);
 }
+printf("  %d sector(s) staged\n", count($out['sectors']));
 
-$out = [];
-foreach ($emails as $email) {
-    $row = DB::table('users')->where('email', $email)->first();
-    if ($row === null) {
-        fwrite(STDERR, "  [warn] no such user, skipping: {$email}\n");
-        continue;
-    }
+// --- sub_sectors ---
+$subSectors = DB::table('sub_sectors')->orderBy('id')->get();
+foreach ($subSectors as $row) {
+    $out['sub_sectors'][] = (array) $row;
+    printf("  export sub_sector %-12s %s\n", $row->code, $row->name);
+}
+printf("  %d sub_sector(s) staged\n", count($out['sub_sectors']));
+
+// --- users ---
+$users = DB::table('users')->orderBy('id')->get();
+foreach ($users as $row) {
     $data = (array) $row;
     $user = User::query()->find($row->id);
     $data['__roles'] = $user?->roles->pluck('name')->all() ?? [];
     $data['__permissions'] = $user?->getDirectPermissions()->pluck('name')->all() ?? [];
-    $out[] = $data;
-    printf("  export %-38s roles=%s\n", $email, implode(',', $data['__roles']) ?: '-');
+    $out['users'][] = $data;
+    printf("  export %-38s roles=%s\n", $row->email, implode(',', $data['__roles']) ?: '-');
 }
+printf("  %d account(s) staged\n", count($out['users']));
 
-if ($out === []) {
-    fwrite(STDERR, "ABORT: nothing to preserve - refusing to wipe blind.\n");
+if (empty($out['users'])) {
+    fwrite(STDERR, "ABORT: no users found - refusing to wipe blind.\n");
     exit(1);
 }
 
 file_put_contents((string) getenv('KEPT_JSON'), json_encode($out, JSON_UNESCAPED_UNICODE));
-printf("  %d account(s) staged\n", count($out));
 PHP
 
 # ---------------------------------------------------------------------------
@@ -235,8 +238,68 @@ log "Seeding the installation (DatabaseSeeder)"
 api php artisan db:seed --force --ansi 2>&1 | grep -viE '^\s*$|RUNNING' || true
 
 # ---------------------------------------------------------------------------
-# 4. Restore the preserved accounts
+# 4. Restore the preserved data
 # ---------------------------------------------------------------------------
+log "Restoring preserved sectors and sub_sectors"
+dc exec -T "${EXEC_ENV[@]}" -e KEPT_JSON="$KEPT_JSON" api php <<'PHP'
+<?php
+require '/var/www/html/vendor/autoload.php';
+$app = require '/var/www/html/bootstrap/app.php';
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+use Illuminate\Support\Facades\DB;
+
+$file = (string) getenv('KEPT_JSON');
+$payload = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+
+DB::transaction(function () use ($payload): void {
+    // --- sectors: upsert by code, build old_id -> new_id map ---
+    $sectorIdMap = [];
+    foreach ($payload['sectors'] ?? [] as $row) {
+        $oldId = $row['id'];
+        $existing = DB::table('sectors')->where('code', $row['code'])->first();
+        unset($row['id'], $row['created_at'], $row['updated_at']);
+        if ($existing !== null) {
+            DB::table('sectors')->where('id', $existing->id)->update($row);
+            $sectorIdMap[$oldId] = $existing->id;
+            $verb = 'updated';
+        } else {
+            $newId = DB::table('sectors')->insertGetId($row);
+            $sectorIdMap[$oldId] = $newId;
+            $verb = 'inserted';
+        }
+        printf("  %-9s sector %-6s %s\n", $verb, $row['code'], $row['name']);
+    }
+
+    // --- sub_sectors: upsert by (sector_id, code) with mapped sector_id ---
+    foreach ($payload['sub_sectors'] ?? [] as $row) {
+        $oldSectorId = $row['sector_id'];
+        $newSectorId = $sectorIdMap[$oldSectorId] ?? null;
+        if ($newSectorId === null) {
+            fwrite(STDERR, "  [warn] skipping sub_sector {$row['code']}: parent sector {$oldSectorId} not found\n");
+            continue;
+        }
+        $existing = DB::table('sub_sectors')
+            ->where('sector_id', $newSectorId)
+            ->where('code', $row['code'])
+            ->first();
+        unset($row['id'], $row['created_at'], $row['updated_at']);
+        $row['sector_id'] = $newSectorId;
+        if ($existing !== null) {
+            DB::table('sub_sectors')->where('id', $existing->id)->update($row);
+            $verb = 'updated';
+        } else {
+            DB::table('sub_sectors')->insertGetId($row);
+            $verb = 'inserted';
+        }
+        printf("  %-9s sub_sector %-12s %s\n", $verb, $row['code'], $row['name']);
+    }
+});
+
+printf("  %d sector(s), %d sub_sector(s) restored\n",
+    count($payload['sectors'] ?? []), count($payload['sub_sectors'] ?? []));
+PHP
+
 log "Restoring preserved accounts"
 dc exec -T "${EXEC_ENV[@]}" -e KEPT_JSON="$KEPT_JSON" api php <<'PHP'
 <?php
@@ -248,7 +311,8 @@ use Illuminate\Support\Facades\DB;
 use App\Models\User;
 
 $file = (string) getenv('KEPT_JSON');
-$rows = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+$payload = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+$rows = $payload['users'] ?? [];
 
 DB::transaction(function () use ($rows): void {
     foreach ($rows as $row) {
@@ -273,7 +337,7 @@ DB::transaction(function () use ($rows): void {
             DB::table('users')->where('id', $existing->id)->update($row);
             $verb = 'updated';
         } else {
-            DB::table('users')->insert($row);
+            DB::table('users')->insertGetId($row);
             $verb = 'inserted';
         }
 
@@ -294,6 +358,7 @@ DB::transaction(function () use ($rows): void {
 });
 
 @unlink($file);
+printf("  %d account(s) restored\n", count($rows));
 PHP
 
 # ---------------------------------------------------------------------------
@@ -340,6 +405,10 @@ echo '  users:'.PHP_EOL;
 foreach (User::query()->orderBy('id')->get() as $u) {
     printf("    %-3d %-34s %-22s %s\n", $u->id, $u->email, $u->status, $u->roles->pluck('name')->implode(','));
 }
+
+$sectorCount = DB::table('sectors')->count();
+$subSectorCount = DB::table('sub_sectors')->count();
+printf("  sectors: %d, sub_sectors: %d\n", $sectorCount, $subSectorCount);
 PHP
 
 if (( REHEARSAL )); then
@@ -356,7 +425,7 @@ cat <<'DONE'
 Reset complete. Next steps for the testers:
   1. Everyone must log in again -- all access tokens were revoked.
   2. The default agency, denominations and the PCEMF chart of accounts are
-     seeded. Preserved accounts are NOT attached to the agency: assign staff,
-     then set up operation-account mappings and products and open an accounting
-     day before attempting any transaction.
+     seeded. Sectors and sub-sectors are preserved. Preserved accounts are NOT
+     attached to the agency: assign staff, then set up operation-account mappings
+     and products and open an accounting day before attempting any transaction.
 DONE
