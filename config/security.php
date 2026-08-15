@@ -321,6 +321,13 @@ return [
                 'users.create',
                 'users.update',
                 'users.status.manage',
+                // Assigning a role is the other half of creating a user. Without
+                // it this role produced accounts that could log in and do nothing,
+                // and every new joiner still needed a platform administrator.
+                // Defining roles themselves stays with platform-admin: that is
+                // changing the permission model, not administering people.
+                'roles.view',
+                'users.roles.manage',
                 'documents.view',
                 'documents.create',
                 'references.reserve',
@@ -572,6 +579,17 @@ return [
              * only; AccountingDayPolicy::canAccessScope() reserves it explicitly.
              */
             'chief-accountant' => [
+                // Products are defined by head office -- rates, terms, fees are a
+                // credit-policy decision, not a system-administration one. Fineract
+                // treats product creation as an ordinary permission grantable to any
+                // role; tying it to platform-admin conflated business administration
+                // with technical administration.
+                'loan.products.create',
+                'loan.products.update',
+                'loan.products.archive',
+                'account.products.create',
+                'account.products.update',
+                'account.products.archive',
                 'system.view-health',
                 'audit.view',
                 'agencies.view',
@@ -692,6 +710,13 @@ return [
                 'sub-sectors.view',
             ],
             'compliance-officer' => [
+                // Freezing and releasing an account is a compliance act -- a
+                // suspicious-activity block, a court garnishment -- not system
+                // administration. It sat with platform-admin only, so a compliance
+                // officer had to ask an administrator to block an account.
+                'account.holds.create',
+                'account.holds.update',
+                'account.holds.release',
                 'system.view-health',
                 'audit.view',
                 'agencies.view',
