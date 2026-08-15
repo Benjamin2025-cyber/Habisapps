@@ -73,6 +73,8 @@ que le prêt puisse ensuite être monté sans blocage :
 | Taux d'intérêt | `2` | |
 | **Taux des frais de dossier (%)** | **`1,5`** | **le champ testé** |
 | Taxe / Assurance | laisser vide | on isole les frais de dossier |
+| Type de dépôt de garantie | laisser vide | autre prélèvement, hors sujet ici |
+| Valeur du dépôt de garantie | laisser vide | |
 | Garantie exigée / Caution exigée | décochés | évite des pièces à fournir |
 
 **Avant d'enregistrer, regardez la forme du formulaire :**
@@ -81,6 +83,13 @@ que le prêt puisse ensuite être monté sans blocage :
   et assurance ;
 - ❌ **aucun** champ « Frais de dossier » exprimé en francs ;
 - ❌ **aucun** champ « Montant plancher ».
+
+> **« Type de dépôt de garantie » propose bien *pourcentage* et *fixe* — c'est
+> normal, ne le signalez pas.** Le dépôt de garantie est un autre prélèvement : une
+> somme que l'emprunteur dépose en garantie, pas des frais que l'institution perçoit.
+> La demande de la comptabilité ne portait que sur les frais de dossier. Les deux
+> options fonctionnent réellement, contrairement au « Montant plancher » qui, lui, ne
+> pilotait rien.
 
 Enregistrez, rouvrez le produit : le taux **1,5** doit avoir été conservé.
 
@@ -201,7 +210,8 @@ Des frais nuls ne doivent jamais bloquer un déblocage.
 ## 9. Ce que ce guide ne couvre pas
 
 - La **taxe** sur les frais et le **dépôt de garantie** suivent leurs propres règles,
-  inchangées ici. C'est pourquoi l'étape 2 les laisse vides.
+  inchangées ici — c'est pourquoi l'étape 2 laisse leurs champs vides, afin que le
+  montant observé ne vienne que des frais de dossier.
 - Si le produit utilise une **politique de formule** définissant son propre
   `dossier_fee_rate`, celle-ci l'emporte sur le taux du produit. Ce mécanisme
   existait déjà.
