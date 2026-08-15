@@ -62,20 +62,20 @@ que le prêt puisse ensuite être monté sans blocage :
 
 | Champ | Valeur | Pourquoi |
 |---|---|---|
-| Code | `TEST-FRAIS` | unique ; sert d'identifiant |
-| Libellé | `Produit test frais de dossier` | |
-| Statut | `Actif` | un produit inactif ne se sélectionne pas |
-| Montant minimum | `50 000` | bornes du capital autorisé |
-| Montant maximum | `5 000 000` | |
-| Durée min / max | `1` / `24` | |
-| Unité de durée | `Mois` | |
-| Fréquences de remboursement | `Mensuel` | sinon aucune échéance possible |
-| Taux d'intérêt | `2` | |
+| **Code** | `TEST-FRAIS` | unique ; sert d'identifiant |
+| **Nom du produit** | `Produit test frais de dossier` | |
+| **Statut** | `Actif` | un produit inactif ne se sélectionne pas |
+| **Montant minimum** | `50 000` | bornes du capital autorisé |
+| **Montant maximum** | `5 000 000` | |
+| **Durée minimale** / **Durée maximale** | `1` / `24` | |
+| **Unité de durée** | `Mois` | |
+| **Fréquences de remboursement autorisées** | `Mensuel` | |
+| **Taux d'intérêt** | `2` | |
 | **Taux des frais de dossier (%)** | **`1,5`** | **le champ testé** |
-| Taxe / Assurance | laisser vide | on isole les frais de dossier |
-| Type de dépôt de garantie | laisser vide | autre prélèvement, hors sujet ici |
-| Valeur du dépôt de garantie | laisser vide | |
-| Garantie exigée / Caution exigée | décochés | évite des pièces à fournir |
+| **Taux de taxe** / **Taux d'assurance** | laisser vide | on isole les frais de dossier |
+| **Type de dépôt de garantie** | laisser vide | autre prélèvement, hors sujet ici |
+| **Valeur du dépôt de garantie** | laisser vide | |
+| **Garant obligatoire** / **Garantie (objet) obligatoire** | décochés | évite des pièces à fournir |
 
 **Avant d'enregistrer, regardez la forme du formulaire :**
 
@@ -111,13 +111,26 @@ Un client physique avec un nom et un téléphone suffit.
 
 Toujours en **loan-officer** (+237690000005) → **Crédit › Mise en place** → **Nouveau prêt**.
 
-| Champ | Valeur |
-|---|---|
-| Client | celui de l'étape 3 |
-| Produit | `TEST-FRAIS` |
-| Montant demandé | `1 000 000` |
-| Durée | `12` mois |
-| Fréquence | `Mensuelle` |
+Le formulaire comporte beaucoup de champs ; **trois seulement sont obligatoires**
+(titulaire, produit, montant). Voici quoi saisir — laissez le reste tel quel :
+
+| Champ | Valeur | Remarque |
+|---|---|---|
+| **Titulaire (client)** | le client de l'étape 3 | obligatoire |
+| **Produit de prêt** | `TEST-FRAIS` | obligatoire |
+| **Montant demandé** | `1 000 000` | obligatoire ; c'est la base du calcul des frais |
+| **Devise** | `XAF` | déjà rempli en principe |
+| **Nombre d'échéances** | `12` | |
+| **Périodicité (jours)** | `30` | ⚠️ en **jours**, pas « mensuel » |
+| **Différé (jours)** | `0` | |
+| **Durée totale (jours)** | `360` | ⚠️ en **jours** également |
+| Agent de crédit, Date de demande, Objet du prêt, Secteur / Sous-secteur | libres | facultatifs |
+| Comptes d'amortissement / impayés / recouvrement / virement | laisser vides | facultatifs ici |
+
+> ⚠️ **Les durées sont exprimées en jours, pas en mois**, et il n'y a pas de champ
+> « fréquence ». Un prêt mensuel sur un an se saisit donc : 12 échéances, périodicité
+> 30 jours, durée totale 360 jours. Les trois champs sont indépendants — aucun n'est
+> calculé à partir des autres.
 
 Enregistrez. Le prêt est au statut **Demande**.
 
