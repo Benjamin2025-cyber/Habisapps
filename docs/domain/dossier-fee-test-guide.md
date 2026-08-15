@@ -36,7 +36,7 @@ comptes existent déjà, avec le mot de passe **`password123`** :
 
 | Étape | Se connecter avec | Rôle |
 |---|---|---|
-| Créer le produit | **+237690000001** | user-admin |
+| Créer le produit | **+237690000011** | chief-accountant |
 | Créer le client et le prêt | **+237690000005** | loan-officer |
 | Visa **Montage** | **+237690000005** | loan-officer |
 | Visa **Comptabilité** | **+237690000006** | accountant |
@@ -55,7 +55,7 @@ s'enregistre. Vérifiez le bandeau en haut à droite : il doit afficher
 
 ## 2. Créer le produit de prêt
 
-Connecté en **user-admin** (+237690000001) → **Crédit › Produits de prêt** → **Nouveau produit**.
+Connecté en **chief-accountant** (+237690000011) → **Crédit › Produits de prêt** → **Nouveau produit**.
 
 Seuls **le code et le libellé** sont obligatoires. Remplissez toutefois ceci, pour
 que le prêt puisse ensuite être monté sans blocage :
@@ -173,7 +173,7 @@ d'un calcul qui refuse d'arrondir. Signalez-la avec le capital et le taux utilis
 
 ## 7. Deux cas limites, rapides
 
-Modifiez le produit (en **user-admin**, +237690000001) et refaites une évaluation sur un nouveau
+Modifiez le produit (en **chief-accountant**, +237690000011) et refaites une évaluation sur un nouveau
 prêt :
 
 | Taux saisi | Attendu |

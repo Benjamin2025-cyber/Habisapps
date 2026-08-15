@@ -4,15 +4,59 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\StaffAgencyAssignment;
+use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TestStaffAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class SeederIdempotencyTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_staff_seeding_survives_a_move_between_agencies(): void
+    {
+        // A staff member who has already served at an agency has a row occupying
+        // (user_id, agency_id, starts_on). Repointing their open assignment onto
+        // that agency collides with it -- uniq_staff_agency_start -- which is what
+        // broke db:seed once the bench had moved somebody between agencies.
+        $this->travelTo('2026-08-11 09:00:00');
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $user = User::factory()->createOne(['status' => User::STATUS_ACTIVE]);
+        $agencyA = $this->makeAgency('SEQ-A');
+        $agencyB = $this->makeAgency('SEQ-B');
+
+        StaffAgencyAssignment::assignPrimary($user->id, $agencyA, 'accountant');
+        StaffAgencyAssignment::assignPrimary($user->id, $agencyB, 'accountant');
+        // Back to the first agency, whose historical row still holds today's key.
+        StaffAgencyAssignment::assignPrimary($user->id, $agencyA, 'accountant');
+
+        $open = DB::table('staff_agency_assignments')
+            ->where('user_id', $user->id)
+            ->whereNull('ends_on')
+            ->get();
+
+        self::assertCount(1, $open, 'Exactly one assignment may be open.');
+        $row = $open->first();
+        self::assertNotNull($row);
+        self::assertSame($agencyA, (int) $row->agency_id);
+    }
+
+    private function makeAgency(string $code): int
+    {
+        return DB::table('agencies')->insertGetId([
+            'public_id' => (string) Str::ulid(),
+            'code' => $code,
+            'name' => $code.' Agency',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
 
     public function test_staff_seeding_survives_being_re_run_on_a_later_day(): void
     {

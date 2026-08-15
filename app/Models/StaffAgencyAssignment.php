@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -60,33 +61,66 @@ final class StaffAgencyAssignment extends Model
      */
     public static function assignPrimary(int $userId, int $agencyId, string $roleAtAgency): self
     {
-        // whereNull is a forwarded builder method larastan reports as a dynamic
-        // static call; `where(..., null)` compiles to the same IS NULL.
-        $existing = self::query()
-            ->where('user_id', $userId)
-            ->where('is_primary', true)
-            ->where('status', self::STATUS_ACTIVE)
-            ->where('ends_on', null)
-            ->first();
+        return DB::transaction(function () use ($userId, $agencyId, $roleAtAgency): self {
+            // `where(..., null)` rather than whereNull: the latter is a forwarded
+            // builder method larastan reports as a dynamic static call, and both
+            // compile to IS NULL.
+            $open = self::query()
+                ->where('user_id', $userId)
+                ->where('is_primary', true)
+                ->where('status', self::STATUS_ACTIVE)
+                ->where('ends_on', null)
+                ->first();
 
-        if ($existing instanceof self) {
-            $existing->forceFill([
+            // Already where it should be: only the role can have moved.
+            if ($open instanceof self && $open->agency_id === $agencyId) {
+                $open->forceFill(['role_at_agency' => $roleAtAgency])->save();
+
+                return $open;
+            }
+
+            // Close the open one before opening another, or
+            // staff_primary_assignment_no_overlap refuses two active primary
+            // assignments covering the same day.
+            if ($open instanceof self) {
+                $open->forceFill([
+                    'ends_on' => now()->toDateString(),
+                    'status' => self::STATUS_ENDED,
+                ])->save();
+            }
+
+            // Reuse this user's row for this agency if one exists rather than
+            // repointing the open assignment onto it. uniq_staff_agency_start is on
+            // (user_id, agency_id, starts_on), so a staff member who has already
+            // served at this agency has a row occupying that key -- moving another
+            // row onto it collides, which is what broke db:seed.
+            $atAgency = self::query()
+                ->where('user_id', $userId)
+                ->where('agency_id', $agencyId)
+                ->oldest('starts_on')
+                ->first();
+
+            if ($atAgency instanceof self) {
+                $atAgency->forceFill([
+                    'role_at_agency' => $roleAtAgency,
+                    'ends_on' => null,
+                    'is_primary' => true,
+                    'status' => self::STATUS_ACTIVE,
+                ])->save();
+
+                return $atAgency;
+            }
+
+            return self::query()->create([
+                'user_id' => $userId,
                 'agency_id' => $agencyId,
                 'role_at_agency' => $roleAtAgency,
-            ])->save();
-
-            return $existing;
-        }
-
-        return self::query()->create([
-            'user_id' => $userId,
-            'agency_id' => $agencyId,
-            'role_at_agency' => $roleAtAgency,
-            'starts_on' => now()->toDateString(),
-            'ends_on' => null,
-            'is_primary' => true,
-            'status' => self::STATUS_ACTIVE,
-        ]);
+                'starts_on' => now()->toDateString(),
+                'ends_on' => null,
+                'is_primary' => true,
+                'status' => self::STATUS_ACTIVE,
+            ]);
+        });
     }
 
     /**

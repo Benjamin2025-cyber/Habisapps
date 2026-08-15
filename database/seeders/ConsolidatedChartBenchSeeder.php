@@ -70,8 +70,18 @@ final class ConsolidatedChartBenchSeeder extends Seeder
             $chief = $this->headOfficeUser();
 
             $openedBy = User::query()->whereNotNull('email')->orderBy('id')->first();
-            $businessDate = now()->toDateString();
-            $this->openDay(AccountingDay::SCOPE_INSTITUTION, null, $businessDate, $openedBy);
+            // Agency days live inside the institution's date, so the institution
+            // decides the date here -- not `now()`. Re-seeding a bench whose
+            // institution has since moved to another date otherwise tries to open
+            // agency days on today against an institution sitting elsewhere, which
+            // accounting_days_agency_day_follows_institution refuses.
+            $institutionDay = $this->openDay(
+                AccountingDay::SCOPE_INSTITUTION,
+                null,
+                now()->toDateString(),
+                $openedBy,
+            );
+            $businessDate = $institutionDay->business_date->toDateString();
             $this->openDay(AccountingDay::SCOPE_AGENCY, $primary->id, $businessDate, $openedBy);
             $this->openDay(AccountingDay::SCOPE_AGENCY, $second->id, $businessDate, $openedBy);
 
