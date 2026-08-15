@@ -195,10 +195,26 @@ Après le visa Direction, le prêt passe au statut **Approuvé**.
 Connecté en **agency-manager** (+237690000002) → **Crédit › Déblocage prêt** → sélectionnez le prêt →
 section **Frais de dossier** → **Évaluer les frais** si le calcul n'a pas déjà eu lieu.
 
-**Attendu : frais de dossier = 15 000,00 F.**
+**Attendu : frais de dossier = 15 000 FCFA.**
 
 C'est 1,5 % de 1 000 000. Le même montant apparaît dans
 **Crédit › Mise en place › [le prêt] › onglet Financières**, ligne « Frais de dossier ».
+
+> **Arrêtez-vous là.** À côté du montant apparaissent un badge « À régler » et les
+> boutons **Régler** et **Dispenser (direction)**, avec la mention « 1 frais
+> restant(s) à régler avant le décaissement ». C'est l'étape *suivante* —
+> l'encaissement des frais — et elle ne fait pas partie de ce test :
+>
+> | | Ce que ça fait |
+> |---|---|
+> | **Évaluer les frais** | *calcule* le montant. C'est ce qu'on vérifie ici. |
+> | **Régler** | *encaisse* le montant sur un compte du client |
+> | **Dispenser (direction)** | dispense le client des frais, sur décision de la direction |
+>
+> Le montant affiché est le résultat du taux : il est déjà vérifiable sans rien
+> encaisser. Régler exige en plus que le client possède un **compte** — le tiroir
+> affiche sinon « Ce client n'a aucun compte. Créez-en un d'abord » — ce qui n'a rien
+> à voir avec les frais de dossier.
 
 ---
 
@@ -272,5 +288,7 @@ Des frais nuls ne doivent jamais bloquer un déblocage.
 - Si le produit utilise une **politique de formule** définissant son propre
   `dossier_fee_rate`, celle-ci l'emporte sur le taux du produit. Ce mécanisme
   existait déjà.
-- Le **collecte** effective des frais et le déblocage lui-même : on s'arrête au
-  montant calculé, qui est l'objet de la demande.
+- L'**encaissement** des frais (bouton « Régler »), la dispense par la direction et
+  le déblocage lui-même. On s'arrête au montant calculé, qui est l'objet de la
+  demande de la comptabilité. Encaisser suppose en outre que le client ait un
+  compte, ce que ce parcours ne crée pas.
