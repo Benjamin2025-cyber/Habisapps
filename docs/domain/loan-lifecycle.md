@@ -40,6 +40,22 @@ Implementation rules:
 - A rejection or return must state whether the loan can be resubmitted.
 - A later approval step must not run before all previous required steps are approved.
 
+Where the four steps come from:
+
+- `montage`, `comptabilite`, `controle` and `direction` are HABIBI FINANCE's own
+  credit circuit, specified by the stakeholder. They are not a generic pattern and
+  not our invention.
+- Recorded here because nothing in this repository said so, and the shape invites
+  the question: Apache Fineract, the reference implementation for microfinance,
+  has a single `approve` transition plus an optional maker-checker, and the sector
+  norm is a collegial *comité de crédit* rather than a chain of individual visas.
+  Anyone comparing the two will wonder which is right. This one is a client
+  requirement, so it wins.
+- Still open, and independent of provenance: there is no amount threshold. Every
+  loan takes all four visas, so a 50 000 F loan needs the same four sign-offs as a
+  5 000 000 F one. Delegation by amount is the usual answer and has not been asked
+  for.
+
 Implemented approval behavior:
 
 - `POST /api/v1/loans/{loan}/approvals/{step}` records `montage`, `comptabilite`, `controle`, and `direction` decisions.
