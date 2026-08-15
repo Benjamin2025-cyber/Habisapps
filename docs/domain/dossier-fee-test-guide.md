@@ -29,18 +29,20 @@ un pourcentage du capital. Ni montant fixe, ni plancher.
 ## 1. Les comptes dont vous aurez besoin
 
 Un prêt passe **quatre visas**, et **une même personne ne peut en signer qu'un seul**
-(le système refuse le deuxième). Il faut donc quatre utilisateurs différents. Ils
-existent déjà, tous avec le mot de passe **`password123`** :
+(le système refuse le deuxième). Il faut donc quatre utilisateurs différents.
+
+**La connexion se fait avec le numéro de téléphone**, pas l'adresse e-mail. Tous ces
+comptes existent déjà, avec le mot de passe **`password123`** :
 
 | Étape | Se connecter avec | Rôle |
 |---|---|---|
-| Créer le produit | `test.user.admin@example.test` | user-admin |
-| Créer le client et le prêt | `test.loan.officer@example.test` | loan-officer |
-| Visa **Montage** | `test.loan.officer@example.test` | loan-officer |
-| Visa **Comptabilité** | `test.accountant@example.test` | accountant |
-| Visa **Contrôle** | `test.compliance.officer@example.test` | compliance-officer |
-| Visa **Direction** | `test.agency.manager@example.test` | agency-manager |
-| Frais et déblocage | `test.agency.manager@example.test` | agency-manager |
+| Créer le produit | **+237690000001** | user-admin |
+| Créer le client et le prêt | **+237690000005** | loan-officer |
+| Visa **Montage** | **+237690000005** | loan-officer |
+| Visa **Comptabilité** | **+237690000006** | accountant |
+| Visa **Contrôle** | **+237690000008** | compliance-officer |
+| Visa **Direction** | **+237690000002** | agency-manager |
+| Frais et déblocage | **+237690000002** | agency-manager |
 
 > Si un visa est refusé avec « vous avez déjà approuvé une autre étape », c'est cette
 > règle-là : changez d'utilisateur. Ce n'est pas une anomalie.
@@ -53,7 +55,7 @@ s'enregistre. Vérifiez le bandeau en haut à droite : il doit afficher
 
 ## 2. Créer le produit de prêt
 
-Connecté en **user-admin** → **Crédit › Produits de prêt** → **Nouveau produit**.
+Connecté en **user-admin** (+237690000001) → **Crédit › Produits de prêt** → **Nouveau produit**.
 
 Seuls **le code et le libellé** sont obligatoires. Remplissez toutefois ceci, pour
 que le prêt puisse ensuite être monté sans blocage :
@@ -88,7 +90,7 @@ Enregistrez, rouvrez le produit : le taux **1,5** doit avoir été conservé.
 
 ## 3. Créer un client
 
-Connecté en **loan-officer** → **Référentiel › Clients** → **Nouveau client**.
+Connecté en **loan-officer** (+237690000005) → **Référentiel › Clients** → **Nouveau client**.
 Un client physique avec un nom et un téléphone suffit.
 
 > Un prêt exige un client existant. Si votre base en contient déjà un utilisable,
@@ -98,7 +100,7 @@ Un client physique avec un nom et un téléphone suffit.
 
 ## 4. Le prêt n° 1 — capital 1 000 000 F
 
-Toujours en **loan-officer** → **Crédit › Prêts** → **Nouveau prêt**.
+Toujours en **loan-officer** (+237690000005) → **Crédit › Prêts** → **Nouveau prêt**.
 
 | Champ | Valeur |
 |---|---|
@@ -115,16 +117,16 @@ Enregistrez. Le prêt est au statut **Demande**.
 Ouvrez le prêt → onglet **Visas**. Approuvez dans l'ordre, **en changeant de compte
 à chaque fois** (voir le tableau de l'étape 1) :
 
-1. **Montage** — loan-officer
-2. **Comptabilité** — accountant
-3. **Contrôle** — compliance-officer
-4. **Direction** — agency-manager
+1. **Montage** — loan-officer, +237690000005
+2. **Comptabilité** — accountant, +237690000006
+3. **Contrôle** — compliance-officer, +237690000008
+4. **Direction** — agency-manager, +237690000002
 
 Après le visa Direction, le prêt passe au statut **Approuvé**.
 
 ### 4.2 Évaluer les frais
 
-Connecté en **agency-manager** → **Crédit › Déblocage prêt** → sélectionnez le prêt →
+Connecté en **agency-manager** (+237690000002) → **Crédit › Déblocage prêt** → sélectionnez le prêt →
 section **Frais de dossier** → **Évaluer** si les frais ne sont pas déjà calculés.
 
 **Attendu : frais de dossier = 15 000,00 F.**
@@ -171,7 +173,7 @@ d'un calcul qui refuse d'arrondir. Signalez-la avec le capital et le taux utilis
 
 ## 7. Deux cas limites, rapides
 
-Modifiez le produit (en **user-admin**) et refaites une évaluation sur un nouveau
+Modifiez le produit (en **user-admin**, +237690000001) et refaites une évaluation sur un nouveau
 prêt :
 
 | Taux saisi | Attendu |
