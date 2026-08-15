@@ -37,7 +37,10 @@ comptes existent déjà, avec le mot de passe **`password123`** :
 | Étape | Se connecter avec | Rôle |
 |---|---|---|
 | Créer le produit | **+237690000011** | chief-accountant |
-| Créer le client et le prêt | **+237690000005** | loan-officer |
+| Créer le client | **+237690000005** | loan-officer |
+| Soumettre le KYC | **+237690000007** | kyc-officer |
+| Valider le KYC | **+237690000008** | compliance-officer |
+| Créer le prêt | **+237690000005** | loan-officer |
 | Visa **Montage** | **+237690000005** | loan-officer |
 | Visa **Comptabilité** | **+237690000006** | accountant |
 | Visa **Contrôle** | **+237690000008** | compliance-officer |
@@ -46,6 +49,9 @@ comptes existent déjà, avec le mot de passe **`password123`** :
 
 > Si un visa est refusé avec « vous avez déjà approuvé une autre étape », c'est cette
 > règle-là : changez d'utilisateur. Ce n'est pas une anomalie.
+>
+> La même idée s'applique au KYC : celui qui soumet ne valide pas. C'est pourquoi
+> l'étape 3 mobilise deux comptes de plus.
 
 **Une journée comptable doit être ouverte** pour l'agence concernée, sinon rien ne
 s'enregistre. Vérifiez le bandeau en haut à droite : il doit afficher
@@ -97,13 +103,50 @@ Enregistrez, rouvrez le produit : le taux **1,5** doit avoir été conservé.
 
 ---
 
-## 3. Créer un client
+## 3. Créer un client — et le faire vérifier
 
-Connecté en **loan-officer** (+237690000005) → **Référentiel › Client** → **Nouveau client**.
-Un client physique avec un nom et un téléphone suffit.
+**Un prêt exige un client *actif* et *KYC vérifié*.** Sans cela l'enregistrement est
+refusé avec « Client must be active and KYC verified ». C'est trois étapes, et
+**trois personnes différentes**, parce que celui qui soumet un KYC ne peut pas le
+valider lui-même.
 
-> Un prêt exige un client existant. Si votre base en contient déjà un utilisable,
-> passez cette étape.
+### 3.1 Créer
+
+Connecté en **loan-officer** (+237690000005) → **Référentiel › Client** →
+**Nouveau client**. Un client physique avec un nom et un téléphone suffit.
+
+À la création il est en KYC **Brouillon**.
+
+### 3.2 Soumettre le KYC
+
+Le loan-officer **ne peut pas** le faire : il n'a pas `crm.kyc.submit`.
+
+Connectez-vous en **kyc-officer** (+237690000007) → **Référentiel › Client** → menu
+**Actions** de la ligne du client → **Soumettre KYC**.
+
+Le client passe en **En cours de vérification**.
+
+### 3.3 Valider le KYC — par quelqu'un d'autre
+
+Celui qui a soumis ne peut pas valider : le système exige un autre contrôleur.
+Comme le kyc-officer vient de soumettre, validez avec le **compliance-officer**
+(+237690000008), qui détient lui aussi `crm.kyc.verify`.
+
+Menu **Actions** → **Valider KYC**.
+
+Le client passe en **Vérifié**.
+
+> La case « Auto-vérification (j'ai monté ce dossier) » existe pour les cas
+> exceptionnels : elle réclame un motif **et** la permission
+> `crm.kyc.override.self_verify`, que seul le platform-admin possède. Ne l'utilisez
+> pas pour ce test.
+
+### 3.4 Vérifier que le client est actif
+
+Toujours dans la liste, le statut du client doit être **Actif**. Sinon : menu
+**Actions** → **Changer le statut** → **Marquer actif**.
+
+C'est l'autre moitié de la condition, et elle est indépendante du KYC.
 
 ---
 
