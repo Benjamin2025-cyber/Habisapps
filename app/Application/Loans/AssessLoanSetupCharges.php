@@ -110,12 +110,26 @@ final class AssessLoanSetupCharges
      */
     private function dossierFee(int $principal, LoanProduct $product, array $setupRules): int
     {
+        // « Le montant des frais de dossier doit être en pourcentage et sans
+        // plancher. » A rule from the product's formula policy still wins where one
+        // is configured; otherwise the product's own rate applies. There is no
+        // fixed amount and no floor: the fee is whatever the percentage yields,
+        // including on a small loan.
         $rate = $setupRules['dossier_fee_rate'] ?? null;
-        if ($rate !== null && $rate !== '') {
-            return $this->percentOf($principal, $rate);
+        if ($rate === null || $rate === '') {
+            $rate = $product->fee_rate;
         }
 
-        return $product->fee_amount_minor ?? 0;
+        if ($rate === null) {
+            return 0;
+        }
+
+        // Rounded, not exact. percentOf refuses to round by default, which is
+        // tenable for a fixed amount but not for a percentage: 2,5 % of any
+        // principal that is not a multiple of 40 lands between two minor units and
+        // would throw where the fee used to be a constant. Half-up is the ordinary
+        // convention for a charge.
+        return $this->percentOf($principal, $rate, RoundingMode::HALF_UP);
     }
 
     /**
@@ -225,12 +239,17 @@ final class AssessLoanSetupCharges
         ];
     }
 
-    private function percentOf(int $baseMinor, mixed $rate): int
+    /**
+     * @param  RoundingMode  $rounding  Defaults to refusing to round, which is how
+     *                                  every existing caller expects to be told that
+     *                                  a configured rate does not divide cleanly.
+     */
+    private function percentOf(int $baseMinor, mixed $rate, RoundingMode $rounding = RoundingMode::UNNECESSARY): int
     {
         return BigDecimal::of((string) $baseMinor)
             ->multipliedBy(BigDecimal::of($this->numericString($rate)))
             ->dividedBy('100')
-            ->toScale(0, RoundingMode::UNNECESSARY)
+            ->toScale(0, $rounding)
             ->toInt();
     }
 

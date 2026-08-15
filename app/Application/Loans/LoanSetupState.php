@@ -86,7 +86,7 @@ final class LoanSetupState
     {
         $rules = is_array($product->getAttribute('rules')) ? $product->getAttribute('rules') : [];
 
-        return $product->fee_amount_minor !== null
+        return $product->fee_rate !== null
             || $product->tax_rate !== null
             || $product->insurance_rate !== null
             || $product->guarantee_deposit_value !== null

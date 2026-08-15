@@ -57,7 +57,7 @@ final class Module4CreditLoansTest extends TestCase
                 'interest_rate' => '2.500000',
                 'tax_rate' => '19.250000',
                 'insurance_rate' => '2.000000',
-                'fee_amount_minor' => 3000,
+                'fee_rate' => '1.500000',
                 'guarantee_deposit_type' => 'percentage',
                 'guarantee_deposit_value' => '10.000000',
                 'allowed_repayment_frequencies' => ['monthly'],

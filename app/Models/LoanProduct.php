@@ -36,8 +36,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'interest_rate',
     'tax_rate',
     'insurance_rate',
-    'fee_amount_minor',
-    'floor_amount_minor',
+    'fee_rate',
     'tax_policy_key',
     'insurance_policy_key',
     'guarantee_deposit_policy_key',
@@ -108,8 +107,6 @@ final class LoanProduct extends Model
             'requires_collateral' => 'boolean',
             'min_amount_minor' => 'integer',
             'max_amount_minor' => 'integer',
-            'fee_amount_minor' => 'integer',
-            'floor_amount_minor' => 'integer',
             'rules' => 'array',
         ];
     }
