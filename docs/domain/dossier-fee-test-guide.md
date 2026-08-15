@@ -1,11 +1,12 @@
 # Guide de test — frais de dossier en pourcentage
 
-Script pas à pas pour vérifier la demande de la comptabilité :
+Parcours complet, de la création du produit jusqu'au calcul des frais. Aucune
+connaissance préalable du circuit de prêt n'est supposée : chaque étape dit quoi
+faire, **avec quel compte se connecter**, et ce que vous devez voir.
+
+Ce qu'on vérifie, c'est la demande de la comptabilité :
 
 > « Le montant des frais de dossier doit être en pourcentage et sans plancher. »
-
-Écrit pour un non-comptable. Chaque étape dit quoi faire, ce que vous devez voir, et
-pourquoi — afin de distinguer une anomalie d'un comportement correct.
 
 ---
 
@@ -14,119 +15,193 @@ pourquoi — afin de distinguer une anomalie d'un comportement correct.
 **Avant** : les frais de dossier étaient un **montant fixe** en francs. Un prêt de
 100 000 F et un prêt de 5 000 000 F payaient les mêmes frais. Le formulaire proposait
 en plus un champ **« Montant plancher »**, enregistré en base et **lu par aucun
-calcul** — on pouvait le remplir, il ne servait à rien.
+calcul**.
 
 **Maintenant** : un seul champ, **« Taux des frais de dossier (%) »**. Les frais sont
-un pourcentage du capital emprunté. Il n'y a ni montant fixe, ni plancher.
+un pourcentage du capital. Ni montant fixe, ni plancher.
 
-> ⚠️ **À lire avant de crier au bug.** Le champ « montant fixe » a disparu de la base.
-> Les produits créés **avant** ce changement n'ont donc aucun taux : leurs frais de
-> dossier valent **0** tant que personne ne saisit un taux. C'est attendu — l'étape 1
-> consiste précisément à en saisir un.
-
----
-
-## 1. Configurer le produit
-
-**Crédit › Produits de prêt** → ouvrez un produit (ou créez-en un).
-
-Dans la section des taux, vérifiez d'abord la **forme du formulaire** :
-
-- ✅ Un champ **« Taux des frais de dossier (%) »**, à côté des taux d'intérêt, de
-  taxe et d'assurance.
-- ❌ **Aucun** champ « Frais de dossier » en francs.
-- ❌ **Aucun** champ « Montant plancher ».
-
-Saisissez **1,5** comme taux des frais de dossier. Enregistrez, rouvrez : la valeur
-doit être conservée.
-
-> C'est la première chose que la comptabilité regardera. Si « Montant plancher » est
-> encore là, rien d'autre n'a besoin d'être testé.
+> ⚠️ **À lire avant de crier au bug.** La colonne du montant fixe a été supprimée.
+> Les produits créés **avant** ce changement n'ont donc aucun taux : leurs frais
+> valent **0** tant que personne n'en saisit un. C'est attendu.
 
 ---
 
-## 2. Les frais suivent le montant du prêt
+## 1. Les comptes dont vous aurez besoin
 
-Créez un prêt sur ce produit, d'un capital de **1 000 000 F**, et menez-le jusqu'à
-l'étape de déblocage.
+Un prêt passe **quatre visas**, et **une même personne ne peut en signer qu'un seul**
+(le système refuse le deuxième). Il faut donc quatre utilisateurs différents. Ils
+existent déjà, tous avec le mot de passe **`password123`** :
 
-**Crédit › Déblocage prêt** → sélectionnez le prêt → **Frais de dossier** →
-lancez l'évaluation si elle n'a pas déjà eu lieu.
+| Étape | Se connecter avec | Rôle |
+|---|---|---|
+| Créer le produit | `test.user.admin@example.test` | user-admin |
+| Créer le client et le prêt | `test.loan.officer@example.test` | loan-officer |
+| Visa **Montage** | `test.loan.officer@example.test` | loan-officer |
+| Visa **Comptabilité** | `test.accountant@example.test` | accountant |
+| Visa **Contrôle** | `test.compliance.officer@example.test` | compliance-officer |
+| Visa **Direction** | `test.agency.manager@example.test` | agency-manager |
+| Frais et déblocage | `test.agency.manager@example.test` | agency-manager |
+
+> Si un visa est refusé avec « vous avez déjà approuvé une autre étape », c'est cette
+> règle-là : changez d'utilisateur. Ce n'est pas une anomalie.
+
+**Une journée comptable doit être ouverte** pour l'agence concernée, sinon rien ne
+s'enregistre. Vérifiez le bandeau en haut à droite : il doit afficher
+« Journée ouverte ». Sinon, voir *Administration › Journée comptable*.
+
+---
+
+## 2. Créer le produit de prêt
+
+Connecté en **user-admin** → **Crédit › Produits de prêt** → **Nouveau produit**.
+
+Seuls **le code et le libellé** sont obligatoires. Remplissez toutefois ceci, pour
+que le prêt puisse ensuite être monté sans blocage :
+
+| Champ | Valeur | Pourquoi |
+|---|---|---|
+| Code | `TEST-FRAIS` | unique ; sert d'identifiant |
+| Libellé | `Produit test frais de dossier` | |
+| Statut | `Actif` | un produit inactif ne se sélectionne pas |
+| Montant minimum | `50 000` | bornes du capital autorisé |
+| Montant maximum | `5 000 000` | |
+| Durée min / max | `1` / `24` | |
+| Unité de durée | `Mois` | |
+| Fréquences de remboursement | `Mensuel` | sinon aucune échéance possible |
+| Taux d'intérêt | `2` | |
+| **Taux des frais de dossier (%)** | **`1,5`** | **le champ testé** |
+| Taxe / Assurance | laisser vide | on isole les frais de dossier |
+| Garantie exigée / Caution exigée | décochés | évite des pièces à fournir |
+
+**Avant d'enregistrer, regardez la forme du formulaire :**
+
+- ✅ un champ **« Taux des frais de dossier (%) »**, à côté des taux d'intérêt, taxe
+  et assurance ;
+- ❌ **aucun** champ « Frais de dossier » exprimé en francs ;
+- ❌ **aucun** champ « Montant plancher ».
+
+Enregistrez, rouvrez le produit : le taux **1,5** doit avoir été conservé.
+
+> Si « Montant plancher » est encore là, arrêtez-vous : inutile de tester la suite.
+
+---
+
+## 3. Créer un client
+
+Connecté en **loan-officer** → **Référentiel › Clients** → **Nouveau client**.
+Un client physique avec un nom et un téléphone suffit.
+
+> Un prêt exige un client existant. Si votre base en contient déjà un utilisable,
+> passez cette étape.
+
+---
+
+## 4. Le prêt n° 1 — capital 1 000 000 F
+
+Toujours en **loan-officer** → **Crédit › Prêts** → **Nouveau prêt**.
+
+| Champ | Valeur |
+|---|---|
+| Client | celui de l'étape 3 |
+| Produit | `TEST-FRAIS` |
+| Montant demandé | `1 000 000` |
+| Durée | `12` mois |
+| Fréquence | `Mensuelle` |
+
+Enregistrez. Le prêt est au statut **Demande**.
+
+### 4.1 Les quatre visas
+
+Ouvrez le prêt → onglet **Visas**. Approuvez dans l'ordre, **en changeant de compte
+à chaque fois** (voir le tableau de l'étape 1) :
+
+1. **Montage** — loan-officer
+2. **Comptabilité** — accountant
+3. **Contrôle** — compliance-officer
+4. **Direction** — agency-manager
+
+Après le visa Direction, le prêt passe au statut **Approuvé**.
+
+### 4.2 Évaluer les frais
+
+Connecté en **agency-manager** → **Crédit › Déblocage prêt** → sélectionnez le prêt →
+section **Frais de dossier** → **Évaluer** si les frais ne sont pas déjà calculés.
 
 **Attendu : frais de dossier = 15 000,00 F.**
 
-C'est 1,5 % de 1 000 000. Vous retrouvez le même montant dans
+C'est 1,5 % de 1 000 000. Le même montant apparaît dans
 **Crédit › Prêts › [le prêt] › Financier**, ligne « Frais de dossier ».
 
 ---
 
-## 3. Sans plancher — le test qui compte
+## 5. Le prêt n° 2 — sans plancher, le test qui compte
 
-Créez un second prêt sur le **même produit**, capital **100 000 F**. Évaluez ses
-frais.
+Refaites l'étape 4 à l'identique, **même produit**, mais avec un capital de
+**100 000 F**. Repassez les quatre visas, puis évaluez les frais.
 
 **Attendu : frais de dossier = 1 500,00 F.**
 
-Dix fois moins de capital, dix fois moins de frais. C'est exactement ce que
-« sans plancher » veut dire : rien ne relève ce montant vers un minimum.
+Dix fois moins de capital, dix fois moins de frais. C'est exactement ce que « sans
+plancher » veut dire : rien ne relève ce montant vers un minimum.
 
-> Sous l'ancien fonctionnement, ce prêt payait le **même** montant fixe que celui de
+> Sous l'ancien fonctionnement, ce prêt payait le **même** montant que celui de
 > 1 000 000 F. C'est ce que la comptabilité reprochait au système.
 
-**Si vous voyez 15 000 F, ou un montant identique aux deux prêts, arrêtez-vous et
+**Si les deux prêts affichent le même montant de frais, arrêtez-vous et
 signalez-le** : le taux n'est pas appliqué.
 
 ---
 
-## 4. Un montant qui ne tombe pas juste
+## 6. Le prêt n° 3 — un montant qui ne tombe pas juste
 
-Créez un troisième prêt, capital **33 333 F**. Évaluez.
+Même produit, capital **33 333 F**. Visas, puis évaluation.
 
 **Attendu : frais de dossier = 500,00 F.**
 
-1,5 % de 33 333 F donne 499,9995 F. Le montant est arrondi au centime le plus proche,
-vers le haut ici.
+1,5 % de 33 333 F donne 499,9995 F : le montant est arrondi au centime le plus
+proche.
 
-> Ce cas mérite d'exister dans le test : avec un montant fixe, la question ne se
-> posait jamais. Avec un pourcentage, la plupart des capitaux ne tombent pas juste, et
-> le calcul doit arrondir au lieu de refuser.
+> Ce cas mérite d'être testé : avec un montant fixe la question ne se posait jamais.
+> Avec un pourcentage, la plupart des capitaux ne tombent pas juste.
 
-**Une erreur technique (500) sur cette étape est un vrai défaut** — c'est le symptôme
+**Une erreur technique (500) à cette étape est un vrai défaut** — c'est le symptôme
 d'un calcul qui refuse d'arrondir. Signalez-la avec le capital et le taux utilisés.
 
 ---
 
-## 5. Taux à zéro, et pas de taux
+## 7. Deux cas limites, rapides
 
-Deux cas limites, rapides :
+Modifiez le produit (en **user-admin**) et refaites une évaluation sur un nouveau
+prêt :
 
 | Taux saisi | Attendu |
 |---|---|
-| **0** | Frais de dossier = 0,00 F. Le prêt reste déblocable. |
-| Champ **vide** | Frais de dossier = 0,00 F également — aucun taux, aucun frais. |
+| **0** | Frais = 0,00 F, et le prêt reste déblocable |
+| Champ **vide** | Frais = 0,00 F également |
 
-Dans les deux cas le déblocage doit rester possible : des frais nuls ne sont pas un
-blocage.
+Des frais nuls ne doivent jamais bloquer un déblocage.
 
 ---
 
-## 6. Ce qui doit vous faire lever la main
+## 8. Ce qui doit vous faire lever la main
 
 | Symptôme | Pourquoi c'est grave |
 |---|---|
-| Le champ **« Montant plancher »** est encore sur le formulaire | La demande n'est pas appliquée ; et ce champ ne pilote rien |
-| Un champ **« Frais de dossier »** en francs subsiste | Le montant fixe est toujours configurable |
+| Le champ **« Montant plancher »** est encore sur le formulaire | La demande n'est pas appliquée, et ce champ ne pilote rien |
+| Un champ **« Frais de dossier »** en francs subsiste | Le montant fixe reste configurable |
 | Deux prêts de capitaux différents ont les **mêmes** frais | Le taux n'est pas appliqué |
-| Les frais d'un petit prêt sont **relevés** à un minimum | Un plancher est appliqué quelque part |
-| **Erreur 500** à l'évaluation des frais | Le calcul refuse d'arrondir |
-| Le taux saisi n'est **pas conservé** après enregistrement | Le champ n'est pas transmis à l'API |
+| Les frais d'un petit prêt sont **relevés** à un minimum | Un plancher subsiste quelque part |
+| **Erreur 500** à l'évaluation | Le calcul refuse d'arrondir |
+| Le taux n'est **pas conservé** après enregistrement | Le champ n'est pas transmis à l'API |
 
 ---
 
-## 7. Ce que ce guide ne couvre pas
+## 9. Ce que ce guide ne couvre pas
 
-- La **taxe** sur les frais de dossier et le **dépôt de garantie** suivent leurs
-  propres règles, inchangées ici.
+- La **taxe** sur les frais et le **dépôt de garantie** suivent leurs propres règles,
+  inchangées ici. C'est pourquoi l'étape 2 les laisse vides.
 - Si le produit utilise une **politique de formule** définissant son propre
-  `dossier_fee_rate`, c'est elle qui l'emporte sur le taux du produit. Ce mécanisme
-  existait déjà et n'a pas changé.
+  `dossier_fee_rate`, celle-ci l'emporte sur le taux du produit. Ce mécanisme
+  existait déjà.
+- Le **collecte** effective des frais et le déblocage lui-même : on s'arrête au
+  montant calculé, qui est l'objet de la demande.
