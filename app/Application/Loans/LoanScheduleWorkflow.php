@@ -7,9 +7,11 @@ namespace App\Application\Loans;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\LoanResource;
 use App\Models\Loan;
+use App\Models\LoanProduct;
 use App\Models\LoanScheduleSnapshot;
 use App\Models\User;
 use App\Support\Finance\FormulaPolicyNotApproved;
+use App\Support\Loans\LoanProductBounds;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use DateTimeInterface;
@@ -111,6 +113,16 @@ final class LoanScheduleWorkflow extends BaseController
             'capitalized_penalties_minor' => ['nullable', 'integer', 'min:0'],
             'reason' => ['nullable', 'string', 'max:1000'],
         ])->validate();
+
+        // Rescheduling rewrites the very fields the product bounds govern, so
+        // enforcing them only on create would leave a way to walk around them.
+        $product = $loan->loadMissing('loanProduct')->loanProduct;
+        if ($product instanceof LoanProduct) {
+            $boundErrors = LoanProductBounds::termErrors($product, $validated);
+            if ($boundErrors !== []) {
+                return $this->respondUnprocessable(errors: $boundErrors);
+            }
+        }
 
         try {
             $snapshot = $this->rescheduleLoan->handle($loan, $actor, $validated);

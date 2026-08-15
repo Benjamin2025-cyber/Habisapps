@@ -140,7 +140,7 @@ que la journée d'agence s'ouvre à la date de l'institution. Validez.
 
 **But : donner au compte de résultat et à la clôture quelque chose à traiter.**
 
-Allez dans **Comptabilité › Écritures comptables**. Créez et **comptabilisez** (via
+Allez dans **Comptabilité › Opérations diverses**. Créez et **comptabilisez** (via
 le second utilisateur) les écritures suivantes, toutes datées du **31/12/2026** :
 
 | Écriture | Lignes |
@@ -197,7 +197,7 @@ Ouvrez **Aperçu**. Attendu :
 
 ## 5. Clôture de l'exercice
 
-**Comptabilité › Clôture de l'exercice.** Agence : la même. Exercice : **2026**.
+**Comptabilité › Clôture de l'exercice**. Agence : la même. Exercice : **2026**.
 Cliquez **Clôturer l'exercice**.
 
 **Attendu :**
@@ -208,12 +208,16 @@ Cliquez **Clôturer l'exercice**.
 
 ### 5.1 Faire aboutir le transfert
 
-Allez dans **Comptabilité › Écritures comptables**, cherchez la référence
-**`CLOT-2026-<code agence>`**, puis **Approuvez** et **Comptabilisez** — avec le
-**second utilisateur**.
+Restez sur la page : la ligne de la clôture porte un bouton **« Approuver et
+comptabiliser »**. Cliquez-le — **connecté avec le second utilisateur**.
 
-> ⚠️ **Point rugueux connu** : la page de clôture ne renvoie pas vers son écriture.
-> Il faut la retrouver à la main par sa référence.
+> Le second utilisateur n'est pas une précaution du guide, c'est la règle : celui
+> qui établit une écriture ne peut pas l'approuver. Le même compte se verra
+> refuser le bouton.
+>
+> Si vous préférez le faire à la main, la même écriture est visible dans
+> **Comptabilité › Opérations diverses** sous la référence
+> **`CLOT-2026-<code agence>`** ; le bouton fait exactement les deux gestes.
 
 **Attendu au retour :** statut **Comptabilisée**.
 
@@ -297,8 +301,9 @@ Saisissez deux lignes :
 
 ### 7.2 Faire aboutir, puis vérifier
 
-Approuvez et comptabilisez l'écriture avec le **second utilisateur**, puis
-consultez les soldes :
+Même geste qu'à la clôture : la ligne de l'affectation porte son bouton
+**« Approuver et comptabiliser »**, à cliquer avec le **second utilisateur**.
+Consultez ensuite les soldes :
 
 - `131` → **0**, aucun sens
 - `111` → **20 000** au crédit

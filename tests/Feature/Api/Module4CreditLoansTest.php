@@ -17,6 +17,7 @@ use App\Models\StaffAgencyAssignment;
 use App\Models\User;
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
+use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\StandardReportDefinitionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -4044,6 +4045,152 @@ final class Module4CreditLoansTest extends TestCase
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
         $overlapping = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
         self::assertSame('overlapping', $this->readinessStatus($overlapping, 'loan_principal_disbursement'));
+    }
+
+    public function test_a_loan_must_respect_the_product_term_and_grace_bounds(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR30');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $agent = $this->createUserWithRole('loan-officer');
+        $this->assignStaffToAgency($agent, $agencyId, 'loan-officer');
+        $product = $this->createLoanProduct($agencyId, [
+            'min_term_count' => 3,
+            'max_term_count' => 12,
+            'min_grace_period_days' => 0,
+            'max_grace_period_days' => 30,
+        ]);
+        $account = $this->createCustomerAccount($agencyId, $client['id']);
+
+        // The product's three pairs of bounds all look alike on the product form,
+        // but only the amount pair was ever enforced. A term of 60 against a
+        // maximum of 12 was accepted in silence, which is why nobody reported it:
+        // the loan was created, so there was nothing to report.
+        $payload = [
+            'client_public_id' => $client['public_id'],
+            'loan_product_public_id' => $product->public_id,
+            'credit_agent_public_id' => $agent->public_id,
+            'transfer_account_public_id' => $account['public_id'],
+            'requested_amount_minor' => 200000,
+            'currency' => 'XAF',
+            'purpose' => 'Working capital',
+        ];
+
+        $tooLong = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 60]);
+        $tooLong->assertStatus(422);
+        $tooLong->assertJsonValidationErrors(['number_of_installments']);
+
+        $tooShort = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 1]);
+        $tooShort->assertStatus(422);
+        $tooShort->assertJsonValidationErrors(['number_of_installments']);
+
+        $tooMuchGrace = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 6, 'grace_period_duration' => 90]);
+        $tooMuchGrace->assertStatus(422);
+        $tooMuchGrace->assertJsonValidationErrors(['grace_period_duration']);
+
+        // And the bounds are bounds, not a ban: a loan inside them still passes.
+        $accepted = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 6, 'grace_period_duration' => 30]);
+        $this->assertJsonSuccess($accepted, 201);
+    }
+
+    public function test_the_schedule_spaces_instalments_by_the_product_term_unit(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR31');
+        $client = $this->createClientRecord($agencyId, 'verified');
+
+        // A product may be sold by the day, the week or the month, and the
+        // schedule spaced every instalment a month apart whatever the product
+        // said. A weekly product therefore printed a schedule contradicting its
+        // own screen — and since the engine is flat-interest, the totals matched,
+        // so only the dates were wrong and every check on amounts still passed.
+        $weekly = $this->createLoanProduct($agencyId, [
+            'interest_rate' => '0.000000',
+            'term_unit' => LoanProduct::TERM_UNIT_WEEK,
+            'due_date_day' => 15,
+        ]);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $weekly->id, 200000);
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 200000,
+            'approved_on' => '2026-05-12',
+            'first_installment_date' => '2026-06-01',
+            'number_of_installments' => 4,
+            'formula_policy_snapshot' => ['approved' => true, 'source' => 'test'],
+        ])->save();
+
+        $this->approveFormulaPolicies();
+
+        $generated = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/schedule/generate');
+        $this->assertJsonSuccess($generated);
+        $generated->assertJsonPath('data.snapshot.lines.0.due_date', '2026-06-01');
+        $generated->assertJsonPath('data.snapshot.lines.1.due_date', '2026-06-08');
+        $generated->assertJsonPath('data.snapshot.lines.2.due_date', '2026-06-15');
+        $generated->assertJsonPath('data.snapshot.lines.3.due_date', '2026-06-22');
+    }
+
+    public function test_the_grace_period_delays_the_first_instalment(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR32');
+        $client = $this->createClientRecord($agencyId, 'verified');
+
+        // A grace period was stored on the loan, carried through rescheduling and
+        // bounded by the product, yet never read when the dates were drawn — so
+        // it produced exactly the schedule of no grace at all. Asserted against a
+        // second loan rather than a hand-written date, because the assertion has
+        // to fail if the offset is dropped, not merely if it changes.
+        $product = $this->createLoanProduct($agencyId, [
+            'interest_rate' => '0.000000',
+            'max_grace_period_days' => 60,
+            'due_date_day' => null,
+        ]);
+        $this->approveFormulaPolicies();
+
+        $dueDates = [];
+        foreach ([0, 45] as $grace) {
+            $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
+            $loan->forceFill([
+                'status' => Loan::STATUS_APPROVED,
+                'approved_principal_minor' => 200000,
+                'approved_on' => '2026-05-12',
+                'first_installment_date' => null,
+                'number_of_installments' => 4,
+                'grace_period_duration' => $grace,
+                'formula_policy_snapshot' => ['approved' => true, 'source' => 'test'],
+            ])->save();
+
+            $generated = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->postJson('/api/v1/loans/'.$loan->public_id.'/schedule/generate');
+            $this->assertJsonSuccess($generated);
+            $dueDates[$grace] = $this->requireStringJsonPath($generated, 'data.snapshot.lines.0.due_date');
+        }
+
+        // A grace period is a moratorium: nothing is owed for 45 days, and only
+        // then does the ordinary cycle start, so the first instalment falls one
+        // term after the grace ends rather than 45 days after the ordinary first
+        // due date. The two differ, because adding a month to a June date and to
+        // a May date are not the same number of days — which is exactly why this
+        // is computed here and not written out by hand.
+        $base = CarbonImmutable::parse('2026-05-12');
+        self::assertSame($base->addMonthNoOverflow()->toDateString(), $dueDates[0]);
+        self::assertSame($base->addDays(45)->addMonthNoOverflow()->toDateString(), $dueDates[45]);
+        self::assertNotSame($dueDates[0], $dueDates[45], 'A grace period that changes no date is a grace period ignored.');
+    }
+
+    private function approveFormulaPolicies(): void
+    {
+        config([
+            'formulas.policies.xaf_rounding.approved' => true,
+            'formulas.policies.loan_interest_method.approved' => true,
+            'formulas.policies.loan_installment_amount.approved' => true,
+            'formulas.policies.fees_taxes_insurance.approved' => true,
+        ]);
     }
 
     private function makeApprovedLoan(int $agencyId, int $clientId, LoanProduct $product, int $principalMinor = 200000): Loan

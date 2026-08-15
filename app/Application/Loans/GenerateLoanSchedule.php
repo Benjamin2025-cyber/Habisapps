@@ -115,7 +115,7 @@ final class GenerateLoanSchedule
                 LoanScheduleLine::query()->create([
                     'loan_schedule_snapshot_id' => $snapshot->id,
                     'installment_number' => $installment,
-                    'due_date' => $firstDueDate->addMonthsNoOverflow($installment - 1)->toDateString(),
+                    'due_date' => $this->addTerms($firstDueDate, $installment - 1, $product)->toDateString(),
                     'principal_minor' => $components['principal_minor'],
                     'interest_minor' => $components['interest_minor'],
                     'fees_minor' => $components['fees_minor'],
@@ -167,16 +167,48 @@ final class GenerateLoanSchedule
             return CarbonImmutable::parse($loan->first_installment_date);
         }
 
+        // A grace period is the borrower not owing anything yet, so it can only
+        // show up as the first instalment falling later. It was captured on the
+        // loan, carried through rescheduling and validated on the product, but
+        // never read here — so every grace period ever entered produced exactly
+        // the same schedule as no grace period at all. Days, because the product
+        // bounds that govern it are min/max_grace_period_days.
         $base = $loan->approved_on !== null ? CarbonImmutable::parse($loan->approved_on) : CarbonImmutable::now();
-        $dueDate = $base->addMonthNoOverflow();
+        $base = $base->addDays(max(0, $loan->grace_period_duration ?? 0));
+        $dueDate = $this->addTerms($base, 1, $product);
 
-        if ($product->due_date_day !== null) {
+        // A day-of-month only means something when instalments land monthly;
+        // pinning a weekly schedule to the 15th would collapse it.
+        if ($product->due_date_day !== null && $this->termUnit($product) === LoanProduct::TERM_UNIT_MONTH) {
             $day = min($product->due_date_day, $dueDate->daysInMonth);
 
             return $dueDate->day($day);
         }
 
         return $dueDate;
+    }
+
+    /**
+     * The product offers a term unit of day, week or month, and the schedule
+     * spaced every instalment a month apart regardless — so a weekly product
+     * produced a monthly schedule while its screen said otherwise. Dates only:
+     * this engine is flat-interest, so the total is principal × rate however the
+     * instalments are spread.
+     */
+    private function addTerms(CarbonImmutable $from, int $terms, LoanProduct $product): CarbonImmutable
+    {
+        return match ($this->termUnit($product)) {
+            LoanProduct::TERM_UNIT_DAY => $from->addDays($terms),
+            LoanProduct::TERM_UNIT_WEEK => $from->addWeeks($terms),
+            default => $from->addMonthsNoOverflow($terms),
+        };
+    }
+
+    private function termUnit(LoanProduct $product): string
+    {
+        $unit = $product->term_unit;
+
+        return is_string($unit) && $unit !== '' ? $unit : LoanProduct::TERM_UNIT_MONTH;
     }
 
     private function installmentChargeAmount(LoanProduct $product, string $component, int $amountMinor): int

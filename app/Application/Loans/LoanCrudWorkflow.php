@@ -18,6 +18,7 @@ use App\Models\SubSector;
 use App\Models\User;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
 use App\Support\Finance\LoanProductPenaltyTermsValidator;
+use App\Support\Loans\LoanProductBounds;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
 use Illuminate\Http\JsonResponse;
@@ -278,6 +279,7 @@ final class LoanCrudWorkflow extends BaseController
 
         if ($client instanceof Client && $product instanceof LoanProduct) {
             $this->validateProductAmount($product, $this->intValue($validated['requested_amount_minor'] ?? 0), $errors);
+            $this->validateProductTerm($product, $validated, $errors);
         }
 
         if ($client instanceof Client) {
@@ -314,6 +316,10 @@ final class LoanCrudWorkflow extends BaseController
         $product = $loan->loanProduct;
         if ($product instanceof LoanProduct && array_key_exists('requested_amount_minor', $validated)) {
             $this->validateProductAmount($product, $this->intValue($validated['requested_amount_minor']), $errors);
+        }
+
+        if ($product instanceof LoanProduct) {
+            $this->validateProductTerm($product, $validated, $errors);
         }
 
         if ($errors !== []) {
@@ -424,6 +430,15 @@ final class LoanCrudWorkflow extends BaseController
         if ($product->max_amount_minor !== null && $amount > $product->max_amount_minor) {
             $errors['requested_amount_minor'] = ['Requested amount exceeds the loan product maximum.'];
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, array<int, string>>  $errors
+     */
+    private function validateProductTerm(LoanProduct $product, array $validated, array &$errors): void
+    {
+        $errors += LoanProductBounds::termErrors($product, $validated);
     }
 
     /**
