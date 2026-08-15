@@ -99,7 +99,7 @@ Enregistrez, rouvrez le produit : le taux **1,5** doit avoir été conservé.
 
 ## 3. Créer un client
 
-Connecté en **loan-officer** (+237690000005) → **Référentiel › Clients** → **Nouveau client**.
+Connecté en **loan-officer** (+237690000005) → **Référentiel › Client** → **Nouveau client**.
 Un client physique avec un nom et un téléphone suffit.
 
 > Un prêt exige un client existant. Si votre base en contient déjà un utilisable,
@@ -109,7 +109,7 @@ Un client physique avec un nom et un téléphone suffit.
 
 ## 4. Le prêt n° 1 — capital 1 000 000 F
 
-Toujours en **loan-officer** (+237690000005) → **Crédit › Prêts** → **Nouveau prêt**.
+Toujours en **loan-officer** (+237690000005) → **Crédit › Mise en place** → **Nouveau prêt**.
 
 | Champ | Valeur |
 |---|---|
@@ -123,7 +123,8 @@ Enregistrez. Le prêt est au statut **Demande**.
 
 ### 4.1 Les quatre visas
 
-Ouvrez le prêt → onglet **Visas**. Approuvez dans l'ordre, **en changeant de compte
+Ouvrez le prêt. Le **Circuit de visa** est le bandeau d'étapes placé au-dessus des
+onglets — ce n'est pas un onglet. Approuvez dans l'ordre, **en changeant de compte
 à chaque fois** (voir le tableau de l'étape 1) :
 
 1. **Montage** — loan-officer, +237690000005
@@ -136,12 +137,12 @@ Après le visa Direction, le prêt passe au statut **Approuvé**.
 ### 4.2 Évaluer les frais
 
 Connecté en **agency-manager** (+237690000002) → **Crédit › Déblocage prêt** → sélectionnez le prêt →
-section **Frais de dossier** → **Évaluer** si les frais ne sont pas déjà calculés.
+section **Frais de dossier** → **Évaluer les frais** si le calcul n'a pas déjà eu lieu.
 
 **Attendu : frais de dossier = 15 000,00 F.**
 
 C'est 1,5 % de 1 000 000. Le même montant apparaît dans
-**Crédit › Prêts › [le prêt] › Financier**, ligne « Frais de dossier ».
+**Crédit › Mise en place › [le prêt] › onglet Financières**, ligne « Frais de dossier ».
 
 ---
 
