@@ -71,7 +71,7 @@ que le prêt puisse ensuite être monté sans blocage :
 | **Code** | `TEST-FRAIS` | unique ; sert d'identifiant |
 | **Nom du produit** | `Produit test frais de dossier` | |
 | **Statut** | `Actif` | un produit inactif ne se sélectionne pas |
-| **Montant minimum** | `50 000` | bornes du capital autorisé |
+| **Montant minimum** | `10 000` | bornes du capital autorisé — **doit rester sous 33 333**, le plus petit prêt du test (étape 6) |
 | **Montant maximum** | `5 000 000` | |
 | **Durée minimale** / **Durée maximale** | `1` / `24` | |
 | **Unité de durée** | `Mois` | |
@@ -239,6 +239,10 @@ signalez-le** : le taux n'est pas appliqué.
 ## 6. Le prêt n° 3 — un montant qui ne tombe pas juste
 
 Même produit, capital **33 333 F**. Visas, puis évaluation.
+
+> Si le prêt est refusé pour montant inférieur au minimum, c'est le **Montant
+> minimum** du produit (étape 2) qui bloque : abaissez-le à `10 000`. Les bornes de
+> montant du produit, elles, sont bien appliquées à la création du prêt.
 
 **Attendu : frais de dossier = 500,00 F.**
 
