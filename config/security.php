@@ -407,6 +407,7 @@ return [
                 // the counter that opened it.
                 'customer.accounts.close',
                 'customer.accounts.balance.view',
+                'customer.accounts.statement.view',
                 'customer.account-signatures.view',
                 'account.holds.view',
                 'journal.entries.view',
@@ -507,6 +508,12 @@ return [
                 // list is simply empty and the form cannot be completed.
                 'account.products.view',
                 'customer.accounts.balance.view',
+                // Printing a client's statement is ordinary counter service.
+                // The permission is deliberately separate from account `view`
+                // so history is never picked up by accident — but it was then
+                // granted to nobody, which left the branch unable to hand a
+                // client his own movements without calling head office.
+                'customer.accounts.statement.view',
                 'cash.denominations.view',
                 'cash.tills.view',
                 'cash.sessions.view',
@@ -616,6 +623,7 @@ return [
                 'crm.clients.identity.view',
                 'customer.accounts.view',
                 'customer.accounts.balance.view',
+                'customer.accounts.statement.view',
                 'loans.view',
                 'loans.approvals.comptabilite',
                 'loans.disburse',

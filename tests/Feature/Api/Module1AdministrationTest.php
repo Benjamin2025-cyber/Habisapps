@@ -724,9 +724,21 @@ final class Module1AdministrationTest extends TestCase
             self::assertNotContains('ledger.accounts.view', $rolePermissions($role), "{$role} must not gain ledger.accounts.view");
         }
 
-        // Statement access is not granted to any operational role.
-        foreach (['teller', 'loan-officer', 'accountant', 'agency-manager', 'kyc-officer', 'user-admin'] as $role) {
-            self::assertNotContains('customer.accounts.statement.view', $rolePermissions($role), "{$role} must not gain customer.accounts.statement.view");
+        // Statements are gated apart from account `view` so that movement history
+        // is never picked up as a side effect of reading a balance. That
+        // separation is the point — not withholding statements from everyone.
+        //
+        // Handing a client his own movements is counter service, so the roles that
+        // serve him have it deliberately; the roles that merely consult an account
+        // in passing do not, which is what proves the two are still separate.
+        foreach (['teller', 'agency-manager', 'accountant'] as $role) {
+            self::assertContains('customer.accounts.statement.view', $rolePermissions($role), "{$role} should be able to produce a statement");
+        }
+
+        foreach (['loan-officer', 'kyc-officer', 'user-admin'] as $role) {
+            $perms = $rolePermissions($role);
+            self::assertContains('customer.accounts.view', $perms, "{$role} should still read accounts");
+            self::assertNotContains('customer.accounts.statement.view', $perms, "{$role} must not gain statement history from account view");
         }
     }
 

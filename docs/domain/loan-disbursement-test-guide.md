@@ -314,14 +314,50 @@ Cliquez **Confirmer le décaissement**.
 
 ## 6. Ce qu'il faut vérifier
 
-1. **Statut du prêt** → **Décaissé**, et **Décaissé le** renseigné sur la fiche.
-2. **Le compte du client** — *Référentiel › Compte*, ouvrez `CPT-TEST-001` :
-   crédité de `200 000`, débité de `3 000` de frais.
-3. **L'écriture comptable** — *Comptabilité › Opérations diverses* : `3222` **débité**
-   de `200 000`, le compte comptable du client **crédité** d'autant.
-4. **Le prêt disparaît** de la liste « Prêts à décaisser ».
-5. **Redécaisser est refusé.** Rouvrez le prêt et retentez : l'application doit
-   refuser un second décaissement, pas en créer un deuxième.
+Le prêt a disparu de « Prêts à décaisser » : c'est le premier signe que ça a marché —
+il n'est plus à décaisser. Le reste se vérifie sur trois écrans.
+
+### 6.1 Le prêt est décaissé
+
+**Crédit › Mise en place** → ouvrez le prêt.
+
+- **Statut** = **Décaissé**
+- onglet **Infos générales**, section *Cycle de vie* : **Décaissé le** est renseigné
+
+> La date est celle de la **journée comptable ouverte**, pas celle du calendrier :
+> avec une journée au 30 juin 2027, c'est le 30/06/2027 qui s'affiche. Ce n'est pas
+> une anomalie.
+
+### 6.2 Le compte du client a bougé
+
+**Référentiel › Compte** → ouvrez **`CPT-TEST-001`**.
+
+Onglet **Soldes** :
+
+| Ligne | Attendu |
+|---|---|
+| **Solde comptable** | **197 000** — soit 200 000 reçus, moins 3 000 de frais |
+| **Solde disponible** | **697 000** — le solde comptable **plus** le découvert autorisé de 500 000 |
+
+Onglet **Relevé** : les mouvements du compte, le capital reçu et les frais prélevés.
+
+### 6.3 L'écriture comptable existe
+
+**Comptabilité › Opérations diverses**. Cherchez la référence
+**`LD-` suivi du numéro du prêt** (ici `LD-LN-01M04RHB…`). Ouvrez-la.
+
+| Compte | Débit | Crédit |
+|---|---|---|
+| `3222` Crédits de trésorerie aux clients | **200 000** | |
+| `3712` Comptes courants clients | | **200 000** |
+
+**Statut : Comptabilisée.** C'est exactement l'écriture annoncée au §4 — le débit vient
+de votre imputation, le crédit du compte du client.
+
+### 6.4 On ne décaisse pas deux fois
+
+Retournez dans **Crédit › Déblocage prêt** : le prêt n'y est plus. L'application ne
+propose pas un second décaissement, et n'en crée pas.
 
 ---
 

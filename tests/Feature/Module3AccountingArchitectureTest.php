@@ -1699,10 +1699,20 @@ final class Module3AccountingArchitectureTest extends TestCase
                 self::assertArrayHasKey($field, $availableData, "{$role} available-balance payload must include {$field}");
             }
 
-            // Statements remain out of scope for operational account readers.
+            // A statement is movement history, gated apart from the balance so it
+            // is never picked up as a side effect of reading an account. The
+            // separation is what this asserts — not that nobody may produce one.
+            // Handing a client his own movements is counter service, so the roles
+            // that serve him at the desk have it; the roles that only consult an
+            // account in passing still do not.
             $statement = $this->withApiHeaders()->actingAsSanctum($actor)
                 ->getJson('/api/v1/customer-accounts/'.$accountPublicId.'/statement?currency=XAF');
-            $statement->assertForbidden();
+
+            if (in_array($role, ['teller', 'agency-manager', 'accountant'], true)) {
+                $this->assertJsonSuccess($statement);
+            } else {
+                $statement->assertForbidden();
+            }
         }
     }
 
