@@ -767,6 +767,49 @@ final class Module1AdministrationTest extends TestCase
         self::assertSame([], $gaps, 'A role can write a record whose form picks a staff member, but cannot read the staff list.');
     }
 
+    public function test_a_role_can_read_every_catalogue_its_own_forms_make_it_choose_from(): void
+    {
+        // A create form that makes you pick from a catalogue is only usable if you
+        // may read that catalogue. The teller was granted account opening and not
+        // `account.products.view`, so the product list came back 403, the fetch
+        // swallowed it, and the field showed an empty dropdown with no reason —
+        // indistinguishable from an institution that has no products yet.
+        //
+        // Stated as write-permission → catalogue it forces you to read, so a new
+        // grant that forgets its catalogue fails here instead of in front of a
+        // tester.
+        $requires = [
+            'customer.accounts.create' => 'account.products.view',
+            'customer.accounts.update' => 'account.products.view',
+            'loans.create' => 'loan.products.view',
+            'loans.update' => 'loan.products.view',
+        ];
+
+        $rolePermissions = static function (string $role): array {
+            return array_values(array_filter(
+                DB::table('roles')
+                    ->join('role_has_permissions', 'roles.id', '=', 'role_has_permissions.role_id')
+                    ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+                    ->where('roles.name', $role)
+                    ->pluck('permissions.name')
+                    ->all(),
+                'is_string',
+            ));
+        };
+
+        $gaps = [];
+        foreach (array_filter(DB::table('roles')->pluck('name')->all(), 'is_string') as $role) {
+            $held = $rolePermissions($role);
+            foreach ($requires as $write => $catalogue) {
+                if (in_array($write, $held, true) && ! in_array($catalogue, $held, true)) {
+                    $gaps[] = "{$role}: has {$write} but not {$catalogue}";
+                }
+            }
+        }
+
+        self::assertSame([], $gaps, 'A role must fill a form from a catalogue it cannot read.');
+    }
+
     public function test_no_everyday_loan_action_is_reserved_to_the_platform_admin(): void
     {
         // Every one of these is a branch act in a real EMF: producing the

@@ -502,6 +502,10 @@ return [
                 // the most ordinary branch task to the platform administrator.
                 'customer.accounts.create',
                 'customer.accounts.update',
+                // The opening form makes you pick a product, so whoever opens an
+                // account has to be able to read the catalogue. Without this the
+                // list is simply empty and the form cannot be completed.
+                'account.products.view',
                 'customer.accounts.balance.view',
                 'cash.denominations.view',
                 'cash.tills.view',
