@@ -416,6 +416,18 @@ return [
                 'loans.update',
                 'loans.approvals.montage',
                 'loans.approvals.direction',
+                // The amortisation table is produced during origination, not by
+                // an administrator: it is what the branch hands the borrower.
+                // Rescheduling sits here too — restructuring an existing loan is
+                // a credit decision, which is the manager's call and not the
+                // originating officer's.
+                'loans.schedules.generate',
+                'loans.schedules.reschedule',
+                // Closing a repaid loan, writing one off, cancelling an
+                // application: branch decisions, taken with a reason and audited.
+                // Held at manager level rather than by the originating officer,
+                // and not something an institution calls head office for.
+                'loans.status.transition',
                 'loans.disburse',
                 'loans.repayments.create',
                 'loans.early-repayments.create',
@@ -495,6 +507,12 @@ return [
             'loan-officer' => [
                 'system.view-health',
                 'agencies.view',
+                // A loan names its credit agent, and the picker for that field
+                // lists staff — so without this the field is simply empty and a
+                // loan officer cannot finish their own form. Read-only: the API
+                // scopes non-admins to their own agency, so this shows the
+                // branch's colleagues and nothing more.
+                'users.view',
                 'documents.view',
                 'documents.create',
                 'references.reserve',
@@ -512,6 +530,11 @@ return [
                 'loans.create',
                 'loans.update',
                 'loans.approvals.montage',
+                // Generating the schedule is part of putting the loan together —
+                // the officer needs the table to walk the borrower through the
+                // instalments. Rescheduling is deliberately withheld: changing
+                // the terms of a live loan is a decision above this role.
+                'loans.schedules.generate',
                 'loans.guarantees.manage',
                 'loans.delinquency.manage',
                 'cash.denominations.view',
@@ -660,6 +683,9 @@ return [
             'kyc-officer' => [
                 'system.view-health',
                 'agencies.view',
+                // Same reason as loan-officer: the client form names a prospector
+                // and a collection agent, both picked from the staff list.
+                'users.view',
                 'documents.view',
                 'documents.create',
                 'references.reserve',

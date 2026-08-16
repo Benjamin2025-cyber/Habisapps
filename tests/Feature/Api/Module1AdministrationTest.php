@@ -730,6 +730,78 @@ final class Module1AdministrationTest extends TestCase
         }
     }
 
+    public function test_roles_that_fill_a_staff_backed_field_can_read_the_staff_list(): void
+    {
+        // The loan form names a credit agent and the client form names a
+        // prospector and a collection agent. All three are chosen from the staff
+        // list, which is gated on users.view — so a role allowed to write the
+        // record but not to read that list gets a field that lists nothing, with
+        // no error to read: the picker fell back to an empty list on failure.
+        // loan-officer and kyc-officer were both in exactly that state.
+        //
+        // Written as the rule rather than as those two names, because the next
+        // role added to the catalogue is the one nobody will think to re-check.
+        $writesAStaffBackedForm = ['loans.create', 'loans.update', 'crm.clients.create', 'crm.clients.update'];
+
+        $roles = array_values(array_filter(DB::table('roles')->pluck('name')->all(), 'is_string'));
+        self::assertNotEmpty($roles);
+
+        $gaps = [];
+        foreach ($roles as $role) {
+            $permissions = array_values(array_filter(
+                DB::table('roles')
+                    ->join('role_has_permissions', 'roles.id', '=', 'role_has_permissions.role_id')
+                    ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+                    ->where('roles.name', $role)
+                    ->pluck('permissions.name')
+                    ->all(),
+                'is_string',
+            ));
+
+            $writes = array_intersect($writesAStaffBackedForm, $permissions);
+            if ($writes !== [] && ! in_array('users.view', $permissions, true)) {
+                $gaps[] = $role.' (has '.implode(', ', $writes).')';
+            }
+        }
+
+        self::assertSame([], $gaps, 'A role can write a record whose form picks a staff member, but cannot read the staff list.');
+    }
+
+    public function test_no_everyday_loan_action_is_reserved_to_the_platform_admin(): void
+    {
+        // Every one of these is a branch act in a real EMF: producing the
+        // amortisation table the borrower is handed, restructuring a loan,
+        // closing a repaid one, writing off a bad one. Each was reachable only
+        // by platform-admin, so a working institution would have had to call
+        // whoever holds that account to finish an ordinary file.
+        //
+        // The workflows read `hasRole('platform-admin') || can(...)`, which means
+        // a permission nobody else holds is indistinguishable from no permission
+        // at all — the button simply is not there, with nothing to explain it.
+        $operational = [
+            'loans.schedules.generate',
+            'loans.schedules.reschedule',
+            'loans.status.transition',
+        ];
+
+        $reserved = [];
+        foreach ($operational as $permission) {
+            $holders = DB::table('roles')
+                ->join('role_has_permissions', 'roles.id', '=', 'role_has_permissions.role_id')
+                ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+                ->where('permissions.name', $permission)
+                ->pluck('roles.name')
+                ->all();
+            $holders = array_values(array_filter($holders, 'is_string'));
+
+            if (array_values(array_diff($holders, ['platform-admin'])) === []) {
+                $reserved[] = $permission;
+            }
+        }
+
+        self::assertSame([], $reserved, 'An everyday loan action is reachable only by the platform admin.');
+    }
+
     public function test_batch_registry_and_run_idempotency_work(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

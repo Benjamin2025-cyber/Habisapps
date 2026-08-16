@@ -156,7 +156,7 @@ final class LoanCrudWorkflow extends BaseController
         }
 
         if ($loan->status !== Loan::STATUS_APPLICATION) {
-            return $this->respondUnprocessable(errors: ['status' => [__('Only application-stage loans can be updated through this endpoint.')]]);
+            return $this->respondUnprocessable(errors: ['status' => [(string) __('Only application-stage loans can be updated through this endpoint.')]]);
         }
 
         $validated = $request->validated();
@@ -189,13 +189,13 @@ final class LoanCrudWorkflow extends BaseController
         }
 
         if (in_array($loan->status, [Loan::STATUS_CLOSED, Loan::STATUS_REJECTED, Loan::STATUS_WRITTEN_OFF], true)) {
-            return $this->respondUnprocessable(errors: ['status' => [__('Linked accounts cannot be changed once the loan is closed, rejected, or written off.')]]);
+            return $this->respondUnprocessable(errors: ['status' => [(string) __('Linked accounts cannot be changed once the loan is closed, rejected, or written off.')]]);
         }
 
         $loan->loadMissing('client');
         $client = $loan->client;
         if (! $client instanceof Client) {
-            return $this->respondUnprocessable(errors: ['client_public_id' => [__('Loan client is missing.')]]);
+            return $this->respondUnprocessable(errors: ['client_public_id' => [(string) __('Loan client is missing.')]]);
         }
 
         // Reject no-op payloads: an empty body, or a body whose keys are all
@@ -206,14 +206,14 @@ final class LoanCrudWorkflow extends BaseController
         $unknownFields = array_values(array_diff(array_keys($request->all()), $accountFieldNames));
         if ($unknownFields !== []) {
             return $this->respondUnprocessable(errors: [
-                'accounts' => [__('loans.unknown_linked_account_fields', ['fields' => implode(', ', $unknownFields)])],
+                'accounts' => [(string) __('loans.unknown_linked_account_fields', ['fields' => implode(', ', $unknownFields)])],
             ]);
         }
 
         $presentFields = array_values(array_filter($accountFieldNames, fn (string $field): bool => $request->has($field)));
         if ($presentFields === []) {
             return $this->respondUnprocessable(errors: [
-                'accounts' => [__('loans.provide_linked_account_field', ['fields' => implode(', ', $accountFieldNames)])],
+                'accounts' => [(string) __('loans.provide_linked_account_field', ['fields' => implode(', ', $accountFieldNames)])],
             ]);
         }
 
@@ -424,11 +424,11 @@ final class LoanCrudWorkflow extends BaseController
     private function validateProductAmount(LoanProduct $product, int $amount, array &$errors): void
     {
         if ($product->min_amount_minor !== null && $amount < $product->min_amount_minor) {
-            $errors['requested_amount_minor'] = ['Requested amount is below the loan product minimum.'];
+            $errors['requested_amount_minor'] = [(string) __('Requested amount is below the loan product minimum.')];
         }
 
         if ($product->max_amount_minor !== null && $amount > $product->max_amount_minor) {
-            $errors['requested_amount_minor'] = ['Requested amount exceeds the loan product maximum.'];
+            $errors['requested_amount_minor'] = [(string) __('Requested amount exceeds the loan product maximum.')];
         }
     }
 

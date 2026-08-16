@@ -4060,7 +4060,10 @@ final class Module4CreditLoansTest extends TestCase
             'min_grace_period_days' => 0,
             'max_grace_period_days' => 30,
         ]);
-        $account = $this->createCustomerAccount($agencyId, $client['id']);
+        // Deliberately no customer account: a loan is registered, approved and
+        // scheduled without one. The account is a disbursement concern, and
+        // asking testers to open one before they can try a term bound sends them
+        // through an unrelated workflow to reach this screen.
 
         // The product's three pairs of bounds all look alike on the product form,
         // but only the amount pair was ever enforced. A term of 60 against a
@@ -4070,7 +4073,6 @@ final class Module4CreditLoansTest extends TestCase
             'client_public_id' => $client['public_id'],
             'loan_product_public_id' => $product->public_id,
             'credit_agent_public_id' => $agent->public_id,
-            'transfer_account_public_id' => $account['public_id'],
             'requested_amount_minor' => 200000,
             'currency' => 'XAF',
             'purpose' => 'Working capital',
@@ -4091,10 +4093,81 @@ final class Module4CreditLoansTest extends TestCase
         $tooMuchGrace->assertStatus(422);
         $tooMuchGrace->assertJsonValidationErrors(['grace_period_duration']);
 
+        // The refusal has to reach the tester in their own language. Error strings
+        // are translated at the call site here, not by the envelope builder, so an
+        // unwrapped one reaches a French screen in English and reads as a crash.
+        $inFrench = $this->withApiHeaders(['X-Locale' => 'fr'])->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 60]);
+        $inFrench->assertStatus(422);
+        self::assertSame(
+            ['Le nombre d\'échéances dépasse la durée maximale du produit de prêt.'],
+            $inFrench->json('errors.number_of_installments'),
+        );
+
         // And the bounds are bounds, not a ban: a loan inside them still passes.
         $accepted = $this->withApiHeaders()->actingAsSanctum($actor)
             ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 6, 'grace_period_duration' => 30]);
         $this->assertJsonSuccess($accepted, 201);
+    }
+
+    public function test_editing_a_loan_accepts_every_field_the_edit_form_sends(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR33');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, ['min_term_count' => 3, 'max_term_count' => 12]);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
+
+        // The API runs FormRequest::failOnUnknownFields(), so an undeclared field
+        // is refused rather than ignored -- and the refusal names that field, not
+        // the one being edited. The loan drawer sent `currency` and `applied_on`
+        // on update, so every edit failed with "the currency field is prohibited"
+        // while pointing at a box the user had not touched.
+        //
+        // This is the drawer's edit payload. It must be accepted whole: a field
+        // added to the form but not to UpdateLoanRequest breaks editing outright,
+        // and the error will not say so.
+        $editPayload = [
+            'credit_agent_public_id' => null,
+            'requested_amount_minor' => 250000,
+            'number_of_installments' => 6,
+            'tranche_duration' => null,
+            'grace_period_duration' => 10,
+            'total_loan_duration' => null,
+            'first_installment_date' => null,
+            'amortization_account_public_id' => null,
+            'unpaid_account_public_id' => null,
+            'recovery_account_public_id' => null,
+            'transfer_account_public_id' => null,
+            'purpose' => 'Test durée',
+            'sector_public_id' => null,
+            'sub_sector_public_id' => null,
+            'financed_activity_code' => null,
+            'activity_address' => null,
+            'entrepreneur_address' => null,
+        ];
+
+        $updated = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id, $editPayload);
+        $this->assertJsonSuccess($updated);
+        $updated->assertJsonPath('data.number_of_installments', 6);
+
+        // And the create-only fields really are refused, which is what forces the
+        // drawer to keep them out of the edit payload rather than send them and
+        // hope they are ignored.
+        foreach (['currency' => 'XAF', 'applied_on' => '2026-08-15'] as $field => $value) {
+            $refused = $this->withApiHeaders()->actingAsSanctum($actor)
+                ->patchJson('/api/v1/loans/'.$loan->public_id, [$field => $value]);
+            $refused->assertStatus(422);
+            $refused->assertJsonValidationErrors([$field]);
+        }
+
+        // The term bounds still apply on edit -- the path that first surfaced
+        // this, since the prohibited-field refusal masked the bound entirely.
+        $outOfBounds = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$loan->public_id, ['number_of_installments' => 60]);
+        $outOfBounds->assertStatus(422);
+        $outOfBounds->assertJsonValidationErrors(['number_of_installments']);
     }
 
     public function test_the_schedule_spaces_instalments_by_the_product_term_unit(): void
