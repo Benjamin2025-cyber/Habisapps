@@ -401,6 +401,11 @@ return [
                 'operation.mappings.view',
                 'ledger.accounts.view',
                 'customer.accounts.view',
+                'customer.accounts.create',
+                'customer.accounts.update',
+                // Closing an account is held at manager level rather than at
+                // the counter that opened it.
+                'customer.accounts.close',
                 'customer.accounts.balance.view',
                 'customer.account-signatures.view',
                 'account.holds.view',
@@ -492,6 +497,11 @@ return [
                 'crm.clients.view',
                 'crm.clients.identity.view',
                 'customer.accounts.view',
+                // Opening and maintaining a client account is counter work. Seven
+                // roles could read accounts and none could open one, which left
+                // the most ordinary branch task to the platform administrator.
+                'customer.accounts.create',
+                'customer.accounts.update',
                 'customer.accounts.balance.view',
                 'cash.denominations.view',
                 'cash.tills.view',

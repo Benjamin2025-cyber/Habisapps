@@ -25,6 +25,12 @@ final class LedgerAccountResource extends JsonResource
             'public_id' => $ledgerAccount->public_id,
             'scope' => $ledgerAccount->accountScope(),
             'agency_public_id' => $ledgerAccount->relationLoaded('agency') ? $ledgerAccount->agency?->public_id : null,
+            // The chart repeats every detail account per agency, so a reader with
+            // institution scope sees `3712 Comptes courants clients` once per
+            // agency, identically. Without a name to tell them apart the list is
+            // unusable and the choice is a guess.
+            'agency_code' => $ledgerAccount->relationLoaded('agency') ? $ledgerAccount->agency?->code : null,
+            'agency_name' => $ledgerAccount->relationLoaded('agency') ? $ledgerAccount->agency?->name : null,
             'parent_account_public_id' => $ledgerAccount->relationLoaded('parentAccount') ? $ledgerAccount->parentAccount?->public_id : null,
             'code' => $ledgerAccount->code,
             'name' => $ledgerAccount->name,
