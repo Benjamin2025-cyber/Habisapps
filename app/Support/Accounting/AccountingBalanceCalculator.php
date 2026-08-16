@@ -111,7 +111,7 @@ final class AccountingBalanceCalculator
     }
 
     /**
-     * @return array{scope:string, public_id:string, currency:string, accounting_balance_minor:int, minimum_balance_minor:int, unavailable_amount_minor:int, active_hold_amount_minor:int, available_balance_minor:int}
+     * @return array{scope:string, public_id:string, currency:string, accounting_balance_minor:int, minimum_balance_minor:int, unavailable_amount_minor:int, active_hold_amount_minor:int, overdraft_limit_minor:int, available_balance_minor:int}
      */
     public function availableForCustomerAccount(CustomerAccount $customerAccount, string $currency): array
     {
@@ -130,6 +130,24 @@ final class AccountingBalanceCalculator
             ->where('currency', $currency)
             ->sum('amount_minor');
 
+        /*
+         * An authorised overdraft is spending power the account genuinely has, so
+         * it belongs in what is available. The product carried `allows_overdraft`
+         * and a limit, both settable from the product screen, and nothing read
+         * them: an account on a current-account product was refused at zero
+         * exactly like one with no overdraft at all.
+         *
+         * Guarded on the product's own currency, like the minimum balance above:
+         * a limit expressed in one currency says nothing about another.
+         */
+        $overdraftLimit = 0;
+        $product = $customerAccount->accountProduct;
+        if ($product !== null
+            && $product->allows_overdraft
+            && $product->currency === $currency) {
+            $overdraftLimit = max(0, $product->overdraft_limit_minor);
+        }
+
         return [
             'scope' => 'customer_account_available',
             'public_id' => $customerAccount->public_id,
@@ -138,7 +156,8 @@ final class AccountingBalanceCalculator
             'minimum_balance_minor' => $minimumBalance,
             'unavailable_amount_minor' => $unavailableAmount,
             'active_hold_amount_minor' => $activeHoldAmount,
-            'available_balance_minor' => $accounting['balance_minor'] - $minimumBalance - $unavailableAmount - $activeHoldAmount,
+            'overdraft_limit_minor' => $overdraftLimit,
+            'available_balance_minor' => $accounting['balance_minor'] - $minimumBalance - $unavailableAmount - $activeHoldAmount + $overdraftLimit,
         ];
     }
 

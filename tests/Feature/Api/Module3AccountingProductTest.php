@@ -6,8 +6,10 @@ namespace Tests\Feature\Api;
 
 use App\Models\AccountProduct;
 use App\Models\Client;
+use App\Models\CustomerAccount;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\Accounting\AccountingBalanceCalculator;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -203,6 +205,59 @@ final class Module3AccountingProductTest extends TestCase
             ]);
         $this->assertJsonSuccess($provided, 201);
         $provided->assertJsonPath('data.account_number', 'CUSTOM-ACC-001');
+    }
+
+    public function test_an_authorised_overdraft_counts_as_available_balance(): void
+    {
+        $agency = $this->createAgency('AP-OD');
+        $client = $this->createVerifiedClient($agency['id']);
+        $ledger = $this->createLedgerAccount($agency['id']);
+
+        $makeAccount = function (bool $overdraft) use ($agency, $client, $ledger): CustomerAccount {
+            $productPublicId = (string) Str::ulid();
+            DB::table('account_products')->insert([
+                'public_id' => $productPublicId,
+                'agency_id' => $agency['id'],
+                'ledger_account_id' => $ledger['id'],
+                'code' => 'OD-'.Str::ulid(),
+                'name' => $overdraft ? 'Courant avec découvert' : 'Courant sans découvert',
+                'account_family' => AccountProduct::FAMILY_CURRENT,
+                'minimum_balance_minor' => 0,
+                'currency' => 'XAF',
+                'allows_overdraft' => $overdraft,
+                'overdraft_limit_minor' => $overdraft ? 500000 : 0,
+                'status' => AccountProduct::STATUS_ACTIVE,
+            ]);
+
+            return CustomerAccount::query()->create([
+                'public_id' => (string) Str::ulid(),
+                'client_id' => $client['id'],
+                'agency_id' => $agency['id'],
+                'ledger_account_id' => $ledger['id'],
+                'account_product_id' => DB::table('account_products')->where('public_id', $productPublicId)->value('id'),
+                'account_number' => 'ACC-'.Str::ulid(),
+                'currency' => 'XAF',
+                'status' => CustomerAccount::STATUS_ACTIVE,
+                'opened_on' => '2026-05-11',
+            ]);
+        };
+
+        $calculator = app(AccountingBalanceCalculator::class);
+
+        // An authorised overdraft is spending power the account has. Both of these
+        // sit at nil, and only one of them may be debited — that difference is the
+        // whole meaning of the field, and nothing used to read it: a current
+        // account carrying a 500 000 limit was refused at zero exactly like a
+        // savings account with none, and the product screen said otherwise.
+        $withOverdraft = $calculator->availableForCustomerAccount($makeAccount(true), 'XAF');
+        $without = $calculator->availableForCustomerAccount($makeAccount(false), 'XAF');
+
+        self::assertSame(0, $withOverdraft['accounting_balance_minor']);
+        self::assertSame(500000, $withOverdraft['overdraft_limit_minor']);
+        self::assertSame(500000, $withOverdraft['available_balance_minor']);
+
+        self::assertSame(0, $without['overdraft_limit_minor']);
+        self::assertSame(0, $without['available_balance_minor']);
     }
 
     public function test_platform_admin_can_manage_emf_regulatory_account_hierarchy(): void

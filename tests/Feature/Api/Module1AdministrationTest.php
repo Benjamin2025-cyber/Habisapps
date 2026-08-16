@@ -778,11 +778,18 @@ final class Module1AdministrationTest extends TestCase
         // Stated as write-permission → catalogue it forces you to read, so a new
         // grant that forgets its catalogue fails here instead of in front of a
         // tester.
+        // Pairs, not a map: one write permission can force several catalogues, and
+        // a keyed array would silently keep only the last of them.
         $requires = [
-            'customer.accounts.create' => 'account.products.view',
-            'customer.accounts.update' => 'account.products.view',
-            'loans.create' => 'loan.products.view',
-            'loans.update' => 'loan.products.view',
+            ['customer.accounts.create', 'account.products.view'],
+            ['customer.accounts.update', 'account.products.view'],
+            ['loans.create', 'loan.products.view'],
+            ['loans.update', 'loan.products.view'],
+            // The imputation form picks the operation it applies to...
+            ['operation.mappings.create', 'operation.codes.view'],
+            ['operation.mappings.update', 'operation.codes.view'],
+            // ...and the ledger accounts it posts to.
+            ['operation.mappings.create', 'ledger.accounts.view'],
         ];
 
         $rolePermissions = static function (string $role): array {
@@ -800,7 +807,7 @@ final class Module1AdministrationTest extends TestCase
         $gaps = [];
         foreach (array_filter(DB::table('roles')->pluck('name')->all(), 'is_string') as $role) {
             $held = $rolePermissions($role);
-            foreach ($requires as $write => $catalogue) {
+            foreach ($requires as [$write, $catalogue]) {
                 if (in_array($write, $held, true) && ! in_array($catalogue, $held, true)) {
                     $gaps[] = "{$role}: has {$write} but not {$catalogue}";
                 }

@@ -569,6 +569,29 @@ return [
                  */
                 'ledger.accounts.view',
                 /*
+                 * Imputations are accounting reference data: they are what makes a
+                 * disbursement or a repayment book itself, and reading them is part
+                 * of doing the job — an accountant with no sight of them cannot
+                 * explain their own trial balance.
+                 *
+                 * Authoring is here, approval is not — the same split this role
+                 * already has on journal entries, where it prepares and the siège
+                 * validates. The agency accountant proposes the imputation for its
+                 * own agency; the chef comptable puts it into service.
+                 *
+                 * That ordering is what makes the four-eyes rule workable with the
+                 * staff an EMF actually has: one chef comptable is enough, because
+                 * he is the checker and not the author. Requiring a second chef
+                 * comptable would have obliged an institution to invent a post to
+                 * satisfy a control.
+                 */
+                'operation.mappings.view',
+                'operation.mappings.create',
+                'operation.mappings.update',
+                // The imputation form makes you pick the operation it applies to,
+                // so the code catalogue has to be readable to fill it in.
+                'operation.codes.view',
+                /*
                  * Prepares its own agency's manual entries (opérations diverses:
                  * corrections, régularisations) and submits them for review.
                  * Deliberately no review/post/reverse — the siège validates, which
