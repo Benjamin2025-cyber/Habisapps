@@ -28,6 +28,48 @@ final class PolicyAuthorizationHardeningTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 
+    public function test_no_policy_decides_on_the_role_alone(): void
+    {
+        // A policy that returns `hasRole('platform-admin')` and nothing else makes
+        // its permission decorative: the grant is seeded, shown in the role editor
+        // and refused at the door. That is how a teller holding
+        // `customer.accounts.create` still got a 403 on submit, after the button
+        // had already been fixed to appear.
+        //
+        // Read off the source rather than exercised one endpoint at a time,
+        // because the failure is the *absence* of a check — there is no request
+        // that demonstrates it except the one nobody thought to make.
+        $offenders = [];
+        $files = glob(app_path('Policies').'/*.php');
+        foreach (is_array($files) ? $files : [] as $file) {
+            $source = file_get_contents($file);
+            if (! is_string($source)) {
+                continue;
+            }
+
+            preg_match_all(
+                '/public function (\w+)\([^)]*\)\s*:\s*bool\s*\{\s*return ([^;]+);/s',
+                $source,
+                $matches,
+                PREG_SET_ORDER,
+            );
+
+            foreach ($matches as $match) {
+                $body = (string) preg_replace('/\s+/', ' ', $match[2]);
+                if (! str_contains($body, "hasRole('platform-admin')")) {
+                    continue;
+                }
+                if (str_contains($body, '->can(') || str_contains($body, 'hasPermissionTo(')) {
+                    continue;
+                }
+
+                $offenders[] = basename($file).'::'.$match[1];
+            }
+        }
+
+        self::assertSame([], $offenders, 'A policy grants on the platform-admin role without consulting any permission.');
+    }
+
     public function test_accounting_policy_preserves_platform_admin_access(): void
     {
         $admin = $this->createUserWithRole('platform-admin');
@@ -88,9 +130,15 @@ final class PolicyAuthorizationHardeningTest extends TestCase
     {
         $agency = $this->createAgency('AUTH-ACCT-04');
         $clientPublicId = $this->createClient($agency['id']);
-        $agencyManager = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        // An accountant: reads customer accounts, opens none. This used to name
+        // the agency manager, which made the test vacuous — the policy refused
+        // every role but platform-admin, so it would have passed whatever
+        // permissions the actor held, including the ones it meant to forbid.
+        // Opening an account is counter work the branch does; being able to read
+        // one is not permission to create one, and that is what this pins.
+        $readOnlyAccountant = $this->createUserWithRole('accountant', $agency['code'], $agency['name']);
 
-        $response = $this->actingAsSanctum($agencyManager)
+        $response = $this->actingAsSanctum($readOnlyAccountant)
             ->postJson('/api/v1/customer-accounts', [
                 'client_public_id' => $clientPublicId,
                 'agency_public_id' => $agency['public_id'],

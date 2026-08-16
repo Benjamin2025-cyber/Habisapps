@@ -111,11 +111,19 @@ les prêts suivants. Le vrai test commence à la section 5.
 
 | Champ | Valeur |
 |---|---|
-| **Compte comptable** | `3712` — *le même qu'au §2* |
+| **Compte comptable** | **laisser vide** |
 
-> Marqué « optionnel » par le formulaire, mais **obligatoire ici** : le décaissement
-> écrit une écriture comptable, et sans compte comptable rattaché il est refusé avec
-> « Transfer account ledger mapping is required before disbursement ».
+> **Laissez-le vide, c'est voulu.** Le compte reprend automatiquement le compte
+> comptable par défaut de son produit — celui que vous avez mis au §2. C'est pour
+> cela que le §2 le demandait.
+>
+> Connecté en **teller**, la liste sera de toute façon sans options : choisir un
+> compte du plan comptable demande un droit que le guichet n'a pas, et n'en a pas
+> besoin. Ce n'est pas un blocage.
+>
+> Le décaissement, lui, exige que le compte client ait bien un compte comptable —
+> il l'aura, par héritage. Sans produit **et** sans compte comptable, il échouerait
+> avec « Transfer account ledger mapping is required before disbursement ».
 
 ### Cycle de vie
 

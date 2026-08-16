@@ -10,6 +10,12 @@ use App\Support\Staff\StaffAgencyScope;
 
 final class CustomerAccountPolicy
 {
+    /*
+     * Each method pairs the platform-admin bypass with the permission it is
+     * named for, the way the rest of the app does. These returned the role alone,
+     * so a permission could be granted, seeded and shown in the role editor and
+     * still refuse the request — the grant looked applied and did nothing.
+     */
     public function viewAny(User $user): bool
     {
         return $user->hasRole('platform-admin') || $user->can('customer.accounts.view');
@@ -23,17 +29,17 @@ final class CustomerAccountPolicy
 
     public function create(User $user): bool
     {
-        return $user->hasRole('platform-admin');
+        return $user->hasRole('platform-admin') || $user->can('customer.accounts.create');
     }
 
     public function update(User $user, CustomerAccount $customerAccount): bool
     {
-        return $user->hasRole('platform-admin');
+        return $user->hasRole('platform-admin') || $user->can('customer.accounts.update');
     }
 
     public function delete(User $user, CustomerAccount $customerAccount): bool
     {
-        return $user->hasRole('platform-admin');
+        return $user->hasRole('platform-admin') || $user->can('customer.accounts.close');
     }
 
     private function isCurrentAgency(User $user, int $agencyId): bool
