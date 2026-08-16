@@ -4170,6 +4170,53 @@ final class Module4CreditLoansTest extends TestCase
         $outOfBounds->assertJsonValidationErrors(['number_of_installments']);
     }
 
+    public function test_a_loan_officer_registering_a_loan_is_recorded_as_its_credit_agent(): void
+    {
+        $officer = $this->createUserWithRole('loan-officer');
+        $officer->givePermissionTo('loans.view', 'loans.create', 'loans.update');
+        $agencyId = $this->createAgency('CR34');
+        $this->assignStaffToAgency($officer, $agencyId, 'loan-officer');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+
+        // A loan officer's list is filtered to loans where they are the credit
+        // agent (LoanListQuery::mustSelfScopeCreditAgent). The field is optional,
+        // so a loan saved without one belongs to nobody and appears in no
+        // officer's list -- which reads as the loan having vanished rather than
+        // as a blank field. It happened for real: the staff picker was empty for
+        // want of users.view, so every loan registered then had no agent.
+        $create = $this->withApiHeaders()->actingAsSanctum($officer)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 200000,
+                'currency' => 'XAF',
+                'number_of_installments' => 6,
+            ]);
+        $this->assertJsonSuccess($create, 201);
+
+        // Registered without naming an agent, and still owned by its author.
+        $index = $this->withApiHeaders()->actingAsSanctum($officer)->getJson('/api/v1/loans');
+        $this->assertJsonSuccess($index);
+        $index->assertJsonPath('meta.pagination.total', 1);
+        $index->assertJsonPath('data.loans.0.public_id', $this->requireStringJsonPath($create, 'data.public_id'));
+
+        // An explicitly named agent still wins over the default.
+        $other = $this->createUserWithRole('loan-officer');
+        $this->assignStaffToAgency($other, $agencyId, 'loan-officer');
+        $second = $this->withApiHeaders()->actingAsSanctum($officer)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'credit_agent_public_id' => $other->public_id,
+                'requested_amount_minor' => 200000,
+                'currency' => 'XAF',
+                'number_of_installments' => 6,
+            ]);
+        $this->assertJsonSuccess($second, 201);
+        $second->assertJsonPath('data.credit_agent_public_id', $other->public_id);
+    }
+
     public function test_the_schedule_spaces_instalments_by_the_product_term_unit(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -4205,6 +4252,56 @@ final class Module4CreditLoansTest extends TestCase
         $generated->assertJsonPath('data.snapshot.lines.1.due_date', '2026-06-08');
         $generated->assertJsonPath('data.snapshot.lines.2.due_date', '2026-06-15');
         $generated->assertJsonPath('data.snapshot.lines.3.due_date', '2026-06-22');
+    }
+
+    public function test_regenerating_after_a_grace_change_does_not_return_the_old_table(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR35');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, ['interest_rate' => '0.000000', 'due_date_day' => null]);
+        $this->approveFormulaPolicies();
+
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 200000,
+            'approved_on' => '2026-05-12',
+            'first_installment_date' => null,
+            'number_of_installments' => 4,
+            'grace_period_duration' => 0,
+            'formula_policy_snapshot' => ['approved' => true, 'source' => 'test'],
+        ])->save();
+
+        $generate = fn (): string => $this->requireStringJsonPath(
+            $this->withApiHeaders()->actingAsSanctum($actor)
+                ->postJson('/api/v1/loans/'.$loan->public_id.'/schedule/generate'),
+            'data.snapshot.lines.0.due_date',
+        );
+
+        $before = $generate();
+
+        // Generation is idempotent on a snapshot key, which is what makes the
+        // button safe to press twice. The key therefore has to cover everything
+        // that moves a date — and grace and term unit only started moving dates
+        // today. Left out of the key, the second press returns the stale table
+        // while looking like it worked, and the amounts match either way so
+        // nothing gives it away.
+        $loan->forceFill(['grace_period_duration' => 30])->save();
+        $after = $generate();
+
+        self::assertNotSame($before, $after, 'Regenerating after a grace change returned the old schedule.');
+        self::assertSame(
+            CarbonImmutable::parse('2026-05-12')->addDays(30)->addMonthNoOverflow()->toDateString(),
+            $after,
+        );
+
+        // And pressing it again with nothing changed still returns the same
+        // table rather than piling up snapshots.
+        self::assertSame($after, $generate());
+        self::assertSame(1, DB::table('loan_schedule_snapshots')
+            ->where('loan_id', $loan->id)
+            ->where('status', 'active')->count());
     }
 
     public function test_the_grace_period_delays_the_first_instalment(): void

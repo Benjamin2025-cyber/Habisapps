@@ -62,12 +62,17 @@ final class GenerateLoanSchedule
                 if ($existing instanceof LoanScheduleSnapshot) {
                     return $existing;
                 }
-            } else {
-                LoanScheduleSnapshot::query()
-                    ->where('loan_id', $lockedLoan->id)
-                    ->where('status', LoanScheduleSnapshot::STATUS_ACTIVE)
-                    ->update(['status' => LoanScheduleSnapshot::STATUS_SUPERSEDED]);
             }
+
+            // Reaching here means a new snapshot is about to be written, so the
+            // previous one stops being current whether or not the caller asked to
+            // replace it. Only the `else` branch used to do this, which left a
+            // loan whose terms had changed carrying two active snapshots — and
+            // the schedule anyone then read depended on row order.
+            LoanScheduleSnapshot::query()
+                ->where('loan_id', $lockedLoan->id)
+                ->where('status', LoanScheduleSnapshot::STATUS_ACTIVE)
+                ->update(['status' => LoanScheduleSnapshot::STATUS_SUPERSEDED]);
 
             $installments = $this->installmentCount($lockedLoan);
             $principal = $lockedLoan->approved_principal_minor ?? $lockedLoan->requested_amount_minor;
@@ -240,6 +245,12 @@ final class GenerateLoanSchedule
             'applied_tax_rate' => $loan->applied_tax_rate,
             'number_of_installments' => $loan->number_of_installments,
             'first_installment_date' => $this->dateForHash($loan->first_installment_date),
+            // These two now decide the dates, so they have to decide the identity
+            // of the snapshot too. Left out, "Régénérer" would hand back the old
+            // table after a grace period or a term unit changed — silently, since
+            // the amounts are identical either way and nothing would look stale.
+            'grace_period_duration' => $loan->grace_period_duration,
+            'term_unit' => $loan->loanProduct?->term_unit,
             'dossier_fees_minor' => $loan->dossier_fees_minor,
             'dossier_fees_tax_minor' => $loan->dossier_fees_tax_minor,
             'insurance_amount_minor' => $loan->insurance_amount_minor,

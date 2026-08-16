@@ -108,6 +108,19 @@ final class LoanCrudWorkflow extends BaseController
 
         $currency = $validated['currency'] ?? 'XAF';
         $appliedOn = $validated['applied_on'] ?? now()->toDateString();
+
+        // A loan officer's list is scoped to the loans they carry, so a loan
+        // saved with no credit agent is visible to no officer at all — it does
+        // not appear misfiled, it simply is not there. The field is optional, so
+        // nothing refused it. When the officer registering the loan is the
+        // obvious answer, record them: that is who owns the file in practice.
+        if (($resolved['credit_agent_id'] ?? null) === null) {
+            $creator = $request->user();
+            if ($creator instanceof User && $creator->hasRole('loan-officer')) {
+                $resolved['credit_agent_id'] = $creator->id;
+            }
+        }
+
         $loan = new Loan($this->payload($validated, $resolved));
         $loan->forceFill([
             'public_id' => (string) Str::ulid(),
