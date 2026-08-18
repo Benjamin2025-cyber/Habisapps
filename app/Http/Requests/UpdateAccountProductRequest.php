@@ -46,9 +46,6 @@ final class UpdateAccountProductRequest extends FormRequest
              */
             'minimum_balance_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'currency' => ['sometimes', 'nullable', 'string', 'size:3'],
-            'allows_recovery_debit' => ['sometimes', 'nullable', 'boolean'],
-            'is_recovery_account' => ['sometimes', 'nullable', 'boolean'],
-            'is_ordinary_savings' => ['sometimes', 'nullable', 'boolean'],
             'allows_overdraft' => ['sometimes', 'nullable', 'boolean'],
             'overdraft_limit_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'status' => ['sometimes', 'nullable', Rule::in([

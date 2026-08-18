@@ -122,9 +122,6 @@ final class AccountProductController extends BaseController
                 'account_family' => $request->string('account_family')->toString(),
                 'minimum_balance_minor' => $request->integer('minimum_balance_minor', 0),
                 'currency' => strtoupper($request->string('currency', 'XAF')->toString()),
-                'allows_recovery_debit' => $request->boolean('allows_recovery_debit'),
-                'is_recovery_account' => $request->boolean('is_recovery_account'),
-                'is_ordinary_savings' => $request->boolean('is_ordinary_savings'),
                 'allows_overdraft' => $request->boolean('allows_overdraft'),
                 'overdraft_limit_minor' => $request->integer('overdraft_limit_minor', 0),
                 'status' => $request->input('status', AccountProduct::STATUS_ACTIVE),
@@ -222,7 +219,7 @@ final class AccountProductController extends BaseController
             }
         }
 
-        foreach (['allows_overdraft', 'allows_recovery_debit', 'is_recovery_account', 'is_ordinary_savings'] as $key) {
+        foreach (['allows_overdraft'] as $key) {
             if (array_key_exists($key, $validated) && $validated[$key] === null) {
                 $validated[$key] = false;
             }

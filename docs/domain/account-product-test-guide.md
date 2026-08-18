@@ -107,21 +107,30 @@ comptable. Vérifiable plus tard sur un compte rattaché à ce produit :
 
 ---
 
-## 5. Les cases qui ne font rien (pour l'instant)
+## 5. Les familles de produit
 
-Dans la section **Règles**, trois cases portent la mention *« Aucune règle de
-l'application ne s'en sert pour l'instant »* :
+Le sélecteur **Famille** doit proposer **quatre** valeurs, toutes enregistrables :
 
-- **Épargne ordinaire**
-- **Compte de recouvrement**
-- **Autorise le débit de recouvrement**
+| Famille | Essai |
+|---|---|
+| **Épargne** | déjà testée en §2 |
+| **Compte courant** | déjà testée en §4 |
+| **Recouvrement** | créez `TEST-REC-01` |
+| **Islamique** | créez `TEST-ISL-01` |
 
-**Attendu :** elles s'enregistrent et se relisent correctement — cochez, enregistrez,
-rouvrez, elles sont toujours cochées. Mais **aucun comportement ne doit en découler**.
+**Attendu :** les quatre se créent, et la colonne **Famille** du catalogue affiche la
+bonne valeur pour chacune.
 
-> Ce sont des classifications conservées sur le produit. La mention est là pour éviter
-> qu'on attende d'elles un effet qu'elles n'ont pas. **Ne les signalez pas comme un
-> bug** ; signalez-les si la mention a disparu.
+> C'est en famille **Recouvrement** que la comptabilité a rencontré le blocage du §4.2 :
+> refaites le §4.2 sur `TEST-REC-01` pour confirmer que c'est réglé sur cette
+> famille-là aussi.
+>
+> **La section « Règles » ne contient plus que le solde minimum et le découvert.**
+> Trois cases y figuraient — *Épargne ordinaire*, *Compte de recouvrement*, *Autorise
+> le débit de recouvrement* — qui ne pilotaient rien ; elles ont été retirées. La
+> famille **Recouvrement** dit déjà ce que disait la deuxième, et le plan comptable
+> traite le recouvrement comme un **état de la créance** (331 impayées, 332
+> immobilisées, 333-335 douteuses), pas comme un compte de dépôt désigné à l'avance.
 
 ---
 
@@ -146,24 +155,6 @@ Sur la ligne du produit, menu **Actions** → **Modifier**. **Code** et **Agence
 > copie. Changer le produit ensuite ne migre rien : cela ferait seulement que les
 > comptes ouverts demain contredisent ceux d'hier. La devise est la plus sensible —
 > un décaissement exige que la devise du compte soit celle du prêt.
-
-### 5.1 Les quatre familles
-
-Le sélecteur **Famille** doit proposer **quatre** valeurs, toutes enregistrables :
-
-| Famille | Essai |
-|---|---|
-| **Épargne** | déjà testée en §2 |
-| **Compte courant** | déjà testée en §4 |
-| **Recouvrement** | créez `TEST-REC-01` |
-| **Islamique** | créez `TEST-ISL-01` |
-
-**Attendu :** les quatre se créent, et la colonne **Famille** du catalogue affiche la
-bonne valeur pour chacune.
-
-> C'est en famille **Recouvrement** que la comptabilité a rencontré le blocage du §4.2 :
-> refaites le §4.2 sur `TEST-REC-01` pour confirmer que c'est réglé sur cette
-> famille-là aussi.
 
 ---
 

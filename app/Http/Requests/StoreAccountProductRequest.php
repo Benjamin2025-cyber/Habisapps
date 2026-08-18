@@ -37,9 +37,6 @@ final class StoreAccountProductRequest extends FormRequest
             ])],
             'minimum_balance_minor' => ['nullable', 'integer', 'min:0'],
             'currency' => ['nullable', 'string', 'size:3'],
-            'allows_recovery_debit' => ['nullable', 'boolean'],
-            'is_recovery_account' => ['nullable', 'boolean'],
-            'is_ordinary_savings' => ['nullable', 'boolean'],
             'allows_overdraft' => ['nullable', 'boolean'],
             'overdraft_limit_minor' => ['nullable', 'integer', 'min:0'],
             'status' => ['nullable', Rule::in([

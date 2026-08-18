@@ -20,9 +20,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'account_family',
     'minimum_balance_minor',
     'currency',
-    'allows_recovery_debit',
-    'is_recovery_account',
-    'is_ordinary_savings',
     'allows_overdraft',
     'overdraft_limit_minor',
     'status',
@@ -66,9 +63,6 @@ final class AccountProduct extends Model
     {
         return [
             'minimum_balance_minor' => 'integer',
-            'allows_recovery_debit' => 'boolean',
-            'is_recovery_account' => 'boolean',
-            'is_ordinary_savings' => 'boolean',
             'allows_overdraft' => 'boolean',
             'overdraft_limit_minor' => 'integer',
             'rules' => 'array',

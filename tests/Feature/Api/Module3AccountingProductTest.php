@@ -43,8 +43,6 @@ final class Module3AccountingProductTest extends TestCase
                 'account_family' => AccountProduct::FAMILY_SAVINGS,
                 'minimum_balance_minor' => 5000,
                 'currency' => 'xaf',
-                'allows_recovery_debit' => true,
-                'is_ordinary_savings' => true,
                 'rules' => ['minimum_balance_policy' => 'product_default'],
             ]);
 
@@ -111,8 +109,6 @@ final class Module3AccountingProductTest extends TestCase
             'account_family' => AccountProduct::FAMILY_RECOVERY,
             'minimum_balance_minor' => 0,
             'currency' => 'XAF',
-            'allows_recovery_debit' => true,
-            'is_recovery_account' => true,
             'status' => AccountProduct::STATUS_ACTIVE,
         ]);
 
@@ -222,7 +218,6 @@ final class Module3AccountingProductTest extends TestCase
                 'currency' => 'XAF',
                 'ledger_account_public_id' => $ledger['public_id'],
                 'minimum_balance_minor' => 0,
-                'is_recovery_account' => true,
                 'allows_overdraft' => false,
                 'overdraft_limit_minor' => null,
                 'status' => AccountProduct::STATUS_ACTIVE,
@@ -241,7 +236,6 @@ final class Module3AccountingProductTest extends TestCase
                 'allows_overdraft' => false,
                 'overdraft_limit_minor' => null,
                 'minimum_balance_minor' => null,
-                'is_recovery_account' => true,
             ]);
 
         $this->assertJsonSuccess($update);
