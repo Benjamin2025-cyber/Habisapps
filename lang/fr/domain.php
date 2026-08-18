@@ -96,4 +96,6 @@ return [
     'unsupported_filter_keys' => 'Les clés de filtre suivantes ne sont pas prises en charge : :keys',
     'selected_customer_account_same_agency_scope' => 'Le compte client sélectionné doit appartenir au même périmètre d’agence.',
     'withdrawal_amount_exceeds_available_balance' => 'Le montant du retrait dépasse le solde disponible du compte client.',
+    'account_product_currency_locked_by_accounts' => 'La devise ne peut plus être modifiée : des comptes ont déjà été ouverts avec ce produit.',
+    'account_product_family_locked_by_accounts' => 'La famille ne peut plus être modifiée : des comptes ont déjà été ouverts avec ce produit.',
 ];

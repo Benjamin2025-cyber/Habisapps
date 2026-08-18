@@ -36,14 +36,22 @@ final class UpdateAccountProductRequest extends FormRequest
                 AccountProduct::FAMILY_RECOVERY,
                 AccountProduct::FAMILY_ISLAMIC,
             ])],
-            'minimum_balance_minor' => ['sometimes', 'integer', 'min:0'],
-            'currency' => ['sometimes', 'string', 'size:3'],
-            'allows_recovery_debit' => ['sometimes', 'boolean'],
-            'is_recovery_account' => ['sometimes', 'boolean'],
-            'is_ordinary_savings' => ['sometimes', 'boolean'],
-            'allows_overdraft' => ['sometimes', 'boolean'],
-            'overdraft_limit_minor' => ['sometimes', 'integer', 'min:0'],
-            'status' => ['sometimes', Rule::in([
+            /*
+             * Nullable, exactly as on create. `sometimes` only skips a key that is
+             * absent — a key present and null still had to satisfy `integer`, so a
+             * product could be created with no overdraft limit and then not saved
+             * again: the form sends null for the limit whenever the overdraft box
+             * is unchecked, and hides the field at the same time. The refusal
+             * therefore named « Plafond de découvert », a field not on screen.
+             */
+            'minimum_balance_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'currency' => ['sometimes', 'nullable', 'string', 'size:3'],
+            'allows_recovery_debit' => ['sometimes', 'nullable', 'boolean'],
+            'is_recovery_account' => ['sometimes', 'nullable', 'boolean'],
+            'is_ordinary_savings' => ['sometimes', 'nullable', 'boolean'],
+            'allows_overdraft' => ['sometimes', 'nullable', 'boolean'],
+            'overdraft_limit_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'status' => ['sometimes', 'nullable', Rule::in([
                 AccountProduct::STATUS_ACTIVE,
                 AccountProduct::STATUS_INACTIVE,
                 AccountProduct::STATUS_ARCHIVED,

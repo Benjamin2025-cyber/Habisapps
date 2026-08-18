@@ -183,6 +183,59 @@ final class AccountProductController extends BaseController
             $validated['currency'] = strtoupper($validated['currency']);
         }
 
+        /*
+         * A customer account copies the product's currency and family the moment
+         * it is opened, and keeps its copy. Changing either afterwards therefore
+         * does not migrate anything — it just means the accounts opened tomorrow
+         * disagree with the ones opened yesterday, from the same product, with
+         * nothing on screen to show it. The currency is the sharper of the two:
+         * a disbursement requires the account's currency to match the loan's, so
+         * a product switched to another currency quietly stops working for every
+         * account already opened under it.
+         */
+        $inUse = DB::table('customer_accounts')->where('account_product_id', $accountProduct->id)->exists();
+        if ($inUse) {
+            $frozen = [];
+            if (array_key_exists('currency', $validated) && $validated['currency'] !== $accountProduct->currency) {
+                $frozen['currency'] = [__('domain.account_product_currency_locked_by_accounts')];
+            }
+
+            if (array_key_exists('account_family', $validated) && $validated['account_family'] !== $accountProduct->account_family) {
+                $frozen['account_family'] = [__('domain.account_product_family_locked_by_accounts')];
+            }
+
+            if ($frozen !== []) {
+                return $this->respondUnprocessable(errors: $frozen);
+            }
+        }
+
+        /*
+         * These columns are NOT NULL, so a null arriving from the form has to be
+         * read as what it means rather than written through. The overdraft limit
+         * is the case that surfaced: the form hides the field and sends null the
+         * moment the overdraft box is unchecked, which means "no limit" — zero —
+         * not "leave the database to complain".
+         */
+        foreach (['minimum_balance_minor', 'overdraft_limit_minor'] as $key) {
+            if (array_key_exists($key, $validated) && $validated[$key] === null) {
+                $validated[$key] = 0;
+            }
+        }
+
+        foreach (['allows_overdraft', 'allows_recovery_debit', 'is_recovery_account', 'is_ordinary_savings'] as $key) {
+            if (array_key_exists($key, $validated) && $validated[$key] === null) {
+                $validated[$key] = false;
+            }
+        }
+
+        // A currency or a status has no "empty" meaning: null is the form saying
+        // nothing about it, so the stored value stands.
+        foreach (['currency', 'status'] as $key) {
+            if (array_key_exists($key, $validated) && $validated[$key] === null) {
+                unset($validated[$key]);
+            }
+        }
+
         $accountProduct->fill($validated)->save();
 
         $this->securityAudit->record('account.product.updated', actor: $request->user(), subject: $accountProduct, properties: [

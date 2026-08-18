@@ -37,13 +37,28 @@ final class AccountProductPolicy
             || ($user->can('account.products.archive') && $this->canManageInScope($user, $accountProduct));
     }
 
+    /*
+     * Both scopes admit the institution-wide holder as well as the agency's own
+     * staff. Without that the chef comptable — who carries no agency assignment,
+     * deliberately, because head office belongs to no branch — matched no agency
+     * product at all. He owns this catalogue and is the only role that may write
+     * it, yet he could create a product for an agency and then never edit it
+     * again: create carries no scope test, update does. The index already reads
+     * institution scope this way, so the policy was the odd one out.
+     */
     private function canReadInScope(User $user, AccountProduct $accountProduct): bool
     {
-        return $accountProduct->agency_id === null || $user->currentAgencyId() === $accountProduct->agency_id;
+        return $accountProduct->agency_id === null
+            || $user->can('ledger.scope.institution.read')
+            || $user->currentAgencyId() === $accountProduct->agency_id;
     }
 
     private function canManageInScope(User $user, AccountProduct $accountProduct): bool
     {
+        if ($user->can('ledger.scope.institution.manage')) {
+            return true;
+        }
+
         return $accountProduct->agency_id !== null && $user->currentAgencyId() === $accountProduct->agency_id;
     }
 }

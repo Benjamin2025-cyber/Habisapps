@@ -207,6 +207,172 @@ final class Module3AccountingProductTest extends TestCase
         $provided->assertJsonPath('data.account_number', 'CUSTOM-ACC-001');
     }
 
+    public function test_a_product_can_be_saved_again_with_the_overdraft_switched_off(): void
+    {
+        $agency = $this->createAgency('AP-OD2');
+        $actor = $this->createUserWithRole('platform-admin');
+        $ledger = $this->createLedgerAccount($agency['id']);
+
+        $create = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/account-products', [
+                'code' => 'REC-EDIT',
+                'name' => 'Compte de recouvrement des crédits',
+                'account_family' => AccountProduct::FAMILY_RECOVERY,
+                'agency_public_id' => $agency['public_id'],
+                'currency' => 'XAF',
+                'ledger_account_public_id' => $ledger['public_id'],
+                'minimum_balance_minor' => 0,
+                'is_recovery_account' => true,
+                'allows_overdraft' => false,
+                'overdraft_limit_minor' => null,
+                'status' => AccountProduct::STATUS_ACTIVE,
+            ]);
+        $this->assertJsonSuccess($create, 201);
+        $publicId = $this->requireStringJsonPath($create, 'data.public_id');
+
+        // The drawer hides the limit field while the overdraft box is unchecked and
+        // sends null for it, so every save of such a product carried a null. Create
+        // accepted that and update did not, which made the product editable exactly
+        // once — and the refusal named « Plafond de découvert », a field the user
+        // could not see to correct.
+        $update = $this->withApiHeaders(['X-Locale' => 'fr'])->actingAsSanctum($actor)
+            ->patchJson('/api/v1/account-products/'.$publicId, [
+                'name' => 'Compte de recouvrement des crédits',
+                'allows_overdraft' => false,
+                'overdraft_limit_minor' => null,
+                'minimum_balance_minor' => null,
+                'is_recovery_account' => true,
+            ]);
+
+        $this->assertJsonSuccess($update);
+        $update->assertJsonPath('data.allows_overdraft', false);
+
+        // NOT NULL columns, so the null has to land as the value it stands for.
+        $row = DB::table('account_products')->where('public_id', $publicId)
+            ->first(['overdraft_limit_minor', 'minimum_balance_minor', 'currency', 'status']);
+        self::assertNotNull($row);
+        self::assertSame(0, (int) $row->overdraft_limit_minor);
+        self::assertSame(0, (int) $row->minimum_balance_minor);
+        // Untouched by the request, so they keep what they had.
+        self::assertSame('XAF', $row->currency);
+        self::assertSame(AccountProduct::STATUS_ACTIVE, $row->status);
+    }
+
+    public function test_head_office_can_edit_an_agency_account_product(): void
+    {
+        $agency = $this->createAgency('AP-HO');
+        $ledger = $this->createLedgerAccount($agency['id']);
+
+        // The chef comptable owns this catalogue and is the only role allowed to
+        // write it — and carries no agency assignment, because head office belongs
+        // to no branch. The scope test compared his (null) agency against the
+        // product's, so he matched nothing: he could create a product for an
+        // agency, since create carries no scope test, and then never edit it
+        // again. The list already read institution scope this way; the policy did
+        // not.
+        $chief = $this->createUserWithRole('chief-accountant');
+        DB::table('staff_agency_assignments')->where('user_id', $chief->id)->delete();
+        self::assertNull($chief->refresh()->currentAgencyId(), 'Head office carries no agency.');
+
+        $productPublicId = (string) Str::ulid();
+        DB::table('account_products')->insert([
+            'public_id' => $productPublicId,
+            'agency_id' => $agency['id'],
+            'ledger_account_id' => $ledger['id'],
+            'code' => 'HO-001',
+            'name' => 'Produit agence',
+            'account_family' => AccountProduct::FAMILY_CURRENT,
+            'minimum_balance_minor' => 0,
+            'currency' => 'XAF',
+            'allows_overdraft' => true,
+            'overdraft_limit_minor' => 500000,
+            'status' => AccountProduct::STATUS_ACTIVE,
+        ]);
+
+        // The case the accounting team hit: unchecking the overdraft and saving.
+        $update = $this->withApiHeaders()->actingAsSanctum($chief)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, [
+                'allows_overdraft' => false,
+                'overdraft_limit_minor' => null,
+            ]);
+        $this->assertJsonSuccess($update);
+        $update->assertJsonPath('data.allows_overdraft', false);
+
+        // Institution scope is not a way past the permission itself: a teller
+        // reads this catalogue and still may not write it.
+        $teller = $this->createUserWithRole('teller');
+        $this->withApiHeaders()->actingAsSanctum($teller)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, ['name' => 'Renommé'])
+            ->assertForbidden();
+    }
+
+    public function test_currency_and_family_freeze_once_accounts_exist(): void
+    {
+        $agency = $this->createAgency('AP-FRZ');
+        $actor = $this->createUserWithRole('platform-admin');
+        $client = $this->createVerifiedClient($agency['id']);
+        $ledger = $this->createLedgerAccount($agency['id']);
+        $productPublicId = (string) Str::ulid();
+
+        DB::table('account_products')->insert([
+            'public_id' => $productPublicId,
+            'agency_id' => $agency['id'],
+            'ledger_account_id' => $ledger['id'],
+            'code' => 'FRZ-001',
+            'name' => 'Compte courant',
+            'account_family' => AccountProduct::FAMILY_CURRENT,
+            'minimum_balance_minor' => 0,
+            'currency' => 'XAF',
+            'status' => AccountProduct::STATUS_ACTIVE,
+        ]);
+
+        // Before any account exists, both are still open to correction.
+        $early = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, ['currency' => 'EUR']);
+        $this->assertJsonSuccess($early);
+        $early->assertJsonPath('data.currency', 'EUR');
+
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, ['currency' => 'XAF']);
+
+        // An account copies the currency and the family when it is opened and
+        // keeps its copy, so changing them afterwards migrates nothing — it only
+        // makes tomorrow's accounts disagree with yesterday's, silently. The
+        // currency is the sharper one: a disbursement requires the account's
+        // currency to match the loan's.
+        $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client['public_id'],
+                'agency_public_id' => $agency['public_id'],
+                'account_product_public_id' => $productPublicId,
+                'account_number' => 'ACC-FRZ-1',
+                'opened_on' => '2026-05-11',
+            ])->assertStatus(201);
+
+        $currency = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, ['currency' => 'EUR']);
+        $currency->assertStatus(422);
+        $currency->assertJsonValidationErrors(['currency']);
+
+        $family = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, [
+                'account_family' => AccountProduct::FAMILY_SAVINGS,
+            ]);
+        $family->assertStatus(422);
+        $family->assertJsonValidationErrors(['account_family']);
+
+        // Everything else still edits: this freezes two fields, it does not
+        // freeze the product.
+        $rename = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/account-products/'.$productPublicId, [
+                'name' => 'Compte courant renommé',
+                'currency' => 'XAF',
+                'account_family' => AccountProduct::FAMILY_CURRENT,
+            ]);
+        $this->assertJsonSuccess($rename);
+        $rename->assertJsonPath('data.name', 'Compte courant renommé');
+    }
+
     public function test_an_authorised_overdraft_counts_as_available_balance(): void
     {
         $agency = $this->createAgency('AP-OD');

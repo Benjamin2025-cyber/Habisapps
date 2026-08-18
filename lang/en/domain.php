@@ -96,4 +96,6 @@ return [
     'unsupported_filter_keys' => 'The following filter keys are not supported: :keys',
     'selected_customer_account_same_agency_scope' => 'The selected customer account must belong to the same agency scope.',
     'withdrawal_amount_exceeds_available_balance' => 'Withdrawal amount exceeds the customer account available balance.',
+    'account_product_currency_locked_by_accounts' => 'The currency cannot be changed once accounts have been opened under this product.',
+    'account_product_family_locked_by_accounts' => 'The family cannot be changed once accounts have been opened under this product.',
 ];
