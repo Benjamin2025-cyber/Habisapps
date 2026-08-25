@@ -4429,6 +4429,168 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($accepted, 201);
     }
 
+    /**
+     * « la périodicité, le différé, la durée totale en jours sont censés
+     * apparaître automatiquement dès lors qu'on a déjà renseigné le nombre
+     * d'échéances et la date de la première échéance » — none of the three is
+     * an input any more: periodicity comes from the product's duration unit,
+     * grace is what the chosen first date implies, and the total spans from
+     * the application date through the last installment.
+     */
+    public function test_periodicity_grace_and_total_duration_derive_from_installments_and_first_due_date(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-DERIVE');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, ['term_unit' => LoanProduct::TERM_UNIT_WEEK]);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 200000,
+                'applied_on' => '2026-08-25',
+                'number_of_installments' => 8,
+                'first_installment_date' => '2026-09-12',
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        // Weekly product → 7-day periodicity.
+        $created->assertJsonPath('data.tranche_duration', 7);
+        // Aug 25 → Sep 12 is 18 days; the first term itself is not grace:
+        // 18 − 7 = 11 days of différé.
+        $created->assertJsonPath('data.grace_period_duration', 11);
+        // Application date through the last of 8 weekly installments.
+        $created->assertJsonPath('data.total_loan_duration', 67);
+
+        // Without a first installment date, an explicitly entered grace drives
+        // the total: grace + installments × unit.
+        $graced = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 200000,
+                'applied_on' => '2026-08-25',
+                'number_of_installments' => 8,
+                'grace_period_duration' => 20,
+            ]);
+        $this->assertJsonSuccess($graced, 201);
+        $graced->assertJsonPath('data.tranche_duration', 7);
+        $graced->assertJsonPath('data.total_loan_duration', 76);
+
+        // The financed-activity code is gone from the contract entirely:
+        // sector and sub-sector carry the classification.
+        $responsePayload = (array) $created->json();
+        self::assertStringNotContainsString('financed_activity_code', (string) json_encode($responsePayload));
+    }
+
+    /**
+     * A month is not 30 days. Stepping the duration by termUnitDays() made a
+     * 12-month loan span 361 days instead of the year the schedule actually
+     * builds with addMonthsNoOverflow, and made a first date exactly one month
+     * out read as one day of deferral instead of none.
+     */
+    public function test_monthly_derivation_uses_real_calendar_terms_not_thirty_day_months(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-DERIVE-M');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'term_unit' => LoanProduct::TERM_UNIT_MONTH,
+            'min_term_count' => 1,
+            'max_term_count' => 24,
+        ]);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 200000,
+                'applied_on' => '2026-01-15',
+                'number_of_installments' => 12,
+                'first_installment_date' => '2026-02-15',
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        // Exactly one month out is the first term, not deferral.
+        $created->assertJsonPath('data.grace_period_duration', 0);
+        // 2026-01-15 through 2027-01-15, the 12th monthly due date.
+        $created->assertJsonPath('data.total_loan_duration', 365);
+    }
+
+    public function test_changing_the_first_installment_date_redereives_the_deferral(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-DERIVE-U');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, ['term_unit' => LoanProduct::TERM_UNIT_WEEK]);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 200000,
+                'applied_on' => '2026-08-25',
+                'number_of_installments' => 8,
+                'first_installment_date' => '2026-09-12',
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.grace_period_duration', 11);
+
+        // Push the first date out a week. The deferral has to follow it —
+        // freezing it at creation would leave the différé describing the old
+        // date while the duration beside it described the new one.
+        $updated = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loans/'.$this->requireStringJsonPath($created, 'data.public_id'), [
+                'first_installment_date' => '2026-09-19',
+            ]);
+        $this->assertJsonSuccess($updated);
+        $updated->assertJsonPath('data.grace_period_duration', 18);
+        $updated->assertJsonPath('data.total_loan_duration', 74);
+    }
+
+    /**
+     * The product's deferral ceiling used to be checked against the submitted
+     * `grace_period_duration`. Now that the deferral is derived from the first
+     * installment date, checking only the payload would leave the ceiling
+     * unenforceable: send a far-out date and the derived deferral sails past it.
+     */
+    public function test_a_first_installment_date_cannot_imply_a_deferral_beyond_the_product_ceiling(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-DERIVE-B');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'term_unit' => LoanProduct::TERM_UNIT_WEEK,
+            'max_grace_period_days' => 30,
+        ]);
+
+        $payload = [
+            'client_public_id' => $client['public_id'],
+            'loan_product_public_id' => $product->public_id,
+            'requested_amount_minor' => 200000,
+            'applied_on' => '2026-08-25',
+            'number_of_installments' => 8,
+        ];
+
+        // Sending the deferral directly is refused, and so is smuggling the
+        // same deferral in as a first installment date 200 days out.
+        $direct = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['grace_period_duration' => 200]);
+        $direct->assertStatus(422);
+        $direct->assertJsonValidationErrors(['grace_period_duration']);
+
+        $viaDate = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['first_installment_date' => '2026-12-31']);
+        $viaDate->assertStatus(422);
+        $viaDate->assertJsonValidationErrors(['first_installment_date']);
+        self::assertSame(0, Loan::query()->where('loan_product_id', $product->id)->getQuery()->count());
+
+        // Inside the ceiling it still goes through.
+        $ok = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', $payload + ['first_installment_date' => '2026-09-12']);
+        $this->assertJsonSuccess($ok, 201);
+        $ok->assertJsonPath('data.grace_period_duration', 11);
+    }
+
     public function test_editing_a_loan_accepts_every_field_the_edit_form_sends(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -4445,14 +4607,15 @@ final class Module4CreditLoansTest extends TestCase
         //
         // This is the drawer's edit payload. It must be accepted whole: a field
         // added to the form but not to UpdateLoanRequest breaks editing outright,
-        // and the error will not say so.
+        // and the error will not say so. Periodicity and total duration are no
+        // longer part of it — the workflow derives them (« apparaissent
+        // automatiquement ») — and neither is the financed-activity code,
+        // dropped as redundant with sector/sub-sector.
         $editPayload = [
             'credit_agent_public_id' => null,
             'requested_amount_minor' => 250000,
             'number_of_installments' => 6,
-            'tranche_duration' => null,
             'grace_period_duration' => 10,
-            'total_loan_duration' => null,
             'first_installment_date' => null,
             'amortization_account_public_id' => null,
             'unpaid_account_public_id' => null,
@@ -4461,7 +4624,6 @@ final class Module4CreditLoansTest extends TestCase
             'purpose' => 'Test durée',
             'sector_public_id' => null,
             'sub_sector_public_id' => null,
-            'financed_activity_code' => null,
             'activity_address' => null,
             'entrepreneur_address' => null,
         ];

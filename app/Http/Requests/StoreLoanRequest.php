@@ -37,14 +37,11 @@ final class StoreLoanRequest extends FormRequest
             'purpose' => ['nullable', 'string', 'max:1000'],
             'sector_public_id' => ['nullable', 'string', 'exists:sectors,public_id'],
             'sub_sector_public_id' => ['nullable', 'string', 'exists:sub_sectors,public_id'],
-            'financed_activity_code' => ['nullable', 'string', 'max:64'],
             'activity_address' => ['nullable', 'string', 'max:1000'],
             'entrepreneur_address' => ['nullable', 'string', 'max:1000'],
             'first_installment_date' => ['nullable', 'date'],
             'number_of_installments' => ['nullable', 'integer', 'min:1'],
             'grace_period_duration' => ['nullable', 'integer', 'min:0'],
-            'tranche_duration' => ['nullable', 'integer', 'min:1'],
-            'total_loan_duration' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

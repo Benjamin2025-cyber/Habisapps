@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Support\Finance\FormulaPolicyKey;
 use App\Support\Traits\HasAuditLog;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -187,5 +188,42 @@ final class LoanProduct extends Model
     public function loans(): HasMany
     {
         return $this->hasMany(Loan::class);
+    }
+
+    /**
+     * The spacing one installment term covers, in days — the periodicity a
+     * loan of this product displays (« périodicité (jours) »). Derived from the
+     * product's duration unit, never chosen per loan: the unit is what spaces
+     * the schedule.
+     */
+    public function termUnitDays(): int
+    {
+        return match ($this->resolvedTermUnit()) {
+            self::TERM_UNIT_DAY => 1,
+            self::TERM_UNIT_WEEK => 7,
+            default => 30,
+        };
+    }
+
+    /**
+     * Step a date by whole installment terms, the same way GenerateLoanSchedule
+     * spaces the schedule. Anything deriving a duration has to use this rather
+     * than multiplying by termUnitDays(): a month is not 30 days, so twelve
+     * monthly terms is a year, not 360 days.
+     */
+    public function addTerms(CarbonImmutable $from, int $terms): CarbonImmutable
+    {
+        return match ($this->resolvedTermUnit()) {
+            self::TERM_UNIT_DAY => $from->addDays($terms),
+            self::TERM_UNIT_WEEK => $from->addWeeks($terms),
+            default => $from->addMonthsNoOverflow($terms),
+        };
+    }
+
+    private function resolvedTermUnit(): string
+    {
+        $unit = $this->getAttribute('term_unit');
+
+        return is_string($unit) && $unit !== '' ? $unit : self::TERM_UNIT_MONTH;
     }
 }

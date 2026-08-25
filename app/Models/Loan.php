@@ -34,7 +34,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'purpose',
     'sector_id',
     'sub_sector_id',
-    'financed_activity_code',
     'activity_address',
     'entrepreneur_address',
     'first_installment_date',

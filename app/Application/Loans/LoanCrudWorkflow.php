@@ -20,6 +20,8 @@ use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
 use App\Support\Loans\LoanProductBounds;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -127,6 +129,14 @@ final class LoanCrudWorkflow extends BaseController
             'applied_on' => is_string($appliedOn) ? $appliedOn : now()->toDateString(),
         ]);
         $this->formulaPolicySnapshotter->applyToLoan($loan, $product);
+        $graceProvided = array_key_exists('grace_period_duration', $validated) && $validated['grace_period_duration'] !== null;
+        $this->deriveScheduleDisplayFields($loan, $product, $graceProvided);
+
+        $graceErrors = $this->derivedGraceErrors($loan, $product, $graceProvided);
+        if ($graceErrors !== []) {
+            return $this->respondUnprocessable(errors: $graceErrors);
+        }
+
         $loan->save();
 
         $this->securityAudit->record('loan.application.created', actor: $request->user(), subject: $loan, request: $request);
@@ -173,6 +183,16 @@ final class LoanCrudWorkflow extends BaseController
         }
 
         $loan->fill($this->payload($validated, $resolved));
+        $product = $loan->loanProduct;
+        if ($product instanceof LoanProduct) {
+            $graceProvided = array_key_exists('grace_period_duration', $validated) && $validated['grace_period_duration'] !== null;
+            $this->deriveScheduleDisplayFields($loan, $product, $graceProvided);
+
+            $graceErrors = $this->derivedGraceErrors($loan, $product, $graceProvided);
+            if ($graceErrors !== []) {
+                return $this->respondUnprocessable(errors: $graceErrors);
+            }
+        }
         $loan->save();
 
         $this->securityAudit->record('loan.application.updated', actor: $actor, subject: $loan, properties: [
@@ -437,6 +457,114 @@ final class LoanCrudWorkflow extends BaseController
         if ($product->max_amount_minor !== null && $amount > $product->max_amount_minor) {
             $errors['requested_amount_minor'] = [(string) __('Requested amount exceeds the loan product maximum.')];
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, array<int, string>>  $errors
+     */
+    /**
+     * « Pour la création d'un nouveau prêt, la périodicité, le différé, la
+     * durée totale en jours sont censés apparaître automatiquement dès lors
+     * qu'on a déjà renseigné le nombre d'échéances et la date de la première
+     * échéance. » None of the three is hand-keyed any more:
+     *
+     *   - periodicity (days) is the product's duration unit — day 1, week 7,
+     *     month 30; it is what spaces the schedule;
+     *   - grace (différé) is the gap the chosen first installment date implies:
+     *     the inverse of the schedule's own first-due math (start + grace + one
+     *     term = first due), anchored on the application date until approval
+     *     replaces it. An explicitly entered grace is respected — it is what
+     *     drives the schedule when no first date is given;
+     *   - total duration in days spans from the application date through the
+     *     last installment.
+     */
+    private function deriveScheduleDisplayFields(Loan $loan, LoanProduct $product, bool $graceProvided): void
+    {
+        $installments = $loan->number_of_installments;
+        if (! is_int($installments) || $installments < 1) {
+            return;
+        }
+
+        $unitDays = $product->termUnitDays();
+        $loan->tranche_duration = max(0, $unitDays);
+
+        $base = CarbonImmutable::parse($loan->applied_on ?? now()->toDateString())->startOfDay();
+        $firstDue = $this->firstInstallmentDate($loan);
+
+        if ($firstDue !== null) {
+            // Re-derived on every save unless the caller actually submitted a
+            // grace on this request. Guarding on "already set" instead would
+            // freeze the value at creation, so moving the first installment
+            // date later would leave the displayed différé describing the old
+            // date while the duration beside it described the new one.
+            if (! $graceProvided) {
+                // Inverse of the schedule's own first-due math (base + grace +
+                // one term = first due), stepped by a real term so a first date
+                // exactly one month out reads as no deferral rather than one
+                // day of it.
+                $loan->grace_period_duration = max(0, (int) $product->addTerms($base, 1)
+                    ->diffInDays($firstDue, absolute: false));
+            }
+
+            // Stepped by real terms, not by leadDays + n × 30: the schedule
+            // spaces monthly installments with addMonthsNoOverflow, so twelve
+            // of them span a year rather than 360 days.
+            $loan->total_loan_duration = max(0, (int) $base->diffInDays(
+                $product->addTerms($firstDue, $installments - 1),
+                absolute: false,
+            ));
+
+            return;
+        }
+
+        // No first date: the schedule derives it as base + grace + one term, so
+        // the total spans the grace plus every installment.
+        $graceDays = max(0, $loan->grace_period_duration ?? 0);
+        $loan->total_loan_duration = max(0, (int) $base->diffInDays(
+            $product->addTerms($base->addDays($graceDays), $installments),
+            absolute: false,
+        ));
+    }
+
+    private function firstInstallmentDate(Loan $loan): ?CarbonImmutable
+    {
+        // The date cast hands this back as a Carbon on filled models.
+        $value = $loan->getAttribute('first_installment_date');
+        if ($value instanceof DateTimeInterface) {
+            return CarbonImmutable::instance($value)->startOfDay();
+        }
+
+        return is_string($value) && $value !== ''
+            ? CarbonImmutable::parse($value)->startOfDay()
+            : null;
+    }
+
+    /**
+     * The product's min/max deferral is a ceiling on how long the borrower can
+     * go before owing anything. It used to be enforced against the submitted
+     * `grace_period_duration`; now that the grace is derived from the first
+     * installment date instead, checking only the payload would leave the
+     * ceiling unenforceable — a caller simply sends a far-out first date and the
+     * derived deferral sails past the bound unchecked.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function derivedGraceErrors(Loan $loan, LoanProduct $product, bool $graceProvided): array
+    {
+        // A submitted grace was already checked against the same bounds.
+        if ($graceProvided || $this->firstInstallmentDate($loan) === null) {
+            return [];
+        }
+
+        $errors = LoanProductBounds::termErrors($product, [
+            'grace_period_duration' => $loan->grace_period_duration,
+        ]);
+
+        // Report it where the caller can act: they chose a date, not a deferral.
+        return $errors === []
+            ? []
+            : ['first_installment_date' => [(string) __('loans.first_installment_date_implies_out_of_bounds_grace')]];
     }
 
     /**

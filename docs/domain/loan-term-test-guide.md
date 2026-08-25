@@ -118,14 +118,10 @@ en toucher un seul rend les autres obligatoires.
 
 ### Section « Comptabilité »
 
-| Champ | Valeur |
-|---|---|
-| **Compte comptable par défaut** | n'importe quel compte proposé dans la liste |
-| **Politiques de calcul rattachées** (7 listes) | laisser telles quelles |
-
-> Le compte comptable ne sert qu'au **déblocage**, qui n'est pas fait dans ce guide :
-> on s'arrête au tableau d'amortissement, qui ne passe aucune écriture. Choisissez
-> le premier de la liste, cela n'aura aucun effet sur le test.
+Rien à saisir ici : le produit ne porte plus de « compte comptable par défaut »
+(le déblocage passe par les mappages d'opérations de l'agence), et les
+**politiques de calcul rattachées** ne se sélectionnent plus — elles sont les
+mêmes pour tous les crédits.
 
 ### Section « Statut »
 
@@ -163,9 +159,9 @@ Seuls **Titulaire**, **Produit de prêt** et **Montant demandé** sont obligatoi
 | **Devise** | `XAF` | |
 | **Nombre d'échéances** | *varie selon l'essai* | **← testé** |
 | **1re échéance** | **laisser vide** | **← testé**, voir l'encadré en 5.1 |
-| **Périodicité (jours)** | **laisser vide** | voir l'encadré en 5.1 |
+| **Périodicité (jours)** | rempli automatiquement (unité de durée du produit) | champ dérivé, non saisissable |
 | **Différé (jours)** | *varie selon l'essai* | **← testé** |
-| **Durée totale (jours)** | laisser vide | champ déclaratif, ne pilote rien |
+| **Durée totale (jours)** | rempli automatiquement dès que le nombre d'échéances et la 1re échéance sont connus | champ dérivé, non saisissable |
 
 ### Section « Comptes rattachés »
 
@@ -189,8 +185,11 @@ Seuls **Titulaire**, **Produit de prêt** et **Montant demandé** sont obligatoi
 ### Section « Activité financée »
 
 Tout est facultatif et sans effet sur ce test : **Objet du prêt**, **Secteur
-d'activité**, **Sous-secteur**, **Code activité financée**, **Adresse de l'activité**,
-**Adresse de l'entrepreneur**. Mettez `Test durée` dans l'objet, laissez le reste vide.
+d'activité**, **Sous-secteur**, **Adresse de l'activité**, **Adresse de
+l'entrepreneur**. Mettez `Test durée` dans l'objet, laissez le reste vide.
+
+> Le **Code activité financée** n'existe plus : le secteur et le sous-secteur
+> portent seuls la classification de l'activité.
 
 ---
 
@@ -236,9 +235,9 @@ Même formulaire qu'en section 3, avec ces trois lignes :
 > **Pourquoi laisser « 1re échéance » vide :** si vous donnez une date, c'est elle qui
 > s'applique, et le différé n'a plus rien à décaler. Le test ne montrerait rien.
 >
-> **Pourquoi laisser « Périodicité (jours) » vide :** ce champ ne pilote rien
-> aujourd'hui. C'est l'**unité de durée du produit** qui espace les échéances. Le
-> champ est trompeur ; il est signalé pour être tranché séparément.
+> **La « Périodicité (jours) » s'affiche toute seule :** c'est l'unité de durée du
+> produit traduite en jours (semaine = 7). Elle aussi que la « Durée totale (jours) »
+> — les deux champs ne se saisissent plus.
 
 Enregistrez.
 

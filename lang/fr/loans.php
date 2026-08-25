@@ -6,6 +6,7 @@ return [
     'setup_charges_must_be_collected' => 'Les frais de mise en place doivent être encaissés avant le déboursement : :types.',
     'unsupported_setup_charge_type' => 'Type de frais de mise en place non pris en charge : :type.',
     'setup_charges_not_assessable_after_disbursement' => 'Les frais de mise en place ne peuvent être évalués qu’avant le déboursement.',
+    'first_installment_date_implies_out_of_bounds_grace' => 'La date de première échéance choisie implique un différé hors des bornes minimum/maximum du produit de prêt.',
     'loan_divisionary_account_unusable' => 'Le compte :role du prêt doit être actif et appartenir à l’agence du prêt.',
     'unsupported_repayment_component' => 'Composante de remboursement de prêt non prise en charge : :component.',
     'credit_ledger_mapping_required' => 'Un mappage de grand livre de crédit actif est requis pour :code.',

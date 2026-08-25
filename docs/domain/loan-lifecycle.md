@@ -82,6 +82,8 @@ Implemented application behavior:
 - `GET /api/v1/loans/{loan}` returns an application by public ID.
 - `PATCH /api/v1/loans/{loan}` updates only application-stage records.
 - Creation validates active products, product amount limits, assigned credit agents, same-client linked accounts, sector/sub-sector consistency, and agency scope.
+- Periodicity (jours), grace (différé), and total duration in days are not inputs: once the number of installments and the first installment date are known they appear automatically — periodicity is the product's duration unit, grace is what the chosen first date implies relative to the application date, and the total spans from that date through the last installment. An explicitly entered grace is still respected when no first date is given.
+- There is no financed-activity code: sector and sub-sector carry the activity classification.
 - Loan responses expose public IDs for clients, products, agencies, agents, sectors, and linked accounts.
 
 ## Setup Charges

@@ -6,6 +6,7 @@ return [
     'setup_charges_must_be_collected' => 'Setup charges must be collected before disbursement: :types.',
     'unsupported_setup_charge_type' => 'Unsupported setup charge type: :type.',
     'setup_charges_not_assessable_after_disbursement' => 'Setup charges can only be assessed before disbursement.',
+    'first_installment_date_implies_out_of_bounds_grace' => 'The chosen first installment date implies a deferral outside the loan product\'s minimum/maximum grace period.',
     'loan_divisionary_account_unusable' => 'The loan\'s :role account must be active and belong to the loan agency.',
     'unsupported_repayment_component' => 'Unsupported loan repayment component: :component.',
     'credit_ledger_mapping_required' => 'Active credit ledger mapping is required for :code.',

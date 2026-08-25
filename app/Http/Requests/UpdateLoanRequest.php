@@ -34,14 +34,11 @@ final class UpdateLoanRequest extends FormRequest
             'purpose' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'sector_public_id' => ['sometimes', 'nullable', 'string', 'exists:sectors,public_id'],
             'sub_sector_public_id' => ['sometimes', 'nullable', 'string', 'exists:sub_sectors,public_id'],
-            'financed_activity_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'activity_address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'entrepreneur_address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'first_installment_date' => ['sometimes', 'nullable', 'date'],
             'number_of_installments' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'grace_period_duration' => ['sometimes', 'nullable', 'integer', 'min:0'],
-            'tranche_duration' => ['sometimes', 'nullable', 'integer', 'min:1'],
-            'total_loan_duration' => ['sometimes', 'nullable', 'integer', 'min:1'],
         ];
     }
 }

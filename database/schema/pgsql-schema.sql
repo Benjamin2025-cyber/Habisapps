@@ -4105,7 +4105,6 @@ CREATE TABLE public.loans (
     recovery_account_id bigint,
     transfer_account_id bigint,
     processing_level character varying(64),
-    financed_activity_code character varying(64),
     activity_address text,
     entrepreneur_address text,
     applied_interest_rate numeric(12,6),
@@ -12980,7 +12979,8 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 85	2026_08_23_082855_rework_loan_product_penalties_and_dossier_fee_tax	5
 86	2026_08_23_095458_add_principal_tax_minor_to_loans_table	5
 87	2026_08_25_080000_create_loan_divisionary_accounts	6
-88	2026_08_25_120000_drop_guarantee_deposit_type_from_loan_products	7
+88	2026_08_25_090000_drop_financed_activity_code_from_loans	7
+89	2026_08_25_120000_drop_guarantee_deposit_type_from_loan_products	8
 \.
 
 
@@ -12988,7 +12988,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 -- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.migrations_id_seq', 88, true);
+SELECT pg_catalog.setval('public.migrations_id_seq', 89, true);
 
 
 --
