@@ -29,6 +29,7 @@ final class CustomerAccountWorkflow extends BaseController
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly ReferenceNumberGenerator $referenceNumberGenerator,
+        private readonly OpenCustomerLedgerAccount $openCustomerLedgerAccount,
     ) {}
 
     public function index(Request $request): CustomerAccountCollection|JsonResponse
@@ -161,6 +162,15 @@ final class CustomerAccountWorkflow extends BaseController
         $accountNumber = $providedAccountNumber !== ''
             ? $providedAccountNumber
             : $this->referenceNumberGenerator->reserve('account');
+
+        // « le numéro du client soit directement son compte comptable » — the
+        // resolved control (explicit or product default) is not posted to
+        // directly; the client's own divisionary under it is, coded with their
+        // client number. Postings, balances and reconciliation read
+        // customer_accounts.ledger_account_id exactly as before.
+        if ($ledgerAccount instanceof LedgerAccount) {
+            $ledgerAccount = $this->openCustomerLedgerAccount->open($client, $ledgerAccount, $agency->id, $accountNumber);
+        }
 
         $account = CustomerAccount::query()->create([
             'public_id' => (string) Str::ulid(),

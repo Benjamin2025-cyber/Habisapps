@@ -124,9 +124,24 @@ final class Module3AccountingProductTest extends TestCase
 
         $this->assertJsonSuccess($create, 201);
         $create->assertJsonPath('data.account_product_public_id', $productPublicId);
-        $create->assertJsonPath('data.ledger_account_public_id', $ledger['public_id']);
         $create->assertJsonPath('data.account_type', AccountProduct::FAMILY_RECOVERY);
         $create->assertJsonPath('data.currency', 'XAF');
+
+        // The product's ledger is the control; the account posts against the
+        // client's own divisionary under it, coded with their client number
+        // (« le numéro du client soit directement son compte comptable »).
+        $divisionaryPublicId = $this->requireStringJsonPath($create, 'data.ledger_account_public_id');
+        $clientReference = DB::table('clients')->where('id', $client['id'])->value('client_reference');
+        self::assertIsString($clientReference);
+        $divisionary = DB::table('ledger_accounts')->where('public_id', $divisionaryPublicId)->first();
+        self::assertIsObject($divisionary);
+        $divisionary = (array) $divisionary;
+        self::assertSame($clientReference, $divisionary['code']);
+        self::assertSame($ledger['id'], $divisionary['parent_account_id']);
+        $this->assertDatabaseHas('customer_accounts', [
+            'public_id' => $this->requireStringJsonPath($create, 'data.public_id'),
+            'ledger_account_id' => $divisionary['id'],
+        ]);
 
         $inactiveProductPublicId = (string) Str::ulid();
         DB::table('account_products')->insert([
@@ -153,6 +168,133 @@ final class Module3AccountingProductTest extends TestCase
         $inactive->assertStatus(422);
         $inactive->assertJsonValidationErrors(['account_product_public_id']);
         $inactive->assertJsonPath('errors.account_product_public_id.0', 'Le produit de compte sélectionné doit être actif et disponible pour l’agence du compte.');
+    }
+
+    /**
+     * « le numéro du client soit directement son compte comptable » — one
+     * account of the client carries their bare number; a second account under
+     * a different control embeds the number (codes are unique per agency), and
+     * re-opening under the same control adopts the same divisionary instead of
+     * minting another.
+     */
+    public function test_client_number_becomes_their_ledger_code_and_extra_accounts_embed_it(): void
+    {
+        $agency = $this->createAgency('AP-DIV');
+        $actor = $this->createUserWithRole('platform-admin');
+        $client = $this->createVerifiedClient($agency['id']);
+        $savingsControl = $this->createLedgerAccount($agency['id']);
+        $guaranteeControl = $this->createLedgerAccount($agency['id']);
+        $clientReference = DB::table('clients')->where('id', $client['id'])->value('client_reference');
+        self::assertIsString($clientReference);
+
+        $savingsProduct = (string) Str::ulid();
+        DB::table('account_products')->insert([
+            'public_id' => $savingsProduct,
+            'agency_id' => $agency['id'],
+            'ledger_account_id' => $savingsControl['id'],
+            'code' => 'DIV-SAV',
+            'name' => 'Savings',
+            'account_family' => AccountProduct::FAMILY_SAVINGS,
+            'currency' => 'XAF',
+            'status' => AccountProduct::STATUS_ACTIVE,
+        ]);
+        $guaranteeProduct = (string) Str::ulid();
+        DB::table('account_products')->insert([
+            'public_id' => $guaranteeProduct,
+            'agency_id' => $agency['id'],
+            'ledger_account_id' => $guaranteeControl['id'],
+            'code' => 'DIV-GUAR',
+            'name' => 'Guarantee',
+            'account_family' => AccountProduct::FAMILY_RECOVERY,
+            'currency' => 'XAF',
+            'status' => AccountProduct::STATUS_ACTIVE,
+        ]);
+
+        $openAccount = function (string $productPublicId, string $accountNumber) use ($actor, $client, $agency): TestResponse {
+            return $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken($accountNumber)->plainTextToken])
+                ->postJson('/api/v1/customer-accounts', [
+                    'client_public_id' => $client['public_id'],
+                    'agency_public_id' => $agency['public_id'],
+                    'account_product_public_id' => $productPublicId,
+                    'account_number' => $accountNumber,
+                    'opened_on' => '2026-08-25',
+                ]);
+        };
+
+        // First account: the bare client number IS its GL code.
+        $savings = $openAccount($savingsProduct, 'ACC-DIV-001');
+        $this->assertJsonSuccess($savings, 201);
+        $savings->assertJsonPath('data.ledger_account_code', $clientReference);
+        $savingsDivisionaryId = DB::table('customer_accounts')
+            ->where('public_id', $this->requireStringJsonPath($savings, 'data.public_id'))
+            ->value('ledger_account_id');
+        self::assertIsInt($savingsDivisionaryId);
+
+        // Re-opening under the same control adopts it.
+        $second = $openAccount($savingsProduct, 'ACC-DIV-002');
+        $this->assertJsonSuccess($second, 201);
+        self::assertSame(
+            $savingsDivisionaryId,
+            DB::table('customer_accounts')->where('public_id', $this->requireStringJsonPath($second, 'data.public_id'))->value('ledger_account_id'),
+        );
+
+        // A different control cannot reuse the code: the number stays the
+        // leading part, suffixed with the operational account number.
+        $guarantee = $openAccount($guaranteeProduct, 'ACC-DIV-003');
+        $this->assertJsonSuccess($guarantee, 201);
+        $guarantee->assertJsonPath('data.ledger_account_code', $clientReference.'.ACC-DIV-003');
+
+        // Both consolidate into their own controls.
+        $this->assertDatabaseHas('ledger_accounts', ['id' => $savingsDivisionaryId, 'parent_account_id' => $savingsControl['id']]);
+        $this->assertDatabaseHas('ledger_accounts', [
+            'code' => $clientReference.'.ACC-DIV-003',
+            'parent_account_id' => $guaranteeControl['id'],
+        ]);
+    }
+
+    /**
+     * The account screen resolved the holder and the agency by searching
+     * client-side lists capped at 100 rows, so the 101st client's account showed
+     * a ULID where the name belongs and the agency showed one always. It also
+     * dropped the middle name, which truncated holders who have one.
+     */
+    public function test_customer_account_exposes_the_holder_and_agency_names_not_only_ids(): void
+    {
+        $agency = $this->createAgency('AP-NAMES');
+        $actor = $this->createUserWithRole('platform-admin');
+        $client = $this->createVerifiedClient($agency['id']);
+        DB::table('clients')->where('id', $client['id'])->update([
+            'last_name' => 'ndiaye',
+            'first_name' => 'Awa',
+            'middle_name' => 'Fatou',
+        ]);
+        $control = $this->createLedgerAccount($agency['id']);
+
+        $productPublicId = (string) Str::ulid();
+        DB::table('account_products')->insert([
+            'public_id' => $productPublicId,
+            'agency_id' => $agency['id'],
+            'ledger_account_id' => $control['id'],
+            'code' => 'NAMES-SAV',
+            'name' => 'Savings',
+            'account_family' => AccountProduct::FAMILY_SAVINGS,
+            'currency' => 'XAF',
+            'status' => AccountProduct::STATUS_ACTIVE,
+        ]);
+
+        $created = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('names')->plainTextToken])
+            ->postJson('/api/v1/customer-accounts', [
+                'client_public_id' => $client['public_id'],
+                'agency_public_id' => $agency['public_id'],
+                'account_product_public_id' => $productPublicId,
+                'account_number' => 'ACC-NAMES-001',
+                'opened_on' => '2026-08-25',
+            ]);
+
+        $this->assertJsonSuccess($created, 201);
+        // NOM Prénoms, middle name included.
+        $created->assertJsonPath('data.client_display_name', 'NDIAYE Awa Fatou');
+        $created->assertJsonPath('data.agency_name', DB::table('agencies')->where('id', $agency['id'])->value('name'));
     }
 
     public function test_customer_account_number_is_auto_generated_when_omitted(): void

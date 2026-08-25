@@ -18,18 +18,37 @@ final class AccountingBalanceCalculator
     ) {}
 
     /**
+     * Whether a balance for this account means its subtree. Shared so callers
+     * reporting the scope alongside a balance cannot describe it differently
+     * from how it was computed.
+     */
+    public function consolidatesByDefault(LedgerAccount $ledgerAccount): bool
+    {
+        return ! $ledgerAccount->is_postable || $this->hierarchy->hasChildren($ledgerAccount->id);
+    }
+
+    /**
      * Balance of a ledger account.
      *
-     * Grouping accounts carry no movements of their own, so they consolidate
-     * their subtree by default: an institution-level 571000 reports the sum of
-     * the agency 571001/571002/571003 beneath it. Pass $consolidated explicitly
-     * to override, which a caller wanting strictly own-movement totals must do.
+     * An account consolidates its subtree by default whenever anything hangs
+     * beneath it: an institution-level 571000 reports the sum of the agency
+     * 571001/571002/571003. Pass $consolidated explicitly to override, which a
+     * caller wanting strictly own-movement totals must do.
+     *
+     * Having children is the test, not `is_postable`. The two used to be
+     * treated as the same thing, which held while only grouping accounts had
+     * children. Per-dossier divisionaries broke that: a control account that
+     * operations still post to directly — and must stay postable, or
+     * OperationAccountMappingController rejects the mappings that resolve it —
+     * now also carries a child per loan and per client. Keyed on postability it
+     * reported only its own legacy movements while every franc opened after the
+     * change sat in a child, silently under-reporting the whole control.
      *
      * @return array{scope:string, public_id:string, currency:string, from:string|null, to:string|null, debit_total_minor:int, credit_total_minor:int, balance_minor:int, normal_balance_side:string|null, balance_side:string|null}
      */
     public function forLedgerAccount(LedgerAccount $ledgerAccount, string $currency, ?string $from = null, ?string $to = null, ?bool $consolidated = null): array
     {
-        $consolidated ??= ! $ledgerAccount->is_postable;
+        $consolidated ??= $this->consolidatesByDefault($ledgerAccount);
 
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')

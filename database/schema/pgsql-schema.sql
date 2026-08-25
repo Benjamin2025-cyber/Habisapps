@@ -12981,6 +12981,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 87	2026_08_25_080000_create_loan_divisionary_accounts	6
 88	2026_08_25_090000_drop_financed_activity_code_from_loans	7
 89	2026_08_25_120000_drop_guarantee_deposit_type_from_loan_products	8
+90	2026_08_25_140000_backfill_customer_divisionary_ledger_accounts	9
 \.
 
 
@@ -12988,7 +12989,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 -- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.migrations_id_seq', 89, true);
+SELECT pg_catalog.setval('public.migrations_id_seq', 90, true);
 
 
 --

@@ -2081,6 +2081,82 @@ final class Module3AccountingArchitectureTest extends TestCase
         self::assertSame(0, DB::table('operation_account_mappings')->count());
     }
 
+    /**
+     * A control that stays postable and gains children still consolidates them.
+     *
+     * Through the API that combination cannot arise: adding a sub-account flips
+     * the parent to non-postable (LedgerAccountController::convertToGroupingAccount)
+     * and is refused outright once the parent has movements. But OpenLoanAccounts
+     * and OpenCustomerLedgerAccount mint divisionaries straight through the model,
+     * so in production controls do end up postable, with movements, and with a
+     * child per dossier. Keyed on `is_postable` such a control reported only its
+     * own legacy movements while every franc booked after the change sat in a
+     * child — silently under-reporting the whole line.
+     */
+    public function test_postable_control_with_divisionaries_consolidates_them(): void
+    {
+        $maker = $this->createUserWithRole('platform-admin');
+        $reviewer = $this->createUserWithRole('platform-admin');
+        $agency = $this->createAgency('CONS-DIV');
+        $this->openInstitutionAccountingDay('2026-05-01');
+        $this->ensureOpenAccountingDay($agency['id'], '2026-05-01');
+
+        $control = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '578100', 'Contrôle clients');
+        $counterpart = $this->createAgencyLedgerAccount($maker, $agency['public_id'], '578901', 'Counterpart');
+
+        // Legacy movement, booked straight onto the control while it was a leaf.
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-DIV-LEGACY', '2026-05-01', [
+            ['ledger_account_public_id' => $control, 'debit_minor' => 3000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 3000],
+        ]);
+
+        // Exactly how the divisionary services open one: direct model insert,
+        // parent left postable.
+        $controlRow = DB::table('ledger_accounts')->where('public_id', $control)->first(['id', 'account_class', 'normal_balance_side']);
+        self::assertIsObject($controlRow);
+        $divisionary = (string) Str::ulid();
+        DB::table('ledger_accounts')->insert([
+            'public_id' => $divisionary,
+            'agency_id' => $agency['id'],
+            'code' => '578100.CLI1',
+            'name' => 'Client 1',
+            'account_class' => $controlRow->account_class,
+            'is_postable' => true,
+            'parent_account_id' => $controlRow->id,
+            'normal_balance_side' => $controlRow->normal_balance_side,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        self::assertTrue((bool) DB::table('ledger_accounts')->where('public_id', $control)->value('is_postable'));
+
+        $this->createPostedJournalEntryWithLines($maker, $reviewer, $agency['public_id'], 'JE-DIV-CHILD', '2026-05-01', [
+            ['ledger_account_public_id' => $divisionary, 'debit_minor' => 5000, 'credit_minor' => 0],
+            ['ledger_account_public_id' => $counterpart, 'debit_minor' => 0, 'credit_minor' => 5000],
+        ]);
+
+        $balance = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$control.'/balance?currency=XAF');
+        $this->assertJsonSuccess($balance);
+        $balance->assertJsonPath('data.scope', 'ledger_account_consolidated');
+        // Its own 3 000 plus the divisionary's 5 000.
+        $balance->assertJsonPath('data.balance_minor', 8000);
+
+        // Own-movement totals stay reachable explicitly.
+        $own = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$control.'/balance?currency=XAF&consolidated=0');
+        $this->assertJsonSuccess($own);
+        $own->assertJsonPath('data.scope', 'ledger_account');
+        $own->assertJsonPath('data.balance_minor', 3000);
+
+        // A leaf is unaffected.
+        $leaf = $this->withApiHeaders()->actingAsSanctum($reviewer)
+            ->getJson('/api/v1/ledger-accounts/'.$divisionary.'/balance?currency=XAF');
+        $this->assertJsonSuccess($leaf);
+        $leaf->assertJsonPath('data.scope', 'ledger_account');
+        $leaf->assertJsonPath('data.balance_minor', 5000);
+    }
+
     public function test_institution_account_balance_consolidates_its_agency_children(): void
     {
         $maker = $this->createUserWithRole('platform-admin');

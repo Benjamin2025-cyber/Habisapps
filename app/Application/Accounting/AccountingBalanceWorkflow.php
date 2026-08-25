@@ -320,7 +320,9 @@ final class AccountingBalanceWorkflow extends BaseController
             // account's own movements, and a client showing them unlabelled would
             // present a consolidation as if it were a single account's activity.
             // Same two values the balance endpoint reports.
-            'scope' => $ledgerAccount->is_postable ? 'ledger_account' : 'ledger_account_consolidated',
+            'scope' => $this->calculator->consolidatesByDefault($ledgerAccount)
+                ? 'ledger_account_consolidated'
+                : 'ledger_account',
             'public_id' => $ledgerAccount->public_id,
             'currency' => $currency,
             'from' => $from,
@@ -371,18 +373,19 @@ final class AccountingBalanceWorkflow extends BaseController
     }
 
     /**
-     * A grouping account has no movements of its own, so its statement lists the
-     * movements of the detail accounts beneath it. That keeps the statement
-     * consistent with the consolidated balance the calculator reports for it.
+     * An account with anything beneath it lists the movements of its subtree —
+     * its own included, since a control may be posted to directly and still
+     * carry divisionaries. Same predicate as the balance, so the statement lines
+     * always add up to the balance printed above them.
      */
     private function ledgerMovementQuery(LedgerAccount $ledgerAccount, string $currency, ?string $from, ?string $to, ?AccountingDay $accountingDay = null): Builder
     {
         $query = $this->baseMovementQuery()->where('journal_lines.currency', $currency);
 
-        if ($ledgerAccount->is_postable) {
-            $query->where('journal_lines.ledger_account_id', $ledgerAccount->id);
-        } else {
+        if ($this->calculator->consolidatesByDefault($ledgerAccount)) {
             $query->whereIn('journal_lines.ledger_account_id', $this->hierarchy->subtreeIds($ledgerAccount->id));
+        } else {
+            $query->where('journal_lines.ledger_account_id', $ledgerAccount->id);
         }
 
         return $this->applyMovementFilters($query, $from, $to, $accountingDay);

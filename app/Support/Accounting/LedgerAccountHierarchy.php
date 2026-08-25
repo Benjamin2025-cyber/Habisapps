@@ -65,6 +65,22 @@ final class LedgerAccountHierarchy
     }
 
     /**
+     * Whether anything hangs beneath this account.
+     *
+     * Having children is what makes an account a grouping account, and it is
+     * independent of `is_postable`: a control that operations still post to
+     * directly can also carry per-dossier divisionaries beneath it. Its balance
+     * is then its own movements plus theirs, which is what `subtreeIds()`
+     * returns.
+     */
+    public function hasChildren(int $accountId): bool
+    {
+        $this->load();
+
+        return ($this->children[$accountId] ?? []) !== [];
+    }
+
+    /**
      * Inclusive subtree ids for every account in the chart.
      *
      * @return array<int, array<int, int>>

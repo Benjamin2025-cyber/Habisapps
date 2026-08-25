@@ -103,6 +103,28 @@ Rules:
 - Global products can be listed for agencies, but cannot map to agency ledger accounts in the current safe slice.
 - When a customer account is opened from a product, the account stores the product link and defaults account family, currency, and ledger mapping from the product unless explicitly overridden by a valid request.
 
+### Client Divisionary Accounts
+
+« le numéro du client soit directement son compte comptable parce que c'est lui
+qui sera utilisé pour passer des écritures dans son compte. » At customer
+account opening, the resolved control (explicit choice or product default) is
+not posted to directly: a divisionary under it is opened, and the customer
+account's `ledger_account_id` points at that divisionary.
+
+- The first account of a client carries the bare client number as its GL code;
+  codes being unique per agency, further accounts under different controls
+  embed the number — `CLI000123.ACC00000001` — so every code they own stays
+  recognizable as theirs.
+- Re-opening an account for the same client under the same control adopts the
+  existing divisionary rather than minting another.
+- Class, balance side, and parent come from the control; divisionaries are
+  active and postable, and consolidate into their control through the ordinary
+  hierarchy.
+- The operational account number (`ACC…`, passbook) is unchanged; responses
+  expose the posting code as `ledger_account_code` so no lookup is needed.
+- Accounts opened before this existed keep their assigned ledger; postings
+  always follow `customer_accounts.ledger_account_id`.
+
 ### emf_regulatory_accounts
 
 Stores the institution-level EMF/COBAC regulatory chart reference.
