@@ -704,7 +704,6 @@ final class NotificationsFoundationTest extends TestCase
 
         $product = LoanProduct::query()->create([
             'public_id' => (string) Str::ulid(),
-            'ledger_account_id' => $ledgerId,
             'code' => 'LP-'.Str::ulid(),
             'name' => 'Loan Product',
             'status' => LoanProduct::STATUS_ACTIVE,
@@ -1125,7 +1124,6 @@ final class NotificationsFoundationTest extends TestCase
 
         $product = LoanProduct::query()->create([
             'public_id' => (string) Str::ulid(),
-            'ledger_account_id' => $ledgerId,
             'code' => 'LP-OD-'.Str::ulid(),
             'name' => 'Overdue Loan Product',
             'status' => LoanProduct::STATUS_ACTIVE,

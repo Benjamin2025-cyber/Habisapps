@@ -23,7 +23,6 @@ final class LoanProductResource extends JsonResource
 
         return [
             'public_id' => $product->public_id,
-            'ledger_account_public_id' => $product->relationLoaded('ledgerAccount') ? $product->ledgerAccount?->public_id : null,
             'code' => $product->code,
             'name' => $product->name,
             'status' => $product->status,

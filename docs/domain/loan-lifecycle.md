@@ -121,7 +121,8 @@ Loan products define:
 - guarantee deposit
 - penalty grace days (the penalty formula itself is universal — see the arrears section)
 - grace period rules
-- linked ledger accounts
+
+Loan products carry no default GL account (« il n'y a pas de compte comptable par défaut »): posting accounts resolve through agency operation-account mappings, and each loan opens its own divisionary accounts at mise en place (see the accounting ledger document).
 
 Implemented product catalog behavior:
 
@@ -130,7 +131,7 @@ Implemented product catalog behavior:
 - `GET /api/v1/loan-products/{loanProduct}` returns product details by public ID.
 - `PATCH /api/v1/loan-products/{loanProduct}` updates product configuration.
 - `DELETE /api/v1/loan-products/{loanProduct}` archives the product instead of deleting it.
-- Product responses expose public IDs and ledger account public IDs, not internal integer IDs.
+- Product responses expose public IDs, not internal integer IDs.
 
 Product formula policies:
 
@@ -203,7 +204,7 @@ Implemented disbursement behavior:
 
 - `POST /api/v1/loans/{loan}/disburse` posts an approved loan disbursement.
 - The implemented channel is `transfer_account`; `cash` is rejected until the Module 5 teller/cash workflow is connected.
-- Disbursement debits the loan product ledger account and credits the linked transfer account ledger account.
+- Disbursement debits the dossier's divisionary loan receivable account — opened automatically at mise en place under the `loan_principal_disbursement` mapped control — and credits the linked transfer account ledger account. Loans disbursed before divisionaries existed post against the mapped control account itself.
 - The journal entry is posted immediately with `source_module = credit_loans` and `source_type = loan_disbursement`.
 - A `loan_disbursements` row links the loan, transfer account, journal entry, posted actor, amount, channel, and idempotency key.
 - Repeated disbursement calls for the same loan return the existing disbursement and journal entry; duplicate disbursement rows and duplicate postings are blocked.

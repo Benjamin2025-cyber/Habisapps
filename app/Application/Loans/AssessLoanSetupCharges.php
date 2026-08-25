@@ -34,6 +34,7 @@ final class AssessLoanSetupCharges
 
     public function __construct(
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
+        private readonly OpenLoanAccounts $openLoanAccounts,
     ) {}
 
     /**
@@ -59,6 +60,12 @@ final class AssessLoanSetupCharges
             if (! in_array($lockedLoan->status, self::ASSESSABLE_STATUSES, true)) {
                 throw new InvalidArgumentException(__('loans.setup_charges_not_assessable_after_disbursement'));
             }
+
+            // Mise en place opens the dossier's divisionary accounts before any
+            // charge is assessed, so a guarantee collected next credits the
+            // loan's own liability account rather than the shared control.
+            // Idempotent; also backfills legs whose mapping was configured late.
+            $this->openLoanAccounts->ensure($lockedLoan);
 
             $existing = DB::table('loan_charge_assessments')
                 ->where('loan_id', $lockedLoan->id)

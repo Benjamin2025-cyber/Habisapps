@@ -9,7 +9,6 @@ use App\Support\Traits\HasAuditLog;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
@@ -27,7 +26,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'penalty_policy_key',
     'repayment_allocation_policy_key',
     'fee_policy_key',
-    'ledger_account_id',
     'min_amount_minor',
     'max_amount_minor',
     'due_date_day',
@@ -184,12 +182,6 @@ final class LoanProduct extends Model
             'max_amount_minor' => 'integer',
             'rules' => 'array',
         ];
-    }
-
-    /** @return BelongsTo<LedgerAccount, $this> */
-    public function ledgerAccount(): BelongsTo
-    {
-        return $this->belongsTo(LedgerAccount::class);
     }
 
     /** @return HasMany<Loan, $this> */

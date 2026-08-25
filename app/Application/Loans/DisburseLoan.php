@@ -30,6 +30,7 @@ final class DisburseLoan
         private readonly LoanSetupState $setupState,
         private readonly AgencyLedgerMappingResolver $mappingResolver,
         private readonly GenerateLoanSchedule $generateLoanSchedule,
+        private readonly OpenLoanAccounts $openLoanAccounts,
     ) {}
 
     /**
@@ -79,9 +80,12 @@ final class DisburseLoan
 
             // FBI2-031: resolve the agency-specific loan principal ledger through an
             // approved operation-account mapping so a global product can post into
-            // different agency charts of accounts. The product ledger remains a
-            // legacy/default fallback only when it is active and in the loan agency.
-            $loanLedger = $this->resolveLoanPrincipalLedger($lockedLoan, $product);
+            // different agency charts of accounts. The debit itself lands on the
+            // dossier's own divisionary account opened under that mapping's
+            // control account at mise en place; a loan assessed before the
+            // mapping existed falls back to the control account itself.
+            $this->openLoanAccounts->ensure($lockedLoan);
+            $loanLedger = $this->resolveLoanPrincipalLedger($lockedLoan);
 
             $this->ensureSetupSatisfied($lockedLoan, $product);
 
@@ -405,8 +409,24 @@ final class DisburseLoan
         return (int) $debits - (int) $credits;
     }
 
-    private function resolveLoanPrincipalLedger(Loan $loan, LoanProduct $product): LedgerAccount
+    private function resolveLoanPrincipalLedger(Loan $loan): LedgerAccount
     {
+        // The dossier's own divisionary account, opened at mise en place under
+        // the mapped control. Every new disbursement lands here.
+        $receivableId = $loan->loan_receivable_account_id;
+        if (is_int($receivableId)) {
+            $divisionary = LedgerAccount::query()->whereKey($receivableId)->first();
+            if ($divisionary instanceof LedgerAccount
+                && $divisionary->status === LedgerAccount::STATUS_ACTIVE
+                && $divisionary->agency_id === $loan->agency_id) {
+                return $divisionary;
+            }
+
+            throw new InvalidArgumentException(__('loans.loan_divisionary_account_unusable', ['role' => 'principal receivable']));
+        }
+
+        // Legacy loans disbursed before divisionaries existed: post against the
+        // mapped control account itself.
         $currency = $loan->currency !== '' ? $loan->currency : 'XAF';
         $resolution = $this->mappingResolver->resolve(
             'loan_principal_disbursement',
@@ -426,40 +446,15 @@ final class DisburseLoan
             }
         }
 
-        // No configured mapping at all: fall back to the legacy product ledger
-        // when it is active and belongs to the loan agency (single-agency products).
-        if ($status === AgencyLedgerMappingResolver::MISSING) {
-            $legacy = $this->agencyValidProductLedger($loan, $product);
-            if ($legacy instanceof LedgerAccount) {
-                return $legacy;
-            }
-        }
-
-        // A mapping is configured but unusable, or none exists and the product
-        // ledger is cross-agency/inactive: surface the precise reason as a 422.
+        // A mapping is configured but unusable, or none exists: surface the
+        // precise reason as a 422.
         throw new InvalidArgumentException(match ($status) {
             AgencyLedgerMappingResolver::INACTIVE => 'The loan principal disbursement ledger mapping for this agency and currency is inactive.',
             AgencyLedgerMappingResolver::UNAPPROVED => 'The loan principal disbursement ledger mapping for this agency and currency is not approved.',
             AgencyLedgerMappingResolver::EXPIRED => 'The loan principal disbursement ledger mapping for this agency and currency is outside its effective date window.',
             AgencyLedgerMappingResolver::CROSS_AGENCY => 'The loan principal disbursement ledger mapping points to an inactive or cross-agency ledger account.',
-            default => 'No active approved loan principal disbursement ledger mapping is configured for this agency and currency, and the loan product ledger does not belong to the loan agency.',
+            default => 'No active approved loan principal disbursement ledger mapping is configured for this agency and currency.',
         });
-    }
-
-    private function agencyValidProductLedger(Loan $loan, LoanProduct $product): ?LedgerAccount
-    {
-        if ($product->ledger_account_id === null) {
-            return null;
-        }
-
-        $ledger = LedgerAccount::query()->whereKey($product->ledger_account_id)->first();
-        if ($ledger instanceof LedgerAccount
-            && $ledger->status === LedgerAccount::STATUS_ACTIVE
-            && $ledger->agency_id === $loan->agency_id) {
-            return $ledger;
-        }
-
-        return null;
     }
 
     private function ensureSetupSatisfied(Loan $loan, LoanProduct $product): void

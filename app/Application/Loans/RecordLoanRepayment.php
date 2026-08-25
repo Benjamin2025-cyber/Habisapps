@@ -9,7 +9,6 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\LedgerAccount;
 use App\Models\Loan;
-use App\Models\LoanProduct;
 use App\Models\LoanRepayment;
 use App\Models\LoanRepaymentAllocation;
 use App\Models\LoanScheduleLine;
@@ -115,16 +114,6 @@ final class RecordLoanRepayment
                 throw new InvalidArgumentException('Only disbursed, active, or rescheduled loans can receive repayments.');
             }
 
-            $product = $lockedLoan->loanProduct;
-            if (! $product instanceof LoanProduct || $product->ledger_account_id === null) {
-                throw new InvalidArgumentException('Loan product ledger mapping is required before repayment.');
-            }
-
-            $loanLedger = LedgerAccount::query()->whereKey($product->ledger_account_id)->first();
-            if (! $loanLedger instanceof LedgerAccount || $loanLedger->status !== LedgerAccount::STATUS_ACTIVE || $loanLedger->agency_id !== $lockedLoan->agency_id) {
-                throw new InvalidArgumentException('Loan product ledger account must be active and belong to the loan agency.');
-            }
-
             $allocations = $this->allocate($lockedLoan, $amountMinor, $futureInterestWaiverDate, $futureInterestConcessionMinor, $futureInterestConcessionDate);
             $allocatedTotal = array_sum(array_column($allocations, 'amount_minor'));
             if ($allocatedTotal <= 0) {
@@ -138,7 +127,7 @@ final class RecordLoanRepayment
                 throw new InvalidArgumentException('Repayment amount exceeds the customer account available balance.');
             }
 
-            $componentCredits = $this->componentCredits($allocations, $lockedLoan->agency_id, $lockedLoan->currency);
+            $componentCredits = $this->componentCredits($allocations, $lockedLoan);
             $reference = 'LR-'.$lockedLoan->loan_number.'-'.Str::upper(Str::random(8));
 
             $journalEntry = JournalEntry::query()->create([
@@ -293,10 +282,15 @@ final class RecordLoanRepayment
     }
 
     /**
+     * Principal credits the dossier's own receivable divisionary when it exists,
+     * mirroring the disbursement debit. Income and VAT components — interest,
+     * fees, insurance, tax, penalties — stay on their shared mapped accounts.
+     * Legacy loans without a divisionary fall back to the mapped control.
+     *
      * @param  array<int, array{loan_schedule_line_id:int, component:string, amount_minor:int}>  $allocations
      * @return array<string, array{ledger_account_id:int, amount_minor:int}>
      */
-    private function componentCredits(array $allocations, int $agencyId, string $currency): array
+    private function componentCredits(array $allocations, Loan $loan): array
     {
         $componentAmounts = [];
         foreach ($allocations as $allocation) {
@@ -310,9 +304,8 @@ final class RecordLoanRepayment
                 continue;
             }
 
-            $ledgerAccountId = $this->componentCreditLedgerAccountId($component, $agencyId, $currency);
             $credits[$component] = [
-                'ledger_account_id' => $ledgerAccountId,
+                'ledger_account_id' => $this->componentCreditLedgerAccountId($component, $loan),
                 'amount_minor' => $amountMinor,
             ];
         }
@@ -320,11 +313,33 @@ final class RecordLoanRepayment
         return $credits;
     }
 
-    private function componentCreditLedgerAccountId(string $component, int $agencyId, string $currency): int
+    /**
+     * Divisionary column backing a component. Only principal has one: it is the
+     * single repayment component that settles a balance-sheet position the
+     * institution carries per dossier. The rest are income.
+     */
+    private const array DIVISIONARY_COMPONENTS = [
+        LoanRepaymentAllocation::COMPONENT_PRINCIPAL => 'loan_receivable_account_id',
+    ];
+
+    private function componentCreditLedgerAccountId(string $component, Loan $loan): int
     {
         $operationCode = self::COMPONENT_OPERATION_CODES[$component] ?? null;
         if ($operationCode === null) {
             throw new InvalidArgumentException(__('loans.unsupported_repayment_component', ['component' => $component]));
+        }
+
+        $divisionaryColumn = self::DIVISIONARY_COMPONENTS[$component] ?? null;
+        $divisionaryId = $divisionaryColumn === null ? null : $loan->getAttribute($divisionaryColumn);
+        if (is_int($divisionaryId)) {
+            $divisionary = LedgerAccount::query()->whereKey($divisionaryId)->first();
+            if ($divisionary instanceof LedgerAccount
+                && $divisionary->status === LedgerAccount::STATUS_ACTIVE
+                && $divisionary->agency_id === $loan->agency_id) {
+                return $divisionary->id;
+            }
+
+            throw new InvalidArgumentException(__('loans.loan_divisionary_account_unusable', ['role' => str_replace('_', ' ', $divisionaryColumn)]));
         }
 
         $mapping = DB::table('operation_account_mappings')
@@ -334,11 +349,12 @@ final class RecordLoanRepayment
             ->where('operation_codes.module', 'loan')
             ->where('operation_codes.status', OperationCode::STATUS_ACTIVE)
             ->where('operation_account_mappings.status', OperationAccountMapping::STATUS_ACTIVE)
-            ->where(function ($query) use ($currency): void {
+            ->where(function ($query) use ($loan): void {
+                $currency = $loan->currency;
                 $query->whereNull('operation_account_mappings.currency')
                     ->orWhere('operation_account_mappings.currency', $currency);
             })
-            ->where('ledger_accounts.agency_id', $agencyId)
+            ->where('ledger_accounts.agency_id', $loan->agency_id)
             ->where('ledger_accounts.status', LedgerAccount::STATUS_ACTIVE)
             ->orderByRaw('operation_account_mappings.currency IS NULL')
             ->first(['operation_account_mappings.credit_ledger_account_id']);

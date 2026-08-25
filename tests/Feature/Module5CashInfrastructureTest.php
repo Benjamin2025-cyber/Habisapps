@@ -2425,7 +2425,6 @@ final class Module5CashInfrastructureTest extends TestCase
         $ledger = $this->createLedgerAccount($ctx['agency']['id'], 'FILTER-LOAN-LED', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
         $productId = DB::table('loan_products')->insertGetId([
             'public_id' => (string) Str::ulid(),
-            'ledger_account_id' => $ledger['id'],
             'code' => 'FILTER-LOAN-PRODUCT',
             'name' => 'Filter Loan Product',
             'status' => 'active',

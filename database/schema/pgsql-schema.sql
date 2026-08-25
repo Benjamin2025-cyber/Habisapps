@@ -3701,7 +3701,6 @@ CREATE TABLE public.loan_products (
     fee_policy_key character varying(128),
     created_at timestamp(0) without time zone,
     updated_at timestamp(0) without time zone,
-    ledger_account_id bigint,
     min_amount_minor bigint,
     max_amount_minor bigint,
     due_date_day smallint,
@@ -4122,6 +4121,8 @@ CREATE TABLE public.loans (
     principal_tax_minor bigint,
     guarantee_deposit_amount_minor bigint,
     insurance_amount_minor bigint,
+    loan_receivable_account_id bigint,
+    guarantee_held_account_id bigint,
     outstanding_principal_minor bigint,
     installment_amount_minor bigint,
     total_unpaid_amount_minor bigint,
@@ -12055,14 +12056,6 @@ ALTER TABLE ONLY public.loan_guarantee_obligations
 
 
 --
--- Name: loan_products loan_products_ledger_account_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.loan_products
-    ADD CONSTRAINT loan_products_ledger_account_id_foreign FOREIGN KEY (ledger_account_id) REFERENCES public.ledger_accounts(id) ON DELETE SET NULL;
-
-
---
 -- Name: loan_recovery_accounts loan_recovery_accounts_customer_account_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -12343,11 +12336,27 @@ ALTER TABLE ONLY public.loans
 
 
 --
+-- Name: loans loans_guarantee_held_account_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loans
+    ADD CONSTRAINT loans_guarantee_held_account_id_foreign FOREIGN KEY (guarantee_held_account_id) REFERENCES public.ledger_accounts(id) ON DELETE SET NULL;
+
+
+--
 -- Name: loans loans_loan_product_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.loans
     ADD CONSTRAINT loans_loan_product_id_foreign FOREIGN KEY (loan_product_id) REFERENCES public.loan_products(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: loans loans_loan_receivable_account_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.loans
+    ADD CONSTRAINT loans_loan_receivable_account_id_foreign FOREIGN KEY (loan_receivable_account_id) REFERENCES public.ledger_accounts(id) ON DELETE SET NULL;
 
 
 --
@@ -12971,6 +12980,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 84	2026_08_18_200937_drop_unused_classification_flags_from_account_products	4
 85	2026_08_23_082855_rework_loan_product_penalties_and_dossier_fee_tax	5
 86	2026_08_23_095458_add_principal_tax_minor_to_loans_table	5
+87	2026_08_25_080000_create_loan_divisionary_accounts	6
 \.
 
 
@@ -12978,7 +12988,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 -- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.migrations_id_seq', 86, true);
+SELECT pg_catalog.setval('public.migrations_id_seq', 87, true);
 
 
 --

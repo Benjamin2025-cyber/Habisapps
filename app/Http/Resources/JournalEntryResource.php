@@ -24,6 +24,10 @@ final class JournalEntryResource extends JsonResource
         if ($entry->relationLoaded('lines')) {
             $entry->loadMissing(['lines.journalEntry', 'lines.ledgerAccount', 'lines.customerAccount']);
         }
+        // Debit-before-credit as posted: without a deterministic order, tied
+        // created_at timestamps let Postgres return the two legs of an entry
+        // in either order.
+        $entry->setRelation('lines', $entry->lines->sortBy('id')->values());
 
         return [
             'public_id' => $entry->public_id,

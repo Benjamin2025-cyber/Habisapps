@@ -42,7 +42,7 @@ final class LoanDisbursementReadiness
             return false;
         }
 
-        return $this->hasUsablePrincipalLedgerMapping($loan, $product);
+        return $this->hasUsablePrincipalLedgerMapping($loan);
     }
 
     /**
@@ -86,7 +86,12 @@ final class LoanDisbursementReadiness
             ->exists();
     }
 
-    private function hasUsablePrincipalLedgerMapping(Loan $loan, LoanProduct $product): bool
+    /**
+     * The dossier's divisionary principal account is opened under the mapped
+     * control at mise en place, so a usable mapping is the only requirement —
+     * there is no product-level default account to fall back to.
+     */
+    private function hasUsablePrincipalLedgerMapping(Loan $loan): bool
     {
         $currency = $loan->currency !== '' ? $loan->currency : 'XAF';
         $resolution = $this->mappingResolver->resolve(
@@ -106,26 +111,6 @@ final class LoanDisbursementReadiness
             return $ledger instanceof LedgerAccount;
         }
 
-        if ($status === AgencyLedgerMappingResolver::MISSING) {
-            return $this->agencyValidProductLedger($loan, $product) instanceof LedgerAccount;
-        }
-
         return false;
-    }
-
-    private function agencyValidProductLedger(Loan $loan, LoanProduct $product): ?LedgerAccount
-    {
-        if ($product->ledger_account_id === null) {
-            return null;
-        }
-
-        $ledger = LedgerAccount::query()->whereKey($product->ledger_account_id)->first();
-        if ($ledger instanceof LedgerAccount
-            && $ledger->status === LedgerAccount::STATUS_ACTIVE
-            && $ledger->agency_id === $loan->agency_id) {
-            return $ledger;
-        }
-
-        return null;
     }
 }

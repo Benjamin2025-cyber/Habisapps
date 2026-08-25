@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use App\Application\Loans\AssessLoanSetupCharges;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\ClientGuarantor;
@@ -41,12 +42,13 @@ final class Module4CreditLoansTest extends TestCase
     {
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR01');
-        $ledger = $this->createLedgerAccount($agencyId);
 
+        // No ledger account on the payload: a loan product carries no default
+        // GL account. Posting accounts come from operation-account mappings,
+        // and each loan gets its own divisionary accounts at mise en place.
         $create = $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loan-products', [
-                'ledger_account_public_id' => $ledger['public_id'],
                 'code' => 'LP-SME',
                 'name' => 'SME Loan',
                 'min_amount_minor' => 100000,
@@ -69,7 +71,6 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($create, 201);
         $productPublicId = $this->requireStringJsonPath($create, 'data.public_id');
         $create->assertJsonPath('data.code', 'LP-SME');
-        $create->assertJsonPath('data.ledger_account_public_id', $ledger['public_id']);
         $create->assertJsonPath('data.max_amount_minor', 1000000);
         $create->assertJsonPath('data.due_date_day', 15);
         $create->assertJsonPath('data.dossier_fee_tax_rate', '19.25');
@@ -117,7 +118,6 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $reader = $this->createUserWithRole('user-admin');
         $agencyId = $this->createAgency('CR02');
-        $inactiveLedger = $this->createLedgerAccount($agencyId, LedgerAccount::STATUS_INACTIVE);
 
         $invalidRange = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($actor)
@@ -142,16 +142,17 @@ final class Module4CreditLoansTest extends TestCase
         $invalidUpdateRange->assertJsonValidationErrors(['max_amount_minor']);
         $invalidUpdateRange->assertJsonPath('errors.max_amount_minor.0', 'Le montant maximum du prêt doit être supérieur ou égal au montant minimum du prêt.');
 
-        $inactiveLedgerResponse = $this->withApiHeaders(['X-Locale' => 'fr'])
+        // A product form cannot smuggle a default GL account back in: the field
+        // is gone from the contract, so failOnUnknownFields rejects it outright.
+        $unknownLedger = $this->withApiHeaders(['X-Locale' => 'fr'])
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loan-products', [
-                'ledger_account_public_id' => $inactiveLedger['public_id'],
+                'ledger_account_public_id' => 'LA-DOES-NOT-EXIST',
                 'code' => 'LP-INACTIVE-LEDGER',
                 'name' => 'Inactive Ledger',
             ]);
-        $inactiveLedgerResponse->assertStatus(422);
-        $inactiveLedgerResponse->assertJsonValidationErrors(['ledger_account_public_id']);
-        $inactiveLedgerResponse->assertJsonPath('errors.ledger_account_public_id.0', 'Le compte du grand livre sélectionné doit être actif.');
+        $unknownLedger->assertStatus(422);
+        $unknownLedger->assertJsonValidationErrors(['ledger_account_public_id']);
 
         $forbidden = $this->withApiHeaders()
             ->actingAsSanctum($reader)
@@ -833,6 +834,7 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR06');
         $client = $this->createClientRecord($agencyId, 'verified');
+        $this->seedPrincipalDisbursementControl($agencyId);
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
             'tax_rate' => '19.250000',
@@ -1114,6 +1116,7 @@ final class Module4CreditLoansTest extends TestCase
         $client = $this->createClientRecord($agencyId, 'verified');
         $transferLedger = $this->createCustomerLiabilityLedger($agencyId, 'DOSS');
         $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger);
+        $this->seedPrincipalDisbursementControl($agencyId);
         $product = $this->createLoanProduct($agencyId, [
             'dossier_fee_tax_rate' => '0',
             'fee_rate' => '3.000000',
@@ -1417,6 +1420,7 @@ final class Module4CreditLoansTest extends TestCase
         $agencyId = $this->createAgency('CR15');
         $client = $this->createClientRecord($agencyId, 'verified');
         $product = $this->createLoanProduct($agencyId);
+        $principalControl = $this->seedPrincipalDisbursementControl($agencyId);
         $transferLedger = $this->createLedgerAccount($agencyId);
         $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
         $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 300000);
@@ -1488,6 +1492,7 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR15DB');
         $client = $this->createClientRecord($agencyId, 'verified');
+        $this->seedPrincipalDisbursementControl($agencyId);
         $product = $this->createLoanProduct($agencyId);
         $invalidTransferLedger = $this->createLedgerAccount($agencyId);
         $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $invalidTransferLedger['id']);
@@ -1532,6 +1537,7 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR15X');
         $client = $this->createClientRecord($agencyId, 'verified');
+        $this->seedPrincipalDisbursementControl($agencyId);
         $product = $this->createLoanProduct($agencyId);
         $transferLedger = $this->createLedgerAccount($agencyId);
         $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
@@ -1584,6 +1590,7 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR15C');
         $client = $this->createClientRecord($agencyId, 'verified');
+        $this->seedPrincipalDisbursementControl($agencyId);
         $product = $this->createLoanProduct($agencyId);
         $cashLedger = $this->createLedgerAccount($agencyId);
         $session = $this->createOpenTellerSession($agencyId, $cashLedger['id'], 500000);
@@ -1651,14 +1658,16 @@ final class Module4CreditLoansTest extends TestCase
         $agencyId = $this->createAgency('CR16');
         $client = $this->createClientRecord($agencyId, 'verified');
         $product = $this->createLoanProduct($agencyId);
-        self::assertIsInt($product->ledger_account_id);
         $interestLedgerId = $this->createRevenueLedger($agencyId, 'REPAY-INT');
         $feeLedgerId = $this->createRevenueLedger($agencyId, 'REPAY-FEE');
         $insuranceLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'REPAY-INS');
         $taxLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'REPAY-TAX');
         $penaltyLedgerId = $this->createRevenueLedger($agencyId, 'REPAY-PEN');
+        // The loan below never goes through DisburseLoan, so it carries no
+        // divisionary receivable: principal falls back to the mapped control.
+        $principalControlLedgerId = $this->createLedgerAccount($agencyId)['id'];
         $this->createRepaymentComponentMappings([
-            'principal' => $product->ledger_account_id,
+            'principal' => $principalControlLedgerId,
             'interest' => $interestLedgerId,
             'fees' => $feeLedgerId,
             'insurance' => $insuranceLedgerId,
@@ -1722,7 +1731,7 @@ final class Module4CreditLoansTest extends TestCase
         ]);
         $this->assertDatabaseHas('journal_lines', [
             'journal_entry_id' => $partialJournalId,
-            'ledger_account_id' => $product->ledger_account_id,
+            'ledger_account_id' => $principalControlLedgerId,
             'debit_minor' => 0,
             'credit_minor' => 50000,
         ]);
@@ -2994,25 +3003,41 @@ final class Module4CreditLoansTest extends TestCase
      */
     private function createLedgerAccount(int $agencyId, string $status = LedgerAccount::STATUS_ACTIVE): array
     {
-        $id = DB::table('ledger_accounts')->insertGetId([
+        $id = $this->createChartLedger($agencyId, 'LA-'.Str::ulid(), 'Ledger Account', 'debit', $status);
+        $publicId = DB::table('ledger_accounts')->where('id', $id)->value('public_id');
+        self::assertIsString($publicId);
+
+        return [
+            'id' => $id,
+            'public_id' => $publicId,
+        ];
+    }
+
+    private function createChartLedger(int $agencyId, string $code, string $name, string $normalBalanceSide, string $status = LedgerAccount::STATUS_ACTIVE): int
+    {
+        return DB::table('ledger_accounts')->insertGetId([
             'public_id' => (string) Str::ulid(),
             'agency_id' => $agencyId,
-            'code' => 'LN-'.Str::ulid(),
-            'name' => 'Loan Ledger',
-            'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
-            'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,
+            'code' => $code,
+            'name' => $name,
+            'account_class' => LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE,
+            'normal_balance_side' => $normalBalanceSide,
             'status' => $status,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $ledger = DB::table('ledger_accounts')->where('id', $id)->first(['public_id']);
-        self::assertIsObject($ledger);
-        self::assertIsString($ledger->public_id);
+    }
 
-        return [
-            'id' => $id,
-            'public_id' => $ledger->public_id,
-        ];
+    /**
+     * Disbursement needs an approved principal control to hang the dossier's
+     * divisionary account off — there is no product-ledger fallback anymore.
+     */
+    private function seedPrincipalDisbursementControl(int $agencyId): int
+    {
+        $controlId = $this->createChartLedger($agencyId, '3261', 'Crédits à la consommation aux clients', 'debit');
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyId, $controlId, null);
+
+        return $controlId;
     }
 
     private function createCustomerLiabilityLedger(int $agencyId, string $prefix): int
@@ -3160,7 +3185,6 @@ final class Module4CreditLoansTest extends TestCase
 
         $product = LoanProduct::query()->create(array_merge([
             'public_id' => (string) Str::ulid(),
-            'ledger_account_id' => $ledger['id'],
             'code' => 'LP-'.Str::ulid(),
             'name' => 'Loan Product',
             'status' => LoanProduct::STATUS_ACTIVE,
@@ -3602,6 +3626,7 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR06S');
         $client = $this->createClientRecord($agencyId, 'verified');
+        $principalControlId = $this->seedPrincipalDisbursementControl($agencyId);
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
             'tax_rate' => '19.250000',
@@ -3935,6 +3960,147 @@ final class Module4CreditLoansTest extends TestCase
         ]);
     }
 
+    /**
+     * The accounting team's rule: no default account on the product — mise en
+     * place opens the dossier's divisionary accounts under the mapped control
+     * accounts, and the postings land on the dossier's own accounts.
+     */
+    public function test_mise_en_place_opens_divisionary_accounts_and_postings_land_on_them(): void
+    {
+        config(['formulas.policies.fees_taxes_insurance.approved' => true]);
+
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-DIV');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'guarantee_deposit_type' => 'percentage',
+            'guarantee_deposit_value' => '10.000000',
+        ]);
+
+        // Real PCEMF control accounts: 3261 client consumer credit,
+        // 3742 client guarantee deposits. Both are balance-sheet positions the
+        // institution carries per dossier, which is what earns a divisionary.
+        $principalControlId = $this->createChartLedger($agencyId, '3261', 'Crédits à la consommation aux clients', 'debit');
+        $guaranteeControlId = $this->createChartLedger($agencyId, '3742', 'Dépôts de garantie clients', 'credit');
+        $penaltyIncomeId = $this->createRevenueLedger($agencyId, 'PEN-INCOME');
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyId, $principalControlId, null);
+        $this->createOperationMapping('loan_repayment_penalty', 'loan', $agencyId, null, $penaltyIncomeId, ['currency' => 'XAF']);
+        $this->createSetupChargeMappings(['guarantee_deposit' => $guaranteeControlId], 'XAF');
+
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
+        $loan->forceFill(['status' => Loan::STATUS_APPROVED, 'approved_principal_minor' => 200000])->save();
+
+        // Mise en place: assessment opens the divisionaries even though every
+        // charge here computes to zero except the guarantee.
+        app(AssessLoanSetupCharges::class)->handle($loan);
+        $loan->refresh();
+
+        self::assertIsInt($loan->loan_receivable_account_id);
+        self::assertIsInt($loan->guarantee_held_account_id);
+
+        // Penalty income gets no divisionary: PCEMF class 7 is not subdivided
+        // per borrower, and a penalty is only recognised when collected, so
+        // there is no per-dossier position to carry between the two.
+        self::assertSame(0, DB::table('ledger_accounts')
+            ->where('parent_account_id', $penaltyIncomeId)
+            ->count());
+
+        foreach ([
+            [$principalControlId, $loan->loan_receivable_account_id, 'Crédit client '],
+            [$guaranteeControlId, $loan->guarantee_held_account_id, 'Dépôt de garantie crédit '],
+        ] as [$controlId, $divisionaryId, $labelPrefix]) {
+            $controlCode = DB::table('ledger_accounts')->where('id', $controlId)->value('code');
+            self::assertIsString($controlCode);
+            $row = (array) DB::table('ledger_accounts')->where('id', $divisionaryId)->first();
+            self::assertSame($controlCode.'.'.$loan->loan_number, $row['code']);
+            self::assertSame($labelPrefix.$loan->loan_number, $row['name']);
+            self::assertSame($controlId, $row['parent_account_id']);
+            self::assertSame('active', $row['status']);
+            self::assertSame(1, (int) $row['is_postable']);
+        }
+
+        // Repeat calls never duplicate: same ids, nothing new in the chart.
+        app(AssessLoanSetupCharges::class)->handle($loan);
+        $loan->refresh();
+        self::assertSame(2, DB::table('ledger_accounts')
+            ->where('agency_id', $agencyId)
+            ->where('code', 'like', '%.'.$loan->loan_number)
+            ->count());
+
+        // Guarantee collection credits the dossier's own liability account,
+        // not the shared control.
+        $guaranteeCharge = DB::table('loan_charge_assessments')
+            ->where('loan_id', $loan->id)->where('charge_type', 'guarantee_deposit')->first();
+        self::assertIsObject($guaranteeCharge);
+        $collectionLedger = $this->createCustomerLiabilityLedger($agencyId, 'DIV-COLLECT');
+        $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedger);
+        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedger, 50000);
+        $collected = $this->collectFromAccount($actor, $loan->public_id, ((array) $guaranteeCharge)['public_id'], $collectionAccount['public_id'], 'DIV-KEY-1');
+        $this->assertJsonSuccess($collected);
+        $collectionJournalPublicId = $this->requireStringJsonPath($collected, 'data.journal_entry.public_id');
+        $collectionJournalId = DB::table('journal_entries')->where('public_id', $collectionJournalPublicId)->value('id');
+        self::assertIsInt($collectionJournalId);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $collectionJournalId,
+            'ledger_account_id' => $loan->guarantee_held_account_id,
+            'debit_minor' => 0,
+            'credit_minor' => 20000,
+        ]);
+        $this->assertDatabaseMissing('journal_lines', ['journal_entry_id' => $collectionJournalId, 'ledger_account_id' => $guaranteeControlId]);
+
+        // Disbursement debits the dossier's own receivable.
+        $transferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
+        $loan->forceFill(['transfer_account_id' => $transferAccount['id']])->save();
+        $disbursed = $this->disburse($actor, $loan->public_id);
+        $this->assertJsonSuccess($disbursed);
+        $disbursed->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+        $disbursementJournalPublicId = $this->requireStringJsonPath($disbursed, 'data.journal_entry.public_id');
+        $disbursementJournalId = DB::table('journal_entries')->where('public_id', $disbursementJournalPublicId)->value('id');
+        self::assertIsInt($disbursementJournalId);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $disbursementJournalId,
+            'ledger_account_id' => $loan->loan_receivable_account_id,
+            'debit_minor' => 200000,
+            'credit_minor' => 0,
+        ]);
+        $this->assertDatabaseMissing('journal_lines', ['journal_entry_id' => $disbursementJournalId, 'ledger_account_id' => $principalControlId]);
+    }
+
+    /**
+     * A control account whose code fills most of its column (the test helpers'
+     * ULID-suffixed codes mimic that) still yields a fitting, stable
+     * divisionary code through the digest fallback.
+     */
+    public function test_divisionary_code_falls_back_to_a_digest_when_the_control_code_is_long(): void
+    {
+        config(['formulas.policies.fees_taxes_insurance.approved' => true]);
+
+        $agencyId = $this->createAgency('CR-DIV2');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+
+        $longCodeControl = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-GUAR-VERY-LONG-PREFIX');
+        $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyId, $longCodeControl, null);
+        $this->createOperationMapping('loan_setup_guarantee_deposit', 'loan', $agencyId, null, $longCodeControl);
+        $this->createRepaymentComponentMappings(['principal' => $longCodeControl], 'XAF');
+
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 100000);
+        $loan->forceFill(['status' => Loan::STATUS_APPROVED, 'approved_principal_minor' => 100000])->save();
+
+        app(AssessLoanSetupCharges::class)->handle($loan);
+        $loan->refresh();
+
+        self::assertIsInt($loan->guarantee_held_account_id);
+        $code = DB::table('ledger_accounts')->where('id', $loan->guarantee_held_account_id)->value('code');
+        self::assertIsString($code);
+        self::assertLessThanOrEqual(64, strlen($code));
+        $controlCode = DB::table('ledger_accounts')->where('id', $longCodeControl)->value('code');
+        self::assertIsString($controlCode);
+        $expectedDigest = 'D'.substr(sha1($controlCode.'|'.$loan->loan_number), 0, 20);
+        self::assertSame($expectedDigest, $code);
+    }
+
     public function test_global_loan_product_disburses_across_agencies_via_agency_specific_principal_mappings(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
@@ -3947,16 +4113,21 @@ final class Module4CreditLoansTest extends TestCase
         $product = $this->createLoanProduct($agencyA);
 
         // Agency A: an approved principal mapping pointing at a dedicated A ledger
-        // (distinct from the product ledger) proves the mapping is preferred.
+        // proves the mapping is the parent of the dossier's divisionary account.
         $principalLedgerA = $this->createLedgerAccount($agencyA);
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyA, $principalLedgerA['id'], null);
         $loanA = $this->makeApprovedLoan($agencyA, $clientA['id'], $product);
         $disburseA = $this->disburse($actor, $loanA->public_id);
         $this->assertJsonSuccess($disburseA);
         $disburseA->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+        $receivableA = DB::table('loans')->where('id', $loanA->id)->value('loan_receivable_account_id');
+        self::assertIsInt($receivableA);
+        $parentA = DB::table('ledger_accounts')->where('id', $receivableA)->value('parent_account_id');
+        self::assertIsInt($parentA);
+        self::assertSame($principalLedgerA['id'], $parentA);
         $this->assertDatabaseHas('journal_lines', [
             'loan_id' => $loanA->id,
-            'ledger_account_id' => $principalLedgerA['id'],
+            'ledger_account_id' => $receivableA,
             'debit_minor' => 200000,
         ]);
 
@@ -3967,15 +4138,21 @@ final class Module4CreditLoansTest extends TestCase
         $missing->assertStatus(422)->assertJsonValidationErrors(['disbursement']);
         self::assertStringContainsString('loan principal disbursement ledger mapping', $this->stringJson($missing, 'errors.disbursement.0'));
 
-        // Configure B's agency-specific principal mapping → disburses into B's ledger.
+        // Configure B's agency-specific principal mapping → disburses into B's
+        // own dossier account under B's control.
         $principalLedgerB = $this->createLedgerAccount($agencyB);
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agencyB, $principalLedgerB['id'], null);
         $disburseB = $this->disburse($actor, $loanB->public_id);
         $this->assertJsonSuccess($disburseB);
         $disburseB->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+        $receivableB = DB::table('loans')->where('id', $loanB->id)->value('loan_receivable_account_id');
+        self::assertIsInt($receivableB);
+        $parentB = DB::table('ledger_accounts')->where('id', $receivableB)->value('parent_account_id');
+        self::assertIsInt($parentB);
+        self::assertSame($principalLedgerB['id'], $parentB);
         $this->assertDatabaseHas('journal_lines', [
             'loan_id' => $loanB->id,
-            'ledger_account_id' => $principalLedgerB['id'],
+            'ledger_account_id' => $receivableB,
             'debit_minor' => 200000,
         ]);
     }

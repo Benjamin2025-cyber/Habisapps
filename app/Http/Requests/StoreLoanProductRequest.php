@@ -28,8 +28,7 @@ final class StoreLoanProductRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'ledger_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
-            'code' => ['required', 'string', 'max:64', 'unique:loan_products,code'],
+            'code' => ['required', 'string', 'max:64', Rule::unique('loan_products', 'code')],
             'name' => ['required', 'string', 'max:255'],
             'status' => ['nullable', Rule::in([LoanProduct::STATUS_ACTIVE, LoanProduct::STATUS_INACTIVE])],
             'min_term_count' => ['nullable', 'integer', 'min:1'],

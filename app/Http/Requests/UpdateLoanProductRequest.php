@@ -34,7 +34,6 @@ final class UpdateLoanProductRequest extends FormRequest
         $ignoreId = $loanProduct instanceof LoanProduct ? $loanProduct->id : null;
 
         return [
-            'ledger_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
             'code' => ['sometimes', 'string', 'max:64', Rule::unique('loan_products', 'code')->ignore($ignoreId)],
             'name' => ['sometimes', 'string', 'max:255'],
             'status' => ['sometimes', Rule::in([LoanProduct::STATUS_ACTIVE, LoanProduct::STATUS_INACTIVE, LoanProduct::STATUS_ARCHIVED])],

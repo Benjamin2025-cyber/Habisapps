@@ -225,7 +225,24 @@ final class LoanSetupChargeWorkflow extends BaseController
                 }
 
                 $currency = $this->chargeString($charge, 'currency');
-                $creditLedgerId = $this->setupChargeCreditLedgerId($this->chargeString($charge, 'charge_type'), $loan->agency_id, $currency);
+                $chargeType = $this->chargeString($charge, 'charge_type');
+                $creditLedgerId = $this->setupChargeCreditLedgerId($chargeType, $loan->agency_id, $currency);
+                // The guarantee is the dossier's own restricted money: when the
+                // loan carries its divisionary liability account (opened at mise
+                // en place), it collects there instead of the shared control.
+                if ($chargeType === 'guarantee_deposit') {
+                    $heldAccountId = $loan->guarantee_held_account_id;
+                    if (is_int($heldAccountId)) {
+                        $heldAccount = LedgerAccount::query()->whereKey($heldAccountId)->first();
+                        if (! $heldAccount instanceof LedgerAccount
+                            || $heldAccount->status !== LedgerAccount::STATUS_ACTIVE
+                            || $heldAccount->agency_id !== $loan->agency_id) {
+                            throw new InvalidArgumentException(__('loans.loan_divisionary_account_unusable', ['role' => 'guarantee deposit']));
+                        }
+
+                        $creditLedgerId = $heldAccount->id;
+                    }
+                }
                 $debitContext = $paymentSource === 'teller_cash'
                     ? $this->setupChargeTellerCashDebitContext($loan, $validated, $amountMinor, $currency)
                     : $this->setupChargeCustomerAccountDebitContext($loan, $validated, $amountMinor, $currency);

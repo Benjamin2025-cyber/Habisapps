@@ -313,3 +313,52 @@ At minimum, the implementation must support:
 - till theoretical balance rebuild
 - loan principal/interest outstanding rebuild
 - projection-vs-ledger mismatch detection
+
+## Loan Divisionary Accounts
+
+The accounting team's rule: « il n'y a pas de compte comptable par défaut car
+chaque ligne de crédit entraîne automatiquement la création de plusieurs comptes
+lors de la mise en place ». Nothing on a loan product names a GL account;
+instead, mise en place (setup-charge assessment, and again at disbursement as a
+safety net) opens the dossier's divisionary accounts under the control accounts
+resolved through the approved agency operation-account mappings:
+
+| Divisionary | Parent mapping leg | Typical PCEMF parent |
+|---|---|---|
+| principal receivable | `loan_principal_disbursement` debit | 3261 Crédits à la consommation aux clients |
+| guarantee deposit held | `loan_setup_guarantee_deposit` credit | 3742 Dépôts de garantie clients |
+
+Only balance-sheet positions the institution genuinely carries per dossier earn
+a divisionary. Penalties do not: they are recognised in the ledger solely when
+collected, so nothing is carried between assessment and collection, and their
+credit leg is income. PCEMF class 7 is not subdivided per borrower — one revenue
+account per loan would leave an EMF with thousands of them and an income
+statement nobody can read.
+
+Properties:
+
+- codes are `<parent code>.<loan number>` while that fits the column, else a
+  stable `D` + digest of (parent code, loan number); unique per agency like any
+  ledger code;
+- account class, normal balance side, and parent come from the mapped control
+  account; divisionaries are active and postable;
+- creation is idempotent: an account is opened once per loan and adopted, never
+  duplicated;
+- a missing or unusable mapping leaves the divisionary unopened — postings fail
+  closed on the same mapping anyway, and configuring it later lets the next
+  ensure call open the account.
+
+Postings:
+
+- disbursement debits the principal receivable; principal repayments credit it.
+- guarantee collection credits the deposit-held liability; its release/settlement
+  is a status workflow today and posts nothing.
+- interest, penalties, dossier-fee income, both VATs, and insurance stay on
+  their shared mapped accounts — income legs do not get per-dossier accounts.
+  Every journal line carries `loan_id`, so per-dossier income analysis needs no
+  extra accounts.
+
+Divisionaries consolidate into their controls through the ordinary account
+hierarchy, so portfolio balances by control account keep working unchanged.
+Loans disbursed before this existed carry no divisionaries and keep posting to
+the mapped control accounts.

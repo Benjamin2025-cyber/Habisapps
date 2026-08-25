@@ -9,7 +9,6 @@ use App\Http\Requests\StoreLoanProductRequest;
 use App\Http\Requests\UpdateLoanProductRequest;
 use App\Http\Resources\LoanProductCollection;
 use App\Http\Resources\LoanProductResource;
-use App\Models\LedgerAccount;
 use App\Models\LoanProduct;
 use App\Models\User;
 use App\Support\Finance\LoanProductFormulaPolicySnapshotter;
@@ -17,7 +16,6 @@ use App\Support\Security\SecurityAudit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 final class LoanProductController extends BaseController
 {
@@ -33,7 +31,7 @@ final class LoanProductController extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = LoanProduct::query()->with('ledgerAccount')->latest();
+        $query = LoanProduct::query()->latest();
 
         $status = $request->query('status');
         if (is_string($status) && $status !== '') {
@@ -61,16 +59,11 @@ final class LoanProductController extends BaseController
             return $this->respondUnprocessable(errors: $policyErrors);
         }
 
-        $ledgerAccount = $this->resolveLedgerAccount($request->input('ledger_account_public_id'));
-        if ($ledgerAccount === false) {
-            return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
-        }
-
-        $product = LoanProduct::query()->create($this->payload($request->validated(), $ledgerAccount));
+        $product = LoanProduct::query()->create($request->validated());
 
         $this->securityAudit->record('loan.product.created', actor: $request->user(), subject: $product, request: $request);
 
-        return $this->respondCreated(LoanProductResource::make($product->loadMissing('ledgerAccount')), 'Loan product created successfully');
+        return $this->respondCreated(LoanProductResource::make($product), 'Loan product created successfully');
     }
 
     public function show(Request $request, LoanProduct $loanProduct): JsonResponse
@@ -80,7 +73,7 @@ final class LoanProductController extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(LoanProductResource::make($loanProduct->loadMissing('ledgerAccount')));
+        return $this->respondSuccess(LoanProductResource::make($loanProduct));
     }
 
     public function update(UpdateLoanProductRequest $request, LoanProduct $loanProduct): JsonResponse
@@ -100,22 +93,14 @@ final class LoanProductController extends BaseController
             return $this->respondUnprocessable(errors: $rangeErrors);
         }
 
-        $ledgerAccount = null;
-        if (array_key_exists('ledger_account_public_id', $validated)) {
-            $ledgerAccount = $this->resolveLedgerAccount($validated['ledger_account_public_id']);
-            if ($ledgerAccount === false) {
-                return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active.')]]);
-            }
-        }
-
-        $loanProduct->fill($this->payload($validated, $ledgerAccount, false));
+        $loanProduct->fill($validated);
         $loanProduct->save();
 
         $this->securityAudit->record('loan.product.updated', actor: $request->user(), subject: $loanProduct, properties: [
             'changed_fields' => array_keys($validated),
         ], request: $request);
 
-        return $this->respondSuccess(LoanProductResource::make($loanProduct->refresh()->loadMissing('ledgerAccount')), 'Loan product updated successfully');
+        return $this->respondSuccess(LoanProductResource::make($loanProduct->refresh()), 'Loan product updated successfully');
     }
 
     /**
@@ -163,40 +148,6 @@ final class LoanProductController extends BaseController
         $this->securityAudit->record('loan.product.archived', actor: $actor, subject: $loanProduct, request: $request);
 
         return $this->respondSuccess(message: 'Loan product archived successfully');
-    }
-
-    private function resolveLedgerAccount(mixed $publicId): LedgerAccount|false|null
-    {
-        if (! is_string($publicId) || $publicId === '') {
-            return null;
-        }
-
-        $ledgerAccount = LedgerAccount::query()->where('public_id', $publicId)->first();
-        if (! $ledgerAccount instanceof LedgerAccount || $ledgerAccount->status !== LedgerAccount::STATUS_ACTIVE) {
-            return false;
-        }
-
-        return $ledgerAccount;
-    }
-
-    /**
-     * @param  array<string, mixed>  $validated
-     * @return array<string, mixed>
-     */
-    private function payload(array $validated, LedgerAccount|false|null $ledgerAccount, bool $creating = true): array
-    {
-        $hasLedgerAccount = array_key_exists('ledger_account_public_id', $validated);
-        unset($validated['ledger_account_public_id']);
-
-        if ($creating) {
-            $validated['public_id'] = (string) Str::ulid();
-        }
-
-        if ($ledgerAccount instanceof LedgerAccount || $hasLedgerAccount) {
-            $validated['ledger_account_id'] = $ledgerAccount instanceof LedgerAccount ? $ledgerAccount->id : null;
-        }
-
-        return $validated;
     }
 
     private function nullableInt(mixed $value): ?int

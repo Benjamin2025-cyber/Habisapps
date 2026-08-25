@@ -354,7 +354,6 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
         ]);
         $loanProduct = LoanProduct::query()->create([
             'public_id' => (string) Str::ulid(),
-            'ledger_account_id' => $ledgerAccountId,
             'code' => 'LP-'.Str::ulid(),
             'name' => 'Penalty Product',
             'status' => LoanProduct::STATUS_ACTIVE,
@@ -485,20 +484,8 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $ledgerAccountId = DB::table('ledger_accounts')->insertGetId([
-            'public_id' => (string) Str::ulid(),
-            'agency_id' => $agencyId,
-            'code' => 'L-'.Str::ulid(),
-            'name' => 'Loan Ledger',
-            'account_class' => 'tresorerie_interbancaire',
-            'normal_balance_side' => 'debit',
-            'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
         $loanProduct = LoanProduct::query()->create([
             'public_id' => (string) Str::ulid(),
-            'ledger_account_id' => $ledgerAccountId,
             'code' => 'LP-'.Str::ulid(),
             'name' => 'Penalty Product',
             'status' => LoanProduct::STATUS_ACTIVE,
