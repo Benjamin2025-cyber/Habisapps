@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\LedgerAccount;
 use App\Models\TellerTransaction;
 use App\Models\User;
+use App\Support\Finance\MoneyAmount;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -61,6 +62,61 @@ final class Module5CashInfrastructureTest extends TestCase
             ->postJson('/api/v1/denominations', [...$note, 'code' => 'XAF-500-B2']);
         $duplicate->assertStatus(422);
         $duplicate->assertJsonValidationErrors(['value_minor']);
+    }
+
+    /**
+     * The billetage reported by the accounting team: 100 notes of 10 000 showed
+     * 10 000 FCFA instead of 1 000 000, every line short by exactly the scale,
+     * total 15 400 instead of 1 540 000. The counter multiplies count by
+     * `value_minor` and formats at the account scale, so it is right whenever
+     * the stored value is — the pieces had been keyed in with the face value in
+     * francs, which nothing refused.
+     */
+    public function test_a_denomination_value_must_match_the_face_value_its_code_declares(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $token = 'Bearer '.$actor->createToken('denomination-face')->plainTextToken;
+
+        // The exact mistake: face value where minor units belong.
+        $faceValue = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/denominations', [
+                'code' => 'XAF-10000-B',
+                'label' => 'Billet 10 000 XAF',
+                'value_minor' => 10000,
+                'currency' => 'XAF',
+                'type' => 'banknote',
+            ]);
+        $faceValue->assertStatus(422);
+        $faceValue->assertJsonValidationErrors(['value_minor']);
+
+        // A value that is not a whole number of francs is refused too: physical
+        // cash has no centimes.
+        $fractional = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/denominations', [
+                'code' => 'XAF-10000-B',
+                'label' => 'Billet 10 000 XAF',
+                'value_minor' => 1000050,
+                'currency' => 'XAF',
+                'type' => 'banknote',
+            ]);
+        $fractional->assertStatus(422);
+        $fractional->assertJsonValidationErrors(['value_minor']);
+
+        // Correctly scaled, it goes through — and a count of 100 is worth
+        // 1 000 000 XAF, which is what the billetage must show.
+        $correct = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/denominations', [
+                'code' => 'XAF-10000-B',
+                'label' => 'Billet 10 000 XAF',
+                'value_minor' => 1000000,
+                'currency' => 'XAF',
+                'type' => 'banknote',
+            ]);
+        $this->assertJsonSuccess($correct, 201);
+        self::assertSame(
+            '1000000.00',
+            MoneyAmount::ofMinor(100 * 1000000)->amount(),
+        );
     }
 
     public function test_platform_admin_can_manage_denominations_without_creating_cash_workflow_records(): void

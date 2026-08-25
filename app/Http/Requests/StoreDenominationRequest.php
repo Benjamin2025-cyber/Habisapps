@@ -4,14 +4,23 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesDenominationFaceValue;
 use App\Models\Denomination;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 final class StoreDenominationRequest extends FormRequest
 {
+    use ValidatesDenominationFaceValue;
+
+    public function withValidator(Validator $validator): void
+    {
+        $this->validateFaceValueAgainstCode($validator);
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();

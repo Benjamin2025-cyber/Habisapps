@@ -98,4 +98,6 @@ return [
     'withdrawal_amount_exceeds_available_balance' => 'Le montant du retrait dépasse le solde disponible du compte client.',
     'account_product_currency_locked_by_accounts' => 'La devise ne peut plus être modifiée : des comptes ont déjà été ouverts avec ce produit.',
     'account_product_family_locked_by_accounts' => 'La famille ne peut plus être modifiée : des comptes ont déjà été ouverts avec ce produit.',
+    'denomination_value_must_be_whole_units' => 'La valeur d’une coupure doit être un nombre entier d’unités monétaires.',
+    'denomination_value_must_match_code_face' => 'Le code annonce une valeur faciale de :face, la valeur doit donc être de :expected unités mineures.',
 ];

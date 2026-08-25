@@ -98,4 +98,6 @@ return [
     'withdrawal_amount_exceeds_available_balance' => 'Withdrawal amount exceeds the customer account available balance.',
     'account_product_currency_locked_by_accounts' => 'The currency cannot be changed once accounts have been opened under this product.',
     'account_product_family_locked_by_accounts' => 'The family cannot be changed once accounts have been opened under this product.',
+    'denomination_value_must_be_whole_units' => 'A denomination value must be a whole number of currency units.',
+    'denomination_value_must_match_code_face' => 'The code declares a face value of :face, so the value must be :expected minor units.',
 ];
