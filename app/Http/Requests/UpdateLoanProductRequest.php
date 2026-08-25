@@ -55,7 +55,6 @@ final class UpdateLoanProductRequest extends FormRequest
             'insurance_rate' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'fee_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
             'dossier_fee_tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
-            'guarantee_deposit_type' => ['sometimes', 'nullable', Rule::in(['percentage', 'fixed'])],
             'guarantee_deposit_value' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'operation_type' => ['sometimes', 'nullable', 'string', 'max:64'],
             'constant_value' => ['sometimes', 'nullable', 'numeric', 'min:0'],

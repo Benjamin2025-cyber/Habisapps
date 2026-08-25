@@ -210,17 +210,19 @@ final class AssessLoanSetupCharges
         return $this->percentOf($dossierFee, $product->dossier_fee_tax_rate);
     }
 
+    /**
+     * « La valeur du dépôt de garantie est en pourcentage, pas en FCFA. » The
+     * value is a rate on the granted principal — there is no fixed-amount form,
+     * so a deposit scales with the loan the way the approved policy says
+     * (10 % of granted principal).
+     */
     private function guaranteeDeposit(int $principal, LoanProduct $product): int
     {
-        if ($product->guarantee_deposit_type === 'percentage' && $product->guarantee_deposit_value !== null) {
-            return $this->percentOf($principal, $product->guarantee_deposit_value);
+        if ($product->guarantee_deposit_value === null) {
+            return 0;
         }
 
-        if ($product->guarantee_deposit_type === 'fixed' && $product->guarantee_deposit_value !== null) {
-            return $this->wholeMinor($product->guarantee_deposit_value);
-        }
-
-        return 0;
+        return $this->percentOf($principal, $product->guarantee_deposit_value);
     }
 
     private function insurance(int $principal, LoanProduct $product): int
@@ -297,13 +299,6 @@ final class AssessLoanSetupCharges
         return BigDecimal::of((string) $baseMinor)
             ->multipliedBy(BigDecimal::of($this->numericString($rate)))
             ->dividedBy('100', 0, RoundingMode::HALF_UP)
-            ->toInt();
-    }
-
-    private function wholeMinor(mixed $amount): int
-    {
-        return BigDecimal::of($this->numericString($amount))
-            ->toScale(0, RoundingMode::HALF_UP)
             ->toInt();
     }
 

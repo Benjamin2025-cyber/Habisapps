@@ -100,6 +100,7 @@ Implemented setup assessment behavior:
 - A product may explicitly mark `rules.installment_charges.fees`, `tax`, or `insurance` as `financed` or `periodic`; that component is then omitted from upfront setup charges and spread into the schedule.
 - Product `rules.insurance.full_module_enabled` and `rules.insurance.insurance_product_public_id` are not part of the v1 loan workflow. A future bancassurance integration must define its own UI/API contract before those concepts are reintroduced.
 - Guarantee deposit is 10% of granted principal by product rate, collected in cash before disbursement by default, held as restricted guarantee money, released only after full settlement, and never used to settle unpaid loans.
+- `guarantee_deposit_value` is always a percentage of the granted principal — « la valeur du dépôt de garantie est en pourcentage, pas en FCFA ». There is no fixed-amount form and no `guarantee_deposit_type` discriminator.
 - Loan insurance is 2% of granted principal by product rate, assessed upfront, and non-refundable on early closure.
 - `POST /api/v1/loans/{loan}/setup-charges/{chargePublicId}/collect` posts non-insurance setup-charge collection before disbursement, either from an active same-client customer account or from an open teller cash session with an active till.
 - Setup-charge collection uses active `loan` operation account mappings for `loan_setup_dossier_fee`, `loan_setup_principal_tax`, `loan_setup_tax`, and `loan_setup_guarantee_deposit`; missing mappings fail closed before posting.

@@ -61,7 +61,6 @@ final class Module4CreditLoansTest extends TestCase
                 'tax_rate' => '19.250000',
                 'insurance_rate' => '2.000000',
                 'fee_rate' => '1.500000',
-                'guarantee_deposit_type' => 'percentage',
                 'guarantee_deposit_value' => '10.000000',
                 'allowed_repayment_frequencies' => ['monthly'],
                 'requires_guarantor' => true,
@@ -181,7 +180,6 @@ final class Module4CreditLoansTest extends TestCase
             'dossier_fee_tax_rate' => '19.250000',
             'fee_rate' => '3.000000',
             'insurance_rate' => '2.000000',
-            'guarantee_deposit_type' => 'percentage',
             'guarantee_deposit_value' => '10.000000',
             'max_amount_minor' => 100000000,
         ]);
@@ -868,7 +866,6 @@ final class Module4CreditLoansTest extends TestCase
             'dossier_fee_tax_rate' => '19.250000',
             'fee_rate' => '3.000000',
             'insurance_rate' => '2.000000',
-            'guarantee_deposit_type' => 'percentage',
             'guarantee_deposit_value' => '10.000000',
             'rules' => [
                 'setup_charges' => [
@@ -3660,7 +3657,6 @@ final class Module4CreditLoansTest extends TestCase
             'dossier_fee_tax_rate' => '19.250000',
             'fee_rate' => '3.000000',
             'insurance_rate' => '2.000000',
-            'guarantee_deposit_type' => 'percentage',
             'guarantee_deposit_value' => '10.000000',
             'rules' => [
                 'setup_charges' => [
@@ -4000,7 +3996,6 @@ final class Module4CreditLoansTest extends TestCase
         $agencyId = $this->createAgency('CR-DIV');
         $client = $this->createClientRecord($agencyId, 'verified');
         $product = $this->createLoanProduct($agencyId, [
-            'guarantee_deposit_type' => 'percentage',
             'guarantee_deposit_value' => '10.000000',
         ]);
 

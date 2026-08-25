@@ -47,7 +47,6 @@ final class LoanProductResource extends JsonResource
             'insurance_rate' => $product->insurance_rate,
             'fee_rate' => $product->fee_rate,
             'dossier_fee_tax_rate' => $product->dossier_fee_tax_rate,
-            'guarantee_deposit_type' => $product->guarantee_deposit_type,
             'guarantee_deposit_value' => $product->guarantee_deposit_value,
             'operation_type' => $product->operation_type,
             'constant_value' => $product->constant_value,

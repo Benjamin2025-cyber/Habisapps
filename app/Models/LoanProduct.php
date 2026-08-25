@@ -40,7 +40,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'tax_policy_key',
     'insurance_policy_key',
     'guarantee_deposit_policy_key',
-    'guarantee_deposit_type',
     'guarantee_deposit_value',
     'operation_type',
     'constant_value',

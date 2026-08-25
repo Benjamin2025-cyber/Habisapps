@@ -49,7 +49,6 @@ final class StoreLoanProductRequest extends FormRequest
             'insurance_rate' => ['nullable', 'numeric', 'min:0'],
             'fee_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'dossier_fee_tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
-            'guarantee_deposit_type' => ['nullable', Rule::in(['percentage', 'fixed'])],
             'guarantee_deposit_value' => ['nullable', 'numeric', 'min:0'],
             'operation_type' => ['nullable', 'string', 'max:64'],
             'constant_value' => ['nullable', 'numeric', 'min:0'],

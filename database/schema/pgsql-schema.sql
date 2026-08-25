@@ -3714,7 +3714,6 @@ CREATE TABLE public.loan_products (
     tax_policy_key character varying(128),
     insurance_policy_key character varying(128),
     guarantee_deposit_policy_key character varying(128),
-    guarantee_deposit_type character varying(32),
     guarantee_deposit_value numeric(18,6),
     dossier_fee_tax_rate numeric(12,6) DEFAULT 19.25::numeric,
     operation_type character varying(64),
@@ -12981,6 +12980,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 85	2026_08_23_082855_rework_loan_product_penalties_and_dossier_fee_tax	5
 86	2026_08_23_095458_add_principal_tax_minor_to_loans_table	5
 87	2026_08_25_080000_create_loan_divisionary_accounts	6
+88	2026_08_25_120000_drop_guarantee_deposit_type_from_loan_products	7
 \.
 
 
@@ -12988,7 +12988,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 -- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.migrations_id_seq', 87, true);
+SELECT pg_catalog.setval('public.migrations_id_seq', 88, true);
 
 
 --

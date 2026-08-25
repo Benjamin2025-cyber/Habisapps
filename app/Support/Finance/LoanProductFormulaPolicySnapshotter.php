@@ -91,7 +91,6 @@ final class LoanProductFormulaPolicySnapshotter
                 'insurance_rate' => $product->insurance_rate,
                 'fee_rate' => $product->fee_rate,
                 'dossier_fee_tax_rate' => $product->dossier_fee_tax_rate,
-                'guarantee_deposit_type' => $product->guarantee_deposit_type,
                 'guarantee_deposit_value' => $product->guarantee_deposit_value,
                 'penalty_grace_days' => $product->penalty_grace_days,
                 'rules' => $product->rules,
