@@ -79,6 +79,7 @@ que le prêt puisse ensuite être monté sans blocage :
 | **Taux d'intérêt** | `2` | |
 | **Taux des frais de dossier (%)** | **`1,5`** | **le champ testé** |
 | **Taux de taxe** / **Taux d'assurance** | laisser vide | on isole les frais de dossier |
+| **TVA sur les frais de dossier (%)** | **effacer le `19,25` pré-rempli** | sinon une seconde ligne « TVA sur les frais de dossier » s'ajoute et le montant observé n'est plus uniquement celui des frais |
 | **Type de dépôt de garantie** | laisser vide | autre prélèvement, hors sujet ici |
 | **Valeur du dépôt de garantie** | laisser vide | |
 | **Garant obligatoire** / **Garantie (objet) obligatoire** | décochés | évite des pièces à fournir |
@@ -87,6 +88,8 @@ que le prêt puisse ensuite être monté sans blocage :
 
 - ✅ un champ **« Taux des frais de dossier (%) »**, à côté des taux d'intérêt, taxe
   et assurance ;
+- ✅ un champ **« TVA sur les frais de dossier (%) »**, pré-rempli à `19,25`, distinct
+  du « Taux de taxe » qui porte, lui, sur le crédit lui-même ;
 - ❌ **aucun** champ « Frais de dossier » exprimé en francs ;
 - ❌ **aucun** champ « Montant plancher ».
 
@@ -289,9 +292,10 @@ Des frais nuls ne doivent jamais bloquer un déblocage.
 - La **taxe** sur les frais et le **dépôt de garantie** suivent leurs propres règles,
   inchangées ici — c'est pourquoi l'étape 2 laisse leurs champs vides, afin que le
   montant observé ne vienne que des frais de dossier.
-- Si le produit utilise une **politique de formule** définissant son propre
-  `dossier_fee_rate`, celle-ci l'emporte sur le taux du produit. Ce mécanisme
-  existait déjà.
+- Le taux du produit (`fee_rate`) est la seule source de calcul des frais de dossier.
+  L'ancien `rules.setup_charges.dossier_fee_rate` est ignoré. La TVA des frais est
+  calculée séparément avec `dossier_fee_tax_rate`, uniquement sur le montant des
+  frais de dossier calculé.
 - L'**encaissement** des frais (bouton « Régler »), la dispense par la direction et
   le déblocage lui-même. On s'arrête au montant calculé, qui est l'objet de la
   demande de la comptabilité. Encaisser suppose en outre que le client ait un

@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace App\Support\Finance;
 
 /**
- * The normalized penalty configuration the arrears engine actually applies for
- * a single loan, after resolving the loan snapshot, the current product, and
- * the approved global formula-policy config in that order of precedence.
+ * The penalty terms the arrears engine applies, resolved from the approved
+ * `penalties_and_arrears` formula-policy config.
  *
  * Penalty for an overdue installment is:
  *   fixedAmountMinor + round( baseAmount(base) * ratePercent / 100 )
@@ -16,10 +15,6 @@ namespace App\Support\Finance;
  */
 final class ResolvedPenaltyTerms
 {
-    public const string SOURCE_SNAPSHOT = 'snapshot';
-
-    public const string SOURCE_PRODUCT = 'product';
-
     public const string SOURCE_CONFIG = 'config';
 
     public function __construct(

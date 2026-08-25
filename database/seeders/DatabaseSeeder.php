@@ -30,6 +30,12 @@ final class DatabaseSeeder extends Seeder
 
         $this->call(BatchProcedureSeeder::class);
 
+        // The loan posting operations the application resolves by name. Fixed by
+        // the application, not the institution: a code the code looks up but the
+        // catalogue does not carry makes the matching charge uncollectable and
+        // the loan undisbursable.
+        $this->call(LoanOperationCodeSeeder::class);
+
         // The BEAC's notes and coins: fixed by the currency, not chosen by the
         // institution, and a till that requires denominations cannot be opened
         // without them.

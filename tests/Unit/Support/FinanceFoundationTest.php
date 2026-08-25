@@ -24,6 +24,8 @@ final class FinanceFoundationTest extends TestCase
 {
     public function test_formula_policy_gate_fails_closed_until_approved(): void
     {
+        config(['formulas.policies.penalties_and_arrears.approved' => false]);
+
         $registry = app(FormulaPolicyRegistry::class);
 
         $this->expectException(FormulaPolicyNotApproved::class);

@@ -514,10 +514,9 @@ final class DashboardIssue12Test extends TestCase
             'code' => $code,
             'name' => 'Product '.$code,
             'status' => 'active',
+            'fee_rate' => '3.000000',
             'rules' => json_encode([
-                'setup_charges' => [
-                    'dossier_fee_rate' => '3.000000',
-                ],
+                'setup_charges' => [],
             ]),
             'created_at' => now(),
             'updated_at' => now(),

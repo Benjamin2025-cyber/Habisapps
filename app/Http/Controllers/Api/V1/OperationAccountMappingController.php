@@ -34,6 +34,7 @@ final class OperationAccountMappingController extends BaseController
     private const array READINESS_OPERATIONS = [
         ['code' => 'loan_principal_disbursement', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_DEBIT],
         ['code' => 'loan_setup_dossier_fee', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
+        ['code' => 'loan_setup_principal_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_guarantee_deposit', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
     ];

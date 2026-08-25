@@ -8,6 +8,7 @@ use App\Application\Loans\AssessLoanArrearsAndPenalties;
 use App\Models\Loan;
 use App\Models\LoanProduct;
 use App\Models\LoanScheduleSnapshot;
+use App\Support\Finance\MoneyAmount;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -28,11 +29,13 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
 
     public function test_assesses_monthly_penalty_after_grace_days_without_compounding_prior_penalties(): void
     {
+        // 50 000 XAF principal + 5 000 XAF interest, in minor units at the
+        // account scale (a franc is 100 minor units).
         $loan = $this->createLoanWithSchedule([
             [
                 'due_date' => '2026-05-01',
-                'principal_minor' => 50000,
-                'interest_minor' => 5000,
+                'principal_minor' => 5000000,
+                'interest_minor' => 500000,
                 'fees_minor' => 0,
                 'insurance_minor' => 0,
                 'tax_minor' => 0,
@@ -42,34 +45,36 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
 
         $first = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
 
-        self::assertSame(6100, $first['assessed_penalty_minor']);
+        // Hybrid formula: 5 000 XAF fixed + 2 % of the 55 000 XAF unpaid
+        // (= 1 100 XAF), i.e. 610 000 minor units.
+        self::assertSame(610000, $first['assessed_penalty_minor']);
         $this->assertDatabaseHas('loan_arrears', [
             'loan_id' => $loan->id,
-            'original_due_minor' => 55000,
+            'original_due_minor' => 5500000,
             'paid_minor' => 0,
-            'unpaid_minor' => 55000,
-            'penalty_base_minor' => 55000,
+            'unpaid_minor' => 5500000,
+            'penalty_base_minor' => 5500000,
             'status' => 'open',
         ]);
         $this->assertDatabaseHas('loan_schedule_lines', [
             'loan_schedule_snapshot_id' => $this->activeSnapshotId($loan),
-            'penalty_minor' => 6100,
-            'total_installment_minor' => 61100,
+            'penalty_minor' => 610000,
+            'total_installment_minor' => 6110000,
         ]);
 
         $sameMonth = app(AssessLoanArrearsAndPenalties::class)->handle($loan->refresh(), '2026-05-20');
         self::assertSame(0, $sameMonth['assessed_penalty_minor']);
         $this->assertDatabaseHas('loan_schedule_lines', [
             'loan_schedule_snapshot_id' => $this->activeSnapshotId($loan),
-            'penalty_minor' => 6100,
+            'penalty_minor' => 610000,
         ]);
 
         $nextMonth = app(AssessLoanArrearsAndPenalties::class)->handle($loan->refresh(), '2026-06-07');
-        self::assertSame(6100, $nextMonth['assessed_penalty_minor']);
+        self::assertSame(610000, $nextMonth['assessed_penalty_minor']);
         $this->assertDatabaseHas('loan_schedule_lines', [
             'loan_schedule_snapshot_id' => $this->activeSnapshotId($loan),
-            'penalty_minor' => 12200,
-            'total_installment_minor' => 67200,
+            'penalty_minor' => 1220000,
+            'total_installment_minor' => 6720000,
         ]);
     }
 
@@ -115,118 +120,117 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
         ]);
     }
 
-    public function test_fixed_amount_product_penalty_from_snapshot_overrides_config(): void
+    /**
+     * « Do not penalize unpaid amounts below 1,000 XAF ». Without a floor at the
+     * right magnitude, the hybrid formula drops a 5 000 XAF penalty onto a
+     * residue of a few francs.
+     */
+    public function test_arrears_floor_is_one_thousand_francs_not_ten(): void
     {
-        $loan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'amount', 'penalty_value' => 7000, 'penalty_formula_type' => 'fixed'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'amount', 'penalty_value' => 7000, 'penalty_formula_type' => 'fixed'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
+        // 999 XAF unpaid — under the floor, no penalty.
+        $under = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 99900, 'interest_minor' => 0],
         );
+        $underResult = app(AssessLoanArrearsAndPenalties::class)->handle($under, '2026-05-07');
+        self::assertSame(0, $underResult['assessed_penalty_minor']);
 
-        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
-
-        // Flat amount only, no percentage, no config 5000+2% = 6100.
-        self::assertSame(7000, $result['assessed_penalty_minor']);
-    }
-
-    public function test_percentage_penalty_uses_overdue_amount_base(): void
-    {
-        $loan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'overdue_amount'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'overdue_amount'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-            partialPrincipalPaid: 5000,
+        // 1 000 XAF unpaid — on the floor, penalty applies: 5 000 XAF fixed
+        // + 2 % of 1 000 XAF (= 20 XAF).
+        $atFloor = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 100000, 'interest_minor' => 0],
         );
-
-        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
-
-        // overdue_amount = gross scheduled due (55000), before crediting the 5000 payment → 10% = 5500.
-        self::assertSame(5500, $result['assessed_penalty_minor']);
-    }
-
-    public function test_percentage_penalty_uses_unpaid_scheduled_due_base(): void
-    {
-        $loan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'unpaid_scheduled_due'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'unpaid_scheduled_due'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-            partialPrincipalPaid: 5000,
-        );
-
-        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
-
-        // unpaid_scheduled_due = 55000 - 5000 paid = 50000 → 10% = 5000 (distinct from overdue_amount).
-        self::assertSame(5000, $result['assessed_penalty_minor']);
-    }
-
-    public function test_percentage_penalty_uses_principal_base(): void
-    {
-        $loan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'principal'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'principal'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-        );
-
-        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
-
-        // principal base = 50000 (not the 55000 scheduled due) → 10% = 5000.
-        self::assertSame(5000, $result['assessed_penalty_minor']);
-    }
-
-    public function test_two_products_with_different_penalty_terms_produce_different_penalties(): void
-    {
-        $fixedLoan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'amount', 'penalty_value' => 7000, 'penalty_formula_type' => 'fixed'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'amount', 'penalty_value' => 7000, 'penalty_formula_type' => 'fixed'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-        );
-        $percentLoan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'overdue_amount'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'percentage', 'penalty_value' => 10, 'penalty_formula_type' => 'percentage', 'penalty_formula_base' => 'overdue_amount'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-        );
-
-        $fixed = app(AssessLoanArrearsAndPenalties::class)->handle($fixedLoan, '2026-05-07');
-        $percent = app(AssessLoanArrearsAndPenalties::class)->handle($percentLoan, '2026-05-07');
-
-        self::assertSame(7000, $fixed['assessed_penalty_minor']);
-        self::assertSame(5500, $percent['assessed_penalty_minor']);
-        self::assertNotSame($fixed['assessed_penalty_minor'], $percent['assessed_penalty_minor']);
-    }
-
-    public function test_snapshot_penalty_terms_take_precedence_over_later_product_edits(): void
-    {
-        $loan = $this->createPenaltyLoan(
-            // Current product now says 9000, but the snapshot froze 7000 at creation.
-            productPenalty: ['penalty_value_type' => 'amount', 'penalty_value' => 9000, 'penalty_formula_type' => 'fixed'],
-            snapshotTerms: ['penalty_grace_days' => 5, 'penalty_value_type' => 'amount', 'penalty_value' => 7000, 'penalty_formula_type' => 'fixed'],
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-        );
-
-        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
-
-        self::assertSame(7000, $result['assessed_penalty_minor']);
-    }
-
-    public function test_current_product_penalty_used_when_loan_has_no_snapshot(): void
-    {
-        $loan = $this->createPenaltyLoan(
-            productPenalty: ['penalty_value_type' => 'amount', 'penalty_value' => 7000, 'penalty_formula_type' => 'fixed'],
-            snapshotTerms: null,
-            line: ['principal_minor' => 50000, 'interest_minor' => 5000],
-        );
-
-        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
-
-        self::assertSame(7000, $result['assessed_penalty_minor']);
+        $atFloorResult = app(AssessLoanArrearsAndPenalties::class)->handle($atFloor, '2026-05-07');
+        self::assertSame(502000, $atFloorResult['assessed_penalty_minor']);
     }
 
     /**
-     * @param  array<string, mixed>  $productPenalty
+     * The percentage rate is the scale-0 string '2', and BigDecimal::dividedBy
+     * without an explicit scale rounds with UNNECESSARY. Any unpaid base that is
+     * not a multiple of 50 used to raise RoundingNecessaryException — a
+     * RuntimeException, so it aborted the whole monthly arrears batch instead of
+     * failing one loan.
+     */
+    public function test_variable_part_rounds_instead_of_throwing_on_an_indivisible_base(): void
+    {
+        $loan = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 123457, 'interest_minor' => 0],
+        );
+
+        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
+
+        // 5 000 XAF fixed + 2 % of 123 457 = 2 469.14 → 2 469 half-up,
+        // i.e. 500 000 + 2 469 minor units.
+        self::assertSame(502469, $result['assessed_penalty_minor']);
+    }
+
+    /**
+     * The accounting team's rule is one hybrid amount per overdue installment:
+     * « une partie fixe 5.000 FCFA et une partie variable 2% du montant
+     * impayé ». Asserted in francs, not minor units: a minor-unit literal that
+     * merely echoes the constant cannot catch a scale error in the constant
+     * itself.
+     */
+    public function test_penalty_is_the_fixed_part_plus_the_variable_part_on_the_unpaid_amount(): void
+    {
+        $loan = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 5000000, 'interest_minor' => 500000],
+        );
+
+        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
+
+        // 5 000 XAF + 2 % of 55 000 XAF (= 1 100 XAF) = 6 100 XAF.
+        self::assertSame(610000, $result['assessed_penalty_minor']);
+        self::assertSame('6100.00', MoneyAmount::ofMinor($result['assessed_penalty_minor'])->amount());
+    }
+
+    public function test_partial_payments_shrink_the_variable_part_but_never_the_fixed_part(): void
+    {
+        $loan = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 5000000, 'interest_minor' => 500000],
+            partialPrincipalPaid: 500000,
+        );
+
+        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
+
+        // 5 500 000 due − 500 000 paid = 5 000 000 unpaid; 2 % = 100 000
+        // (1 000 XAF) on top of the untouched 5 000 XAF fixed part.
+        self::assertSame(600000, $result['assessed_penalty_minor']);
+        self::assertSame('6000.00', MoneyAmount::ofMinor($result['assessed_penalty_minor'])->amount());
+    }
+
+    /**
+     * The penalty is not hardcoded in the engine: it resolves from the approved
+     * `penalties_and_arrears` formula-policy config, so a stakeholder-approved
+     * change to either component flows through without a code change.
+     */
+    public function test_penalty_terms_come_from_the_approved_formula_policy_config(): void
+    {
+        config([
+            'formulas.policies.penalties_and_arrears.rules.monthly_arrears_penalty.fixed_amount_minor' => 250000,
+            'formulas.policies.penalties_and_arrears.rules.monthly_arrears_penalty.variable_rate_percent' => '1',
+        ]);
+
+        $loan = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 5000000, 'interest_minor' => 500000],
+        );
+
+        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
+
+        // 2 500 XAF fixed + 1 % of 55 000 XAF (= 550 XAF) = 3 050 XAF.
+        self::assertSame(305000, $result['assessed_penalty_minor']);
+    }
+
+    /**
      * @param  array<string, mixed>|null  $snapshotTerms
      * @param  array{principal_minor:int, interest_minor:int}  $line
      */
-    private function createPenaltyLoan(array $productPenalty, ?array $snapshotTerms, array $line, int $partialPrincipalPaid = 0): Loan
+    private function createPenaltyLoan(?array $snapshotTerms, array $line, int $partialPrincipalPaid = 0): Loan
     {
         $agencyId = DB::table('agencies')->insertGetId([
             'public_id' => (string) Str::ulid(),
@@ -258,14 +262,14 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $loanProduct = LoanProduct::query()->create(array_merge([
+        $loanProduct = LoanProduct::query()->create([
             'public_id' => (string) Str::ulid(),
             'ledger_account_id' => $ledgerAccountId,
             'code' => 'LP-'.Str::ulid(),
             'name' => 'Penalty Product',
             'status' => LoanProduct::STATUS_ACTIVE,
             'penalty_grace_days' => 5,
-        ], $productPenalty));
+        ]);
         $loan = Loan::query()->create([
             'public_id' => (string) Str::ulid(),
             'client_id' => $clientId,

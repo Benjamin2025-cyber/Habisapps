@@ -324,21 +324,13 @@ tax rate = 19.25%
 tax = 385 XAF
 ```
 
-### Decision Needed
+### Implemented Decision
 
-- What rate applies?
-- What is taxed: interest, fees, insurance, penalties, or combinations?
-- Is tax calculated upfront or per installment?
-- Is tax rounded separately?
-
-### Decision Fields
-
-- Tax rate:
-- Tax base:
-- Calculation timing:
-- Rounding rule:
-- Ledger treatment:
-- Approved by:
+- `tax_rate` applies to the granted principal plus total flat interest, unchanged.
+- `dossier_fee_tax_rate` applies only to the calculated dossier fee. This is an addition, not a replacement: the credit's own VAT base is untouched.
+- Both taxes are assessed upfront by default.
+- A product may explicitly mark the `tax` component as `financed` or `periodic` to move both amounts into the installment schedule instead of assessing them upfront.
+- Each component is rounded independently during calculation.
 
 ## 8. Insurance
 
@@ -452,27 +444,47 @@ Fixed penalty:
 penalty = 2,000 XAF once overdue
 ```
 
-### Decision Needed
+The illustrations above are the original worked examples posed to the
+stakeholder. They are **not** the decided rule; see below.
 
-- When does penalty start?
-- What is the penalty base?
-- Fixed or percentage?
-- Daily, monthly, or one-time?
-- Does it compound?
-- Is there a cap?
+### Implemented Decision
 
-### Decision Fields
+Decided verbally by the stakeholder on 2026-08-23 and transcribed with the
+loan-product form review: « Au niveau du type de valeur, il y a deux variables :
+5 000 francs qui est fixe et 2 % du montant impayé. Ça, c'est automatique. »
 
-- Trigger:
-- Grace days:
-- Base:
-- Formula:
-- Frequency:
-- Compounding rule:
-- Cap:
-- Rounding rule:
-- Ledger treatment:
-- Approved by:
+The accounting team's follow-up document disambiguates the same sentence —
+« Le type de valeur de pénalité est hybride et c'est le même principe pour tous
+les crédits. Il y'a une partie fixe 5.000 FCFA et une partie variable 2% du
+montant impayé. » The two components are **not** alternative modes; they combine.
+This matches the original stakeholder response (§10: `5,000 + 2% of unpaid
+amount`).
+
+- **Trigger:** monthly arrears batch, after the product's grace days.
+- **Formula:** hybrid and universal — the same for every credit, with no
+  per-product configuration:
+  - fixed part — 5 000 XAF flat;
+  - variable part — 2 % of the unpaid amount.
+  An overdue installment is penalized once by their sum.
+- **Base (variable part):** unpaid scheduled due, excluding prior penalties.
+- **Frequency:** monthly, one assessment per overdue installment per month.
+- **Compounding:** none. Prior penalties stay due but never generate new ones.
+- **Floor:** no penalty on an unpaid amount below 1 000 XAF. This is what keeps
+  the 5 000 XAF fixed part off a residue of a few francs.
+- **Cap:** none.
+- **Rounding:** exact account precision, no cash rounding; each component is
+  rounded independently and then summed.
+- **Approved by:** Credit, 2026-08-23. This is the sign-off that
+  `config/formulas.php` records as `penalties_and_arrears.owner` /
+  `approved_at`, and the reason that gate flipped from unapproved.
+
+Because the rule is one formula for all credits (« le même principe pour tous
+les crédits »), nothing about it lives on the loan product: the earlier
+`penalty_formula_type` / `penalty_formula_base` / `penalty_value_type` /
+`penalty_value` descriptors were removed rather than clarified, per the same
+review (« type de formule descriptif là, je ne sais pas trop de quoi il est
+question »). The values are owned by the approved `penalties_and_arrears`
+formula-policy config.
 
 ## 11. Arrears / Unpaid Amount
 

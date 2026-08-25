@@ -17,6 +17,21 @@ use RuntimeException;
 
 final class AssessLoanSetupCharges
 {
+    /**
+     * Setup charges are settled before money leaves the institution, so
+     * assessment belongs to the pre-disbursement statuses only. Without this
+     * gate the action is callable on a live loan, and on a product whose
+     * components were switched from financed back to upfront it would assess
+     * charges the borrower is already paying inside the schedule.
+     *
+     * @var array<int, string>
+     */
+    private const array ASSESSABLE_STATUSES = [
+        Loan::STATUS_APPLICATION,
+        Loan::STATUS_IN_REVIEW,
+        Loan::STATUS_APPROVED,
+    ];
+
     public function __construct(
         private readonly FormulaPolicyRegistry $formulaPolicyRegistry,
     ) {}
@@ -41,12 +56,22 @@ final class AssessLoanSetupCharges
                 throw new InvalidArgumentException('Loan product is required before setup charge assessment.');
             }
 
+            if (! in_array($lockedLoan->status, self::ASSESSABLE_STATUSES, true)) {
+                throw new InvalidArgumentException(__('loans.setup_charges_not_assessable_after_disbursement'));
+            }
+
             $existing = DB::table('loan_charge_assessments')
                 ->where('loan_id', $lockedLoan->id)
-                ->whereIn('charge_type', ['dossier_fee', 'dossier_fee_tax', 'guarantee_deposit'])
+                ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'guarantee_deposit'])
                 ->orderBy('charge_type')
                 ->get();
-            if ($existing->isNotEmpty()) {
+
+            // Charge rows alone cannot prove the assessment ran: a product whose
+            // components are all financed (or all zero-rated) inserts none, and
+            // an empty result would re-run the whole calculation on every call.
+            // The loan's own projection columns are written unconditionally, so
+            // they are the durable marker.
+            if ($existing->isNotEmpty() || $this->alreadyAssessed($lockedLoan)) {
                 return [
                     'loan' => $lockedLoan->refresh(),
                     'charges' => $existing->map(fn (object $row): array => $this->chargeRow($row))->values()->all(),
@@ -59,24 +84,32 @@ final class AssessLoanSetupCharges
             $rules = $this->arrayValue($product->getAttribute('rules'));
             $setupRules = $this->arrayValue($rules['setup_charges'] ?? null);
 
-            $dossierFee = $this->dossierFee($principal, $product, $setupRules);
-            $tax = $this->tax($principal, $dossierFee, $product, $setupRules);
+            $dossierFee = $this->dossierFee($principal, $product);
+            $principalTaxBase = $this->principalTaxBase($principal, $product);
+            $principalTax = $this->principalTax($principalTaxBase, $product);
+            $dossierFeeTax = $this->dossierFeeTax($dossierFee, $product);
             $guaranteeDeposit = $this->guaranteeDeposit($principal, $product);
             $insurance = $this->insurance($principal, $product);
 
             $charges = [];
-            if ($dossierFee > 0) {
-                $charges[] = $this->insertCharge($lockedLoan->id, 'dossier_fee', $principal, $this->rate($setupRules['dossier_fee_rate'] ?? null), $dossierFee, $currency, [
+            if ($dossierFee > 0 && ! $product->isInstallmentComponentFinanced('fees')) {
+                $charges[] = $this->insertCharge($lockedLoan->id, 'dossier_fee', $principal, $this->rate($product->fee_rate), $dossierFee, $currency, [
                     'refundable' => false,
                     'non_refundable_after' => 'setup_approval',
                     'stakeholder_section' => 6,
                 ]);
             }
 
-            if ($tax > 0) {
-                $taxBase = $this->taxBase($principal, $dossierFee, $product, $setupRules);
-                $charges[] = $this->insertCharge($lockedLoan->id, 'dossier_fee_tax', $taxBase, $this->rate($product->tax_rate), $tax, $currency, [
-                    'tax_base' => $this->setupRuleString($setupRules, 'tax_base', 'principal_plus_interest'),
+            if ($principalTax > 0 && ! $product->isInstallmentComponentFinanced('tax')) {
+                $charges[] = $this->insertCharge($lockedLoan->id, 'principal_tax', $principalTaxBase, $this->rate($product->tax_rate), $principalTax, $currency, [
+                    'tax_base' => 'principal_plus_interest',
+                    'stakeholder_section' => 7,
+                ]);
+            }
+
+            if ($dossierFeeTax > 0 && ! $product->isInstallmentComponentFinanced('tax')) {
+                $charges[] = $this->insertCharge($lockedLoan->id, 'dossier_fee_tax', $dossierFee, $this->rate($product->dossier_fee_tax_rate), $dossierFeeTax, $currency, [
+                    'tax_base' => 'dossier_fee',
                     'stakeholder_section' => 7,
                 ]);
             }
@@ -92,10 +125,19 @@ final class AssessLoanSetupCharges
 
             $lockedLoan->forceFill([
                 'dossier_fees_minor' => $dossierFee,
-                'dossier_fees_tax_minor' => $tax,
+                'dossier_fees_tax_minor' => $dossierFeeTax,
+                'principal_tax_minor' => $principalTax,
                 'guarantee_deposit_amount_minor' => $guaranteeDeposit,
                 'insurance_amount_minor' => $insurance,
             ])->save();
+
+            // Sorted, because the repeat branch above reads back ordered by
+            // charge_type. A caller indexing the array positionally must not see
+            // a different order on the first call than on every later one.
+            usort($charges, static fn (array $a, array $b): int => strcmp(
+                is_string($a['charge_type']) ? $a['charge_type'] : '',
+                is_string($b['charge_type']) ? $b['charge_type'] : '',
+            ));
 
             return [
                 'loan' => $lockedLoan->refresh(),
@@ -105,58 +147,42 @@ final class AssessLoanSetupCharges
         });
     }
 
-    /**
-     * @param  array<string, mixed>  $setupRules
-     */
-    private function dossierFee(int $principal, LoanProduct $product, array $setupRules): int
+    private function alreadyAssessed(Loan $loan): bool
     {
-        // « Le montant des frais de dossier doit être en pourcentage et sans
-        // plancher. » A rule from the product's formula policy still wins where one
-        // is configured; otherwise the product's own rate applies. There is no
-        // fixed amount and no floor: the fee is whatever the percentage yields,
-        // including on a small loan.
-        $rate = $setupRules['dossier_fee_rate'] ?? null;
-        if ($rate === null || $rate === '') {
-            $rate = $product->fee_rate;
-        }
+        return $loan->dossier_fees_minor !== null
+            || $loan->principal_tax_minor !== null
+            || $loan->dossier_fees_tax_minor !== null
+            || $loan->guarantee_deposit_amount_minor !== null
+            || $loan->insurance_amount_minor !== null;
+    }
 
-        if ($rate === null) {
+    private function dossierFee(int $principal, LoanProduct $product): int
+    {
+        if ($product->fee_rate === null) {
             return 0;
         }
 
-        // Rounded, not exact. percentOf refuses to round by default, which is
-        // tenable for a fixed amount but not for a percentage: 2,5 % of any
-        // principal that is not a multiple of 40 lands between two minor units and
-        // would throw where the fee used to be a constant. Half-up is the ordinary
-        // convention for a charge.
-        return $this->percentOf($principal, $rate, RoundingMode::HALF_UP);
+        return $this->percentOf($principal, $product->fee_rate);
     }
 
     /**
-     * @param  array<string, mixed>  $setupRules
+     * The VAT on the credit itself. Its base is the granted principal plus the
+     * total flat interest — the stakeholder-approved base, unchanged by the
+     * introduction of a separate dossier-fee VAT. Taxing the principal alone
+     * would quietly stop taxing interest and reprice every loan.
      */
-    private function tax(int $principal, int $dossierFee, LoanProduct $product, array $setupRules): int
+    private function principalTaxBase(int $principal, LoanProduct $product): int
+    {
+        return $principal + $this->totalFlatInterest($principal, $product);
+    }
+
+    private function principalTax(int $taxBase, LoanProduct $product): int
     {
         if ($product->tax_rate === null) {
             return 0;
         }
 
-        return $this->percentOf($this->taxBase($principal, $dossierFee, $product, $setupRules), $product->tax_rate);
-    }
-
-    /**
-     * @param  array<string, mixed>  $setupRules
-     */
-    private function taxBase(int $principal, int $dossierFee, LoanProduct $product, array $setupRules): int
-    {
-        $base = match ($this->setupRuleString($setupRules, 'tax_base', 'principal_plus_interest')) {
-            'principal_plus_interest', 'capital_plus_interest' => $principal + $this->totalFlatInterest($principal, $product),
-            'principal' => $principal,
-            'dossier_fee' => $dossierFee,
-            default => throw new InvalidArgumentException('Unsupported setup tax base.'),
-        };
-
-        return $base;
+        return $this->percentOf($taxBase, $product->tax_rate);
     }
 
     private function totalFlatInterest(int $principal, LoanProduct $product): int
@@ -166,6 +192,15 @@ final class AssessLoanSetupCharges
         }
 
         return $this->percentOf($principal, $product->interest_rate);
+    }
+
+    private function dossierFeeTax(int $dossierFee, LoanProduct $product): int
+    {
+        if ($product->dossier_fee_tax_rate === null) {
+            return 0;
+        }
+
+        return $this->percentOf($dossierFee, $product->dossier_fee_tax_rate);
     }
 
     private function guaranteeDeposit(int $principal, LoanProduct $product): int
@@ -240,23 +275,28 @@ final class AssessLoanSetupCharges
     }
 
     /**
-     * @param  RoundingMode  $rounding  Defaults to refusing to round, which is how
-     *                                  every existing caller expects to be told that
-     *                                  a configured rate does not divide cleanly.
+     * Every setup charge is a money amount that has to land on a whole minor
+     * unit, so all of them round half-up — the ordinary convention for a charge.
+     *
+     * The rounding mode belongs on `dividedBy`, not on a following `toScale`.
+     * `dividedBy('100')` with no scale inherits the operand's scale and rounds
+     * with UNNECESSARY, so it throws before any later `toScale` is consulted:
+     * a 100 001 principal at a 2 % rate raised RoundingNecessaryException, which
+     * is a RuntimeException and escaped the caller's InvalidArgumentException
+     * handler as a 500 rather than a 422.
      */
-    private function percentOf(int $baseMinor, mixed $rate, RoundingMode $rounding = RoundingMode::UNNECESSARY): int
+    private function percentOf(int $baseMinor, mixed $rate): int
     {
         return BigDecimal::of((string) $baseMinor)
             ->multipliedBy(BigDecimal::of($this->numericString($rate)))
-            ->dividedBy('100')
-            ->toScale(0, $rounding)
+            ->dividedBy('100', 0, RoundingMode::HALF_UP)
             ->toInt();
     }
 
     private function wholeMinor(mixed $amount): int
     {
         return BigDecimal::of($this->numericString($amount))
-            ->toScale(0, RoundingMode::UNNECESSARY)
+            ->toScale(0, RoundingMode::HALF_UP)
             ->toInt();
     }
 

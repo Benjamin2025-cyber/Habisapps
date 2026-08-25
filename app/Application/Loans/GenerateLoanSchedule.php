@@ -80,7 +80,11 @@ final class GenerateLoanSchedule
             $interest = $this->percentOf($principal, $appliedInterestRate, 'interest total');
             $fees = $this->installmentChargeAmount($product, 'fees', $lockedLoan->dossier_fees_minor ?? 0);
             $insurance = $this->installmentChargeAmount($product, 'insurance', $lockedLoan->insurance_amount_minor ?? 0);
-            $tax = $this->installmentChargeAmount($product, 'tax', $lockedLoan->dossier_fees_tax_minor ?? 0);
+            $tax = $this->installmentChargeAmount(
+                $product,
+                'tax',
+                ($lockedLoan->principal_tax_minor ?? 0) + ($lockedLoan->dossier_fees_tax_minor ?? 0),
+            );
 
             $componentShares = [
                 'principal_minor' => $this->splitWithFinalResidual($principal, $installments),
@@ -222,17 +226,7 @@ final class GenerateLoanSchedule
             return 0;
         }
 
-        $rules = $product->getAttribute('rules');
-        $installmentCharges = is_array($rules) && is_array($rules['installment_charges'] ?? null)
-            ? $rules['installment_charges']
-            : [];
-        $policy = $installmentCharges[$component] ?? null;
-
-        if ($policy === true || $policy === 'financed' || $policy === 'periodic') {
-            return $amountMinor;
-        }
-
-        return 0;
+        return $product->isInstallmentComponentFinanced($component) ? $amountMinor : 0;
     }
 
     private function policySnapshotHash(Loan $loan): string
@@ -252,6 +246,7 @@ final class GenerateLoanSchedule
             'grace_period_duration' => $loan->grace_period_duration,
             'term_unit' => $loan->loanProduct?->term_unit,
             'dossier_fees_minor' => $loan->dossier_fees_minor,
+            'principal_tax_minor' => $loan->principal_tax_minor,
             'dossier_fees_tax_minor' => $loan->dossier_fees_tax_minor,
             'insurance_amount_minor' => $loan->insurance_amount_minor,
         ];

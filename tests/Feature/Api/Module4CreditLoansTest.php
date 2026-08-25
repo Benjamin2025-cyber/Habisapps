@@ -72,6 +72,7 @@ final class Module4CreditLoansTest extends TestCase
         $create->assertJsonPath('data.ledger_account_public_id', $ledger['public_id']);
         $create->assertJsonPath('data.max_amount_minor', 1000000);
         $create->assertJsonPath('data.due_date_day', 15);
+        $create->assertJsonPath('data.dossier_fee_tax_rate', '19.25');
         $create->assertJsonMissing(['id' => 1]);
 
         $update = $this->withApiHeaders()
@@ -80,11 +81,13 @@ final class Module4CreditLoansTest extends TestCase
                 'name' => 'SME Loan Updated',
                 'max_amount_minor' => 1200000,
                 'status' => LoanProduct::STATUS_INACTIVE,
+                'dossier_fee_tax_rate' => null,
             ]);
 
         $this->assertJsonSuccess($update);
         $update->assertJsonPath('data.name', 'SME Loan Updated');
         $update->assertJsonPath('data.status', LoanProduct::STATUS_INACTIVE);
+        $update->assertJsonPath('data.dossier_fee_tax_rate', null);
 
         $list = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -159,110 +162,169 @@ final class Module4CreditLoansTest extends TestCase
         $forbidden->assertForbidden();
     }
 
-    public function test_loan_product_penalty_descriptor_fields_reject_typos(): void
+    /**
+     * A principal that is not a round multiple used to reach
+     * BigDecimal::dividedBy with UNNECESSARY rounding on the insurance and
+     * guarantee-deposit legs. RoundingNecessaryException is a RuntimeException,
+     * so it slipped past the workflow's InvalidArgumentException handler and
+     * surfaced as a 500 on an ordinary loan amount.
+     */
+    public function test_setup_charges_round_instead_of_failing_on_an_indivisible_principal(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
-
-        $typo = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-PEN-TYPO',
-                'name' => 'Penalty Typo Product',
-                'penalty_formula_type' => 'flate_rate',
-                'penalty_formula_base' => 'principel',
-                'penalty_value_type' => 'percent',
-            ]);
-        $typo->assertStatus(422);
-        $typo->assertJsonValidationErrors(['penalty_formula_type', 'penalty_formula_base', 'penalty_value_type']);
-
-        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-PEN-OK',
-                'name' => 'Penalty Valid Product',
-                'penalty_formula_type' => 'flat_rate',
-                'penalty_formula_base' => 'principal',
-                'penalty_value_type' => 'percentage',
-                'penalty_value' => '2.5',
-            ]);
-        $this->assertJsonSuccess($valid, 201);
-    }
-
-    public function test_loan_product_incomplete_penalty_combinations_fail_validation(): void
-    {
-        $actor = $this->createUserWithRole('platform-admin');
-
-        // Percentage value type with no value and no base.
-        $missingParts = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-PEN-INC1',
-                'name' => 'Incomplete Penalty 1',
-                'penalty_value_type' => 'percentage',
-            ]);
-        $missingParts->assertStatus(422);
-        $missingParts->assertJsonValidationErrors(['penalty_value', 'penalty_formula_base']);
-
-        // A value supplied with no value type cannot be interpreted.
-        $missingType = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-PEN-INC2',
-                'name' => 'Incomplete Penalty 2',
-                'penalty_value' => '500',
-            ]);
-        $missingType->assertStatus(422);
-        $missingType->assertJsonValidationErrors(['penalty_value_type']);
-
-        // Amount value type cannot pair with a rate-based formula type.
-        $mismatch = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-PEN-INC3',
-                'name' => 'Incomplete Penalty 3',
-                'penalty_value_type' => 'amount',
-                'penalty_value' => '5000',
-                'penalty_formula_type' => 'flat_rate',
-            ]);
-        $mismatch->assertStatus(422);
-        $mismatch->assertJsonValidationErrors(['penalty_formula_type']);
-
-        // A complete fixed-amount combination is accepted.
-        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-PEN-INC-OK',
-                'name' => 'Complete Fixed Penalty',
-                'penalty_value_type' => 'amount',
-                'penalty_value' => '5000',
-                'penalty_formula_type' => 'fixed',
-            ]);
-        $this->assertJsonSuccess($valid, 201);
-    }
-
-    public function test_unrelated_update_of_legacy_partial_penalty_product_is_not_blocked(): void
-    {
-        $actor = $this->createUserWithRole('platform-admin');
-
-        // Simulate a product persisted before the penalty-coherence rules, with
-        // a stray penalty field but no value type/value.
-        $product = LoanProduct::query()->create([
-            'public_id' => (string) Str::ulid(),
-            'code' => 'LP-LEGACY-PEN',
-            'name' => 'Legacy Penalty Product',
-            'status' => LoanProduct::STATUS_ACTIVE,
-            'penalty_formula_type' => 'fixed',
+        $agencyId = $this->createAgency('CR-ROUND');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'interest_rate' => '10.000000',
+            'tax_rate' => '19.250000',
+            'dossier_fee_tax_rate' => '19.250000',
+            'fee_rate' => '3.000000',
+            'insurance_rate' => '2.000000',
+            'guarantee_deposit_type' => 'percentage',
+            'guarantee_deposit_value' => '10.000000',
+            'max_amount_minor' => 100000000,
         ]);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 100001);
+        $loan->forceFill(['status' => Loan::STATUS_APPROVED, 'approved_principal_minor' => 100001])->save();
 
-        // A PATCH that does not touch any penalty field must succeed.
+        $assess = $this->assessSetupCharges($actor, $loan->public_id);
+        $this->assertJsonSuccess($assess);
+        // 2 % of 100 001 = 2 000.02 → 2 000; 10 % = 10 000.1 → 10 000.
+        $assess->assertJsonPath('data.loan.insurance_amount_minor', 2000);
+        $assess->assertJsonPath('data.loan.guarantee_deposit_amount_minor', 10000);
+        // 3 % of 100 001 = 3 000.03 → 3 000, taxed at 19,25 % = 577.5 → 578.
+        $assess->assertJsonPath('data.loan.dossier_fees_minor', 3000);
+        $assess->assertJsonPath('data.loan.dossier_fees_tax_minor', 578);
+    }
+
+    public function test_loan_product_rules_reject_unusable_installment_charge_and_policy_values(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // A known key with an unusable value. The message matters: the codebase
+        // runs FormRequest::failOnUnknownFields(), which rejects an *unknown*
+        // key under this same error key with "prohibited". Asserting only the
+        // key would pass with no value validation at all.
+        $invalid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-RULES-BAD',
+                'name' => 'Bad Rules Product',
+                'rules' => [
+                    'installment_charges' => ['tax' => 'finance'],
+                    'formula_policies' => ['rounding_policy_key' => 'not_a_policy'],
+                ],
+            ]);
+        $invalid->assertStatus(422);
+        $invalid->assertJsonValidationErrors([
+            'rules.installment_charges.tax',
+            'rules.formula_policies.rounding_policy_key',
+        ]);
+        $errors = $invalid->json('errors');
+        self::assertIsArray($errors);
+        foreach (['rules.installment_charges.tax', 'rules.formula_policies.rounding_policy_key'] as $key) {
+            $messages = $errors[$key] ?? null;
+            self::assertIsArray($messages);
+            self::assertIsString($messages[0] ?? null);
+            // "invalid" is Rule::in. An unknown key would read "prohibited".
+            self::assertStringContainsString('invalid', $messages[0]);
+        }
+
+        // A scalar where the component map belongs reads as configured on the
+        // form but behaves as unconfigured in the maths.
+        $scalar = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-RULES-SCALAR',
+                'name' => 'Scalar Rules Product',
+                'rules' => ['installment_charges' => 'financed'],
+            ]);
+        $scalar->assertStatus(422);
+        $scalar->assertJsonValidationErrors(['rules.installment_charges']);
+
+        // And every value the readers honour round-trips, so the enum cannot be
+        // narrowed without a test going red.
+        $valid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-RULES-OK',
+                'name' => 'Good Rules Product',
+                'rules' => [
+                    'installment_charges' => ['fees' => 'upfront', 'tax' => 'financed', 'insurance' => 'periodic'],
+                ],
+            ]);
+        $this->assertJsonSuccess($valid, 201);
+        $valid->assertJsonPath('data.rules.installment_charges.fees', 'upfront');
+        $valid->assertJsonPath('data.rules.installment_charges.tax', 'financed');
+        $valid->assertJsonPath('data.rules.installment_charges.insurance', 'periodic');
+    }
+
+    public function test_updating_rules_cannot_strip_the_attached_formula_policies(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-RULES-KEEP');
+        $product = $this->createLoanProduct($agencyId);
+
+        // An unrelated `rules` write replaces the whole JSON column. The policy
+        // block must survive it, or the product silently stops declaring the
+        // policies every credit is supposed to carry.
         $update = $this->withApiHeaders()->actingAsSanctum($actor)
             ->patchJson('/api/v1/loan-products/'.$product->public_id, [
-                'name' => 'Legacy Penalty Product Renamed',
+                'rules' => ['installment_charges' => ['tax' => 'financed']],
             ]);
         $this->assertJsonSuccess($update);
-        $update->assertJsonPath('data.name', 'Legacy Penalty Product Renamed');
+        $update->assertJsonPath('data.rules.installment_charges.tax', 'financed');
+        $update->assertJsonPath('data.rules.formula_policies.rounding_policy_key', FormulaPolicyKey::XafRounding->value);
+        $update->assertJsonPath('data.rules.formula_policies.schedule_policy_key', FormulaPolicyKey::LoanInstallmentAmount->value);
+        $update->assertJsonPath('data.rules.formula_policies.reporting_policy_key', FormulaPolicyKey::PortfolioReportingMetrics->value);
+        $update->assertJsonPath('data.penalty_policy_key', FormulaPolicyKey::PenaltiesAndArrears->value);
+    }
 
-        // But submitting a penalty field re-engages coherence validation.
-        $incomplete = $this->withApiHeaders()->actingAsSanctum($actor)
-            ->patchJson('/api/v1/loan-products/'.$product->public_id, [
-                'penalty_value_type' => 'percentage',
+    public function test_loan_product_creation_fails_closed_when_an_attached_policy_is_unapproved(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+
+        // Every product now carries penalties_and_arrears whether or not the
+        // caller asked for it, so an unapproved gate must block creation rather
+        // than surface later as a thrown exception at loan creation.
+        config(['formulas.policies.penalties_and_arrears.approved' => false]);
+
+        $blocked = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-POLICY-CLOSED',
+                'name' => 'Unapproved Policy Product',
             ]);
-        $incomplete->assertStatus(422);
-        $incomplete->assertJsonValidationErrors(['penalty_value', 'penalty_formula_base']);
+        $blocked->assertStatus(422);
+        $blocked->assertJsonValidationErrors(['penalty_policy_key']);
+        $message = $this->requireStringJsonPath($blocked, 'errors.penalty_policy_key.0');
+        self::assertStringContainsString(FormulaPolicyKey::PenaltiesAndArrears->value, $message);
+        self::assertSame(0, LoanProduct::query()->where('code', 'LP-POLICY-CLOSED')->getQuery()->count());
+    }
+
+    /**
+     * The gate is a pure function of config — no payload satisfies it and no
+     * edit makes it worse. Applying it to updates would brick every existing
+     * product's admin screen on a config drift, down to renaming one.
+     */
+    public function test_editing_an_existing_product_is_not_blocked_by_an_unapproved_policy(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-POLICY-EDIT');
+        $product = $this->createLoanProduct($agencyId);
+
+        config(['formulas.policies.penalties_and_arrears.approved' => false]);
+
+        $renamed = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->patchJson('/api/v1/loan-products/'.$product->public_id, ['name' => 'Renamed Under Drift']);
+        $this->assertJsonSuccess($renamed);
+        $renamed->assertJsonPath('data.name', 'Renamed Under Drift');
+
+        // Loan creation stays fail-closed, which is where it actually matters.
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $loan = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 250000,
+            ]);
+        $loan->assertStatus(422);
     }
 
     public function test_formula_policy_catalog_exposes_keys_approval_and_product_fields(): void
@@ -281,8 +343,8 @@ final class Module4CreditLoansTest extends TestCase
             $response->assertJsonFragment(['key' => $case->value]);
         }
 
-        // Approval status mirrors config: penalties_and_arrears is unapproved.
-        $response->assertJsonFragment(['key' => FormulaPolicyKey::PenaltiesAndArrears->value, 'approved' => false]);
+        // Approval status mirrors config: penalties_and_arrears is active.
+        $response->assertJsonFragment(['key' => FormulaPolicyKey::PenaltiesAndArrears->value, 'approved' => true]);
         $response->assertJsonFragment(['key' => FormulaPolicyKey::XafRounding->value, 'approved' => true]);
 
         // The catalog's product-field mapping is the same source used by the
@@ -298,66 +360,51 @@ final class Module4CreditLoansTest extends TestCase
         $search->assertJsonPath('data.formula_policies.0.key', FormulaPolicyKey::XafRounding->value);
     }
 
-    public function test_loan_product_formula_policies_fail_closed_until_approved_and_snapshot_to_loan(): void
+    public function test_loan_product_attaches_policies_automatically_and_snapshots_them_to_loan(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR03');
-
-        $blocked = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
-            ->postJson('/api/v1/loan-products', [
-                'code' => 'LP-POLICY-BLOCKED',
-                'name' => 'Blocked Policy Product',
-                'penalty_policy_key' => FormulaPolicyKey::PenaltiesAndArrears->value,
-            ]);
-        $blocked->assertStatus(422);
-        $blocked->assertJsonValidationErrors(['penalty_policy_key']);
-
-        config([
-            'formulas.policies.xaf_rounding.approved' => true,
-            'formulas.policies.xaf_rounding.owner' => 'Finance',
-            'formulas.policies.xaf_rounding.approved_at' => '2026-05-12',
-            'formulas.policies.loan_interest_method.approved' => true,
-            'formulas.policies.loan_interest_method.owner' => 'Credit',
-            'formulas.policies.loan_interest_method.approved_at' => '2026-05-12',
-            'formulas.policies.loan_installment_amount.approved' => true,
-            'formulas.policies.loan_installment_amount.owner' => 'Credit',
-            'formulas.policies.loan_installment_amount.approved_at' => '2026-05-12',
-            'formulas.policies.repayment_allocation_order.approved' => true,
-            'formulas.policies.repayment_allocation_order.owner' => 'Credit',
-            'formulas.policies.repayment_allocation_order.approved_at' => '2026-05-12',
-            'formulas.policies.fees_taxes_insurance.approved' => true,
-            'formulas.policies.fees_taxes_insurance.owner' => 'Finance',
-            'formulas.policies.fees_taxes_insurance.approved_at' => '2026-05-12',
-            'formulas.policies.penalties_and_arrears.approved' => true,
-            'formulas.policies.penalties_and_arrears.owner' => 'Credit',
-            'formulas.policies.penalties_and_arrears.approved_at' => '2026-05-12',
-            'formulas.policies.portfolio_reporting_metrics.approved' => true,
-            'formulas.policies.portfolio_reporting_metrics.owner' => 'Risk',
-            'formulas.policies.portfolio_reporting_metrics.approved_at' => '2026-05-12',
-        ]);
 
         $create = $this->withApiHeaders()
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loan-products', [
                 'code' => 'LP-POLICY-APPROVED',
                 'name' => 'Approved Policy Product',
-                'interest_policy_key' => FormulaPolicyKey::LoanInterestMethod->value,
-                'fee_policy_key' => FormulaPolicyKey::FeesTaxesInsurance->value,
-                'tax_policy_key' => FormulaPolicyKey::FeesTaxesInsurance->value,
-                'insurance_policy_key' => FormulaPolicyKey::FeesTaxesInsurance->value,
-                'guarantee_deposit_policy_key' => FormulaPolicyKey::FeesTaxesInsurance->value,
-                'penalty_policy_key' => FormulaPolicyKey::PenaltiesAndArrears->value,
-                'repayment_allocation_policy_key' => FormulaPolicyKey::RepaymentAllocationOrder->value,
-                'rules' => [
-                    'formula_policies' => [
-                        'rounding_policy_key' => FormulaPolicyKey::XafRounding->value,
-                        'schedule_policy_key' => FormulaPolicyKey::LoanInstallmentAmount->value,
-                        'reporting_policy_key' => FormulaPolicyKey::PortfolioReportingMetrics->value,
-                    ],
-                ],
             ]);
         $this->assertJsonSuccess($create, 201);
+        $create->assertJsonPath('data.interest_policy_key', FormulaPolicyKey::LoanInterestMethod->value);
+        $create->assertJsonPath('data.penalty_policy_key', FormulaPolicyKey::PenaltiesAndArrears->value);
+        $create->assertJsonPath('data.fee_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
+        $create->assertJsonPath('data.tax_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
+        $create->assertJsonPath('data.insurance_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
+        $create->assertJsonPath('data.guarantee_deposit_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
+        $create->assertJsonPath('data.repayment_allocation_policy_key', FormulaPolicyKey::RepaymentAllocationOrder->value);
+
+        $overrideProduct = $this->createLoanProduct($agencyId, [
+            'rules' => [
+                'formula_policies' => [
+                    'rounding_policy_key' => 'caller_override',
+                    'schedule_policy_key' => 'caller_override',
+                    'reporting_policy_key' => 'caller_override',
+                ],
+            ],
+        ]);
+        $rules = $overrideProduct->getAttribute('rules');
+        $rules = is_array($rules) ? $rules : [];
+        $formulaPolicies = $rules['formula_policies'] ?? [];
+        $formulaPolicies = is_array($formulaPolicies) ? $formulaPolicies : [];
+        self::assertSame(
+            FormulaPolicyKey::XafRounding->value,
+            $formulaPolicies['rounding_policy_key'] ?? null,
+        );
+        self::assertSame(
+            FormulaPolicyKey::LoanInstallmentAmount->value,
+            $formulaPolicies['schedule_policy_key'] ?? null,
+        );
+        self::assertSame(
+            FormulaPolicyKey::PortfolioReportingMetrics->value,
+            $formulaPolicies['reporting_policy_key'] ?? null,
+        );
 
         $product = LoanProduct::query()
             ->where('public_id', $this->requireStringJsonPath($create, 'data.public_id'))
@@ -392,24 +439,16 @@ final class Module4CreditLoansTest extends TestCase
         self::assertIsArray($reportingPolicy);
         self::assertSame(FormulaPolicyKey::LoanInterestMethod->value, $interestPolicy['policy_key']);
         self::assertSame(FormulaPolicyKey::LoanInstallmentAmount->value, $schedulePolicy['policy_key']);
-        self::assertSame('Risk', $reportingPolicy['owner']);
+        self::assertSame(config('formulas.policies.'.FormulaPolicyKey::PortfolioReportingMetrics->value.'.owner'), $reportingPolicy['owner']);
     }
 
-    public function test_loan_creation_from_unapproved_formula_policy_product_returns_422_naming_policy(): void
+    public function test_loan_creation_uses_automatically_attached_policies(): void
     {
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR-POLICY-1');
         $client = $this->createClientRecord($agencyId, 'verified');
 
-        // Simulate a product that references an unapproved policy
-        // (penalties_and_arrears is approved=false in config by default), as
-        // could exist from before product-level gating was added. The product
-        // also references an approved interest policy so the failing-policy
-        // reporting is exercised against a multi-policy product.
-        $product = $this->createLoanProduct($agencyId, [
-            'interest_policy_key' => FormulaPolicyKey::LoanInterestMethod->value,
-            'penalty_policy_key' => FormulaPolicyKey::PenaltiesAndArrears->value,
-        ]);
+        $product = $this->createLoanProduct($agencyId);
 
         $response = $this->withApiHeaders()
             ->actingAsSanctum($actor)
@@ -419,40 +458,8 @@ final class Module4CreditLoansTest extends TestCase
                 'requested_amount_minor' => 250000,
             ]);
 
-        // Controlled 422, not a 500, and the error identifies the exact field
-        // and the failing policy key (penalties_and_arrears), not the first
-        // configured policy.
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['penalty_policy_key']);
-        $message = $this->requireStringJsonPath($response, 'errors.penalty_policy_key.0');
-        self::assertStringContainsString(FormulaPolicyKey::PenaltiesAndArrears->value, $message);
-        self::assertStringNotContainsString(FormulaPolicyKey::LoanInterestMethod->value, $message);
-    }
-
-    public function test_loan_creation_from_incomplete_legacy_penalty_product_returns_422(): void
-    {
-        $actor = $this->createUserWithRole('platform-admin');
-        $agencyId = $this->createAgency('CR-PEN-LEGACY');
-        $client = $this->createClientRecord($agencyId, 'verified');
-
-        // Simulate a product persisted before the penalty coherence rules, or
-        // mutated directly outside the loan-product request layer. Product
-        // request validation alone cannot protect loan creation from this state.
-        $product = $this->createLoanProduct($agencyId, [
-            'penalty_formula_type' => 'fixed',
-        ]);
-
-        $response = $this->withApiHeaders()
-            ->actingAsSanctum($actor)
-            ->postJson('/api/v1/loans', [
-                'client_public_id' => $client['public_id'],
-                'loan_product_public_id' => $product->public_id,
-                'requested_amount_minor' => 250000,
-            ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['penalty_value_type', 'penalty_value']);
-        self::assertSame(0, Loan::query()->where('loan_product_id', $product->id)->getQuery()->count());
+        $this->assertJsonSuccess($response, 201);
+        $response->assertJsonPath('data.loan_product_public_id', $product->public_id);
     }
 
     public function test_platform_admin_can_manage_loan_applications_with_scope_and_kyc_rules(): void
@@ -829,12 +836,13 @@ final class Module4CreditLoansTest extends TestCase
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
             'tax_rate' => '19.250000',
+            'dossier_fee_tax_rate' => '19.250000',
+            'fee_rate' => '3.000000',
             'insurance_rate' => '2.000000',
             'guarantee_deposit_type' => 'percentage',
             'guarantee_deposit_value' => '10.000000',
             'rules' => [
                 'setup_charges' => [
-                    'dossier_fee_rate' => '3.000000',
                     'tax_base' => 'principal_plus_interest',
                     'guarantee_deposit_collection_method' => 'cash',
                 ],
@@ -859,19 +867,33 @@ final class Module4CreditLoansTest extends TestCase
             ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/assess');
         $this->assertJsonSuccess($assess);
         $assess->assertJsonPath('data.loan.dossier_fees_minor', 6000);
-        $assess->assertJsonPath('data.loan.dossier_fees_tax_minor', 42350);
+        $assess->assertJsonPath('data.loan.dossier_fees_tax_minor', 1155);
+        // Principal 200 000 + 10 % flat interest 20 000 = 220 000 base, taxed at
+        // 19,25 % = 42 350. The dossier-fee VAT is a separate 19,25 % of the
+        // 6 000 fee = 1 155; adding it does not move the credit's own VAT base.
+        $assess->assertJsonPath('data.loan.principal_tax_minor', 42350);
         $assess->assertJsonPath('data.loan.guarantee_deposit_amount_minor', 20000);
         $assess->assertJsonPath('data.loan.insurance_amount_minor', 4000);
+        // Ordered by charge_type, the same order a repeat assessment reads back.
         $assess->assertJsonPath('data.charges.0.charge_type', 'dossier_fee');
         $assess->assertJsonPath('data.charges.0.assessed_amount_minor', 6000);
         $assess->assertJsonPath('data.charges.0.metadata.non_refundable_after', 'setup_approval');
         $assess->assertJsonPath('data.charges.1.charge_type', 'dossier_fee_tax');
-        $assess->assertJsonPath('data.charges.1.base_amount_minor', 220000);
-        $assess->assertJsonPath('data.charges.1.assessed_amount_minor', 42350);
-        $assess->assertJsonPath('data.charges.1.metadata.tax_base', 'principal_plus_interest');
+        $assess->assertJsonPath('data.charges.1.base_amount_minor', 6000);
+        $assess->assertJsonPath('data.charges.1.assessed_amount_minor', 1155);
+        $assess->assertJsonPath('data.charges.1.metadata.tax_base', 'dossier_fee');
         $assess->assertJsonPath('data.charges.2.charge_type', 'guarantee_deposit');
         $assess->assertJsonPath('data.charges.2.assessed_amount_minor', 20000);
         $assess->assertJsonPath('data.charges.2.metadata.cannot_settle_unpaid_loans', true);
+        $assess->assertJsonPath('data.charges.3.charge_type', 'principal_tax');
+        $assess->assertJsonPath('data.charges.3.base_amount_minor', 220000);
+        $assess->assertJsonPath('data.charges.3.assessed_amount_minor', 42350);
+        $assess->assertJsonPath('data.charges.3.metadata.tax_base', 'principal_plus_interest');
+
+        // Repeat assessment returns the identical payload, same order.
+        $repeatPayload = $this->assessSetupCharges($actor, $loan->public_id);
+        $this->assertJsonSuccess($repeatPayload);
+        self::assertSame($assess->json('data.charges'), $repeatPayload->json('data.charges'));
         $assess->assertJsonPath('data.loan_assurance.amount_minor', 4000);
         $assess->assertJsonPath('data.loan_assurance.managed_as_premium', false);
         self::assertNull($assess->json('data.insurance_premium_assessment'));
@@ -888,14 +910,16 @@ final class Module4CreditLoansTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/assess');
         $this->assertJsonSuccess($repeat);
-        self::assertSame(3, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(4, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
         self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
         $feeIncomeLedgerId = $this->createRevenueLedger($agencyId, 'SETUP-FEE');
+        $principalTaxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-PRINCIPAL-TAX');
         $taxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-TAX');
         $guaranteeLiabilityLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-GUAR');
         $this->createSetupChargeMappings([
             'dossier_fee' => $feeIncomeLedgerId,
+            'principal_tax' => $principalTaxPayableLedgerId,
             'dossier_fee_tax' => $taxPayableLedgerId,
             'guarantee_deposit' => $guaranteeLiabilityLedgerId,
         ], 'XAF');
@@ -926,7 +950,7 @@ final class Module4CreditLoansTest extends TestCase
         $chargePublicIds = DB::table('loan_charge_assessments')
             ->where('loan_id', $loan->id)
             ->pluck('public_id', 'charge_type');
-        foreach (['dossier_fee', 'dossier_fee_tax'] as $chargeType) {
+        foreach (['dossier_fee', 'principal_tax', 'dossier_fee_tax'] as $chargeType) {
             $chargePublicId = $chargePublicIds->get($chargeType);
             self::assertIsString($chargePublicId);
 
@@ -961,8 +985,12 @@ final class Module4CreditLoansTest extends TestCase
             'credit_minor' => 6000,
         ]);
         $this->assertDatabaseHas('journal_lines', [
-            'ledger_account_id' => $taxPayableLedgerId,
+            'ledger_account_id' => $principalTaxPayableLedgerId,
             'credit_minor' => 42350,
+        ]);
+        $this->assertDatabaseHas('journal_lines', [
+            'ledger_account_id' => $taxPayableLedgerId,
+            'credit_minor' => 1155,
         ]);
         $this->assertDatabaseHas('journal_lines', [
             'ledger_account_id' => $guaranteeLiabilityLedgerId,
@@ -1011,6 +1039,73 @@ final class Module4CreditLoansTest extends TestCase
         $paidDisbursement->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
     }
 
+    public function test_financed_fees_and_taxes_are_not_assessed_upfront(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR06-FINANCED');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId, [
+            'tax_rate' => '19.250000',
+            'dossier_fee_tax_rate' => '19.250000',
+            'fee_rate' => '3.000000',
+            'rules' => [
+                'installment_charges' => [
+                    'fees' => 'financed',
+                    'tax' => 'financed',
+                ],
+            ],
+        ]);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
+
+        $assess = $this->assessSetupCharges($actor, $loan->public_id);
+        $this->assertJsonSuccess($assess);
+        $assess->assertJsonCount(0, 'data.charges');
+        $assess->assertJsonPath('data.loan.dossier_fees_minor', 6000);
+        $assess->assertJsonPath('data.loan.dossier_fees_tax_minor', 1155);
+        $assess->assertJsonPath('data.loan.principal_tax_minor', 38500);
+
+        $this->assertDatabaseMissing('loan_charge_assessments', [
+            'loan_id' => $loan->id,
+            'charge_type' => 'principal_tax',
+        ]);
+        $this->assertDatabaseMissing('loan_charge_assessments', [
+            'loan_id' => $loan->id,
+            'charge_type' => 'dossier_fee_tax',
+        ]);
+
+        $state = $this->getSetupState($actor, $loan->public_id);
+        $this->assertJsonSuccess($state);
+        $state->assertJsonPath('data.readiness_status', 'ready');
+        $state->assertJsonPath('data.ready_for_disbursement', true);
+
+        // No charge rows were inserted, so the row-based idempotency guard never
+        // arms. Re-assessing must still be a no-op rather than recomputing —
+        // and the only way to observe recomputation when zero rows are written
+        // is to move the rates underneath it and check the stored amounts hold.
+        DB::table('loan_products')->where('id', $product->id)->update([
+            'fee_rate' => '50.000000',
+            'tax_rate' => '50.000000',
+        ]);
+
+        $reassess = $this->assessSetupCharges($actor, $loan->public_id);
+        $this->assertJsonSuccess($reassess);
+        $reassess->assertJsonPath('data.loan.dossier_fees_minor', 6000);
+        $reassess->assertJsonPath('data.loan.dossier_fees_tax_minor', 1155);
+        $reassess->assertJsonPath('data.loan.principal_tax_minor', 38500);
+        self::assertSame(0, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+
+        // And once the loan is live, assessment is closed entirely: flipping the
+        // product back to upfront must not be able to re-bill a borrower who is
+        // already paying these amounts inside the schedule.
+        $loan->forceFill(['status' => Loan::STATUS_ACTIVE])->save();
+        DB::table('loan_products')->where('id', $product->id)->update(['rules' => json_encode([])]);
+
+        $afterDisbursement = $this->assessSetupCharges($actor, $loan->public_id);
+        $afterDisbursement->assertStatus(422);
+        $afterDisbursement->assertJsonValidationErrors(['setup_charges']);
+        self::assertSame(0, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+    }
+
     public function test_direction_can_record_manual_dossier_fee_exception_without_recalculating_formula(): void
     {
         $direction = $this->createUserWithRole('platform-admin');
@@ -1020,9 +1115,10 @@ final class Module4CreditLoansTest extends TestCase
         $transferLedger = $this->createCustomerLiabilityLedger($agencyId, 'DOSS');
         $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger);
         $product = $this->createLoanProduct($agencyId, [
+            'dossier_fee_tax_rate' => '0',
+            'fee_rate' => '3.000000',
             'rules' => [
                 'setup_charges' => [
-                    'dossier_fee_rate' => '3.000000',
                 ],
             ],
         ]);
@@ -1757,18 +1853,21 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR16A');
         $client = $this->createClientRecord($agencyId, 'verified');
+        // 100 000 XAF loan, 55 000 XAF installment. Amounts have to clear the
+        // 1 000 XAF arrears floor for a penalty to be due at all.
         $product = $this->createLoanProduct($agencyId, [
             'penalty_grace_days' => 5,
+            'max_amount_minor' => 100000000,
         ]);
-        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 100000);
+        $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 10000000);
         $loan->forceFill([
             'status' => Loan::STATUS_ACTIVE,
-            'approved_principal_minor' => 100000,
+            'approved_principal_minor' => 10000000,
             'approved_on' => '2026-05-13',
             'disbursed_on' => '2026-05-13',
         ])->save();
         $this->createActiveSchedule($loan->id, [
-            ['due_date' => '2026-05-01', 'principal_minor' => 50000, 'interest_minor' => 5000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
+            ['due_date' => '2026-05-01', 'principal_minor' => 5000000, 'interest_minor' => 500000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
         ]);
 
         config(['formulas.policies.penalties_and_arrears.approved' => false]);
@@ -1804,14 +1903,16 @@ final class Module4CreditLoansTest extends TestCase
             ]);
 
         $this->assertJsonSuccess($assessed);
-        $assessed->assertJsonPath('data.assessed_penalty_minor', 6100);
-        $assessed->assertJsonPath('data.arrears.0.original_due_minor', 55000);
-        $assessed->assertJsonPath('data.arrears.0.unpaid_minor', 55000);
-        $assessed->assertJsonPath('data.arrears.0.penalty_base_minor', 55000);
+        // Hybrid rule: 5 000 XAF fixed + 2 % of the 55 000 XAF unpaid
+        // (= 1 100 XAF), i.e. 610 000 minor units at the account scale.
+        $assessed->assertJsonPath('data.assessed_penalty_minor', 610000);
+        $assessed->assertJsonPath('data.arrears.0.original_due_minor', 5500000);
+        $assessed->assertJsonPath('data.arrears.0.unpaid_minor', 5500000);
+        $assessed->assertJsonPath('data.arrears.0.penalty_base_minor', 5500000);
         $this->assertDatabaseHas('loan_schedule_lines', [
             'loan_schedule_snapshot_id' => DB::table('loan_schedule_snapshots')->where('loan_id', $loan->id)->value('id'),
-            'penalty_minor' => 6100,
-            'total_installment_minor' => 61100,
+            'penalty_minor' => 610000,
+            'total_installment_minor' => 6110000,
         ]);
         self::assertSame(0, DB::table('journal_entries')->where('source_type', 'loan_penalty_assessment')->count());
         $sameMonthRepeat = $this->withApiHeaders()
@@ -1833,27 +1934,30 @@ final class Module4CreditLoansTest extends TestCase
         $actor = $this->createUserWithRole('platform-admin');
         $agencyId = $this->createAgency('CR-B1');
         $otherAgencyId = $this->createAgency('CR-B2');
-        $product = $this->createLoanProduct($agencyId, ['penalty_grace_days' => 5]);
-        $otherProduct = $this->createLoanProduct($otherAgencyId, ['penalty_grace_days' => 5]);
+        // 100 000 XAF loans, 55 000 XAF installments: above the 1 000 XAF floor
+        // below which no penalty is assessed.
+        $bounds = ['penalty_grace_days' => 5, 'max_amount_minor' => 100000000];
+        $product = $this->createLoanProduct($agencyId, $bounds);
+        $otherProduct = $this->createLoanProduct($otherAgencyId, $bounds);
 
-        $loan = $this->createLoanApplication($agencyId, $this->createClient($agencyId), $product->id, 100000);
+        $loan = $this->createLoanApplication($agencyId, $this->createClient($agencyId), $product->id, 10000000);
         $loan->forceFill([
             'status' => Loan::STATUS_DISBURSED,
-            'approved_principal_minor' => 100000,
+            'approved_principal_minor' => 10000000,
             'disbursed_on' => '2026-04-03',
         ])->save();
         $this->createActiveSchedule($loan->id, [
-            ['due_date' => '2026-05-01', 'principal_minor' => 50000, 'interest_minor' => 5000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
+            ['due_date' => '2026-05-01', 'principal_minor' => 5000000, 'interest_minor' => 500000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
         ]);
 
-        $otherLoan = $this->createLoanApplication($otherAgencyId, $this->createClient($otherAgencyId), $otherProduct->id, 100000);
+        $otherLoan = $this->createLoanApplication($otherAgencyId, $this->createClient($otherAgencyId), $otherProduct->id, 10000000);
         $otherLoan->forceFill([
             'status' => Loan::STATUS_DISBURSED,
-            'approved_principal_minor' => 100000,
+            'approved_principal_minor' => 10000000,
             'disbursed_on' => '2026-04-03',
         ])->save();
         $this->createActiveSchedule($otherLoan->id, [
-            ['due_date' => '2026-05-01', 'principal_minor' => 50000, 'interest_minor' => 5000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
+            ['due_date' => '2026-05-01', 'principal_minor' => 5000000, 'interest_minor' => 500000, 'fees_minor' => 0, 'insurance_minor' => 0, 'tax_minor' => 0],
         ]);
 
         $procedure = BatchProcedure::query()->create([
@@ -1880,10 +1984,11 @@ final class Module4CreditLoansTest extends TestCase
         $response->assertJsonPath('data.status', BatchRun::STATUS_SUCCEEDED);
         $response->assertJsonPath('data.summary_payload.assessed_loans', 1);
         $response->assertJsonPath('data.summary_payload.loans_with_new_penalties', 1);
-        $response->assertJsonPath('data.summary_payload.assessed_penalty_minor', 6100);
+        // Hybrid rule: 5 000 XAF fixed + 2 % of the 55 000 XAF unpaid = 6 100 XAF.
+        $response->assertJsonPath('data.summary_payload.assessed_penalty_minor', 610000);
         $this->assertDatabaseHas('loan_schedule_lines', [
             'loan_schedule_snapshot_id' => DB::table('loan_schedule_snapshots')->where('loan_id', $loan->id)->value('id'),
-            'penalty_minor' => 6100,
+            'penalty_minor' => 610000,
         ]);
         $this->assertDatabaseHas('loan_schedule_lines', [
             'loan_schedule_snapshot_id' => DB::table('loan_schedule_snapshots')->where('loan_id', $otherLoan->id)->value('id'),
@@ -2451,6 +2556,11 @@ final class Module4CreditLoansTest extends TestCase
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '12.000000',
             'due_date_day' => 15,
+            'rules' => [
+                'installment_charges' => [
+                    'tax' => 'financed',
+                ],
+            ],
         ]);
         $loan = $this->createLoanApplication($agencyId, $client['id'], $product->id, 200000);
         $loan->forceFill([
@@ -2499,9 +2609,9 @@ final class Module4CreditLoansTest extends TestCase
         $generated->assertJsonPath('data.snapshot.lines.0.interest_minor', 6000);
         $generated->assertJsonPath('data.snapshot.lines.0.fees_minor', 0);
         $generated->assertJsonPath('data.snapshot.lines.0.insurance_minor', 0);
-        $generated->assertJsonPath('data.snapshot.lines.0.tax_minor', 0);
+        $generated->assertJsonPath('data.snapshot.lines.0.tax_minor', 200);
         $generated->assertJsonPath('data.snapshot.lines.0.remaining_principal_minor', 150000);
-        $generated->assertJsonPath('data.snapshot.lines.0.total_installment_minor', 56000);
+        $generated->assertJsonPath('data.snapshot.lines.0.total_installment_minor', 56200);
         $generated->assertJsonPath('data.snapshot.lines.3.remaining_principal_minor', 0);
 
         $repeat = $this->withApiHeaders()
@@ -3148,6 +3258,7 @@ final class Module4CreditLoansTest extends TestCase
     {
         $code = match ($chargeType) {
             'dossier_fee' => 'loan_setup_dossier_fee',
+            'principal_tax' => 'loan_setup_principal_tax',
             'dossier_fee_tax' => 'loan_setup_tax',
             'guarantee_deposit' => 'loan_setup_guarantee_deposit',
             default => self::fail('Unsupported setup charge type '.$chargeType),
@@ -3494,12 +3605,13 @@ final class Module4CreditLoansTest extends TestCase
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
             'tax_rate' => '19.250000',
+            'dossier_fee_tax_rate' => '19.250000',
+            'fee_rate' => '3.000000',
             'insurance_rate' => '2.000000',
             'guarantee_deposit_type' => 'percentage',
             'guarantee_deposit_value' => '10.000000',
             'rules' => [
                 'setup_charges' => [
-                    'dossier_fee_rate' => '3.000000',
                     'tax_base' => 'principal_plus_interest',
                     'guarantee_deposit_collection_method' => 'cash',
                 ],
@@ -3531,7 +3643,7 @@ final class Module4CreditLoansTest extends TestCase
         // Assess, and prove repeated assessment is idempotent (no duplicate rows).
         $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
         $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
-        self::assertSame(3, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(4, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
         self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
         // After assessment: all assessed setup charges are visible and blocking.
@@ -3543,7 +3655,7 @@ final class Module4CreditLoansTest extends TestCase
         $assessed->assertJsonPath('data.loan_assurance.managed_as_premium', false);
         $charges = $assessed->json('data.setup_charges');
         self::assertIsArray($charges);
-        self::assertCount(3, $charges);
+        self::assertCount(4, $charges);
         foreach ($charges as $charge) {
             self::assertIsArray($charge);
             self::assertSame('assessed', $charge['status']);
@@ -3573,10 +3685,12 @@ final class Module4CreditLoansTest extends TestCase
 
         // Wire ledgers/mappings/accounts/session and approve the loan.
         $feeIncomeLedgerId = $this->createRevenueLedger($agencyId, 'SETUP-FEE');
+        $principalTaxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-PRINCIPAL-TAX');
         $taxPayableLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-TAX');
         $guaranteeLiabilityLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-GUAR');
         $this->createSetupChargeMappings([
             'dossier_fee' => $feeIncomeLedgerId,
+            'principal_tax' => $principalTaxPayableLedgerId,
             'dossier_fee_tax' => $taxPayableLedgerId,
             'guarantee_deposit' => $guaranteeLiabilityLedgerId,
         ], 'XAF');
@@ -3600,9 +3714,11 @@ final class Module4CreditLoansTest extends TestCase
 
         $chargePublicIds = DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->pluck('public_id', 'charge_type');
         $feeChargePublicId = $chargePublicIds->get('dossier_fee');
+        $principalTaxChargePublicId = $chargePublicIds->get('principal_tax');
         $taxChargePublicId = $chargePublicIds->get('dossier_fee_tax');
         $guaranteeChargePublicId = $chargePublicIds->get('guarantee_deposit');
         self::assertIsString($feeChargePublicId);
+        self::assertIsString($principalTaxChargePublicId);
         self::assertIsString($taxChargePublicId);
         self::assertIsString($guaranteeChargePublicId);
 
@@ -3619,7 +3735,8 @@ final class Module4CreditLoansTest extends TestCase
         self::assertIsString($paidCharge['journal_entry_public_id']);
         self::assertTrue($this->chargeByType($afterOne->json('data.setup_charges'), 'dossier_fee_tax')['blocking_disbursement']);
 
-        // Collect the rest: tax from account and guarantee from cash. Loan assurance is not a premium collection step.
+        // Collect the rest: both taxes from account and guarantee from cash. Loan assurance is not a premium collection step.
+        $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $principalTaxChargePublicId, $collectionAccount['public_id'], 'collect-principal_tax'));
         $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $taxChargePublicId, $collectionAccount['public_id'], 'collect-dossier_fee_tax'));
         $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/'.$guaranteeChargePublicId.'/collect', [
@@ -3659,9 +3776,10 @@ final class Module4CreditLoansTest extends TestCase
         $client = $this->createClientRecord($agencyId, 'verified');
         $product = $this->createLoanProduct($agencyId, [
             'interest_rate' => '10.000000',
+            'dossier_fee_tax_rate' => '0',
+            'fee_rate' => '3.000000',
             'rules' => [
                 'setup_charges' => [
-                    'dossier_fee_rate' => '3.000000',
                 ],
             ],
         ]);
@@ -3721,7 +3839,8 @@ final class Module4CreditLoansTest extends TestCase
         $loanAgencyId = $this->createAgency('CR06X');
         $client = $this->createClientRecord($loanAgencyId, 'verified');
         $product = $this->createLoanProduct($loanAgencyId, [
-            'rules' => ['setup_charges' => ['dossier_fee_rate' => '3.000000']],
+            'fee_rate' => '3.000000',
+            'rules' => ['setup_charges' => []],
         ]);
         $loan = Loan::query()->create([
             'public_id' => (string) Str::ulid(),
@@ -3906,7 +4025,8 @@ final class Module4CreditLoansTest extends TestCase
         $agencyId = $this->createAgency('MAPSC');
         $client = $this->createClientRecord($agencyId, 'verified');
         $product = $this->createLoanProduct($agencyId, [
-            'rules' => ['setup_charges' => ['dossier_fee_rate' => '3.000000']],
+            'fee_rate' => '3.000000',
+            'rules' => ['setup_charges' => []],
         ]);
         $loan = Loan::query()->create([
             'public_id' => (string) Str::ulid(),
@@ -4023,7 +4143,7 @@ final class Module4CreditLoansTest extends TestCase
 
         // Configure approved mappings for every loan posting operation.
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
-        foreach (['loan_setup_dossier_fee', 'loan_setup_tax', 'loan_setup_guarantee_deposit'] as $code) {
+        foreach (['loan_setup_dossier_fee', 'loan_setup_principal_tax', 'loan_setup_tax', 'loan_setup_guarantee_deposit'] as $code) {
             $this->createOperationMapping($code, 'loan', $agency, null, $this->createLedgerAccount($agency)['id']);
         }
 

@@ -60,7 +60,7 @@ final class AssessLoanArrearsAndPenalties
             $arrears = [];
             $snapshotProductTerms = $this->snapshotProductTerms($lockedLoan);
             $graceDays = $this->graceDays($lockedLoan, $snapshotProductTerms);
-            $penaltyTerms = $this->penaltyTermsResolver->resolve($snapshotProductTerms, $lockedLoan->loanProduct);
+            $penaltyTerms = $this->penaltyTermsResolver->resolve();
 
             $lines = LoanScheduleLine::query()
                 ->where('loan_schedule_snapshot_id', $snapshot->id)
@@ -214,12 +214,19 @@ final class AssessLoanArrearsAndPenalties
         };
     }
 
+    /**
+     * The rounding mode has to be on `dividedBy`, not on a following `toScale`.
+     * Without a scale, `dividedBy` inherits the operand's and rounds with
+     * UNNECESSARY, throwing before the HALF_UP is ever consulted. The penalty
+     * rate is the scale-0 string '2', so every unpaid base that is not a
+     * multiple of 50 raised RoundingNecessaryException — a RuntimeException,
+     * which aborts the whole monthly arrears batch rather than one loan.
+     */
     private function percentOf(int $baseMinor, string $rate): int
     {
         return BigDecimal::of((string) $baseMinor)
             ->multipliedBy(BigDecimal::of($rate))
-            ->dividedBy('100')
-            ->toScale(0, RoundingMode::HALF_UP)
+            ->dividedBy('100', 0, RoundingMode::HALF_UP)
             ->toInt();
     }
 
@@ -302,11 +309,17 @@ final class AssessLoanArrearsAndPenalties
         return is_array($terms) ? $terms : null;
     }
 
+    /** 1 000 XAF at the account scale — see the config entry for the source. */
+    private const int DEFAULT_MINIMUM_UNPAID_AMOUNT_MINOR = 100000;
+
     private function minimumUnpaidAmountMinor(): int
     {
-        $value = config('formulas.policies.penalties_and_arrears.rules.monthly_arrears_penalty.minimum_unpaid_amount_minor', 1000);
+        $value = config(
+            'formulas.policies.penalties_and_arrears.rules.monthly_arrears_penalty.minimum_unpaid_amount_minor',
+            self::DEFAULT_MINIMUM_UNPAID_AMOUNT_MINOR,
+        );
 
-        return is_int($value) ? $value : 1000;
+        return is_int($value) ? $value : self::DEFAULT_MINIMUM_UNPAID_AMOUNT_MINOR;
     }
 
     private function dateString(mixed $value): string

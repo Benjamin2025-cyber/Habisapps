@@ -5,6 +5,7 @@ return [
     'provide_linked_account_field' => 'Fournissez au moins un champ de compte lié : :fields.',
     'setup_charges_must_be_collected' => 'Les frais de mise en place doivent être encaissés avant le déboursement : :types.',
     'unsupported_setup_charge_type' => 'Type de frais de mise en place non pris en charge : :type.',
+    'setup_charges_not_assessable_after_disbursement' => 'Les frais de mise en place ne peuvent être évalués qu’avant le déboursement.',
     'unsupported_repayment_component' => 'Composante de remboursement de prêt non prise en charge : :component.',
     'credit_ledger_mapping_required' => 'Un mappage de grand livre de crédit actif est requis pour :code.',
     'amount_must_be_integer' => ':field doit être un montant entier.',

@@ -372,9 +372,6 @@ CREATE TABLE public.account_products (
     account_family character varying(64) NOT NULL,
     minimum_balance_minor bigint DEFAULT '0'::bigint NOT NULL,
     currency character varying(3) DEFAULT 'XAF'::character varying NOT NULL,
-    allows_recovery_debit boolean DEFAULT false NOT NULL,
-    is_recovery_account boolean DEFAULT false NOT NULL,
-    is_ordinary_savings boolean DEFAULT false NOT NULL,
     status character varying(32) DEFAULT 'active'::character varying NOT NULL,
     rules json,
     created_at timestamp(0) without time zone,
@@ -3714,17 +3711,13 @@ CREATE TABLE public.loan_products (
     interest_rate numeric(12,6),
     tax_rate numeric(12,6),
     insurance_rate numeric(12,6),
-    fee_amount_minor bigint,
-    floor_amount_minor bigint,
+    fee_rate numeric(12,6),
     tax_policy_key character varying(128),
     insurance_policy_key character varying(128),
     guarantee_deposit_policy_key character varying(128),
     guarantee_deposit_type character varying(32),
     guarantee_deposit_value numeric(18,6),
-    penalty_formula_type character varying(64),
-    penalty_formula_base character varying(64),
-    penalty_value_type character varying(32),
-    penalty_value numeric(18,6),
+    dossier_fee_tax_rate numeric(12,6) DEFAULT 19.25::numeric,
     operation_type character varying(64),
     constant_value numeric(18,6),
     rules json,
@@ -4126,6 +4119,7 @@ CREATE TABLE public.loans (
     total_loan_duration smallint,
     dossier_fees_minor bigint,
     dossier_fees_tax_minor bigint,
+    principal_tax_minor bigint,
     guarantee_deposit_amount_minor bigint,
     insurance_amount_minor bigint,
     outstanding_principal_minor bigint,
@@ -4142,7 +4136,7 @@ CREATE TABLE public.loans (
     capitalized_interest_minor bigint DEFAULT '0'::bigint NOT NULL,
     cumulative_capitalized_interest_minor bigint DEFAULT '0'::bigint NOT NULL,
     CONSTRAINT loans_approved_principal_positive CHECK (((approved_principal_minor IS NULL) OR (approved_principal_minor > 0))),
-    CONSTRAINT loans_projection_amounts_non_negative CHECK ((((dossier_fees_minor IS NULL) OR (dossier_fees_minor >= 0)) AND ((dossier_fees_tax_minor IS NULL) OR (dossier_fees_tax_minor >= 0)) AND ((guarantee_deposit_amount_minor IS NULL) OR (guarantee_deposit_amount_minor >= 0)) AND ((insurance_amount_minor IS NULL) OR (insurance_amount_minor >= 0)) AND ((outstanding_principal_minor IS NULL) OR (outstanding_principal_minor >= 0)) AND ((installment_amount_minor IS NULL) OR (installment_amount_minor >= 0)) AND ((total_unpaid_amount_minor IS NULL) OR (total_unpaid_amount_minor >= 0)) AND ((due_amount_minor IS NULL) OR (due_amount_minor >= 0)))),
+    CONSTRAINT loans_projection_amounts_non_negative CHECK ((((dossier_fees_minor IS NULL) OR (dossier_fees_minor >= 0)) AND ((dossier_fees_tax_minor IS NULL) OR (dossier_fees_tax_minor >= 0)) AND ((principal_tax_minor IS NULL) OR (principal_tax_minor >= 0)) AND ((guarantee_deposit_amount_minor IS NULL) OR (guarantee_deposit_amount_minor >= 0)) AND ((insurance_amount_minor IS NULL) OR (insurance_amount_minor >= 0)) AND ((outstanding_principal_minor IS NULL) OR (outstanding_principal_minor >= 0)) AND ((installment_amount_minor IS NULL) OR (installment_amount_minor >= 0)) AND ((total_unpaid_amount_minor IS NULL) OR (total_unpaid_amount_minor >= 0)) AND ((due_amount_minor IS NULL) OR (due_amount_minor >= 0)))),
     CONSTRAINT loans_requested_amount_positive CHECK ((requested_amount_minor > 0)),
     CONSTRAINT loans_sub_sector_requires_sector CHECK (((sub_sector_id IS NULL) OR (sector_id IS NOT NULL)))
 );
@@ -12973,6 +12967,10 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 80	2026_05_20_030000_extend_islamic_finance_for_murabaha	1
 81	2026_05_20_040000_extend_insurance_for_product_rules_and_lifecycle	1
 82	2026_05_21_210000_reconcile_insurance_product_columns	1
+83	2026_08_15_050329_make_the_dossier_fee_a_rate	3
+84	2026_08_18_200937_drop_unused_classification_flags_from_account_products	4
+85	2026_08_23_082855_rework_loan_product_penalties_and_dossier_fee_tax	5
+86	2026_08_23_095458_add_principal_tax_minor_to_loans_table	5
 \.
 
 
@@ -12980,7 +12978,7 @@ COPY public.migrations (id, migration, batch) FROM stdin;
 -- Name: migrations_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.migrations_id_seq', 82, true);
+SELECT pg_catalog.setval('public.migrations_id_seq', 86, true);
 
 
 --
@@ -12988,4 +12986,3 @@ SELECT pg_catalog.setval('public.migrations_id_seq', 82, true);
 --
 
 \unrestrict 7PIFU7PzIDd0ssofcCgdKdj4Iyjxh4Y3iAEQ3jCdvesfADPUSYXT4YpoHgKJjen
-

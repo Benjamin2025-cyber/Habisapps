@@ -126,7 +126,7 @@ final class LoanSetupChargeWorkflow extends BaseController
             $charge = DB::table('loan_charge_assessments')
                 ->where('loan_id', $loan->id)
                 ->where('public_id', $chargePublicId)
-                ->whereIn('charge_type', ['dossier_fee', 'dossier_fee_tax'])
+                ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax'])
                 ->lockForUpdate()
                 ->first();
 
@@ -155,7 +155,7 @@ final class LoanSetupChargeWorkflow extends BaseController
         });
 
         if (! is_object($charge)) {
-            return $this->respondUnprocessable(errors: ['setup_charge' => [__('Direction setup charge decisions apply only to assessed dossier fee or dossier fee tax charges on this loan.')]]);
+            return $this->respondUnprocessable(errors: ['setup_charge' => [__('Direction setup charge decisions apply only to assessed dossier fee, principal tax, or dossier fee tax charges on this loan.')]]);
         }
 
         $this->securityAudit->record('loan.setup_charge_exception.decided', actor: $actor, subject: $loan, properties: [
@@ -194,7 +194,7 @@ final class LoanSetupChargeWorkflow extends BaseController
                 $charge = DB::table('loan_charge_assessments')
                     ->where('loan_id', $loan->id)
                     ->where('public_id', $chargePublicId)
-                    ->whereIn('charge_type', ['dossier_fee', 'dossier_fee_tax', 'guarantee_deposit'])
+                    ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'guarantee_deposit'])
                     ->lockForUpdate()
                     ->first();
 
@@ -570,6 +570,7 @@ final class LoanSetupChargeWorkflow extends BaseController
     {
         $operationCode = match ($chargeType) {
             'dossier_fee' => 'loan_setup_dossier_fee',
+            'principal_tax' => 'loan_setup_principal_tax',
             'dossier_fee_tax' => 'loan_setup_tax',
             'guarantee_deposit' => 'loan_setup_guarantee_deposit',
             default => throw new InvalidArgumentException(__('loans.unsupported_setup_charge_type', ['type' => $chargeType])),

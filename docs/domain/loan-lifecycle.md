@@ -90,18 +90,19 @@ Implemented setup assessment behavior:
 
 - `POST /api/v1/loans/{loan}/setup-charges/assess` assesses setup charges once and returns the existing assessment on repeat calls.
 - The action requires the `fees_taxes_insurance` formula policy gate to be approved.
-- Dossier fees, setup tax, and guarantee deposit are stored in `loan_charge_assessments`.
+- Dossier fees, principal VAT, dossier-fee VAT, and guarantee deposit are stored in `loan_charge_assessments` when they are collected upfront.
 - The normal dossier fee rule is 3% of granted principal, assessed at setup approval/credit committee validation, collected separately before disbursement, and non-refundable after setup approval.
 - Exceptional dossier-fee cases such as cancellation during setup, waiver, refund, reversal, or recalculation require Direction manual decision. Do not automate these edge cases with formulas.
 - V1 loan setup does not create insurance subscriptions, premium assessments, or premium payments. Those belong to the future bancassurance module.
 - A configured loan product `insurance_rate` is retained only as a loan-level assurance calculation stored on the loan; it is not a premium workflow and does not create a collection step.
-- Product `rules.setup_charges.dossier_fee_rate` configures the dossier fee rate.
-- Product `rules.setup_charges.tax_base` configures the setup tax base; the stakeholder-approved default is `principal_plus_interest`, meaning granted principal plus total flat interest. Legacy supported values are `dossier_fee` and `principal`.
+- `fee_rate` is the only source for the dossier-fee rate; the legacy `rules.setup_charges.dossier_fee_rate` value is ignored.
+- `tax_rate` is VAT on the credit itself and keeps the stakeholder-approved base: granted principal plus total flat interest. `dossier_fee_tax_rate` is a separate VAT on the computed dossier fee only. They are assessed upfront by default as two distinct charges, `principal_tax` and `dossier_fee_tax`. Adding the dossier-fee VAT does not move the credit VAT base.
+- A product may explicitly mark `rules.installment_charges.fees`, `tax`, or `insurance` as `financed` or `periodic`; that component is then omitted from upfront setup charges and spread into the schedule.
 - Product `rules.insurance.full_module_enabled` and `rules.insurance.insurance_product_public_id` are not part of the v1 loan workflow. A future bancassurance integration must define its own UI/API contract before those concepts are reintroduced.
 - Guarantee deposit is 10% of granted principal by product rate, collected in cash before disbursement by default, held as restricted guarantee money, released only after full settlement, and never used to settle unpaid loans.
 - Loan insurance is 2% of granted principal by product rate, assessed upfront, and non-refundable on early closure.
 - `POST /api/v1/loans/{loan}/setup-charges/{chargePublicId}/collect` posts non-insurance setup-charge collection before disbursement, either from an active same-client customer account or from an open teller cash session with an active till.
-- Setup-charge collection uses active `loan` operation account mappings for `loan_setup_dossier_fee`, `loan_setup_tax`, and `loan_setup_guarantee_deposit`; missing mappings fail closed before posting.
+- Setup-charge collection uses active `loan` operation account mappings for `loan_setup_dossier_fee`, `loan_setup_principal_tax`, `loan_setup_tax`, and `loan_setup_guarantee_deposit`; missing mappings fail closed before posting.
 - Teller-cash setup-charge collection creates a linked teller transaction and debits the till cash ledger directly.
 - Loan setup-charge collection uses active loan operation account mappings for dossier fee, setup tax, and guarantee deposit. There is no v1 `loan_insurance_premium` posting requirement.
 - Full insurance operations expose `POST /api/v1/insurance-partners`, `POST /api/v1/insurance-products`, `POST /api/v1/insurance-subscriptions`, `POST /api/v1/insurance-claims`, and `POST /api/v1/insurance-claims/{claimPublicId}/decision`.
@@ -118,7 +119,7 @@ Loan products define:
 - fees
 - insurance
 - guarantee deposit
-- penalty formula
+- penalty grace days (the penalty formula itself is universal — see the arrears section)
 - grace period rules
 - linked ledger accounts
 
@@ -177,7 +178,7 @@ Implemented schedule behavior:
 - Only approved loans can generate schedules.
 - The first implementation uses flat interest on initial/approved principal and equal per-installment components.
 - Standard flat-interest schedules do not prorate partial months and do not need day-count calculation.
-- Principal and flat interest are split equally across installments. Upfront dossier fee, setup tax, and borrower insurance stay in their setup assessment/payment workflows and are not spread into standard installments unless a product explicitly marks a component as financed or periodic.
+- Principal and flat interest are split equally across installments. Dossier fees, VAT, and borrower insurance stay in their setup assessment/payment workflows and are not spread into standard installments unless a product explicitly marks a component as financed or periodic. Financed or periodic components are not also assessed upfront.
 - Repeating generation for the same loan and policy snapshot hash returns the existing active schedule instead of duplicating lines.
 
 Required update from the latest stakeholder clarification:

@@ -29,7 +29,7 @@ final class LoanSetupState
     public const string STATUS_READY = 'ready';
 
     /** @var array<int, string> */
-    private const array CHARGE_TYPES = ['dossier_fee', 'dossier_fee_tax', 'guarantee_deposit'];
+    private const array CHARGE_TYPES = ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'guarantee_deposit'];
 
     /** @var array<int, string> */
     private const array COLLECTED_STATUSES = ['paid', 'collected', 'posted'];
@@ -142,7 +142,11 @@ final class LoanSetupState
 
         $hasAssessedCharges = $chargeRows->contains(fn (object $row): bool => $this->intValue($this->field($row, 'assessed_amount_minor')) > 0);
         $loanAssuranceAmount = $loan->insurance_amount_minor ?? 0;
-        $missingAssessment = $setupRequired && ! $hasAssessedCharges && $loanAssuranceAmount <= 0;
+        $financedSetupAmount = $this->financedSetupAmount($loan, $product);
+        $missingAssessment = $setupRequired
+            && ! $hasAssessedCharges
+            && $loanAssuranceAmount <= 0
+            && $financedSetupAmount <= 0;
 
         [$status, $ready] = $this->resolveStatus($setupRequired, $missingAssessment, $blockingChargeTypes);
 
@@ -162,6 +166,26 @@ final class LoanSetupState
                 'managed_as_premium' => false,
             ],
         ];
+    }
+
+    private function financedSetupAmount(Loan $loan, ?LoanProduct $product): int
+    {
+        if (! $product instanceof LoanProduct) {
+            return 0;
+        }
+
+        $amount = 0;
+        if ($product->isInstallmentComponentFinanced('fees')) {
+            $amount += $loan->dossier_fees_minor ?? 0;
+        }
+        if ($product->isInstallmentComponentFinanced('tax')) {
+            $amount += ($loan->principal_tax_minor ?? 0) + ($loan->dossier_fees_tax_minor ?? 0);
+        }
+        if ($product->isInstallmentComponentFinanced('insurance')) {
+            $amount += $loan->insurance_amount_minor ?? 0;
+        }
+
+        return $amount;
     }
 
     /**

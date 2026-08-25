@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * The four loan posting operations the application resolves *by name* — see
+ * The loan posting operations the application resolves *by name* — see
  * OperationAccountMappingController::READINESS_OPERATIONS, which names each one
  * as a string constant and reports it as a disbursement blocker when missing.
  *
@@ -18,6 +18,10 @@ use Illuminate\Support\Str;
  * catalogue and no way to disburse a loan: the mapping form had nothing to pick,
  * and the codes had to be typed by hand with spelling that matched the source
  * exactly or the mapping silently resolved to nothing.
+ *
+ * Wired into DatabaseSeeder and into the deploy workflow, because adding a code
+ * here is worthless if nothing runs it: an existing install would assess the new
+ * charge, fail to resolve its mapping, and hold the loan out of disbursement.
  *
  * The mappings themselves stay manual — which ledger account an institution
  * debits is its own chart decision, and guessing one would be worse than asking.
@@ -31,6 +35,7 @@ final class LoanOperationCodeSeeder extends Seeder
     private const array CODES = [
         ['code' => 'loan_principal_disbursement', 'label' => 'Décaissement du principal', 'direction' => 'debit'],
         ['code' => 'loan_setup_dossier_fee', 'label' => 'Frais de dossier', 'direction' => 'credit'],
+        ['code' => 'loan_setup_principal_tax', 'label' => 'TVA sur le principal', 'direction' => 'credit'],
         ['code' => 'loan_setup_tax', 'label' => 'Taxe sur frais de dossier', 'direction' => 'credit'],
         ['code' => 'loan_setup_guarantee_deposit', 'label' => 'Dépôt de garantie', 'direction' => 'credit'],
     ];

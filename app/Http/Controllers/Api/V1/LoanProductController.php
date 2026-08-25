@@ -56,7 +56,7 @@ final class LoanProductController extends BaseController
 
     public function store(StoreLoanProductRequest $request): JsonResponse
     {
-        $policyErrors = $this->formulaPolicySnapshotter->approvalErrors($request->validated());
+        $policyErrors = $this->formulaPolicySnapshotter->approvalErrors(LoanProduct::attachedPolicyAttributes());
         if ($policyErrors !== []) {
             return $this->respondUnprocessable(errors: $policyErrors);
         }
@@ -85,11 +85,15 @@ final class LoanProductController extends BaseController
 
     public function update(UpdateLoanProductRequest $request, LoanProduct $loanProduct): JsonResponse
     {
+        // Deliberately not gated on formula-policy approval, unlike store().
+        // The policy set is model-imposed and identical for every product, so
+        // the gate is a pure function of config: no payload can satisfy it and
+        // no edit can make it worse. Applying it here would refuse a rename or
+        // a status correction on every existing product the moment a gate is
+        // un-approved — while destroy() writes through the same saving() hook
+        // regardless. Creation is where an unapproved set is newly attached, and
+        // loan creation is still fail-closed via the snapshotter.
         $validated = $request->validated();
-        $policyErrors = $this->formulaPolicySnapshotter->approvalErrors($validated);
-        if ($policyErrors !== []) {
-            return $this->respondUnprocessable(errors: $policyErrors);
-        }
 
         $rangeErrors = $this->combinedRangeErrors($loanProduct, $validated);
         if ($rangeErrors !== []) {

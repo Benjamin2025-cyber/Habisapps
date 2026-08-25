@@ -5,6 +5,7 @@ return [
     'provide_linked_account_field' => 'Provide at least one linked-account field: :fields.',
     'setup_charges_must_be_collected' => 'Setup charges must be collected before disbursement: :types.',
     'unsupported_setup_charge_type' => 'Unsupported setup charge type: :type.',
+    'setup_charges_not_assessable_after_disbursement' => 'Setup charges can only be assessed before disbursement.',
     'unsupported_repayment_component' => 'Unsupported loan repayment component: :component.',
     'credit_ledger_mapping_required' => 'Active credit ledger mapping is required for :code.',
     'amount_must_be_integer' => ':field must be an integer amount.',

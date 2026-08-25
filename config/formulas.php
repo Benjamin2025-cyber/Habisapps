@@ -92,10 +92,22 @@ return [
                     'refund_policy' => 'non_refundable_after_setup_approval',
                     'exception_policy' => 'direction_manual_decision',
                 ],
+                // Two distinct taxes, two distinct bases. `setup_tax` is the VAT
+                // on the credit itself and keeps the stakeholder-approved base
+                // (granted principal plus total flat interest);
+                // `dossier_fee_tax` is the VAT on the dossier fee alone.
                 'setup_tax' => [
                     'approved' => true,
                     'rate_percent' => '19.25',
                     'base' => 'granted_principal_plus_total_flat_interest',
+                    'assessment_timing' => 'upfront_setup',
+                    'rounding_policy' => 'exact_account_precision_no_cash_rounding',
+                    'accounting_timing' => 'setup',
+                ],
+                'dossier_fee_tax' => [
+                    'approved' => true,
+                    'rate_percent' => '19.25',
+                    'base' => 'calculated_dossier_fee',
                     'assessment_timing' => 'upfront_setup',
                     'rounding_policy' => 'exact_account_precision_no_cash_rounding',
                     'accounting_timing' => 'setup',
@@ -122,16 +134,31 @@ return [
             ],
         ],
         'penalties_and_arrears' => [
-            'approved' => false,
-            'owner' => null,
-            'approved_at' => null,
+            'approved' => true,
+            'owner' => 'Credit',
+            'approved_at' => '2026-08-23',
             'rules' => [
                 'monthly_arrears_penalty' => [
                     'approved' => true,
-                    'fixed_amount_minor' => 5000,
+                    // The accounting team's formula, one and the same for every
+                    // credit: « Le type de valeur de pénalité est hybride et
+                    // c'est le même principe pour tous les crédits. Il y'a une
+                    // partie fixe 5.000 FCFA et une partie variable 2% du
+                    // montant impayé. » Both components apply together; there
+                    // is no per-product choice.
+                    //
+                    // 5 000 FCFA is 500 000 minor units at the account scale
+                    // (`money.default_scale`, 2) — writing 5000 here would
+                    // charge 50 FCFA.
+                    'fixed_amount_minor' => 500000,
                     'variable_rate_percent' => '2',
                     'base' => 'unpaid_scheduled_due_excluding_prior_penalties',
-                    'minimum_unpaid_amount_minor' => 1000,
+                    // « Do not penalize unpaid amounts below 1,000 XAF »
+                    // (stakeholder-formula-items-to-explain.md §6). 1 000 XAF at
+                    // the account scale is 100 000 minor units. This floor is
+                    // what stops a 5 000 XAF flat penalty landing on a residue
+                    // of a few francs.
+                    'minimum_unpaid_amount_minor' => 100000,
                     'frequency' => 'monthly',
                     'trigger' => 'after_5_grace_days_on_monthly_arrears_batch',
                     'prior_penalties_remain_due' => true,
@@ -190,7 +217,9 @@ return [
                 'reversal_policy' => 'original_entry_kept_reversal_entry_posts_opposite_effect',
                 'available_balance_formula' => 'accounting_balance - minimum_balance - unavailable_amount - active_holds',
                 'pending_withdrawal_policy' => 'reduce_available_balance_only_when_recorded_as_active_hold_or_unavailable_amount',
-                'ordinary_savings_minimum_balance_minor' => 5000,
+                // 5 000 XAF (stakeholder-formula-items-to-explain.md §19), which
+                // is 500 000 minor units at the account scale.
+                'ordinary_savings_minimum_balance_minor' => 500000,
                 'current_account_minimum_balance_minor' => 0,
                 'accounting_movement_date_basis' => 'business_date',
                 'operational_movement_date_basis' => 'transaction_date_when_available',
