@@ -71,6 +71,16 @@ final class AssessLoanArrearsAndPenalties
                 ])
                 ->values();
 
+            // The fixed part is a flat recovery fee, charged once per loan per
+            // monthly assessment — not once per overdue installment. It pays for
+            // the month's recovery action (letter, call, agent visit), of which
+            // a delinquent loan generates one regardless of how many
+            // installments are behind. Multiplying it by the arrears count would
+            // bill a borrower six months late 30 000 FCFA of fixed fees in a
+            // single run, which is neither what « une partie fixe 5.000 FCFA »
+            // says nor something a COBAC-supervised EMF would defend.
+            $fixedPartStillDue = ! $this->fixedPartChargedThisMonth($lockedLoan, $asOf);
+
             foreach ($lines as $line) {
                 if (! $this->isPastGrace($line, $asOf, $graceDays)) {
                     continue;
@@ -86,13 +96,27 @@ final class AssessLoanArrearsAndPenalties
                 $penaltyBase = $unpaid >= $this->minimumUnpaidAmountMinor() ? $unpaid : null;
                 $arrearsRow = $this->storeArrears($lockedLoan, $line, $originalDue, $paid, $unpaid, $penaltyBase);
 
-                if ($unpaid === 0 || $penaltyBase === null || $this->alreadyPenalizedThisMonth($arrearsRow, $asOf)) {
+                if ($unpaid === 0 || $penaltyBase === null || $this->alreadyPenalized($arrearsRow, $asOf)) {
                     $arrears[] = $this->arrearsPayload($arrearsRow);
 
                     continue;
                 }
 
-                $penalty = $this->penaltyForLine($penaltyTerms, $line, $originalDue, $unpaid);
+                $fixedPart = $fixedPartStillDue ? $penaltyTerms->fixedAmountMinor : 0;
+                $penalty = $this->capPenalty(
+                    $fixedPart + $this->variablePenaltyForLine($penaltyTerms, $line, $originalDue, $unpaid),
+                    $unpaid,
+                    $line->penalty_minor,
+                );
+
+                if ($penalty === 0) {
+                    $arrears[] = $this->arrearsPayload($arrearsRow);
+
+                    continue;
+                }
+
+                $fixedPartStillDue = $fixedPartStillDue && $fixedPart === 0;
+
                 $line->forceFill([
                     'penalty_minor' => $line->penalty_minor + $penalty,
                     'total_installment_minor' => $this->lineTotal($line) + $penalty,
@@ -101,7 +125,9 @@ final class AssessLoanArrearsAndPenalties
                 DB::table('loan_arrears')
                     ->where('id', $this->rowInt($arrearsRow, 'id'))
                     ->update([
-                        'last_penalized_at' => $asOf->toDateTimeString(),
+                        // High-water mark, so a backdated re-run cannot reset it
+                        // and re-open the loan to a second charge.
+                        'last_penalized_at' => $this->laterOf($this->lastPenalizedAt($arrearsRow), $asOf)->toDateTimeString(),
                         'updated_at' => now(),
                     ]);
 
@@ -193,11 +219,34 @@ final class AssessLoanArrearsAndPenalties
         return $created;
     }
 
-    private function penaltyForLine(ResolvedPenaltyTerms $terms, LoanScheduleLine $line, int $originalDue, int $unpaid): int
+    /**
+     * The variable half of the hybrid rule. Because it is a flat percentage,
+     * charging it per overdue installment and charging it once on the summed
+     * arrears give the same total, so it is applied per line.
+     */
+    private function variablePenaltyForLine(ResolvedPenaltyTerms $terms, LoanScheduleLine $line, int $originalDue, int $unpaid): int
     {
         $baseAmount = $this->penaltyBaseAmount($terms->base, $line, $originalDue, $unpaid);
 
-        return $terms->fixedAmountMinor + $this->percentOf($baseAmount, $terms->ratePercent);
+        return $this->percentOf($baseAmount, $terms->ratePercent);
+    }
+
+    /**
+     * A penalty may not exceed the debt it punishes.
+     *
+     * The 5 000 FCFA fixed part is five times the 1 000 FCFA arrears floor, so
+     * without a bound a 1 000 FCFA residue attracts 5 020 FCFA — 502% of the
+     * amount owed. Capping the *cumulative* penalty on an installment at that
+     * installment's unpaid scheduled due keeps the accounting team's formula
+     * untouched wherever it is proportionate (any residue above ~5 100 FCFA
+     * never reaches the cap) and stops the two disproportionate cases: a flat
+     * fee dwarfing a small residue, and penalties accruing without end on a
+     * loan that COBAC provisioning rules say should be written down rather than
+     * charged further.
+     */
+    private function capPenalty(int $penalty, int $unpaid, int $penaltyAlreadyOnLine): int
+    {
+        return max(0, min($penalty, $unpaid - $penaltyAlreadyOnLine));
     }
 
     private function penaltyBaseAmount(string $base, LoanScheduleLine $line, int $originalDue, int $unpaid): int
@@ -241,15 +290,46 @@ final class AssessLoanArrearsAndPenalties
             + $line->capitalized_interest_minor;
     }
 
-    private function alreadyPenalizedThisMonth(object $arrearsRow, CarbonImmutable $asOf): bool
+    /**
+     * "At or after the start of the as-of month", not "in the same month".
+     * Month equality lets a backdated run slip through: assess June, then run
+     * again with an as-of date in May, and May is a different month so the
+     * installment is penalized a second time. `last_penalized_at` is also
+     * stored as a high-water mark for the same reason.
+     */
+    private function alreadyPenalized(object $arrearsRow, CarbonImmutable $asOf): bool
+    {
+        $lastPenalizedAt = $this->lastPenalizedAt($arrearsRow);
+
+        return $lastPenalizedAt instanceof CarbonImmutable
+            && $lastPenalizedAt->greaterThanOrEqualTo($asOf->startOfMonth());
+    }
+
+    private function lastPenalizedAt(object $arrearsRow): ?CarbonImmutable
     {
         $data = (array) $arrearsRow;
-        $lastPenalizedAt = $data['last_penalized_at'] ?? null;
-        if (! is_string($lastPenalizedAt) || $lastPenalizedAt === '') {
-            return false;
-        }
+        $value = $data['last_penalized_at'] ?? null;
 
-        return CarbonImmutable::parse($lastPenalizedAt)->format('Y-m') === $asOf->format('Y-m');
+        return is_string($value) && $value !== '' ? CarbonImmutable::parse($value) : null;
+    }
+
+    private function laterOf(?CarbonImmutable $existing, CarbonImmutable $candidate): CarbonImmutable
+    {
+        return $existing instanceof CarbonImmutable && $existing->greaterThan($candidate)
+            ? $existing
+            : $candidate;
+    }
+
+    /**
+     * Whether this loan has already been charged its flat monthly recovery fee
+     * within the as-of month, on any of its overdue installments.
+     */
+    private function fixedPartChargedThisMonth(Loan $loan, CarbonImmutable $asOf): bool
+    {
+        return DB::table('loan_arrears')
+            ->where('loan_id', $loan->id)
+            ->where('last_penalized_at', '>=', $asOf->startOfMonth()->toDateTimeString())
+            ->exists();
     }
 
     /**

@@ -135,14 +135,103 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
         $underResult = app(AssessLoanArrearsAndPenalties::class)->handle($under, '2026-05-07');
         self::assertSame(0, $underResult['assessed_penalty_minor']);
 
-        // 1 000 XAF unpaid — on the floor, penalty applies: 5 000 XAF fixed
-        // + 2 % of 1 000 XAF (= 20 XAF).
+        // 1 000 XAF unpaid — on the floor, a penalty applies, but the raw
+        // formula would charge 5 020 XAF on a 1 000 XAF debt. The cap holds it
+        // to the debt. See test_penalty_never_exceeds_the_unpaid_amount.
         $atFloor = $this->createPenaltyLoan(
             snapshotTerms: ['penalty_grace_days' => 5],
             line: ['principal_minor' => 100000, 'interest_minor' => 0],
         );
         $atFloorResult = app(AssessLoanArrearsAndPenalties::class)->handle($atFloor, '2026-05-07');
-        self::assertSame(502000, $atFloorResult['assessed_penalty_minor']);
+        self::assertSame(100000, $atFloorResult['assessed_penalty_minor']);
+        self::assertSame('1000.00', MoneyAmount::ofMinor($atFloorResult['assessed_penalty_minor'])->amount());
+    }
+
+    /**
+     * The 5 000 FCFA fixed part is five times the 1 000 FCFA arrears floor, so
+     * the raw formula charges 502% on a residue sitting at the floor. A penalty
+     * may not exceed the debt it punishes.
+     */
+    public function test_penalty_never_exceeds_the_unpaid_amount(): void
+    {
+        // 2 000 XAF unpaid. Raw formula: 5 000 + 40 = 5 040 XAF. Capped: 2 000.
+        $loan = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 200000, 'interest_minor' => 0],
+        );
+
+        $first = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
+        self::assertSame(200000, $first['assessed_penalty_minor']);
+        self::assertSame('2000.00', MoneyAmount::ofMinor($first['assessed_penalty_minor'])->amount());
+
+        // And the cap is cumulative: once penalties equal the debt, a later
+        // month adds nothing. A loan at that point is provisioned, not charged
+        // further.
+        $nextMonth = app(AssessLoanArrearsAndPenalties::class)->handle($loan->refresh(), '2026-06-07');
+        self::assertSame(0, $nextMonth['assessed_penalty_minor']);
+        $this->assertDatabaseHas('loan_schedule_lines', [
+            'loan_schedule_snapshot_id' => $this->activeSnapshotId($loan),
+            'penalty_minor' => 200000,
+        ]);
+    }
+
+    /**
+     * The fixed part pays for the month's recovery action, of which a delinquent
+     * loan generates one however many installments are behind. Charging it per
+     * installment would bill a borrower three months late 15 000 XAF of flat
+     * fees in a single run.
+     */
+    public function test_fixed_part_is_charged_once_per_month_not_once_per_overdue_installment(): void
+    {
+        $line = [
+            'principal_minor' => 5000000,
+            'interest_minor' => 500000,
+            'fees_minor' => 0,
+            'insurance_minor' => 0,
+            'tax_minor' => 0,
+            'penalty_minor' => 0,
+        ];
+        $loan = $this->createLoanWithSchedule([
+            ['due_date' => '2026-03-01'] + $line,
+            ['due_date' => '2026-04-01'] + $line,
+            ['due_date' => '2026-05-01'] + $line,
+        ]);
+
+        $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
+
+        // One 5 000 XAF fixed part for the loan, plus 2 % on each of the three
+        // 55 000 XAF installments (1 100 XAF each) = 5 000 + 3 300 = 8 300 XAF.
+        // Charged per installment it would have been 3 × 6 100 = 18 300 XAF.
+        self::assertSame(830000, $result['assessed_penalty_minor']);
+        self::assertSame('8300.00', MoneyAmount::ofMinor($result['assessed_penalty_minor'])->amount());
+    }
+
+    /**
+     * `last_penalized_at` is a high-water mark and the guard is "at or after the
+     * start of the as-of month". Month equality let a backdated re-run charge
+     * the whole hybrid amount a second time.
+     */
+    public function test_a_backdated_reassessment_does_not_charge_the_penalty_again(): void
+    {
+        $loan = $this->createPenaltyLoan(
+            snapshotTerms: ['penalty_grace_days' => 5],
+            line: ['principal_minor' => 5000000, 'interest_minor' => 500000],
+        );
+
+        $june = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-06-07');
+        self::assertSame(610000, $june['assessed_penalty_minor']);
+
+        // Backdated into an earlier month, then forward again inside June.
+        $backdated = app(AssessLoanArrearsAndPenalties::class)->handle($loan->refresh(), '2026-05-20');
+        self::assertSame(0, $backdated['assessed_penalty_minor']);
+
+        $laterInJune = app(AssessLoanArrearsAndPenalties::class)->handle($loan->refresh(), '2026-06-25');
+        self::assertSame(0, $laterInJune['assessed_penalty_minor']);
+
+        $this->assertDatabaseHas('loan_schedule_lines', [
+            'loan_schedule_snapshot_id' => $this->activeSnapshotId($loan),
+            'penalty_minor' => 610000,
+        ]);
     }
 
     /**
@@ -154,16 +243,17 @@ final class AssessLoanArrearsAndPenaltiesTest extends TestCase
      */
     public function test_variable_part_rounds_instead_of_throwing_on_an_indivisible_base(): void
     {
+        // Deliberately well above the cap threshold, so this test measures
+        // rounding and not the cap.
         $loan = $this->createPenaltyLoan(
             snapshotTerms: ['penalty_grace_days' => 5],
-            line: ['principal_minor' => 123457, 'interest_minor' => 0],
+            line: ['principal_minor' => 1234567, 'interest_minor' => 0],
         );
 
         $result = app(AssessLoanArrearsAndPenalties::class)->handle($loan, '2026-05-07');
 
-        // 5 000 XAF fixed + 2 % of 123 457 = 2 469.14 → 2 469 half-up,
-        // i.e. 500 000 + 2 469 minor units.
-        self::assertSame(502469, $result['assessed_penalty_minor']);
+        // 5 000 XAF fixed + 2 % of 1 234 567 = 24 691.34 → 24 691 half-up.
+        self::assertSame(524691, $result['assessed_penalty_minor']);
     }
 
     /**

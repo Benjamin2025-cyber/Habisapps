@@ -463,15 +463,36 @@ amount`).
 - **Trigger:** monthly arrears batch, after the product's grace days.
 - **Formula:** hybrid and universal — the same for every credit, with no
   per-product configuration:
-  - fixed part — 5 000 XAF flat;
-  - variable part — 2 % of the unpaid amount.
-  An overdue installment is penalized once by their sum.
+  - fixed part — 5 000 XAF flat, charged **once per loan per monthly
+    assessment**, not once per overdue installment;
+  - variable part — 2 % of the unpaid amount, charged on **each** overdue
+    installment.
 - **Base (variable part):** unpaid scheduled due, excluding prior penalties.
-- **Frequency:** monthly, one assessment per overdue installment per month.
+- **Frequency:** monthly. One flat fee per delinquent loan per month; the
+  variable part applies to every overdue installment that month.
 - **Compounding:** none. Prior penalties stay due but never generate new ones.
-- **Floor:** no penalty on an unpaid amount below 1 000 XAF. This is what keeps
-  the 5 000 XAF fixed part off a residue of a few francs.
-- **Cap:** none.
+- **Floor:** no penalty on an unpaid amount below 1 000 XAF.
+- **Cap:** the cumulative penalty on an installment may not exceed that
+  installment's unpaid scheduled due.
+
+Two points the accounting brief did not settle, resolved here against ordinary
+EMF practice rather than left open:
+
+- *Why the fixed part is per loan, not per installment.* It is a flat recovery
+  fee, and a delinquent loan generates one recovery action a month (letter,
+  call, agent visit) however many installments are behind. Multiplied by the
+  arrears count it would bill a borrower six months late 30 000 XAF of flat fees
+  in a single run — neither what « une partie fixe 5.000 FCFA » says nor
+  something a COBAC-supervised institution would defend. The variable part is
+  unaffected by the choice: a flat percentage summed per installment equals the
+  same percentage of the total arrears.
+- *Why there is a cap.* The fixed part is five times the floor, so without one a
+  1 000 XAF residue attracts 5 020 XAF — 502 % of the debt. A penalty exceeding
+  the debt it punishes is a manifestly excessive penalty clause, and continuing
+  to accrue penalty income on a loan that COBAC provisioning rules say should be
+  written down inflates income against the prudential intent. The cap binds only
+  between the 1 000 XAF floor and roughly 5 100 XAF of arrears; above that the
+  accounting team's formula applies untouched.
 - **Rounding:** exact account precision, no cash rounding; each component is
   rounded independently and then summed.
 - **Approved by:** Credit, 2026-08-23. This is the sign-off that
