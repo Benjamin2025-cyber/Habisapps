@@ -136,7 +136,8 @@ Implemented product catalog behavior:
 Product formula policies:
 
 - Formula policy keys on loan products are configuration references only; they do not execute calculations by themselves.
-- A product cannot be configured with a formula policy key while the matching gate in `config/formulas.php` is unapproved.
+- The calculation policies are the same for every credit — « les politiques de calcul rattachées ne sont plus à sélectionner vu qu'elles sont les mêmes pour tous les crédits » (Islamic banking excepted, not in this version). They are imposed on every product save by the model, are absent from the request contract (sending them is rejected as unknown), and no longer appear in product responses.
+- A product cannot be created while any attached formula policy is unapproved in `config/formulas.php`; the same gates guard each calculation stage at runtime.
 - Top-level product policy keys cover interest, fees/tax/insurance/guarantee deposit, penalties, and repayment allocation.
 - `rules.formula_policies.rounding_policy_key`, `schedule_policy_key`, and `reporting_policy_key` cover rounding, installment/schedule, and portfolio reporting policy gates.
 - Loan approval/setup code must snapshot the approved product policy configuration through `LoanProductFormulaPolicySnapshotter` before generating schedules or posting formula-derived charges.

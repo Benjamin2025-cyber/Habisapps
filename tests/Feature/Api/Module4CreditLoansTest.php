@@ -212,23 +212,39 @@ final class Module4CreditLoansTest extends TestCase
                 'name' => 'Bad Rules Product',
                 'rules' => [
                     'installment_charges' => ['tax' => 'finance'],
-                    'formula_policies' => ['rounding_policy_key' => 'not_a_policy'],
                 ],
             ]);
         $invalid->assertStatus(422);
-        $invalid->assertJsonValidationErrors([
-            'rules.installment_charges.tax',
-            'rules.formula_policies.rounding_policy_key',
-        ]);
+        $invalid->assertJsonValidationErrors(['rules.installment_charges.tax']);
         $errors = $invalid->json('errors');
         self::assertIsArray($errors);
-        foreach (['rules.installment_charges.tax', 'rules.formula_policies.rounding_policy_key'] as $key) {
-            $messages = $errors[$key] ?? null;
-            self::assertIsArray($messages);
-            self::assertIsString($messages[0] ?? null);
-            // "invalid" is Rule::in. An unknown key would read "prohibited".
-            self::assertStringContainsString('invalid', $messages[0]);
-        }
+        $messages = $errors['rules.installment_charges.tax'] ?? null;
+        self::assertIsArray($messages);
+        self::assertIsString($messages[0] ?? null);
+        // "invalid" is Rule::in. An unknown key would read "prohibited".
+        self::assertStringContainsString('invalid', $messages[0]);
+
+        // The calculation policies are the same for every credit (« ne sont
+        // plus à sélectionner »), so they are not part of the request contract
+        // at all: failOnUnknownFields rejects them instead of silently
+        // overwriting whatever a caller sends.
+        $policies = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loan-products', [
+                'code' => 'LP-RULES-POLICY',
+                'name' => 'Policy Selector Product',
+                'rules' => [
+                    'formula_policies' => ['rounding_policy_key' => 'xaf_rounding'],
+                ],
+            ]);
+        $policies->assertStatus(422);
+        $policies->assertJsonValidationErrors(['rules.formula_policies.rounding_policy_key']);
+        $policyErrors = $policies->json('errors');
+        self::assertIsArray($policyErrors);
+        $policyMessages = $policyErrors['rules.formula_policies.rounding_policy_key'] ?? null;
+        self::assertIsArray($policyMessages);
+        self::assertIsString($policyMessages[0] ?? null);
+        // Unknown keys read "prohibited", not "invalid".
+        self::assertStringContainsString('prohibited', $policyMessages[0]);
 
         // A scalar where the component map belongs reads as configured on the
         // form but behaves as unconfigured in the maths.
@@ -275,7 +291,12 @@ final class Module4CreditLoansTest extends TestCase
         $update->assertJsonPath('data.rules.formula_policies.rounding_policy_key', FormulaPolicyKey::XafRounding->value);
         $update->assertJsonPath('data.rules.formula_policies.schedule_policy_key', FormulaPolicyKey::LoanInstallmentAmount->value);
         $update->assertJsonPath('data.rules.formula_policies.reporting_policy_key', FormulaPolicyKey::PortfolioReportingMetrics->value);
-        $update->assertJsonPath('data.penalty_policy_key', FormulaPolicyKey::PenaltiesAndArrears->value);
+        // The response no longer echoes the policy-key columns (« ne sont plus
+        // à sélectionner »); they live on the row, imposed by the model.
+        $this->assertDatabaseHas('loan_products', [
+            'public_id' => $product->public_id,
+            'penalty_policy_key' => FormulaPolicyKey::PenaltiesAndArrears->value,
+        ]);
     }
 
     public function test_loan_product_creation_fails_closed_when_an_attached_policy_is_unapproved(): void
@@ -373,13 +394,19 @@ final class Module4CreditLoansTest extends TestCase
                 'name' => 'Approved Policy Product',
             ]);
         $this->assertJsonSuccess($create, 201);
-        $create->assertJsonPath('data.interest_policy_key', FormulaPolicyKey::LoanInterestMethod->value);
-        $create->assertJsonPath('data.penalty_policy_key', FormulaPolicyKey::PenaltiesAndArrears->value);
-        $create->assertJsonPath('data.fee_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
-        $create->assertJsonPath('data.tax_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
-        $create->assertJsonPath('data.insurance_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
-        $create->assertJsonPath('data.guarantee_deposit_policy_key', FormulaPolicyKey::FeesTaxesInsurance->value);
-        $create->assertJsonPath('data.repayment_allocation_policy_key', FormulaPolicyKey::RepaymentAllocationOrder->value);
+        // The response no longer echoes the policy keys (« ne sont plus à
+        // sélectionner ») — they are imposed on the row by the model, identical
+        // for every product.
+        $createdProduct = (array) DB::table('loan_products')
+            ->where('public_id', $this->requireStringJsonPath($create, 'data.public_id'))
+            ->first();
+        self::assertSame(FormulaPolicyKey::LoanInterestMethod->value, $createdProduct['interest_policy_key']);
+        self::assertSame(FormulaPolicyKey::PenaltiesAndArrears->value, $createdProduct['penalty_policy_key']);
+        self::assertSame(FormulaPolicyKey::FeesTaxesInsurance->value, $createdProduct['fee_policy_key']);
+        self::assertSame(FormulaPolicyKey::FeesTaxesInsurance->value, $createdProduct['tax_policy_key']);
+        self::assertSame(FormulaPolicyKey::FeesTaxesInsurance->value, $createdProduct['insurance_policy_key']);
+        self::assertSame(FormulaPolicyKey::FeesTaxesInsurance->value, $createdProduct['guarantee_deposit_policy_key']);
+        self::assertSame(FormulaPolicyKey::RepaymentAllocationOrder->value, $createdProduct['repayment_allocation_policy_key']);
 
         $overrideProduct = $this->createLoanProduct($agencyId, [
             'rules' => [

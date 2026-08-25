@@ -14,6 +14,10 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final class LoanProductResource extends JsonResource
 {
     /**
+     * The calculation-policy keys are intentionally not exposed: they are the
+     * same for every credit — « ne sont plus à sélectionner » — imposed by the
+     * model, and showing them as product fields invites selecting them.
+     *
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
@@ -32,10 +36,6 @@ final class LoanProductResource extends JsonResource
             'allowed_repayment_frequencies' => $product->allowed_repayment_frequencies,
             'requires_guarantor' => $product->requires_guarantor,
             'requires_collateral' => $product->requires_collateral,
-            'interest_policy_key' => $product->interest_policy_key,
-            'penalty_policy_key' => $product->penalty_policy_key,
-            'repayment_allocation_policy_key' => $product->repayment_allocation_policy_key,
-            'fee_policy_key' => $product->fee_policy_key,
             'min_amount_minor' => $product->min_amount_minor,
             'max_amount_minor' => $product->max_amount_minor,
             'due_date_day' => $product->due_date_day,
@@ -47,9 +47,6 @@ final class LoanProductResource extends JsonResource
             'insurance_rate' => $product->insurance_rate,
             'fee_rate' => $product->fee_rate,
             'dossier_fee_tax_rate' => $product->dossier_fee_tax_rate,
-            'tax_policy_key' => $product->tax_policy_key,
-            'insurance_policy_key' => $product->insurance_policy_key,
-            'guarantee_deposit_policy_key' => $product->guarantee_deposit_policy_key,
             'guarantee_deposit_type' => $product->guarantee_deposit_type,
             'guarantee_deposit_value' => $product->guarantee_deposit_value,
             'operation_type' => $product->operation_type,

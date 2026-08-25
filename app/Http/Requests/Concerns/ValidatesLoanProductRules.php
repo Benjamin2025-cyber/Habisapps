@@ -5,23 +5,23 @@ declare(strict_types=1);
 namespace App\Http\Requests\Concerns;
 
 use App\Models\LoanProduct;
-use App\Support\Finance\FormulaPolicyKey;
 use Illuminate\Validation\Rule;
 
 /**
  * Validation for the `rules` JSON bag on a loan product.
  *
- * Two of its sub-keys are not decoration: `installment_charges` decides whether
- * a component is collected upfront or spread into the schedule, and
- * `formula_policies` names the calculation policies the engine gates on. Both
- * are read by value, so a wrong-typed or misspelled *value* reads as "not
- * configured" at calculation time — configured on the form, inert in the maths.
+ * One of its sub-keys is not decoration: `installment_charges` decides whether
+ * a component is collected upfront or spread into the schedule. It is read by
+ * value, so a wrong-typed or misspelled *value* reads as "not configured" at
+ * calculation time — configured on the form, inert in the maths.
  *
- * Unknown *keys* are already rejected: AppServiceProvider enables
- * `FormRequest::failOnUnknownFields()`, so `installment_charges.taxes` comes
- * back as prohibited without any help from here. What this adds is the two
- * things that guard misses — the containers must be arrays rather than scalars,
- * and the values must be ones the readers actually honour.
+ * The calculation policies (`rules.formula_policies`, and the policy-key
+ * columns) are deliberately absent: they are the same for every credit —
+ * « les politiques de calcul rattachées ne sont plus à sélectionner vu qu'elles
+ * sont les mêmes pour tous les crédits » — so the model imposes them on every
+ * save and the request layer does not accept them at all. With
+ * `FormRequest::failOnUnknownFields()` enabled, sending them comes back as
+ * prohibited instead of being silently overwritten.
  */
 trait ValidatesLoanProductRules
 {
@@ -38,10 +38,6 @@ trait ValidatesLoanProductRules
             'rules.installment_charges.fees' => $componentRule,
             'rules.installment_charges.tax' => $componentRule,
             'rules.installment_charges.insurance' => $componentRule,
-            'rules.formula_policies' => ['sometimes', 'nullable', 'array'],
-            'rules.formula_policies.rounding_policy_key' => ['sometimes', 'nullable', Rule::in([FormulaPolicyKey::XafRounding->value])],
-            'rules.formula_policies.schedule_policy_key' => ['sometimes', 'nullable', Rule::in([FormulaPolicyKey::LoanInstallmentAmount->value])],
-            'rules.formula_policies.reporting_policy_key' => ['sometimes', 'nullable', Rule::in([FormulaPolicyKey::PortfolioReportingMetrics->value])],
             'rules.*' => ['nullable'],
         ];
     }
