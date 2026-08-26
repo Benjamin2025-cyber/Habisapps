@@ -4437,6 +4437,36 @@ final class Module4CreditLoansTest extends TestCase
      * grace is what the chosen first date implies, and the total spans from
      * the application date through the last installment.
      */
+    /**
+     * The loan drawer and the loan file both printed `client_public_id` where
+     * the titulaire belongs — a raw ULID on the screen an officer reads to
+     * check who the credit is for. The name is resolved server-side so no
+     * client-side lookup list can miss it, middle name included.
+     */
+    public function test_loan_exposes_the_holder_name_not_only_the_id(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-HOLDER');
+        $client = $this->createClientRecord($agencyId, 'verified');
+        DB::table('clients')->where('id', $client['id'])->update([
+            'last_name' => 'bayanga',
+            'first_name' => 'Antoine',
+            'middle_name' => 'Didier',
+        ]);
+        $product = $this->createLoanProduct($agencyId);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 250000,
+            ]);
+
+        $this->assertJsonSuccess($created, 201);
+        $created->assertJsonPath('data.client_display_name', 'BAYANGA Antoine Didier');
+        $created->assertJsonPath('data.client_public_id', $client['public_id']);
+    }
+
     public function test_periodicity_grace_and_total_duration_derive_from_installments_and_first_due_date(): void
     {
         $actor = $this->createUserWithRole('platform-admin');

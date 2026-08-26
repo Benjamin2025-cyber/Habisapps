@@ -51,24 +51,8 @@ final class CustomerAccountResource extends JsonResource
         ];
     }
 
-    /**
-     * NOM Prénoms, the order a French-language statement prints. Middle name
-     * included: it is part of the prénoms and omitting it truncates the holder.
-     * Falls back to the client reference when a record carries no name parts.
-     */
     private function clientDisplayName(CustomerAccount $account): ?string
     {
-        $client = $account->client;
-        if ($client === null) {
-            return null;
-        }
-
-        $parts = array_values(array_filter([
-            mb_strtoupper(trim($client->last_name)),
-            trim($client->first_name),
-            trim((string) $client->middle_name),
-        ], static fn (string $part): bool => $part !== ''));
-
-        return $parts === [] ? $client->client_reference : implode(' ', $parts);
+        return $account->client?->displayName();
     }
 }

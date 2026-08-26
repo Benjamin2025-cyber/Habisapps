@@ -125,6 +125,26 @@ final class Client extends Model
     }
 
     /**
+     * NOM Prénoms — the order a French-language statement prints, and the one
+     * label every screen showing a holder should use.
+     *
+     * Middle name included: it is part of the prénoms, and dropping it truncates
+     * the holder. Lives on the model rather than in each resource so the loan
+     * file and the account file cannot drift apart on how a client is named.
+     * Falls back to the client reference for a record with no name parts.
+     */
+    public function displayName(): string
+    {
+        $parts = array_values(array_filter([
+            mb_strtoupper(trim($this->last_name)),
+            trim($this->first_name),
+            trim((string) $this->middle_name),
+        ], static fn (string $part): bool => $part !== ''));
+
+        return $parts === [] ? $this->client_reference : implode(' ', $parts);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

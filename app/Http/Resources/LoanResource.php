@@ -25,6 +25,7 @@ final class LoanResource extends JsonResource
                 'status' => null,
                 'processing_level' => null,
                 'client_public_id' => null,
+                'client_display_name' => null,
                 'agency_public_id' => null,
                 'loan_product_public_id' => null,
                 'credit_agent_public_id' => null,
@@ -86,6 +87,9 @@ final class LoanResource extends JsonResource
             'status' => $loan->status,
             'processing_level' => $loan->processing_level,
             'client_public_id' => $loan->client?->public_id,
+            // The holder's name, not only their id: the loan drawer and the
+            // loan file both showed a raw ULID where the titulaire belongs.
+            'client_display_name' => $loan->client?->displayName(),
             'agency_public_id' => $loan->agency?->public_id,
             'loan_product_public_id' => $loan->loanProduct?->public_id,
             'credit_agent_public_id' => $loan->creditAgent?->public_id,
