@@ -28,7 +28,7 @@ sont ceux que vous devez lire à l'écran, en francs.
 
 ---
 
-## 1. Comptes et pré-requis
+## 1. Comptes et mise en place de l'environnement
 
 Un prêt passe **quatre visas**, et **une même personne ne peut en signer qu'un
 seul**. Il faut donc plusieurs utilisateurs. Mot de passe : **`password123`**.
@@ -50,16 +50,122 @@ La connexion se fait avec le **numéro de téléphone**.
 > Un visa refusé avec « vous avez déjà approuvé une autre étape » n'est **pas** une
 > anomalie : changez d'utilisateur.
 
-**Avant de commencer :**
+> ⚠️ **Si la date du jour n'est pas le `26/08/2026`.** Tous les montants et toutes
+> les durées de ce guide sont calés sur une demande datée du **26/08/2026**. Sur un
+> environnement daté autrement, **saisissez explicitement `26/08/2026` dans « Date de
+> demande »** à chaque création de prêt : sinon les valeurs attendues aux §3 et §6
+> seront décalées d'autant de jours.
 
-1. **Une journée comptable ouverte** pour l'agence (bandeau en haut à droite).
-   Sinon : *Administration › **Journée Comptable***.
-2. **Les mappages d'opérations** doivent exister pour l'agence — *Comptabilité › **Codes opération & imputations*** :
-   `loan_principal_disbursement` (débit), `loan_setup_dossier_fee`,
-   `loan_setup_principal_tax`, `loan_setup_tax`, `loan_setup_guarantee_deposit`
-   (crédit). **Sans eux, rien ne se débloque** — et c'est voulu.
-3. Un client **vérifié KYC** (étapes habituelles : créer, soumettre, valider avec
-   deux comptes différents).
+---
+
+### Les cinq pré-requis à créer
+
+**Cette section n'est pas optionnelle.** Cinq éléments doivent exister *avant* de
+commencer, et aucun n'est créé automatiquement. Chacun se fait entièrement à
+l'écran — **aucune manipulation en base n'est nécessaire**. Faites-les dans
+l'ordre : chaque étape dépend de la précédente.
+
+#### 1.1 La journée comptable
+
+Bandeau en haut à droite : il doit afficher **« Journée ouverte »**.
+Sinon : *Administration › **Journée Comptable*** et ouvrez-la.
+
+#### 1.2 Les cinq imputations comptables — en **chief-accountant** (`+237690000011`)
+
+*Comptabilité › **Codes opération & imputations*** › onglet **Imputations** ›
+bouton **« + Nouvelle imputation »**. Il en faut **cinq**, une par code :
+
+| Code d'opération | Sens | Compte à renseigner (plan PCEMF) |
+|---|---|---|
+| `loan_principal_disbursement` | **Débit** | `3222` — Crédits de trésorerie aux clients |
+| `loan_setup_dossier_fee` | Crédit | `7153` — Commissions sur crédits à court terme |
+| `loan_setup_principal_tax` | Crédit | `4303` — État, TVA facturée |
+| `loan_setup_tax` | Crédit | `4303` — État, TVA facturée |
+| `loan_setup_guarantee_deposit` | Crédit | `18700` — Dépôts de garantie reçus |
+
+Dans chaque imputation : choisissez le **code**, puis l'**agence** (`TEST-HABIS`),
+puis le compte — **côté débit ou côté crédit selon le sens du tableau**, pas les
+deux. Le même code de compte existe pour plusieurs agences : prenez bien celui
+suffixé **`· TEST-HABIS`**.
+
+> 🔴 **Une imputation enregistrée est en « Brouillon » — et une imputation en
+> brouillon n'est pas vue par le moteur.** Le formulaire ne propose que
+> *Brouillon* et *Soumise* : l'approbation est une action séparée. Sur la ligne,
+> ouvrez le menu **⋮ › Approuver**. La colonne **Approbation** doit afficher
+> **« Approuvée »**.
+>
+> Le chief-accountant peut créer **et** approuver. L'accountant, lui, peut créer
+> mais **pas** approuver — avec ce compte les imputations resteraient en brouillon
+> et le déblocage échouerait sans raison visible.
+
+**Contrôle :** l'onglet Imputations liste **5 imputations**, toutes **Actif** et
+**Approuvée**. Sans elles, rien ne se débloque — et c'est voulu.
+
+#### 1.3 Une caisse — en **agency-manager** (`+237690000002`)
+
+**Sans caisse, le bouton « Ouvrir une session » reste grisé et le §8 est
+intestable.** Le teller ne peut pas la créer lui-même (il n'a que la consultation).
+
+*Opérations courantes › **Caisses*** › bouton **« Nouvelle caisse »**.
+
+> ⚠️ **Renseignez l'Agence en premier.** Changer l'agence **vide** les champs
+> *Caissier assigné* et *Compte comptable* — ils dépendent de l'agence. Si vous les
+> remplissez avant, ils seront silencieusement effacés à l'enregistrement et la
+> caisse sera créée sans caissier ni compte.
+>
+> L'agence est **obligatoire**, malgré la mention « Requise pour un administrateur
+> sans agence » sous le champ.
+
+Dans l'ordre :
+
+| Champ | Valeur |
+|---|---|
+| **Agence** *(en premier)* | `TEST-HABIS — HABIS Test Agency` |
+| Code / Nom | `CAISSE-01` / `Caisse principale` |
+| **Caissier assigné** | `Test Teller` |
+| **Compte comptable** | `5710 — Caisse FCFA · TEST-HABIS` |
+| ✅ **Exige le détail des coupures** | **coché** |
+| Statut | Active |
+
+> 🔴 **« Exige le détail des coupures » est le champ qui commande tout le §8.**
+> Coché, l'ouverture de session affiche la grille de billetage. Décoché, elle
+> n'affiche qu'une simple case « Fonds d'ouverture » et le billetage ne peut pas
+> être testé.
+
+**Contrôle :** la caisse apparaît dans la liste avec **CAISSIER = Test Teller**.
+Si la colonne affiche « — », le caissier n'a pas été enregistré : rouvrez la fiche
+par **⋮ › Modifier** et renseignez-le (en édition, l'agence ne change plus, donc
+rien n'est effacé).
+
+#### 1.4 Un client vérifié KYC, et son compte
+
+1. **loan-officer** (`+237690000005`) : *Référentiel › **Client*** › créer le client.
+2. **kyc-officer** (`+237690000007`) : onglet **Documents KYC**, déposer puis
+   **soumettre** la pièce.
+3. **compliance-officer** (`+237690000008`) : **valider**. Le badge doit passer à
+   **KYC : Vérifié**.
+4. **loan-officer** : *Référentiel › **Compte*** › **« Nouveau compte »** pour ce
+   client (ex. `CPT-TEST-001`).
+
+> Le compte client n'est pas décoratif : c'est lui qui **paie les frais de mise en
+> place** au §4 et qui **reçoit le déblocage** par virement. Sans compte, le §4
+> s'arrête après l'évaluation.
+
+#### 1.5 Approvisionner le compte client — en **teller** (`+237690000004`)
+
+Les frais du §4 totalisent **347 525 F** (30 000 + 211 750 + 5 775 + 100 000). Le
+compte doit être provisionné d'au moins autant, sinon les boutons **« Régler »**
+échouent.
+
+1. *Opérations courantes › **Sessions de caisse*** › **« Ouvrir une session »** —
+   c'est ici que se fait le billetage du **§8**, profitez-en pour le tester
+   maintenant : saisissez le billetage du §8 (total **1 540 000 F**) comme fonds
+   d'ouverture, et renseignez la **Date comptable** (celle de la journée ouverte).
+2. *Opérations courantes › **Retrait / Versement*** › onglet **Versement** :
+   client, compte `CPT-TEST-001`, **Montant `500 000`**.
+3. Le versement exige lui aussi un **décompte des espèces** : le *Total compté*
+   doit **égaler** le montant (ex. 50 × 10 000 F). Puis **Aperçu de l'opération** ›
+   **Enregistrer le versement**.
 
 ---
 
@@ -335,6 +441,30 @@ Et l'assurance, hors encaissement : **20 000 F**.
 Cliquez **« Évaluer les frais »** une seconde fois : les montants ne bougent pas et aucune ligne n'est
 dupliquée. Après déblocage, **« Évaluer les frais »** doit être **refusé**.
 
+### 4.1 Encaisser les frais, puis débloquer
+
+L'évaluation ne fait que **calculer**. Tant que les quatre lignes ne sont pas
+encaissées, le bouton **« Confirmer le décaissement »** reste inactif — le
+message *« 4 frais restant(s) à régler avant le décaissement »* le rappelle.
+
+Dans le même panneau :
+
+1. **Source de paiement** : `Compte client`.
+2. **Compte à débiter** : le compte approvisionné au §1.5 (`CPT-TEST-001`).
+3. Cliquez **« Régler »** sur **chacune des quatre lignes**. Chaque ligne passe de
+   **À régler** à **Réglé**, et le compteur descend. L'**Assurance (20 000 F)**
+   n'a pas de bouton : elle est *Informatif* et ne bloque pas.
+4. Quand les quatre sont réglées, le panneau affiche **« Tous les frais sont
+   réglés. Vous pouvez décaisser. »**
+5. **Canal de décaissement** : `Virement sur compte`, puis **Compte de virement**
+   = le compte du client. *(En espèces, le compte de virement n'est pas demandé.)*
+6. **« Confirmer le décaissement »**. Le prêt **disparaît de la liste** des prêts à
+   décaisser et passe au statut **Décaissé**.
+
+> Le bouton **« Dispenser (direction) »** à côté de chaque ligne est la sortie
+> manuelle évoquée au §12 (annulation / dispense de frais) : ne l'utilisez pas ici,
+> sinon la ligne ne sera pas encaissée et le §5 n'aura rien à montrer.
+
 ---
 
 ## 5. Les comptes du dossier
@@ -353,14 +483,22 @@ recherchez le **numéro du prêt**. Vous devez trouver **deux comptes nouveaux**
 > pénalités sont un produit, et le plan comptable ne se subdivise pas par
 > emprunteur pour les produits.
 
-**Vérifications :**
+**Vérifications** — ouvrez *Édition › **Journal des écritures*** (en
+**chief-accountant** : l'agency-manager n'a pas la section Édition) et retrouvez
+les deux écritures produites au §4.1 :
 
-1. L'encaissement du dépôt de garantie crédite le compte **du dossier**, pas le
-   compte de regroupement.
-2. Le déblocage débite le **Crédit client `<n° prêt>`**.
-3. Ouvrez le **compte de regroupement** : son solde doit inclure **ses propres
-   écritures anciennes plus celles de tous les dossiers en dessous**. S'il affiche
-   0 alors que les dossiers portent des montants, c'est une anomalie.
+1. **L'encaissement du dépôt de garantie** crédite `18700.<n° prêt>` — le compte
+   **du dossier** — pour **100 000 F**, et débite le compte du client
+   (`CLI000001`). Le compte de regroupement `18700` **ne doit pas** apparaître
+   dans l'écriture.
+2. **Le déblocage** débite `3222.<n° prêt>` — le **Crédit client** du dossier —
+   pour **1 000 000 F**, pas le regroupement `3222`.
+3. **Le compte de regroupement roule ses enfants.** Dans *Comptabilité ›
+   **Comptes généraux***, cherchez `3222` : vous voyez le compte de regroupement
+   **et** une ligne `3222.<n° prêt>` par dossier. Le solde affiché sur le
+   regroupement est **consolidé** : ses propres écritures anciennes **plus**
+   celles de tous les dossiers en dessous. Un regroupement à **0** alors que les
+   dossiers portent des montants est une anomalie.
 
 ---
 
@@ -375,6 +513,15 @@ Créez-les avec **600 000 F sur 12 mois** : chaque échéance vaut alors **55 00
 (50 000 de capital + 5 000 d'intérêt), ce qui rend les chiffres lisibles. Débloquez
 chacun, puis lancez l'évaluation des arriérés depuis *Crédit › **Suivi des
 exigibles*** (ou le traitement de fin de mois), **à la date du jour**.
+
+> ⚠️ **« Débloquez chacun » veut dire toute la chaîne** : les **quatre visas** du
+> §3.4 (quatre utilisateurs différents), puis l'**encaissement des quatre frais**
+> et le décaissement du §4.1. Une pénalité suppose un prêt **décaissé** : un prêt
+> seulement approuvé ne produit aucun arriéré.
+>
+> Prévoyez la trésorerie : les frais valent **208 515 F par prêt** à 600 000 F
+> (18 000 + 3 465 + 127 050 + 60 000), soit **417 030 F pour les deux**.
+> Réapprovisionnez le compte client au §1.5 si besoin.
 
 > Les jours de grâce du produit valent **5** : une échéance ne devient pénalisable
 > que 5 jours après son échéance.
@@ -470,8 +617,16 @@ liste des comptes.
 
 ## 8. Session de caisse — le billetage
 
-Se connecter en **teller**. *Opérations courantes › **Sessions de caisse***.
+Se connecter en **teller**. *Opérations courantes › **Sessions de caisse*** ›
+**« Ouvrir une session »**, puis choisissez la caisse `CAISSE-01`.
 
+> 🔴 **Si le bouton « Ouvrir une session » est grisé**, c'est qu'aucune caisse
+> n'existe pour l'agence : revenez au **§1.3** (c'est l'**agency-manager** qui la
+> crée, pas le teller). **Si la grille de coupures n'apparaît pas** après avoir
+> choisi la caisse, c'est que **« Exige le détail des coupures »** n'est pas coché
+> sur la fiche caisse — même §1.3.
+
+La grille **DÉTAIL DES COUPURES** s'affiche dès que la caisse est sélectionnée.
 Saisissez **exactement** le billetage remonté :
 
 | Coupure | Nombre | Montant attendu sur la ligne |
@@ -489,8 +644,16 @@ Saisissez **exactement** le billetage remonté :
 > Dans ce cas, vérifiez que la migration de réparation et le semis des coupures
 > ont bien tourné au déploiement, puis re-testez.
 
+Chaque ligne affiche son sous-total à droite du nombre, et le pied de grille
+affiche **« Total compté »**. C'est ce total qui doit valoir **1 540 000 FCFA**.
+
 Contrôle complémentaire : *Paramétrage › **Type monnaie*** doit lister les coupures BEAC —
-billets 500 à 10 000, pièces 1 à 500.
+billets 500 à 10 000, pièces 1 à 500 (**14 coupures**), chacune avec sa valeur en
+francs (« 10 000 FCFA » pour le billet de 10 000, pas « 100 FCFA »).
+
+> Le même décompte est redemandé à chaque **versement** ou **retrait** d'espèces
+> (*Retrait / Versement*, section **Décompte des espèces**). Là, le *Total compté*
+> doit **égaler le montant de l'opération**, sinon l'enregistrement est refusé.
 
 ---
 
@@ -527,8 +690,11 @@ Se connecter en **kyc-officer** ou **compliance-officer**. Ouvrez une fiche clie
 - Un total de billetage de **15 400 F**.
 - Un **compte comptable par défaut** encore proposé sur le produit de prêt.
 - Une **liste de politiques de calcul** encore proposée.
-- Un **identifiant technique** affiché là où un nom ou un code est attendu
-  (agence, titulaire, compte comptable).
+- Un **identifiant technique** (long code `01M0…`) affiché là où un nom ou un code
+  est attendu. Regardez en particulier : l'**agence** et le **titulaire** sur la
+  fiche compte, le **type / produit de compte** sur cette même fiche, et le
+  **caissier** à l'ouverture d'une session de caisse ainsi que dans la colonne
+  *Caissier* de la liste des sessions.
 - Un déblocage qui passe **sans** mappage d'opération configuré : le système doit
   refuser.
 
@@ -563,8 +729,11 @@ ou **Enregistrer au format PDF**.
 ## 12. Ce que ce guide ne couvre pas
 
 - La **banque islamique** : hors périmètre de cette version, traitée séparément.
-- Le **paramétrage initial** du plan comptable et des mappages d'opérations
-  (prérequis, pas objet du test).
+- Le **plan comptable** lui-même : les comptes PCEMF (`3222`, `4303`, `7153`,
+  `18700`, `5710`…) sont supposés déjà chargés pour l'agence. En revanche les
+  **imputations d'opérations** et la **caisse**, qui ne sont pas créées
+  automatiquement, sont couvertes pas à pas au **§1.2** et au **§1.3** : ce sont
+  des pré-requis du test, pas des acquis de l'environnement.
 - Les cas exceptionnels de frais de dossier (annulation, dispense, remboursement),
   qui restent une **décision manuelle de la Direction** et ne sont pas automatisés.
 - L'**assurance** en tant que module : le taux du produit produit un montant

@@ -38,6 +38,13 @@ final class CustomerAccountResource extends JsonResource
             // devoir consulter ses informations »).
             'ledger_account_code' => $account->relationLoaded('ledgerAccount') ? $account->ledgerAccount?->code : null,
             'account_product_public_id' => $account->relationLoaded('accountProduct') ? $account->accountProduct?->public_id : null,
+            // Same reason as the holder and the agency above: the screen used to
+            // resolve the product by searching a separately-fetched catalogue.
+            // That fetch needs `account.products.view`, which the loan-officer —
+            // the very role that opens this sheet — does not hold, so the list
+            // came back empty and the sheet printed the product's ULID.
+            'account_product_name' => $account->relationLoaded('accountProduct') ? $account->accountProduct?->name : null,
+            'account_product_family' => $account->relationLoaded('accountProduct') ? $account->accountProduct?->account_family : null,
             'account_number' => $account->account_number,
             'account_title' => $account->account_title,
             'account_type' => $account->account_type,

@@ -41,6 +41,11 @@ final class TillResource extends JsonResource
             'max_withdrawal_limit_minor' => $till->max_withdrawal_limit_minor,
             'currency' => $till->currency,
             'assigned_user_public_id' => $till->relationLoaded('assignedUser') ? $till->assignedUser?->public_id : null,
+            // The cashier's name travels with the till so the screens that show
+            // it do not have to call the staff directory, which needs
+            // `users.view` — a permission the teller lacks. Without this the
+            // « Caissier » field of the open-session drawer showed a ULID.
+            'assigned_user_name' => $till->relationLoaded('assignedUser') ? $till->assignedUser?->name : null,
             'ledger_account_public_id' => $till->relationLoaded('ledgerAccount') ? $till->ledgerAccount?->public_id : null,
             'created_at' => $till->created_at?->toAtomString(),
             'updated_at' => $till->updated_at?->toAtomString(),

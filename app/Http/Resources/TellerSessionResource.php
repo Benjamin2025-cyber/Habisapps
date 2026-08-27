@@ -34,6 +34,12 @@ final class TellerSessionResource extends JsonResource
             'accounting_day_public_id' => $session->relationLoaded('accountingDay') ? $session->accountingDay?->getAttribute('public_id') : null,
             'till_public_id' => $session->relationLoaded('till') ? $session->till?->getAttribute('public_id') : null,
             'teller_user_public_id' => $session->relationLoaded('teller') ? $session->teller?->getAttribute('public_id') : null,
+            // The name, not only the id. The sessions screen resolved it against
+            // a separately-fetched staff directory, which needs `users.view` — a
+            // permission the teller does not hold, and the teller is precisely
+            // who works this screen. The lookup therefore always came back empty
+            // and the « Caissier » column printed a ULID.
+            'teller_user_name' => $session->relationLoaded('teller') ? $session->teller?->getAttribute('name') : null,
             'business_date' => $businessDate instanceof CarbonInterface ? $businessDate->toDateString() : null,
             'opened_at' => $openedAt instanceof CarbonInterface ? $openedAt->toAtomString() : null,
             'closed_at' => $closedAt instanceof CarbonInterface ? $closedAt->toAtomString() : null,
