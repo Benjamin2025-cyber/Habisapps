@@ -46,6 +46,14 @@ La connexion se fait avec le **numéro de téléphone**.
 | Visa **Direction** | **+237690000002** | agency-manager |
 | Frais, déblocage | **+237690000002** | agency-manager |
 | Session de caisse, billetage | **+237690000004** | teller |
+| **Traitement des arriérés** (batch, §6) | **+237699100000** | platform-admin (*Bootstrap Admin*) |
+
+> **Pourquoi un compte d'administration pour le §6 ?** L'évaluation des arriérés
+> est un **traitement de fin de journée / fin de mois** (voir §6), pas une action
+> de guichet. Elle est volontairement fermée aux rôles front-office (agent de
+> crédit, caissier) et n'est lancée à la main que par un profil back-office
+> habilité — ici le `platform-admin`. Aucun des dix comptes ci-dessus ne peut la
+> lancer ; utilisez le compte d'administration pour cette étape uniquement.
 
 > Un visa refusé avec « vous avez déjà approuvé une autre étape » n'est **pas** une
 > anomalie : changez d'utilisateur.
@@ -511,8 +519,34 @@ réellement en impayé **le jour où vous testez**.
 
 Créez-les avec **600 000 F sur 12 mois** : chaque échéance vaut alors **55 000 F**
 (50 000 de capital + 5 000 d'intérêt), ce qui rend les chiffres lisibles. Débloquez
-chacun, puis lancez l'évaluation des arriérés depuis *Crédit › **Suivi des
-exigibles*** (ou le traitement de fin de mois), **à la date du jour**.
+chacun, puis lancez l'évaluation des arriérés (voir §6.0), **à la date du jour**.
+
+### 6.0 Où lance-t-on l'évaluation des arriérés
+
+> 🔴 **Ce n'est pas sur *Suivi des exigibles*.** Cet écran ne sert qu'au suivi
+> manuel (relances, rendez-vous, promesses de paiement) — il n'a pas de bouton
+> « évaluer ». L'évaluation des arriérés est un **traitement batch**, lancé
+> **en `platform-admin`** (`+237699100000`, cf. §1) :
+>
+> *Paramétrage › **Procédure Batch** › onglet **Exécutions** › **« + Nouvelle
+> exécution »*** :
+>
+> | Champ | Valeur |
+> |---|---|
+> | Procédure | `Loan Arrears Assessment` (`loan_arrears_assessment`) |
+> | **Date comptable** | la date d'arrêté (« as of ») — pour ce test, **la date du jour** |
+> | Agence | `HABIS Test Agency (TEST-HABIS)` |
+>
+> Cliquez **Créer** : l'exécution apparaît **En attente**. Ouvrez son menu **⋮ ›
+> Exécuter**, confirmez. Le statut passe à **Réussie** et le détail affiche
+> `assessed_loans`, `loans_with_new_penalties` et `assessed_penalty_minor`
+> (en centimes). C'est la **Date comptable** que vous changez au §6.4, pas une
+> case sur le prêt.
+>
+> **En production, personne ne lance ceci à la main** : la procédure est
+> planifiée (cadence *Quotidienne* pour l'évaluation, *Mensuelle* pour la
+> pénalité) et tourne dans le traitement de fin de journée. Le lancement manuel
+> décrit ici est réservé au back-office / administrateur pour un rattrapage.
 
 > ⚠️ **« Débloquez chacun » veut dire toute la chaîne** : les **quatre visas** du
 > §3.4 (quatre utilisateurs différents), puis l'**encaissement des quatre frais**
@@ -533,8 +567,17 @@ une seule échéance a dépassé les 5 jours de grâce (celle du 26/07).
 
 **Pénalité attendue : 6 100 F** = 5 000 F (partie fixe) + 1 100 F (2 % de 55 000).
 
-Le mois suivant, une nouvelle pénalité de 6 100 F s'ajoute : **12 200 F** cumulés.
-Les pénalités déjà posées n'en génèrent **jamais** de nouvelles.
+Le mois suivant, une nouvelle pénalité s'ajoute. Les pénalités déjà posées n'en
+génèrent **jamais** de nouvelles (pas de capitalisation).
+
+> ℹ️ **Combien exactement le mois suivant ?** Cela dépend du nombre d'échéances
+> alors en retard. Si vous relancez à une date où **deux** échéances ont dépassé
+> la grâce (la 26/07 **et** la 26/08), l'ajout n'est pas 6 100 mais
+> **7 200 F** = 5 000 (partie fixe, **une seule** par dossier et par mois) +
+> 2 × 1 100 (2 % sur **chacune** des deux échéances), portant le cumul à
+> **13 300 F**. C'est la même règle qu'au §6.2 — la partie fixe reste mensuelle,
+> la partie variable suit le nombre d'échéances. Un cumul de **12 200 F** ne vaut
+> que si une seule échéance est en retard au second passage.
 
 ### 6.2 La partie fixe est mensuelle, pas par échéance — prêt B
 
@@ -565,8 +608,8 @@ Les pénalités déjà posées n'en génèrent **jamais** de nouvelles.
 
 ### 6.4 Une réévaluation antidatée ne double pas
 
-Sur le **prêt A**, relancez l'évaluation des arriérés **trois fois**, en changeant
-la date d'arrêté (« as of ») à chaque passage :
+Sur le **prêt A**, relancez le batch d'arriérés (§6.0) **trois fois**, en changeant
+la **Date comptable** (la date d'arrêté « as of ») à chaque exécution :
 
 | Ordre | Date d'arrêté | Pénalité produite |
 |---|---|---|
