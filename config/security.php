@@ -551,6 +551,14 @@ return [
                 'loans.create',
                 'loans.update',
                 'loans.approvals.montage',
+                // Same reason as users.view above: the loan form's « Secteur
+                // d'activité » / « Sous-secteur » pickers list the activity
+                // taxonomy, and classifying the borrower's activity is the loan
+                // officer's own job. Without these the dropdowns come back empty
+                // and the officer cannot record the sector they are meant to.
+                // Read-only — managing the taxonomy stays with admin roles.
+                'sectors.view',
+                'sub-sectors.view',
                 // Generating the schedule is part of putting the loan together —
                 // the officer needs the table to walk the borrower through the
                 // instalments. Rescheduling is deliberately withheld: changing

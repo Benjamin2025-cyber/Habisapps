@@ -55,6 +55,11 @@ final class ConsolidatedChartBenchSeeder extends Seeder
 
         $this->call(TestStaffAccountsSeeder::class);
 
+        // A dummy activity taxonomy so the loan form's Secteur / Sous-secteur
+        // dropdowns are not empty during the test guide. Test data only — a real
+        // install loads its own; the seeder carries the same production guard.
+        $this->call(TestActivitySectorSeeder::class);
+
         DB::transaction(function (): void {
             $primary = Agency::query()->where('code', self::PRIMARY_AGENCY_CODE)->firstOrFail();
             $second = $this->secondAgency();
