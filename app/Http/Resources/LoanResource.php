@@ -28,7 +28,9 @@ final class LoanResource extends JsonResource
                 'client_display_name' => null,
                 'agency_public_id' => null,
                 'loan_product_public_id' => null,
+                'loan_product_label' => null,
                 'credit_agent_public_id' => null,
+                'credit_agent_name' => null,
                 'amortization_account_public_id' => null,
                 'unpaid_account_public_id' => null,
                 'recovery_account_public_id' => null,
@@ -42,7 +44,9 @@ final class LoanResource extends JsonResource
                 'closed_on' => null,
                 'purpose' => null,
                 'sector_public_id' => null,
+                'sector_label' => null,
                 'sub_sector_public_id' => null,
+                'sub_sector_label' => null,
                 'activity_address' => null,
                 'entrepreneur_address' => null,
                 'first_installment_date' => null,
@@ -92,7 +96,20 @@ final class LoanResource extends JsonResource
             'client_display_name' => $loan->client?->displayName(),
             'agency_public_id' => $loan->agency?->public_id,
             'loan_product_public_id' => $loan->loanProduct?->public_id,
+            // Same reason as the holder above. Listing the product catalogue
+            // needs `loan.products.view`, which the accountant and the
+            // compliance-officer do not hold — and both of them open this file
+            // to sign their visa, so for them the product showed a raw ULID.
+            'loan_product_label' => $this->joinCodeAndName(
+                $loan->loanProduct?->code,
+                $loan->loanProduct?->name,
+            ),
             'credit_agent_public_id' => $loan->creditAgent?->public_id,
+            // Same class again: the loan officer's name was resolved through the
+            // staff directory, which needs `users.view`. The accountant and the
+            // compliance-officer lack it yet open this file to sign a visa, so
+            // « Agent de crédit » showed a raw ULID for them.
+            'credit_agent_name' => $loan->creditAgent?->name,
             'amortization_account_public_id' => $loan->amortizationAccount?->public_id,
             'unpaid_account_public_id' => $loan->unpaidAccount?->public_id,
             'recovery_account_public_id' => $loan->recoveryAccount?->public_id,
@@ -106,7 +123,20 @@ final class LoanResource extends JsonResource
             'closed_on' => $this->formatDateOnly($loan->closed_on),
             'purpose' => $loan->purpose,
             'sector_public_id' => $loan->sector?->public_id,
+            // Worse than a ULID before: the sector lists need `sectors.view` /
+            // `sub-sectors.view`, which only the agency-manager and the
+            // kyc-officer hold, and the screen rendered nothing when the lookup
+            // missed — so the loan-officer who had just filled the sector in saw
+            // both fields blank and concluded it had not been saved.
+            'sector_label' => $this->joinCodeAndName(
+                $loan->sector?->code,
+                $loan->sector?->name,
+            ),
             'sub_sector_public_id' => $loan->subSector?->public_id,
+            'sub_sector_label' => $this->joinCodeAndName(
+                $loan->subSector?->code,
+                $loan->subSector?->name,
+            ),
             'activity_address' => $loan->activity_address,
             'entrepreneur_address' => $loan->entrepreneur_address,
             'first_installment_date' => $this->formatDateOnly($loan->first_installment_date),
@@ -143,5 +173,20 @@ final class LoanResource extends JsonResource
         }
 
         return is_string($value) && $value !== '' ? substr($value, 0, 10) : null;
+    }
+
+    /**
+     * « CODE — Libellé », the form every one of these labels already took on
+     * screen. Null when the relation is absent, so the caller can fall back
+     * rather than render a stray dash.
+     */
+    private function joinCodeAndName(?string $code, ?string $name): ?string
+    {
+        $parts = array_values(array_filter(
+            [$code, $name],
+            static fn (?string $part): bool => $part !== null && $part !== '',
+        ));
+
+        return $parts === [] ? null : implode(' — ', $parts);
     }
 }
