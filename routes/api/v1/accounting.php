@@ -159,6 +159,7 @@ Route::middleware(['auth:sanctum', 'accounting.day.registration-lock'])->group(f
     Route::get('tills', [TillController::class, 'index']);
     Route::post('tills', [TillController::class, 'store']);
     Route::get('tills/{till}', [TillController::class, 'show']);
+    Route::get('tills/{till}/cash-journal', [TillController::class, 'cashJournal']);
     Route::patch('tills/{till}', [TillController::class, 'update']);
 
     Route::get('teller-sessions', [TellerSessionController::class, 'index']);

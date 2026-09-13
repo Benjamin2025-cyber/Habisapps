@@ -4338,13 +4338,18 @@ final class Module4CreditLoansTest extends TestCase
         $this->assertJsonSuccess($empty);
         $empty->assertJsonPath('data.ready', false);
         self::assertSame('missing', $this->readinessStatus($empty, 'loan_principal_disbursement'));
+        self::assertSame('missing', $this->readinessStatus($empty, 'account_opening_fee'));
         self::assertFalse($this->readinessHasOperation($empty, 'loan_insurance_premium'));
 
-        // Configure approved mappings for every loan posting operation.
+        // Configure approved mappings for every posting operation the readiness
+        // endpoint reports — the loan legs and the 7611 opening-fee credit,
+        // which blocks the counter rather than disbursement but blocks it just
+        // as hard.
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
         foreach (['loan_setup_dossier_fee', 'loan_setup_principal_tax', 'loan_setup_tax', 'loan_setup_guarantee_deposit'] as $code) {
             $this->createOperationMapping($code, 'loan', $agency, null, $this->createLedgerAccount($agency)['id']);
         }
+        $this->createOperationMapping('account_opening_fee', 'accounting', $agency, null, $this->createLedgerAccount($agency)['id']);
 
         $ready = $this->withApiHeaders()->actingAsSanctum($actor)->getJson($url);
         $ready->assertJsonPath('data.ready', true);

@@ -43,20 +43,38 @@ final class LoanOperationCodeSeeder extends Seeder
     public function run(): void
     {
         foreach (self::CODES as $definition) {
-            // Keyed on the code, so re-running leaves an institution's own label
-            // and status alone rather than resetting them.
-            DB::table('operation_codes')->updateOrInsert(
-                ['code' => $definition['code']],
-                [
-                    'public_id' => (string) Str::ulid(),
-                    'label' => $definition['label'],
-                    'module' => 'loan',
-                    'direction' => $definition['direction'],
-                    'status' => OperationCode::STATUS_ACTIVE,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ],
-            );
+            /*
+             * Keyed on the code, and deliberately not an updateOrInsert: that
+             * rewrote `public_id` with a fresh ULID on every re-run — changing
+             * the identity of a row that screens and links address by it — and
+             * reset an institution's own label and status along with it, which
+             * is the opposite of what the comment here used to promise. Only
+             * module and direction, the two fields the resolver matches on, are
+             * repaired.
+             */
+            $exists = DB::table('operation_codes')->where('code', $definition['code'])->exists();
+            if ($exists) {
+                DB::table('operation_codes')
+                    ->where('code', $definition['code'])
+                    ->update([
+                        'module' => 'loan',
+                        'direction' => $definition['direction'],
+                        'updated_at' => now(),
+                    ]);
+
+                continue;
+            }
+
+            DB::table('operation_codes')->insert([
+                'public_id' => (string) Str::ulid(),
+                'code' => $definition['code'],
+                'label' => $definition['label'],
+                'module' => 'loan',
+                'direction' => $definition['direction'],
+                'status' => OperationCode::STATUS_ACTIVE,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
     }
 }

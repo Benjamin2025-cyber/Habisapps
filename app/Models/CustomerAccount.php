@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
     'account_type',
     'currency',
     'unavailable_amount_minor',
+    'opening_fee_due_minor',
+    'opening_fee_collected_at',
     'signature_path',
     'opened_on',
     'closed_on',
@@ -41,6 +43,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $account_type
  * @property string $currency
  * @property int $unavailable_amount_minor
+ * @property int $opening_fee_due_minor
+ * @property Carbon|null $opening_fee_collected_at
  * @property Carbon|null $opened_on
  * @property Carbon|null $closed_on
  * @property string $status
@@ -80,6 +84,8 @@ final class CustomerAccount extends Model
             'opened_on' => 'date',
             'closed_on' => 'date',
             'unavailable_amount_minor' => 'integer',
+            'opening_fee_due_minor' => 'integer',
+            'opening_fee_collected_at' => 'datetime',
         ];
     }
 

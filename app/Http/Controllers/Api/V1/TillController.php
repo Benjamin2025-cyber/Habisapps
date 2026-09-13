@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\CashOperations\TillCashJournalWorkflow;
 use App\Http\Controllers\BaseController;
 use App\Http\Requests\StoreTillRequest;
 use App\Http\Requests\UpdateTillRequest;
@@ -15,6 +16,7 @@ use App\Models\Till;
 use App\Models\User;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
+use Dedoc\Scramble\Attributes\QueryParameter;
 use Dedoc\Scramble\Attributes\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -28,6 +30,7 @@ final class TillController extends BaseController
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
+        private readonly TillCashJournalWorkflow $cashJournalWorkflow,
     ) {}
 
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{tills: array<int, \App\Http\Resources\TillResource>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
@@ -156,6 +159,19 @@ final class TillController extends BaseController
         }
 
         return $this->respondSuccess(TillResource::make($till->loadMissing(['agency', 'assignedUser', 'ledgerAccount'])));
+    }
+
+    /**
+     * The « brouillard de caisse » — this till's line-by-line cash journal with
+     * the ten columns the Édition screen prints, running balance included.
+     */
+    #[QueryParameter('filter[transaction_date_from]', 'Start of the printed window (YYYY-MM-DD). The running balance is computed before it.', type: 'string')]
+    #[QueryParameter('filter[transaction_date_to]', 'End of the printed window (YYYY-MM-DD).', type: 'string')]
+    #[QueryParameter('filter[transaction_type]', 'One of cash_deposit, cash_withdrawal, cash_reversal, cash_manual_journal.', type: 'string')]
+    #[Response(status: 200, type: 'array{success: bool, message: string, data: array{till: array{public_id: string, code: string, name: string, agency_public_id: string|null, agency_code: string|null}, opening_balance_minor: int, lines: array<int, array<string, mixed>>}, errors: null, meta: array{pagination: array{current_page: int, per_page: int, total: int, last_page: int}}}')]
+    public function cashJournal(Request $request, Till $till): JsonResponse
+    {
+        return $this->cashJournalWorkflow->index($request, $till);
     }
 
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{till: \App\Http\Resources\TillResource}, errors: null, meta: null}')]

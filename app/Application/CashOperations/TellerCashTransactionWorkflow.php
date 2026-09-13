@@ -143,6 +143,18 @@ final class TellerCashTransactionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: $tender['errors']);
         }
 
+        /*
+         * A product charging an opening fee needs its income account
+         * resolvable before any first deposit is accepted: a fee that cannot be
+         * posted must refuse the transaction, not vanish behind a missing
+         * mapping. Resolved up front, outside the write transaction, like the
+         * tender mappings; only when a fee is still pending.
+         */
+        $openingFeeCreditLedgerId = $this->resolveOpeningFeeCreditLedgerId($customerAccount, $currency);
+        if ($openingFeeCreditLedgerId instanceof InvalidArgumentException) {
+            return $this->respondUnprocessable(errors: ['operation_account_mapping' => [$openingFeeCreditLedgerId->getMessage()]]);
+        }
+
         $initiator = $this->resolveInitiator($request, $customerAccount, TellerTransaction::TYPE_CASH_DEPOSIT, $amountMinor, $currency);
         if ($initiator['ok'] !== true) {
             return $this->respondUnprocessable(errors: $initiator['errors']);
@@ -156,7 +168,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines', 'tenders'])
+                ->with(['tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines', 'tenders'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
@@ -164,11 +176,20 @@ final class TellerCashTransactionWorkflow extends BaseController
                     return $this->respondUnprocessable(errors: ['idempotency_key' => [__('Idempotency-Key has already been used for a different tender breakdown.')]]);
                 }
 
-                return $this->transactionResponse($existing, 'Cash deposit already posted successfully');
+                return $this->transactionResponse($existing, $this->openingFeeAlreadySwept($existing), 'Cash deposit already posted successfully');
             }
         }
 
-        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $accountingDay, $tender): TellerTransaction {
+        $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $accountingDay, $tender, $openingFeeCreditLedgerId): array {
+            // First-transaction detection must be race-safe: two deposits arriving
+            // together on a fee-charging account must produce one sweep, not two.
+            // Only taken when a fee is actually pending — a deposit with nothing
+            // to sweep has no reason to serialise on the account row.
+            if ($openingFeeCreditLedgerId !== null) {
+                DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
+                $customerAccount->refresh();
+            }
+
             $publicId = (string) Str::ulid();
             $reference = 'CD-'.Str::upper(Str::random(10));
 
@@ -241,27 +262,31 @@ final class TellerCashTransactionWorkflow extends BaseController
 
             $transaction->update(['journal_entry_id' => $journalEntry->id]);
             $this->postSystemJournal($journalEntry, $actor);
+            $openingFee = $this->sweepOpeningFeeIfFirstTransaction($actor, $customerAccount, $customerLedger, $transaction, $tellerSession, $accountingDay, $currency, $openingFeeCreditLedgerId);
             $this->queueCustomerNotificationIfRequested($transaction->refresh(), $customerAccount, $tender, 'cash_deposit_posted');
 
-            return $transaction->refresh();
+            return ['transaction' => $transaction->refresh(), 'opening_fee' => $openingFee];
         });
 
-        $this->securityAudit->record('cash.deposit.posted', actor: $actor, subject: $result, properties: [
+        $transaction = $result['transaction'];
+
+        $this->securityAudit->record('cash.deposit.posted', actor: $actor, subject: $transaction, properties: [
             'teller_session_public_id' => $tellerSession->public_id,
             'customer_account_public_id' => $customerAccount->public_id,
             'amount_minor' => $amountMinor,
             'currency' => $currency,
-            'initiator_type' => $result->initiator_type,
-            'initiator_proxy_id' => $result->initiator_proxy_id,
+            'initiator_type' => $transaction->initiator_type,
+            'initiator_proxy_id' => $transaction->initiator_proxy_id,
         ], request: $request);
+        $this->recordOpeningFeeAudit($request, $actor, $customerAccount, $transaction, $result['opening_fee']);
         $this->notifications->notifyAgency(
-            agencyId: $result->agency_id,
+            agencyId: $transaction->agency_id,
             type: 'success',
             category: 'cash_deposit_posted',
             title: 'Cash deposit posted',
             message: 'A cash deposit of '.$amountMinor.' '.$currency.' was posted.',
             sourceType: TellerTransaction::class,
-            sourcePublicId: $result->public_id,
+            sourcePublicId: $transaction->public_id,
             actionUrl: '/teller-transactions?filter[transaction_type]=cash_deposit',
             metadata: [
                 'teller_session_public_id' => $tellerSession->public_id,
@@ -272,7 +297,7 @@ final class TellerCashTransactionWorkflow extends BaseController
             ],
         );
 
-        return $this->transactionResponse($result, 'Cash deposit posted successfully');
+        return $this->transactionResponse($transaction, $result['opening_fee'], 'Cash deposit posted successfully');
     }
 
     public function storeWithdrawal(StoreCashWithdrawalRequest $request, TellerSession $tellerSession): JsonResponse
@@ -341,6 +366,13 @@ final class TellerCashTransactionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: $tender['errors']);
         }
 
+        // Same fail-closed rule as deposits: a pending opening fee with no
+        // resolvable income mapping refuses the transaction rather than skipping.
+        $openingFeeCreditLedgerId = $this->resolveOpeningFeeCreditLedgerId($customerAccount, $currency);
+        if ($openingFeeCreditLedgerId instanceof InvalidArgumentException) {
+            return $this->respondUnprocessable(errors: ['operation_account_mapping' => [$openingFeeCreditLedgerId->getMessage()]]);
+        }
+
         if ($till->max_withdrawal_limit_minor !== null && $tender['cash_amount_minor'] > $till->max_withdrawal_limit_minor) {
             return $this->respondUnprocessable(errors: ['amount_minor' => [__('Withdrawal amount exceeds the till maximum withdrawal limit.')]]);
         }
@@ -362,7 +394,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines', 'tenders'])
+                ->with(['tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines', 'tenders'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
@@ -370,12 +402,12 @@ final class TellerCashTransactionWorkflow extends BaseController
                     return $this->respondUnprocessable(errors: ['idempotency_key' => [__('Idempotency-Key has already been used for a different tender breakdown.')]]);
                 }
 
-                return $this->transactionResponse($existing, 'Cash withdrawal already posted successfully');
+                return $this->transactionResponse($existing, $this->openingFeeAlreadySwept($existing), 'Cash withdrawal already posted successfully');
             }
         }
 
         try {
-            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck, $accountingDay, $tender): TellerTransaction {
+            $result = DB::transaction(function () use ($request, $actor, $tellerSession, $till, $customerAccount, $customerLedger, $tillLedger, $amountMinor, $currency, $idempotencyKey, $initiator, $signatureCheck, $accountingDay, $tender, $openingFeeCreditLedgerId): array {
                 DB::table('customer_accounts')->where('id', $customerAccount->id)->lockForUpdate()->first();
                 $lockedAccount = CustomerAccount::query()->whereKey($customerAccount->id)->firstOrFail();
                 $availableBalance = $this->balanceCalculator->availableForCustomerAccount($lockedAccount, $currency)['available_balance_minor'];
@@ -456,9 +488,10 @@ final class TellerCashTransactionWorkflow extends BaseController
 
                 $transaction->update(['journal_entry_id' => $journalEntry->id]);
                 $this->postSystemJournal($journalEntry, $actor);
+                $openingFee = $this->sweepOpeningFeeIfFirstTransaction($actor, $lockedAccount, $customerLedger, $transaction, $tellerSession, $accountingDay, $currency, $openingFeeCreditLedgerId);
                 $this->queueCustomerNotificationIfRequested($transaction->refresh(), $customerAccount, $tender, 'cash_withdrawal_posted');
 
-                return $transaction->refresh();
+                return ['transaction' => $transaction->refresh(), 'opening_fee' => $openingFee];
             });
         } catch (DomainException $exception) {
             return $this->respondUnprocessable(errors: ['amount_minor' => [$exception->getMessage()]]);
@@ -466,24 +499,27 @@ final class TellerCashTransactionWorkflow extends BaseController
             return $this->respondUnprocessable(errors: ['operation_account_mapping' => [$exception->getMessage()]]);
         }
 
-        $this->securityAudit->record('cash.withdrawal.posted', actor: $actor, subject: $result, properties: [
+        $transaction = $result['transaction'];
+
+        $this->securityAudit->record('cash.withdrawal.posted', actor: $actor, subject: $transaction, properties: [
             'teller_session_public_id' => $tellerSession->public_id,
             'customer_account_public_id' => $customerAccount->public_id,
             'amount_minor' => $amountMinor,
             'currency' => $currency,
-            'initiator_type' => $result->initiator_type,
-            'initiator_proxy_id' => $result->initiator_proxy_id,
+            'initiator_type' => $transaction->initiator_type,
+            'initiator_proxy_id' => $transaction->initiator_proxy_id,
             'customer_account_signature_public_id' => $signatureCheck['signature_public_id'],
             'signature_verification_method' => $signatureCheck['verification_method'],
         ], request: $request);
+        $this->recordOpeningFeeAudit($request, $actor, $customerAccount, $transaction, $result['opening_fee']);
         $this->notifications->notifyAgency(
-            agencyId: $result->agency_id,
+            agencyId: $transaction->agency_id,
             type: 'warning',
             category: 'cash_withdrawal_posted',
             title: 'Cash withdrawal posted',
             message: 'A cash withdrawal of '.$amountMinor.' '.$currency.' was posted.',
             sourceType: TellerTransaction::class,
-            sourcePublicId: $result->public_id,
+            sourcePublicId: $transaction->public_id,
             actionUrl: '/teller-transactions?filter[transaction_type]=cash_withdrawal',
             metadata: [
                 'teller_session_public_id' => $tellerSession->public_id,
@@ -494,7 +530,7 @@ final class TellerCashTransactionWorkflow extends BaseController
             ],
         );
 
-        return $this->transactionResponse($result, 'Cash withdrawal posted successfully');
+        return $this->transactionResponse($transaction, $result['opening_fee'], 'Cash withdrawal posted successfully');
     }
 
     public function reverse(Request $request, TellerTransaction $tellerTransaction): JsonResponse
@@ -529,6 +565,31 @@ final class TellerCashTransactionWorkflow extends BaseController
                 return ['ok' => false, 'message' => 'The linked journal entry must be posted before it can be reversed.'];
             }
 
+            /*
+             * An opening fee swept by this very transaction goes back first.
+             *
+             * The fee was said to survive a reversal — it is owed for opening
+             * the account, not for the operation. That is defensible on paper
+             * and impossible in practice: the fee comes out of the money the
+             * deposit just brought in, so undoing the deposit leaves the account
+             * at minus the fee, and `enforce_customer_account_non_overdraft`
+             * refuses the line. Every first deposit that charged a fee was
+             * therefore unreversible, which is not a state a counter can live
+             * with — mis-keyed deposits get reversed all day.
+             *
+             * So the annulment is complete: the fee is contre-passée with the
+             * deposit and the stamp is cleared, leaving the account exactly
+             * where it was before the teller touched it. The fee is not lost —
+             * nothing was the account's first transaction any more, so the next
+             * real one collects it.
+             *
+             * Reversed *before* the deposit on purpose: the trigger fires per
+             * line, and giving the fee back first (95 000 → 100 000 → 0) keeps
+             * every intermediate balance non-negative. The other order dips to
+             * −5 000 and is refused.
+             */
+            $feeReversed = $this->reverseOpeningFeeSweep($actor, $locked);
+
             $reversalJournal = $this->createJournalEntryReversal->execute($actor, $journalEntry, postImmediately: true);
             $reversal = TellerTransaction::query()->create([
                 'public_id' => (string) Str::ulid(),
@@ -554,7 +615,7 @@ final class TellerCashTransactionWorkflow extends BaseController
 
             $locked->update(['status' => TellerTransaction::STATUS_REVERSED]);
 
-            return ['ok' => true, 'reversal' => $reversal, 'reversal_journal' => $reversalJournal];
+            return ['ok' => true, 'reversal' => $reversal, 'reversal_journal' => $reversalJournal, 'opening_fee_reversed' => $feeReversed];
         });
 
         if ($reversalResult['ok'] === false) {
@@ -583,7 +644,7 @@ final class TellerCashTransactionWorkflow extends BaseController
             ],
         );
 
-        return $this->transactionResponse($reversal, 'Cash transaction reversed successfully');
+        return $this->transactionResponse($reversal, null, 'Cash transaction reversed successfully');
     }
 
     /**
@@ -1127,15 +1188,288 @@ final class TellerCashTransactionWorkflow extends BaseController
         return $opening + $movement;
     }
 
-    private function transactionResponse(TellerTransaction $transaction, string $message): JsonResponse
+    /**
+     * @param  array{amount_minor: int, currency: string, journal_entry_public_id: string}|null  $openingFee
+     */
+    private function transactionResponse(TellerTransaction $transaction, ?array $openingFee, string $message): JsonResponse
     {
-        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount', 'tenders']);
+        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount.client', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount', 'tenders']);
         $journalEntry = $transaction->journalEntry;
 
         return $this->respondCreated([
             'teller_transaction' => TellerTransactionResource::make($transaction),
             'journal_entry' => $journalEntry instanceof JournalEntry ? JournalEntryResource::make($journalEntry) : null,
+            'opening_fee' => $openingFee,
         ], $message);
+    }
+
+    /**
+     * The income leg of the automatic opening-fee sweep, resolved through
+     * the shared mapping resolver so agency/currency/approval rules cannot drift
+     * from the other postings.
+     *
+     * @return int|null|InvalidArgumentException the ledger id, null when no fee
+     *                                           is pending, or the failure to surface as a 422
+     */
+    private function resolveOpeningFeeCreditLedgerId(CustomerAccount $customerAccount, string $currency): int|InvalidArgumentException|null
+    {
+        $feeMinor = $this->pendingOpeningFeeMinor($customerAccount, $currency);
+        if ($feeMinor === null) {
+            return null;
+        }
+
+        /*
+         * The product's own income sub-account wins when it names one: the
+         * accounting team asked for « plusieurs sous-comptes selon les types de
+         * comptes », and one mapping per agency and currency cannot express
+         * that. Held to the same rules the resolver applies — active, and in
+         * the account's agency — so the shortcut cannot post somewhere the
+         * mapping would have refused.
+         */
+        $productLedger = $customerAccount->accountProduct?->openingFeeLedgerAccount;
+        if ($productLedger instanceof LedgerAccount) {
+            if (! $this->ledgerIsActiveInAgency($productLedger, $customerAccount->agency_id)) {
+                return new InvalidArgumentException(__('The account opening fee could not be posted: the product income account is inactive or belongs to another agency.'));
+            }
+
+            return $productLedger->id;
+        }
+
+        try {
+            return $this->mappingResolver->creditLedgerId('account_opening_fee', 'accounting', $customerAccount->agency_id, $currency);
+        } catch (InvalidArgumentException $exception) {
+            return new InvalidArgumentException('The account opening fee could not be posted: '.$exception->getMessage(), previous: $exception);
+        }
+    }
+
+    /**
+     * Contre-passe the opening-fee sweep this transaction triggered, if any, and
+     * hand the account back its "not yet charged" state.
+     *
+     * @return bool whether a fee sweep was found and reversed
+     */
+    private function reverseOpeningFeeSweep(User $actor, TellerTransaction $transaction): bool
+    {
+        $feeJournal = JournalEntry::query()
+            ->where('idempotency_key', $this->openingFeeIdempotencyKey($transaction))
+            ->first();
+        if (! $feeJournal instanceof JournalEntry || $feeJournal->status !== JournalEntry::STATUS_POSTED) {
+            return false;
+        }
+
+        $this->createJournalEntryReversal->execute($actor, $feeJournal, postImmediately: true);
+
+        // Cleared, not kept: with its first transaction annulled the account has
+        // no transaction history again, so the fee is pending once more and the
+        // next operation sweeps it. Leaving the stamp would lose the fee for good.
+        if ($transaction->customer_account_id !== null) {
+            DB::table('customer_accounts')
+                ->where('id', $transaction->customer_account_id)
+                ->update(['opening_fee_collected_at' => null]);
+        }
+
+        return true;
+    }
+
+    /**
+     * The opening-fee sweep as its own audited event.
+     *
+     * Nobody asks for this posting and nobody approves it, so it is the one
+     * movement on the account with no human behind it — which is precisely why
+     * it needs to be findable on its own rather than implied by the deposit that
+     * triggered it. Recorded after the write commits, like every other audit
+     * entry here, so a rolled-back transaction leaves no trace of a fee it never
+     * charged.
+     *
+     * @param  array{amount_minor: int, currency: string, journal_entry_public_id: string}|null  $openingFee
+     */
+    private function recordOpeningFeeAudit(
+        Request $request,
+        User $actor,
+        CustomerAccount $customerAccount,
+        TellerTransaction $transaction,
+        ?array $openingFee,
+    ): void {
+        if ($openingFee === null) {
+            return;
+        }
+
+        $this->securityAudit->record('account.opening_fee.swept', actor: $actor, subject: $customerAccount, properties: [
+            'customer_account_public_id' => $customerAccount->public_id,
+            'account_number' => $customerAccount->account_number,
+            'amount_minor' => $openingFee['amount_minor'],
+            'currency' => $openingFee['currency'],
+            'journal_entry_public_id' => $openingFee['journal_entry_public_id'],
+            'triggered_by_teller_transaction_public_id' => $transaction->public_id,
+        ], request: $request);
+    }
+
+    /**
+     * The sweep a previous, identical call already posted for this transaction,
+     * read back off its derived idempotency key.
+     *
+     * An idempotent replay must describe the same operation as the original, or
+     * a teller who reprints the receipt after a timeout gets one missing the
+     * « frais d'ouverture » line that the customer was actually charged.
+     *
+     * @return array{amount_minor: int, currency: string, journal_entry_public_id: string}|null
+     */
+    private function openingFeeAlreadySwept(TellerTransaction $transaction): ?array
+    {
+        $journalEntry = JournalEntry::query()
+            ->where('idempotency_key', $this->openingFeeIdempotencyKey($transaction))
+            ->first();
+        if (! $journalEntry instanceof JournalEntry) {
+            return null;
+        }
+
+        return [
+            'amount_minor' => (int) DB::table('journal_lines')->where('journal_entry_id', $journalEntry->id)->sum('credit_minor'),
+            'currency' => $transaction->currency,
+            'journal_entry_public_id' => $journalEntry->public_id,
+        ];
+    }
+
+    private function openingFeeIdempotencyKey(TellerTransaction $transaction): string
+    {
+        return 'account-opening-fee:'.$transaction->public_id;
+    }
+
+    /**
+     * The opening fee still owed on this account, or null when there is none:
+     * the account was opened under a tariff that charged nothing, or the fee has
+     * already been swept.
+     *
+     * The figure is the account's own — snapshotted from the product the day it
+     * was opened — not the product's current one. Reading the live product made
+     * the sweep retroactive: every account already in the book has never been
+     * charged, so the day a fee was switched on, the whole existing customer
+     * base would have been billed on their next deposit.
+     *
+     * The currency test is the account's, for the same reason: the account
+     * carries the fee, so the two can no longer disagree the way a legacy
+     * account and a re-denominated product could.
+     */
+    private function pendingOpeningFeeMinor(CustomerAccount $customerAccount, string $currency): ?int
+    {
+        if ($customerAccount->currency !== $currency) {
+            return null;
+        }
+
+        $feeMinor = $customerAccount->opening_fee_due_minor;
+        if ($feeMinor <= 0 || $customerAccount->opening_fee_collected_at !== null) {
+            return null;
+        }
+
+        return $feeMinor;
+    }
+
+    /**
+     * @return array{amount_minor: int, currency: string, journal_entry_public_id: string}|null
+     */
+    private function sweepOpeningFeeIfFirstTransaction(
+        User $actor,
+        CustomerAccount $customerAccount,
+        LedgerAccount $customerLedger,
+        TellerTransaction $transaction,
+        TellerSession $tellerSession,
+        AccountingDay $accountingDay,
+        string $currency,
+        ?int $openingFeeCreditLedgerId,
+    ): ?array {
+        if ($openingFeeCreditLedgerId === null) {
+            return null;
+        }
+
+        // Called under the customer_accounts row lock taken by the caller, so the
+        // re-read here is the authoritative "nobody swept it in between" check.
+        $customerAccount->refresh();
+        $feeMinor = $this->pendingOpeningFeeMinor($customerAccount, $currency);
+        if ($feeMinor === null) {
+            return null;
+        }
+
+        /*
+         * The sweep takes money out of the account, so it waits for money it is
+         * allowed to take. A first withdrawal on a thinly funded account defers
+         * the fee to the next transaction instead of driving the account
+         * negative: the fee is owed for opening, and the next use of the account
+         * collects it.
+         *
+         * What it may take is the balance less what is spoken for — the amounts
+         * blocked on the account and the active holds. A guarantee deposit held
+         * against a loan is not the institution's to bill against; taking the
+         * fee out of it leaves the hold unbacked, which is exactly what a
+         * withdrawal of the same money would have been refused for.
+         *
+         * The product minimum and the authorised overdraft are deliberately not
+         * part of this. The minimum is a withdrawal floor, and the fee is owed
+         * whether or not the customer keeps that much on deposit; the overdraft
+         * is a facility the customer asks for, not one a fee helps itself to.
+         */
+        $available = $this->balanceCalculator->availableForCustomerAccount($customerAccount, $currency);
+        $spendableMinor = $available['accounting_balance_minor']
+            - $available['unavailable_amount_minor']
+            - $available['active_hold_amount_minor'];
+        if ($spendableMinor < $feeMinor) {
+            return null;
+        }
+
+        $reference = 'AOF-'.$transaction->reference;
+
+        $journalEntry = JournalEntry::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'reference' => $reference,
+            'business_date' => $tellerSession->business_date,
+            'accounting_day_id' => $accountingDay->id,
+            'posted_at' => null,
+            'agency_id' => $tellerSession->agency_id,
+            'source_module' => 'cash_operations',
+            'source_type' => 'account_opening_fee',
+            'source_public_id' => $transaction->public_id,
+            'status' => JournalEntry::STATUS_DRAFT,
+            'description' => 'Account opening fee '.$customerAccount->account_number,
+            'created_by_user_id' => $actor->id,
+            'posted_by_user_id' => null,
+            'idempotency_key' => $this->openingFeeIdempotencyKey($transaction),
+        ]);
+
+        JournalLine::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $tellerSession->agency_id,
+            'journal_entry_id' => $journalEntry->id,
+            'ledger_account_id' => $customerLedger->id,
+            'customer_account_id' => $customerAccount->id,
+            'debit_minor' => $feeMinor,
+            'credit_minor' => 0,
+            'currency' => $currency,
+            'line_memo' => 'Account opening fee debited from customer account',
+        ]);
+
+        JournalLine::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'agency_id' => $tellerSession->agency_id,
+            'journal_entry_id' => $journalEntry->id,
+            'ledger_account_id' => $openingFeeCreditLedgerId,
+            'customer_account_id' => null,
+            'debit_minor' => 0,
+            'credit_minor' => $feeMinor,
+            'currency' => $currency,
+            'line_memo' => "Account opening fee credited to income for account {$customerAccount->account_number}",
+        ]);
+
+        $this->postSystemJournal($journalEntry, $actor);
+
+        // Stamped inside the same locked transaction: even if the triggering
+        // transaction is later reversed, the fee stays — it is owed for opening
+        // the account, not per transaction.
+        $customerAccount->forceFill(['opening_fee_collected_at' => now()])->save();
+
+        return [
+            'amount_minor' => $feeMinor,
+            'currency' => $currency,
+            'journal_entry_public_id' => $journalEntry->public_id,
+        ];
     }
 
     private function postSystemJournal(JournalEntry $journalEntry, User $actor): void

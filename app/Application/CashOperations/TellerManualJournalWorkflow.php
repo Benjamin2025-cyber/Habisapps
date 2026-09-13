@@ -76,7 +76,7 @@ final class TellerManualJournalWorkflow extends BaseController
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount', 'journalEntry.lines'])
+                ->with(['tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
@@ -308,7 +308,7 @@ final class TellerManualJournalWorkflow extends BaseController
 
     private function transactionResponse(TellerTransaction $transaction, string $message): JsonResponse
     {
-        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
+        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount.client', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount']);
         $journalEntry = $transaction->journalEntry;
 
         return $this->respondCreated([

@@ -39,7 +39,7 @@ final class AccountProductController extends BaseController
             return $this->respondForbidden();
         }
 
-        $query = AccountProduct::query()->with(['agency', 'ledgerAccount'])->latest();
+        $query = AccountProduct::query()->with(['agency', 'ledgerAccount', 'openingFeeLedgerAccount'])->latest();
 
         if (! $actor->hasRole('platform-admin') && ! $actor->can('ledger.scope.institution.read')) {
             $agencyId = $this->staffAgencyScope->currentAgencyId($actor);
@@ -97,6 +97,15 @@ final class AccountProductController extends BaseController
             return $this->respondUnprocessable(errors: ['ledger_account_public_id' => [__('The selected ledger account must be active and match the account product agency scope.')]]);
         }
 
+        // The product's own income sub-account, held to the same agency and
+        // activity rules as the deposit ledger above — a fee cannot be posted
+        // to another agency's account any more than a deposit can.
+        $openingFeeLedger = $this->resolveLedgerAccount($request->input('opening_fee_ledger_account_public_id'));
+        if ($openingFeeLedger === false
+            || ($openingFeeLedger instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($openingFeeLedger, $agency))) {
+            return $this->respondUnprocessable(errors: ['opening_fee_ledger_account_public_id' => [__('The selected opening fee ledger account must be active and match the account product agency scope.')]]);
+        }
+
         $agencyId = $agency instanceof Agency ? $agency->id : null;
         $duplicateExists = DB::table('account_products')
             ->where('code', $request->string('code')->toString())
@@ -121,6 +130,8 @@ final class AccountProductController extends BaseController
                 'name' => $request->string('name')->toString(),
                 'account_family' => $request->string('account_family')->toString(),
                 'minimum_balance_minor' => $request->integer('minimum_balance_minor', 0),
+                'opening_fee_minor' => $request->integer('opening_fee_minor', 0),
+                'opening_fee_ledger_account_id' => $openingFeeLedger instanceof LedgerAccount ? $openingFeeLedger->id : null,
                 'currency' => strtoupper($request->string('currency', 'XAF')->toString()),
                 'allows_overdraft' => $request->boolean('allows_overdraft'),
                 'overdraft_limit_minor' => $request->integer('overdraft_limit_minor', 0),
@@ -141,7 +152,7 @@ final class AccountProductController extends BaseController
         ], request: $request);
 
         return $this->respondCreated(
-            AccountProductResource::make($product->loadMissing(['agency', 'ledgerAccount'])),
+            AccountProductResource::make($product->loadMissing(['agency', 'ledgerAccount', 'openingFeeLedgerAccount'])),
             'Account product created successfully'
         );
     }
@@ -154,7 +165,7 @@ final class AccountProductController extends BaseController
             return $this->respondForbidden();
         }
 
-        return $this->respondSuccess(AccountProductResource::make($accountProduct->loadMissing(['agency', 'ledgerAccount'])));
+        return $this->respondSuccess(AccountProductResource::make($accountProduct->loadMissing(['agency', 'ledgerAccount', 'openingFeeLedgerAccount'])));
     }
 
     #[Response(status: 200, type: 'array{success: bool, message: string, data: array{account_product: \App\Http\Resources\AccountProductResource}, errors: null, meta: null}')]
@@ -174,6 +185,17 @@ final class AccountProductController extends BaseController
 
             $validated['ledger_account_id'] = $ledgerAccount instanceof LedgerAccount ? $ledgerAccount->id : null;
             unset($validated['ledger_account_public_id']);
+        }
+
+        if (array_key_exists('opening_fee_ledger_account_public_id', $validated)) {
+            $openingFeeLedger = $this->resolveLedgerAccount($validated['opening_fee_ledger_account_public_id']);
+            if ($openingFeeLedger === false
+                || ($openingFeeLedger instanceof LedgerAccount && ! $this->ledgerAccountIsCompatible($openingFeeLedger, $accountProduct->agency))) {
+                return $this->respondUnprocessable(errors: ['opening_fee_ledger_account_public_id' => [__('The selected opening fee ledger account must be active and match the account product agency scope.')]]);
+            }
+
+            $validated['opening_fee_ledger_account_id'] = $openingFeeLedger instanceof LedgerAccount ? $openingFeeLedger->id : null;
+            unset($validated['opening_fee_ledger_account_public_id']);
         }
 
         if (array_key_exists('currency', $validated) && is_string($validated['currency'])) {
@@ -213,7 +235,7 @@ final class AccountProductController extends BaseController
          * moment the overdraft box is unchecked, which means "no limit" — zero —
          * not "leave the database to complain".
          */
-        foreach (['minimum_balance_minor', 'overdraft_limit_minor'] as $key) {
+        foreach (['minimum_balance_minor', 'overdraft_limit_minor', 'opening_fee_minor'] as $key) {
             if (array_key_exists($key, $validated) && $validated[$key] === null) {
                 $validated[$key] = 0;
             }
@@ -240,7 +262,7 @@ final class AccountProductController extends BaseController
         ], request: $request);
 
         return $this->respondSuccess(
-            AccountProductResource::make($accountProduct->refresh()->loadMissing(['agency', 'ledgerAccount'])),
+            AccountProductResource::make($accountProduct->refresh()->loadMissing(['agency', 'ledgerAccount', 'openingFeeLedgerAccount'])),
             'Account product updated successfully'
         );
     }

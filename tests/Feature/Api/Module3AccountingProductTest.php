@@ -560,6 +560,14 @@ final class Module3AccountingProductTest extends TestCase
 
         self::assertSame(0, $without['overdraft_limit_minor']);
         self::assertSame(0, $without['available_balance_minor']);
+
+        // « Solde réel » is the account's own money, so the overdraft limit
+        // must not leak into it: an empty account with a 500 000 facility is
+        // still an empty account. Adding the minimum back to the available
+        // figure — the shorthand the accounting team used — would have shown
+        // 500 000 of the bank's money as the customer's.
+        self::assertSame(0, $withOverdraft['real_balance_minor']);
+        self::assertSame(0, $without['real_balance_minor']);
     }
 
     public function test_platform_admin_can_manage_emf_regulatory_account_hierarchy(): void

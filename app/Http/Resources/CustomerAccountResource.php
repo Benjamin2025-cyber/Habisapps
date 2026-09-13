@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\CustomerAccount;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -50,6 +51,12 @@ final class CustomerAccountResource extends JsonResource
             'account_type' => $account->account_type,
             'currency' => $account->currency,
             'unavailable_amount_minor' => $account->unavailable_amount_minor,
+            // The « frais d'ouverture » the next counter operation will sweep to
+            // income, and the stamp saying it already was. The sweep is automatic,
+            // which is precisely why the teller has to be able to announce it in
+            // the aperçu: the customer sees the deduction either way.
+            'pending_opening_fee_minor' => $this->pendingOpeningFeeMinor($account),
+            'opening_fee_collected_at' => $this->collectedAt($account)?->toAtomString(),
             'opened_on' => $account->opened_on,
             'closed_on' => $account->closed_on,
             'status' => $account->status,
@@ -61,5 +68,28 @@ final class CustomerAccountResource extends JsonResource
     private function clientDisplayName(CustomerAccount $account): ?string
     {
         return $account->client?->displayName();
+    }
+
+    /**
+     * Mirrors the sweep's own rule: the account's own fee, fixed at the tariff
+     * of the day it was opened, and nothing once the stamp is set. Read off the
+     * account rather than the product so the screen cannot announce a fee the
+     * counter would not actually take — the product's figure today says nothing
+     * about what an account opened last year owes.
+     */
+    private function pendingOpeningFeeMinor(CustomerAccount $account): int
+    {
+        if ($this->collectedAt($account) !== null) {
+            return 0;
+        }
+
+        return max(0, $account->opening_fee_due_minor);
+    }
+
+    private function collectedAt(CustomerAccount $account): ?CarbonInterface
+    {
+        $value = $account->getAttribute('opening_fee_collected_at');
+
+        return $value instanceof CarbonInterface ? $value : null;
     }
 }

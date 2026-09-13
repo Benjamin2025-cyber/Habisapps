@@ -395,13 +395,13 @@ final class DisburseLoan
     {
         $debits = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_lines.ledger_account_id', $ledgerAccount->id)
             ->where('journal_lines.currency', $currency)
             ->sum('journal_lines.debit_minor');
         $credits = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_lines.ledger_account_id', $ledgerAccount->id)
             ->where('journal_lines.currency', $currency)
             ->sum('journal_lines.credit_minor');

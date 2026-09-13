@@ -36,6 +36,11 @@ final class StoreAccountProductRequest extends FormRequest
                 AccountProduct::FAMILY_ISLAMIC,
             ])],
             'minimum_balance_minor' => ['nullable', 'integer', 'min:0'],
+            'opening_fee_minor' => ['nullable', 'integer', 'min:0'],
+            // The income sub-account this product's fee is credited to. Optional:
+            // a structure running one opening-fee account maps it once on the
+            // operation instead of on every product it owns.
+            'opening_fee_ledger_account_public_id' => ['nullable', 'string', 'exists:ledger_accounts,public_id'],
             'currency' => ['nullable', 'string', 'size:3'],
             'allows_overdraft' => ['nullable', 'boolean'],
             'overdraft_limit_minor' => ['nullable', 'integer', 'min:0'],

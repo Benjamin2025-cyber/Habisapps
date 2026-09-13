@@ -52,7 +52,7 @@ final class AccountingBalanceCalculator
 
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_lines.currency', $currency);
 
         if ($consolidated) {
@@ -96,7 +96,7 @@ final class AccountingBalanceCalculator
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_lines.customer_account_id', $customerAccount->id)
             ->where('journal_lines.currency', $currency);
 
@@ -130,7 +130,7 @@ final class AccountingBalanceCalculator
     }
 
     /**
-     * @return array{scope:string, public_id:string, currency:string, accounting_balance_minor:int, minimum_balance_minor:int, unavailable_amount_minor:int, active_hold_amount_minor:int, overdraft_limit_minor:int, available_balance_minor:int}
+     * @return array{scope:string, public_id:string, currency:string, accounting_balance_minor:int, real_balance_minor:int, minimum_balance_minor:int, unavailable_amount_minor:int, active_hold_amount_minor:int, overdraft_limit_minor:int, available_balance_minor:int}
      */
     public function availableForCustomerAccount(CustomerAccount $customerAccount, string $currency): array
     {
@@ -172,6 +172,17 @@ final class AccountingBalanceCalculator
             'public_id' => $customerAccount->public_id,
             'currency' => $currency,
             'accounting_balance_minor' => $accounting['balance_minor'],
+            /*
+             * The « solde réel » the accounting team asked to see next to the
+             * « solde disponible »: the money actually in the account, which is
+             * the posted ledger balance. They described it as "disponible +
+             * minimum en compte", true of an account with no hold and no
+             * authorised overdraft — the two terms their formula omits. Derived
+             * here rather than re-added on screen, where the same arithmetic
+             * would overstate an overdraft account by its limit and understate
+             * a held one by its holds.
+             */
+            'real_balance_minor' => $accounting['balance_minor'],
             'minimum_balance_minor' => $minimumBalance,
             'unavailable_amount_minor' => $unavailableAmount,
             'active_hold_amount_minor' => $activeHoldAmount,

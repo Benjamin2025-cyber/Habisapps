@@ -325,7 +325,7 @@ final class ExerciseClosingWorkflow extends BaseController
         $rows = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_entries.agency_id', $agencyId)
             ->where('journal_lines.currency', $currency)
             ->whereDate('journal_entries.business_date', '<=', $closesOn->toDateString())
@@ -433,7 +433,7 @@ final class ExerciseClosingWorkflow extends BaseController
         return DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_entries.agency_id', $agencyId)
             ->where('journal_lines.currency', $currency)
             ->whereRaw("left(ledger_accounts.code, 1) in ('6', '7')");

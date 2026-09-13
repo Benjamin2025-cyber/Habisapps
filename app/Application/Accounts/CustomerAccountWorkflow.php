@@ -182,6 +182,15 @@ final class CustomerAccountWorkflow extends BaseController
             'account_title' => $request->input('account_title'),
             'account_type' => $request->input('account_type', $accountProduct instanceof AccountProduct ? $accountProduct->account_family : null),
             'currency' => strtoupper($request->string('currency', $accountProduct instanceof AccountProduct ? $accountProduct->currency : 'XAF')->toString()),
+            /*
+             * The « frais d'ouverture » fixed at the tariff of the day, the way
+             * conditions tarifaires work: what this customer owes for opening is
+             * what the product charged when they opened, not what it charges
+             * next year. Reading the live product instead would make the sweep
+             * retroactive — switching the fee on would bill the whole existing
+             * book on their next deposit.
+             */
+            'opening_fee_due_minor' => $accountProduct instanceof AccountProduct ? max(0, $accountProduct->opening_fee_minor) : 0,
             'opened_on' => $request->date('opened_on')?->toDateString(),
             'closed_on' => $request->date('closed_on')?->toDateString(),
             'status' => $request->input('status', CustomerAccount::STATUS_ACTIVE),
@@ -240,6 +249,21 @@ final class CustomerAccountWorkflow extends BaseController
 
             $validated['account_product_id'] = $accountProduct instanceof AccountProduct ? $accountProduct->id : null;
             unset($validated['account_product_public_id']);
+
+            /*
+             * Moving an account to another product is a correction — the wrong
+             * one was picked at opening — so the fee it owes follows, but only
+             * while it is still owed. Once swept, the figure is history and
+             * re-snapshotting it would either bill the customer twice or rewrite
+             * what they were charged. Note this fires on an explicit product
+             * change, never on someone editing the product's own tariff, which
+             * is what must not reach accounts already opened.
+             */
+            if ($customerAccount->opening_fee_collected_at === null) {
+                $validated['opening_fee_due_minor'] = $accountProduct instanceof AccountProduct
+                    ? max(0, $accountProduct->opening_fee_minor)
+                    : 0;
+            }
         }
 
         if (array_key_exists('currency', $validated) && is_string($validated['currency'])) {

@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
 final class OperationAccountMappingController extends BaseController
 {
     /**
-     * Mapping-backed loan posting operations evaluated by the readiness endpoint.
+     * Mapping-backed posting operations evaluated by the readiness endpoint.
      *
      * @var array<int, array{code: string, module: string, leg: string}>
      */
@@ -37,6 +37,12 @@ final class OperationAccountMappingController extends BaseController
         ['code' => 'loan_setup_principal_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_guarantee_deposit', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
+        // The account-opening commission credit. Listed for the same reason as
+        // the loan legs: the automatic opening-fee sweep refuses a first deposit
+        // it cannot post, so an unmapped income account is a counter blocker the
+        // mappings screen has to name before a teller meets it as a 422 at the
+        // window. See AccountOperationCodeSeeder for which account to map.
+        ['code' => 'account_opening_fee', 'module' => 'accounting', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
     ];
 
     public function __construct(

@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'account_family',
     'minimum_balance_minor',
+    'opening_fee_minor',
+    'opening_fee_ledger_account_id',
     'currency',
     'allows_overdraft',
     'overdraft_limit_minor',
@@ -63,6 +65,7 @@ final class AccountProduct extends Model
     {
         return [
             'minimum_balance_minor' => 'integer',
+            'opening_fee_minor' => 'integer',
             'allows_overdraft' => 'boolean',
             'overdraft_limit_minor' => 'integer',
             'rules' => 'array',
@@ -79,6 +82,18 @@ final class AccountProduct extends Model
     public function ledgerAccount(): BelongsTo
     {
         return $this->belongsTo(LedgerAccount::class);
+    }
+
+    /**
+     * The income sub-account this product's opening fee is credited to, when the
+     * institution splits its account-opening commissions by account type. Null
+     * falls back to the agency's operation mapping.
+     *
+     * @return BelongsTo<LedgerAccount, $this>
+     */
+    public function openingFeeLedgerAccount(): BelongsTo
+    {
+        return $this->belongsTo(LedgerAccount::class, 'opening_fee_ledger_account_id');
     }
 
     /** @return HasMany<CustomerAccount, $this> */

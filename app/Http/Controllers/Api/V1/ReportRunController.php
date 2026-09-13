@@ -1128,7 +1128,7 @@ final class ReportRunController extends BaseController
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('journal_lines.currency', $currency);
 
         if ($agency instanceof Agency) {

@@ -36,6 +36,10 @@ final class DatabaseSeeder extends Seeder
         // the loan undisbursable.
         $this->call(LoanOperationCodeSeeder::class);
 
+        // The account posting operations the application resolves by name —
+        // currently the automatic opening-fee sweep.
+        $this->call(AccountOperationCodeSeeder::class);
+
         // The BEAC's notes and coins: fixed by the currency, not chosen by the
         // institution, and a till that requires denominations cannot be opened
         // without them.

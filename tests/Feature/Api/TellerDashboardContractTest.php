@@ -91,12 +91,18 @@ final class TellerDashboardContractTest extends TestCase
         $balance->assertJsonStructure(['data' => [
             'currency',
             'accounting_balance_minor',
+            'real_balance_minor',
             'minimum_balance_minor',
             'unavailable_amount_minor',
             'active_hold_amount_minor',
+            'overdraft_limit_minor',
             'available_balance_minor',
         ]]);
         $balance->assertJsonPath('data.available_balance_minor', 10000);
+        // « Solde réel » and « solde disponible » are two distinct figures on
+        // the account screen; with no minimum, no hold and no overdraft they
+        // coincide, which is exactly the accounting team's formula.
+        $balance->assertJsonPath('data.real_balance_minor', 10000);
     }
 
     public function test_default_teller_cannot_access_cross_agency_dashboard_data(): void

@@ -26,6 +26,14 @@ final class TellerTransactionResource extends JsonResource
             'teller_session_public_id' => $transaction->relationLoaded('tellerSession') ? $transaction->tellerSession?->public_id : null,
             'till_public_id' => $transaction->relationLoaded('till') ? $transaction->till?->public_id : null,
             'customer_account_public_id' => $transaction->relationLoaded('customerAccount') ? $transaction->customerAccount?->public_id : null,
+            // The number and the name, not only the id — same reason as on the
+            // account sheet and the sessions list. A reçu de caisse has to name
+            // the account it moved and the person it was handed to, and the
+            // counter cannot resolve either: the teller printing it does not
+            // hold `accounts.view`, so a client-side lookup came back empty and
+            // the receipt carried a ULID where the holder belongs.
+            'customer_account_number' => $transaction->relationLoaded('customerAccount') ? $transaction->customerAccount?->account_number : null,
+            'client_display_name' => $this->clientDisplayName($transaction),
             'journal_entry_public_id' => $transaction->relationLoaded('journalEntry') ? $transaction->journalEntry?->public_id : null,
             'transaction_date' => $transaction->transaction_date,
             'transaction_type' => $transaction->transaction_type,
@@ -60,6 +68,22 @@ final class TellerTransactionResource extends JsonResource
             'created_at' => $transaction->created_at?->toAtomString(),
             'updated_at' => $transaction->updated_at?->toAtomString(),
         ];
+    }
+
+    /**
+     * The holder, taken from the account's own client so it is right even when
+     * the transaction was initiated by a proxy: the receipt names whose account
+     * moved, not who stood at the window.
+     */
+    private function clientDisplayName(TellerTransaction $transaction): ?string
+    {
+        if (! $transaction->relationLoaded('customerAccount')) {
+            return null;
+        }
+
+        $account = $transaction->customerAccount;
+
+        return $account?->relationLoaded('client') === true ? $account->client?->displayName() : null;
     }
 
     /**

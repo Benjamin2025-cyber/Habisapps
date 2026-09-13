@@ -483,7 +483,7 @@ final class DashboardWorkflow extends BaseController
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
             ->join('tills', 'tills.ledger_account_id', '=', 'ledger_accounts.id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->where('tills.status', Till::STATUS_ACTIVE)
             ->where('journal_lines.currency', 'XAF');
         if ($agency instanceof Agency) {

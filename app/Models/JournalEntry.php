@@ -73,6 +73,32 @@ final class JournalEntry extends Model
     public const STATUS_REVERSED = 'reversed';
 
     /**
+     * The statuses whose lines are on the books.
+     *
+     * `reversed` belongs here with `posted`. Under OHADA/COBAC an entry that has
+     * been posted is never unposted: an extourne is a *contre-passation* — a new,
+     * posted entry with the legs the other way round — and `reversed` on the
+     * original is a cross-reference saying "this one has been compensated", not
+     * a deletion. Both entries stay in the journal for good.
+     *
+     * Counting only `posted` therefore dropped the original while still counting
+     * the compensation, applying every reversal twice: a 10 000 deposit reversed
+     * left the customer at −10 000 instead of nil, and the balance générale no
+     * longer footed against the grand livre, since the journal held four lines
+     * the totals did not. An auditor footing the journal finds that immediately.
+     *
+     * Use this for anything that sums journal_lines. Do NOT use it to ask
+     * whether one particular control entry is live — a reversed exercise closing
+     * has genuinely not settled the year, and those checks stay on `posted`.
+     *
+     * @var array<int, string>
+     */
+    public const array BALANCE_AFFECTING_STATUSES = [
+        self::STATUS_POSTED,
+        self::STATUS_REVERSED,
+    ];
+
+    /**
      * @return array<int, string>
      */
     public function uniqueIds(): array

@@ -406,7 +406,7 @@ final class AccountingBalanceWorkflow extends BaseController
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('ledger_accounts', 'ledger_accounts.id', '=', 'journal_lines.ledger_account_id')
             ->leftJoin('accounting_days', 'accounting_days.id', '=', 'journal_entries.accounting_day_id')
-            ->where('journal_entries.status', JournalEntry::STATUS_POSTED)
+            ->whereIn('journal_entries.status', JournalEntry::BALANCE_AFFECTING_STATUSES)
             ->orderBy('journal_entries.business_date')
             ->orderBy('journal_lines.id')
             ->select([
@@ -418,6 +418,7 @@ final class AccountingBalanceWorkflow extends BaseController
                 'journal_entries.public_id as journal_entry_public_id',
                 'journal_entries.reference',
                 'journal_entries.business_date',
+                'journal_entries.status as journal_entry_status',
                 'accounting_days.public_id as accounting_day_public_id',
                 'accounting_days.status as accounting_day_status',
                 'accounting_days.calendar_closed_at as accounting_day_closed_at',
@@ -472,6 +473,16 @@ final class AccountingBalanceWorkflow extends BaseController
             'credit_minor' => $credit,
             'signed_amount_minor' => $normalBalanceSide === LedgerAccount::NORMAL_BALANCE_CREDIT ? $credit - $debit : $debit - $credit,
             'line_memo' => $this->rowNullableString($row, 'line_memo'),
+            /*
+             * Whether this line belongs to an entry that has since been
+             * contre-passée. Both halves of an annulled pair are on the books
+             * and both therefore print on the relevé — which is right, and
+             * unreadable without saying which is which: a cancelled 10 000
+             * deposit and its −10 000 reversal otherwise look like two ordinary
+             * movements, and the customer is left to work out that they cancel.
+             */
+            'journal_entry_status' => $this->rowNullableString($row, 'journal_entry_status'),
+            'reversed' => $this->rowNullableString($row, 'journal_entry_status') === JournalEntry::STATUS_REVERSED,
         ];
     }
 

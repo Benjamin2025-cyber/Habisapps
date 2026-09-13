@@ -48,7 +48,7 @@ final class TellerTransactionWorkflow extends BaseController
         $query = TellerTransaction::query()->with([
             'tellerSession',
             'till',
-            'customerAccount',
+            'customerAccount.client',
             'journalEntry',
             'initiatorProxy',
             'customerAccountSignature',

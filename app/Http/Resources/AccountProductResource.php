@@ -29,6 +29,13 @@ final class AccountProductResource extends JsonResource
             'name' => $product->name,
             'account_family' => $product->account_family,
             'minimum_balance_minor' => $product->minimum_balance_minor,
+            'opening_fee_minor' => $product->opening_fee_minor,
+            // The income sub-account this product's fee is credited to. Null means
+            // the agency's operation mapping decides, which is what a structure
+            // running a single opening-fee account wants.
+            'opening_fee_ledger_account_public_id' => $product->relationLoaded('openingFeeLedgerAccount')
+                ? $product->openingFeeLedgerAccount?->public_id
+                : null,
             'currency' => $product->currency,
             'allows_overdraft' => $product->allows_overdraft,
             'overdraft_limit_minor' => $product->overdraft_limit_minor,

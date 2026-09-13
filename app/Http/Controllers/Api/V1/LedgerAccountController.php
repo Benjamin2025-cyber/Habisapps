@@ -72,6 +72,23 @@ final class LedgerAccountController extends BaseController
             $query->where('agency_id', $agency->id);
         }
 
+        /*
+         * Account pickers want the chart, not the dossiers hanging off it.
+         * Every loan and every client opens its own divisionary under a control
+         * account — `3222.LN-…`, `CLI000001` — and since the list is ordered by
+         * recency those newest rows fill the first page entirely, burying the
+         * accounts somebody is actually looking for.
+         *
+         * A divisionary is recognisable without pattern-matching its code: its
+         * parent is an agency-level account, whereas a chart detail account
+         * hangs off an institution-level grouping one.
+         */
+        if ($request->boolean('exclude_divisionary')) {
+            $query->whereDoesntHave('parentAccount', function (Builder $builder): void {
+                $builder->getQuery()->whereNotNull('agency_id');
+            });
+        }
+
         $search = $request->query('search');
         if (is_string($search) && trim($search) !== '') {
             $term = trim($search);

@@ -45,6 +45,11 @@ final class UpdateAccountProductRequest extends FormRequest
              * therefore named « Plafond de découvert », a field not on screen.
              */
             'minimum_balance_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'opening_fee_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            // Nullable on purpose: clearing the box returns the product to the
+            // agency's operation mapping rather than leaving it pinned to a
+            // sub-account the institution has stopped using.
+            'opening_fee_ledger_account_public_id' => ['sometimes', 'nullable', 'string', 'exists:ledger_accounts,public_id'],
             'currency' => ['sometimes', 'nullable', 'string', 'size:3'],
             'allows_overdraft' => ['sometimes', 'nullable', 'boolean'],
             'overdraft_limit_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
