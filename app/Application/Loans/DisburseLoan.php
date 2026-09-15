@@ -338,6 +338,18 @@ final class DisburseLoan
             throw new InvalidArgumentException('Transfer account must be active and belong to the loan client and agency.');
         }
 
+        // transfer_account_id is also where OpenLoanAccount links the loan's
+        // own dossier account (CORRECTIONS HABISLOAN 04/09/2026 — the four
+        // bookkeeping links, all one account), so the fallback above can now
+        // resolve to it, and so can an explicit pick copied from
+        // transfer_account_public_id on the loan resource. Either way,
+        // disbursing into it is not a payout: the debit and the credit land on
+        // the same balance and cancel out, the loan reads as disbursed, and the
+        // client receives nothing.
+        if ($account->account_type === CustomerAccount::TYPE_LOAN) {
+            throw new InvalidArgumentException('Transfer account cannot be the loan\'s own account; select the client\'s payout account.');
+        }
+
         return $account;
     }
 
@@ -411,6 +423,24 @@ final class DisburseLoan
 
     private function resolveLoanPrincipalLedger(Loan $loan): LedgerAccount
     {
+        // The loan's own account, opened at mise en place under 3282, 3181 or
+        // 3081 by term (CORRECTIONS HABISLOAN 04/09/2026). A loan created since
+        // that shipped carries this instead of a mapped divisionary; posting
+        // against loan_receivable_account_id instead would leave this account,
+        // and its ten-digit number, permanently unposted-to while the real
+        // balance sat somewhere the accounting team never asked for.
+        $amortizationAccount = $loan->amortizationAccount;
+        if ($amortizationAccount instanceof CustomerAccount) {
+            $ledger = $amortizationAccount->ledgerAccount;
+            if ($ledger instanceof LedgerAccount
+                && $ledger->status === LedgerAccount::STATUS_ACTIVE
+                && $ledger->agency_id === $loan->agency_id) {
+                return $ledger;
+            }
+
+            throw new InvalidArgumentException(__('loans.loan_divisionary_account_unusable', ['role' => 'principal receivable']));
+        }
+
         // The dossier's own divisionary account, opened at mise en place under
         // the mapped control. Every new disbursement lands here.
         $receivableId = $loan->loan_receivable_account_id;

@@ -42,6 +42,14 @@ use Illuminate\Support\Str;
  * The action is idempotent and safe to call repeatedly (setup assessment,
  * disbursement): a column already set is never re-derived, and callers hold the
  * loan row lock so concurrent runs serialize.
+ *
+ * Since CORRECTIONS HABISLOAN 04/09/2026, a loan carries its own account —
+ * opened by OpenLoanAccount at mise en place under 3282, 3181 or 3081 by term
+ * — which is what DisburseLoan and RecordLoanRepayment now post principal
+ * against in preference to a receivable divisionary. So this class no longer
+ * opens one when that account already exists: a loan created since then never
+ * gets a `loan_receivable_account_id`, only the guarantee-deposit divisionary
+ * this class still owns.
  */
 final class OpenLoanAccounts
 {
@@ -67,7 +75,13 @@ final class OpenLoanAccounts
     {
         $pending = array_filter(
             array_keys(self::DIVISIONARIES),
-            fn (string $column): bool => ! is_int($loan->getAttribute($column)),
+            // The loan's own account already covers the receivable leg when
+            // OpenLoanAccount opened one at mise en place (CORRECTIONS
+            // HABISLOAN 04/09/2026): opening a second, differently-numbered
+            // divisionary for the same balance would only ever sit at zero,
+            // since DisburseLoan and RecordLoanRepayment now prefer the first.
+            fn (string $column): bool => ! is_int($loan->getAttribute($column))
+                && ! ($column === 'loan_receivable_account_id' && is_int($loan->amortization_account_id)),
         );
         if ($pending === []) {
             return $loan;
