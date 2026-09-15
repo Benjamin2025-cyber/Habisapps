@@ -8,6 +8,7 @@ use App\Application\Loans\AssessLoanSetupCharges;
 use App\Models\BatchProcedure;
 use App\Models\BatchRun;
 use App\Models\ClientGuarantor;
+use App\Models\CustomerAccount;
 use App\Models\JournalEntry;
 use App\Models\LedgerAccount;
 use App\Models\Loan;
@@ -4104,6 +4105,118 @@ final class Module4CreditLoansTest extends TestCase
             'credit_minor' => 0,
         ]);
         $this->assertDatabaseMissing('journal_lines', ['journal_entry_id' => $disbursementJournalId, 'ledger_account_id' => $principalControlId]);
+    }
+
+    /**
+     * Contrast with the test above: a loan created through the API — rather
+     * than by direct insert — carries its own account from mise en place
+     * (OpenLoanAccount, CORRECTIONS HABISLOAN 04/09/2026), opened under 3282,
+     * 3181 or 3081 by term with the ten-digit nomenclature. Disbursement and
+     * repayment must debit and credit that account, not open and use a second,
+     * differently-numbered divisionary under the mapped control the way a
+     * pre-existing loan still does.
+     */
+    public function test_disbursement_and_repayment_post_against_the_loan_s_own_account(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-AMORT');
+        // The term-based control OpenLoanAccount resolves against. Deliberately
+        // no loan_principal_disbursement mapping is configured: a regression
+        // back to the mapped-control fallback would refuse the disbursement
+        // outright rather than silently misfile it, which is what makes this a
+        // reliable guard rather than one more assertion to keep in sync.
+        $this->createChartLedger($agencyId, '3282', 'Crédits court terme', LedgerAccount::NORMAL_BALANCE_DEBIT);
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 300000,
+                'currency' => 'XAF',
+                'applied_on' => '2026-05-01',
+                'number_of_installments' => 6,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $loan = Loan::query()->where('public_id', $created->json('data.public_id'))->firstOrFail();
+        self::assertIsInt($loan->amortization_account_id);
+        $amortizationAccount = CustomerAccount::query()->findOrFail($loan->amortization_account_id);
+        self::assertIsInt($amortizationAccount->ledger_account_id);
+        self::assertStringStartsWith('3282', $amortizationAccount->account_number);
+
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 300000,
+            'approved_on' => '2026-05-01',
+        ])->save();
+
+        // A payout destination distinct from the loan's own account: crediting
+        // the loan account itself at disbursement would be a self-reference,
+        // not a real cash movement to the client.
+        $transferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
+
+        $disbursed = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'transfer_account_public_id' => $transferAccount['public_id'],
+                'business_date' => '2026-05-01',
+            ]);
+        $this->assertJsonSuccess($disbursed);
+        $disbursed->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+
+        $loan->refresh();
+        // The old mechanism must not have opened a second, unused account for
+        // a balance the loan's own account already carries.
+        self::assertNull($loan->loan_receivable_account_id);
+
+        $disbursementJournalId = DB::table('journal_entries')
+            ->where('source_type', 'loan_disbursement')
+            ->where('source_public_id', $loan->public_id)
+            ->value('id');
+        self::assertIsInt($disbursementJournalId);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $disbursementJournalId,
+            'ledger_account_id' => $amortizationAccount->ledger_account_id,
+            'debit_minor' => 300000,
+            'credit_minor' => 0,
+        ]);
+
+        // Repayment: the schedule's first principal instalment, credited back
+        // onto the same account the disbursement debit landed on. The product
+        // carries no interest, fees or insurance, so this instalment is
+        // principal alone.
+        $scheduleLine = DB::table('loan_schedule_lines')
+            ->join('loan_schedule_snapshots', 'loan_schedule_snapshots.id', '=', 'loan_schedule_lines.loan_schedule_snapshot_id')
+            ->where('loan_schedule_snapshots.loan_id', $loan->id)
+            ->where('loan_schedule_snapshots.status', 'active')
+            ->orderBy('loan_schedule_lines.installment_number')
+            ->first(['loan_schedule_lines.principal_minor']);
+        self::assertIsObject($scheduleLine);
+        $principalDue = (int) $scheduleLine->principal_minor;
+        self::assertGreaterThan(0, $principalDue);
+
+        $repayLedger = $this->createCustomerLiabilityLedger($agencyId, 'REPAY-AMORT');
+        $repayAccount = $this->createCustomerAccount($agencyId, $client['id'], $repayLedger);
+        $this->fundCustomerAccount($agencyId, $repayAccount['id'], $repayLedger, $principalDue);
+
+        $repaid = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/repayments', [
+                'customer_account_public_id' => $repayAccount['public_id'],
+                'amount_minor' => $principalDue,
+                'paid_on' => '2026-05-01',
+            ]);
+        $this->assertJsonSuccess($repaid);
+        $repaymentJournalPublicId = $this->requireStringJsonPath($repaid, 'data.journal_entry.public_id');
+        $repaymentJournalId = DB::table('journal_entries')->where('public_id', $repaymentJournalPublicId)->value('id');
+        self::assertIsInt($repaymentJournalId);
+        $this->assertDatabaseHas('journal_lines', [
+            'journal_entry_id' => $repaymentJournalId,
+            'ledger_account_id' => $amortizationAccount->ledger_account_id,
+            'debit_minor' => 0,
+            'credit_minor' => $principalDue,
+        ]);
     }
 
     /**

@@ -329,6 +329,25 @@ final class RecordLoanRepayment
             throw new InvalidArgumentException(__('loans.unsupported_repayment_component', ['component' => $component]));
         }
 
+        // The loan's own account, opened at mise en place under 3282, 3181 or
+        // 3081 by term (CORRECTIONS HABISLOAN 04/09/2026), settles the same
+        // balance-sheet position loan_receivable_account_id used to. Crediting
+        // the old divisionary instead would leave this account's own number
+        // permanently unposted-to, mirroring the disbursement debit below.
+        if ($component === LoanRepaymentAllocation::COMPONENT_PRINCIPAL) {
+            $amortizationAccount = $loan->amortizationAccount;
+            if ($amortizationAccount instanceof CustomerAccount) {
+                $ledger = $amortizationAccount->ledgerAccount;
+                if ($ledger instanceof LedgerAccount
+                    && $ledger->status === LedgerAccount::STATUS_ACTIVE
+                    && $ledger->agency_id === $loan->agency_id) {
+                    return $ledger->id;
+                }
+
+                throw new InvalidArgumentException(__('loans.loan_divisionary_account_unusable', ['role' => 'principal receivable']));
+            }
+        }
+
         $divisionaryColumn = self::DIVISIONARY_COMPONENTS[$component] ?? null;
         $divisionaryId = $divisionaryColumn === null ? null : $loan->getAttribute($divisionaryColumn);
         if (is_int($divisionaryId)) {

@@ -411,6 +411,24 @@ final class DisburseLoan
 
     private function resolveLoanPrincipalLedger(Loan $loan): LedgerAccount
     {
+        // The loan's own account, opened at mise en place under 3282, 3181 or
+        // 3081 by term (CORRECTIONS HABISLOAN 04/09/2026). A loan created since
+        // that shipped carries this instead of a mapped divisionary; posting
+        // against loan_receivable_account_id instead would leave this account,
+        // and its ten-digit number, permanently unposted-to while the real
+        // balance sat somewhere the accounting team never asked for.
+        $amortizationAccount = $loan->amortizationAccount;
+        if ($amortizationAccount instanceof CustomerAccount) {
+            $ledger = $amortizationAccount->ledgerAccount;
+            if ($ledger instanceof LedgerAccount
+                && $ledger->status === LedgerAccount::STATUS_ACTIVE
+                && $ledger->agency_id === $loan->agency_id) {
+                return $ledger;
+            }
+
+            throw new InvalidArgumentException(__('loans.loan_divisionary_account_unusable', ['role' => 'principal receivable']));
+        }
+
         // The dossier's own divisionary account, opened at mise en place under
         // the mapped control. Every new disbursement lands here.
         $receivableId = $loan->loan_receivable_account_id;
