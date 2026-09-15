@@ -29,7 +29,16 @@ final class LoanSetupState
     public const string STATUS_READY = 'ready';
 
     /** @var array<int, string> */
-    private const array CHARGE_TYPES = ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'guarantee_deposit'];
+    /**
+     * The charges this screen reads, shows and blocks disbursement on.
+     * `death_fund` — « fonds de solidarité décès », credited to 4611 — is one
+     * of them: left out, it would be assessed and collectible through the API
+     * while staying invisible here, and a loan could be disbursed without it
+     * having been taken.
+     *
+     * @var array<int, string>
+     */
+    private const array CHARGE_TYPES = ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'death_fund', 'guarantee_deposit'];
 
     /** @var array<int, string> */
     private const array COLLECTED_STATUSES = ['paid', 'collected', 'posted'];
@@ -162,7 +171,14 @@ final class LoanSetupState
                 'amount_minor' => $loanAssuranceAmount,
                 'rate' => $product instanceof LoanProduct ? $this->nullableString($product->insurance_rate) : null,
                 'currency' => $loan->currency,
-                'blocking_disbursement' => false,
+                // The assurance is now collected as the `death_fund` charge, so
+                // it does hold up a disbursement until taken. Reporting a flat
+                // false here would have the screen say it is not blocking while
+                // the disbursement is refused naming it.
+                'blocking_disbursement' => in_array('death_fund', $blockingChargeTypes, true),
+                // Still not a bancassurance premium: no subscription, no premium
+                // assessment. Being a setup charge and being a premium are
+                // different things, and only the first one changed.
                 'managed_as_premium' => false,
             ],
         ];

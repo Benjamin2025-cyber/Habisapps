@@ -115,9 +115,6 @@ final class TillController extends BaseController
         }
 
         $status = $request->input('status', Till::STATUS_ACTIVE);
-        if ($assignedUserId !== null && $status === Till::STATUS_ACTIVE && $this->activeTillAlreadyAssigned($agency->id, $assignedUserId)) {
-            return $this->respondUnprocessable(errors: ['assigned_user_public_id' => [__('The selected teller is already assigned to another active till.')]]);
-        }
 
         $till = Till::query()->create([
             'public_id' => (string) Str::ulid(),
@@ -233,16 +230,6 @@ final class TillController extends BaseController
 
         if (array_key_exists('currency', $validated) && is_string($validated['currency'])) {
             $validated['currency'] = $this->normalizedCurrency($validated['currency']);
-        }
-
-        $effectiveStatus = is_string($validated['status'] ?? null) ? $validated['status'] : $till->status;
-        $effectiveAssignedUserId = array_key_exists('assigned_user_id', $validated)
-            ? $validated['assigned_user_id']
-            : $till->assigned_user_id;
-        if (is_int($effectiveAssignedUserId)
-            && $effectiveStatus === Till::STATUS_ACTIVE
-            && $this->activeTillAlreadyAssigned($agency->id, $effectiveAssignedUserId, $till->id)) {
-            return $this->respondUnprocessable(errors: ['assigned_user_public_id' => [__('The selected teller is already assigned to another active till.')]]);
         }
 
         $reconciliationCriticalKeys = ['assigned_user_id', 'agency_id', 'ledger_account_id', 'currency'];
@@ -368,20 +355,22 @@ final class TillController extends BaseController
             ->exists();
     }
 
-    private function activeTillAlreadyAssigned(int $agencyId, int $assignedUserId, ?int $ignoreTillId = null): bool
-    {
-        $query = Till::query()
-            ->where('agency_id', $agencyId)
-            ->where('assigned_user_id', $assignedUserId)
-            ->where('status', Till::STATUS_ACTIVE);
-
-        if ($ignoreTillId !== null) {
-            $query->whereKeyNot($ignoreTillId);
-        }
-
-        return $query->first() instanceof Till;
-    }
-
+    /*
+     * A cashier may be assigned to several active tills at once, and no rule
+     * here stops that any more.
+     *
+     * The institution runs four levels of caisse — principale, générale
+     * d'agence, guichet, then one sub-caisse per module (fonctionnement,
+     * Campost, Orange Money, MTN, transferts…) — and the same person is
+     * responsible at more than one of them. Refusing the second assignment made
+     * that structure impossible to set up at all.
+     *
+     * Nothing about cash accountability is lost: assignment says who is
+     * responsible for a post, not who is counting a drawer right now. The
+     * control that matters is one open session per teller at a time, enforced
+     * independently by TellerSessionWorkflow::hasOpenSessionForTeller(), so a
+     * cashier still works exactly one drawer at any moment.
+     */
     private function tillHasOpenSession(int $tillId): bool
     {
         return DB::table('teller_sessions')

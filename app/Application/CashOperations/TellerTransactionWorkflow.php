@@ -46,6 +46,9 @@ final class TellerTransactionWorkflow extends BaseController
         }
 
         $query = TellerTransaction::query()->with([
+            // The receipt reprinted from this list prints « Code guichet » off
+            // the agency; without it the field comes out blank on every reprint.
+            'agency',
             'tellerSession',
             'till',
             'customerAccount.client',

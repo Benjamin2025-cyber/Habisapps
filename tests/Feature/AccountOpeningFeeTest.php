@@ -66,7 +66,10 @@ final class AccountOpeningFeeTest extends TestCase
         self::assertSame('posted', $feeJournal->status);
         self::assertSame('account_opening_fee', $feeJournal->source_type);
         self::assertSame($setup['agency']['id'], (int) $feeJournal->agency_id);
-        self::assertStringStartsWith('AOF-CD-', (string) $feeJournal->reference);
+        // The fee journal hangs off the triggering voucher's own number, so it
+        // follows the guichet nomenclature: AOF-REC-G000-2026-09-000001. G000
+        // because this fixture's agency code carries no digits.
+        self::assertStringStartsWith('AOF-REC-G', (string) $feeJournal->reference);
 
         $this->assertDatabaseHas('journal_lines', [
             'journal_entry_id' => $feeJournalId,
@@ -737,6 +740,122 @@ final class AccountOpeningFeeTest extends TestCase
 
         self::assertSame(10000, (int) DB::table('journal_lines')->where('journal_entry_id', $journalId)->sum('debit_minor'));
         self::assertSame(10000, (int) DB::table('journal_lines')->where('journal_entry_id', $journalId)->sum('credit_minor'));
+    }
+
+    /**
+     * 14/09/2026, point 3: « Nous avons testé ceci avec le compte utilisé pour
+     * les tests mais il n'y a eu aucun impact sur le relevé de compte. »
+     *
+     * That is the retroactive guard doing its job — the account was opened
+     * before the tariff existed, so it owes nothing, and switching a product's
+     * fee on must never bill the book already on it. Both halves are pinned
+     * here: the tariff change does not reach the open account, and the account
+     * can still be brought into line deliberately.
+     */
+    public function test_a_later_product_tariff_does_not_reach_an_open_account_but_can_be_applied_to_it(): void
+    {
+        // Opened while the product charged nothing.
+        $setup = $this->setUpAccountWithFee(openingFeeMinor: 0);
+        $actor = $setup['actor'];
+        $token = 'Bearer '.$actor->createToken('aof-retro')->plainTextToken;
+        $accountPublicId = $setup['customerAccount']['public_id'];
+
+        // The tariff is switched on afterwards. Written directly: what is on
+        // trial here is the account's behaviour, not who may edit a product.
+        DB::table('account_products')
+            ->where('id', $setup['product']['id'])
+            ->update(['opening_fee_minor' => 50000]);
+
+        // The open account still owes nothing: no retroactive billing.
+        $unchanged = $this->withApiHeaders(['Authorization' => $token])
+            ->getJson('/api/v1/customer-accounts/'.$accountPublicId);
+        $this->assertJsonSuccess($unchanged);
+        $unchanged->assertJsonPath('data.pending_opening_fee_minor', 0);
+
+        // And it can be brought into line on purpose, which is what was missing.
+        $applied = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/customer-accounts/'.$accountPublicId, [
+                'opening_fee_due_minor' => 50000,
+            ]);
+        $this->assertJsonSuccess($applied);
+        $applied->assertJsonPath('data.pending_opening_fee_minor', 50000);
+
+        // Which the very next counter operation then sweeps.
+        $deposit = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$setup['sessionPublicId'].'/deposits', [
+                'customer_account_public_id' => $accountPublicId,
+                'amount_minor' => 200000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'aof-retro-001',
+            ]);
+        $this->assertJsonSuccess($deposit, 201);
+        $deposit->assertJsonPath('data.opening_fee.amount_minor', 50000);
+        $deposit->assertJsonPath('data.opening_fee.currency', 'XAF');
+    }
+
+    /**
+     * The account drawer sends every field it holds, so the fee always arrives
+     * alongside the (unchanged) product. Two things have to hold in that shape:
+     * the figure the operator typed must survive, and merely re-saving an
+     * account must not quietly re-apply the product's current tariff — which
+     * would be the retroactive billing the snapshot exists to prevent, reached
+     * through the edit form instead of the product form.
+     */
+    public function test_the_typed_fee_survives_a_save_that_also_carries_the_product(): void
+    {
+        $setup = $this->setUpAccountWithFee(openingFeeMinor: 0);
+        $token = 'Bearer '.$setup['actor']->createToken('aof-both')->plainTextToken;
+        $accountPublicId = $setup['customerAccount']['public_id'];
+
+        DB::table('account_products')
+            ->where('id', $setup['product']['id'])
+            ->update(['opening_fee_minor' => 50000]);
+
+        // Re-saving the account with its own product unchanged must not pull
+        // the new tariff in behind the operator's back.
+        $untouched = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/customer-accounts/'.$accountPublicId, [
+                'account_product_public_id' => $setup['product']['public_id'],
+                'account_title' => 'Renamed',
+            ]);
+        $this->assertJsonSuccess($untouched);
+        $untouched->assertJsonPath('data.pending_opening_fee_minor', 0);
+
+        // And when a figure is typed, it wins over that same product default.
+        $typed = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/customer-accounts/'.$accountPublicId, [
+                'account_product_public_id' => $setup['product']['public_id'],
+                'opening_fee_due_minor' => 12500,
+            ]);
+        $this->assertJsonSuccess($typed);
+        $typed->assertJsonPath('data.pending_opening_fee_minor', 12500);
+    }
+
+    /**
+     * Once swept, the figure is what the customer was charged. Rewriting it
+     * would either bill them twice or falsify the record.
+     */
+    public function test_a_collected_opening_fee_can_no_longer_be_changed(): void
+    {
+        $setup = $this->setUpAccountWithFee(openingFeeMinor: 50000);
+        $actor = $setup['actor'];
+        $token = 'Bearer '.$actor->createToken('aof-locked')->plainTextToken;
+
+        $deposit = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$setup['sessionPublicId'].'/deposits', [
+                'customer_account_public_id' => $setup['customerAccount']['public_id'],
+                'amount_minor' => 200000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'aof-locked-001',
+            ]);
+        $this->assertJsonSuccess($deposit, 201);
+
+        $refused = $this->withApiHeaders(['Authorization' => $token])
+            ->patchJson('/api/v1/customer-accounts/'.$setup['customerAccount']['public_id'], [
+                'opening_fee_due_minor' => 1,
+            ]);
+        $refused->assertStatus(422);
+        $refused->assertJsonValidationErrors(['opening_fee_due_minor']);
     }
 
     /**

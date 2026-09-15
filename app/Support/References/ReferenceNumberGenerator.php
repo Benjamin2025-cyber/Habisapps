@@ -13,6 +13,30 @@ final class ReferenceNumberGenerator
     {
         $definition = $this->definition($key);
 
+        return $this->reserveSeries($key, $definition['prefix'], $definition['padding']);
+    }
+
+    /**
+     * Reserves from a series whose key is computed at runtime rather than
+     * declared in config/reference_numbers.php.
+     *
+     * Cash vouchers restart their counter in every (document type, guichet,
+     * year, month) bucket, so the set of keys is open-ended and grows with the
+     * branch network and the calendar — there is nothing to pre-declare. The
+     * caller supplies the shape; the locking and the increment stay here so
+     * every series in the system is numbered the same way.
+     *
+     * @param  string  $prefix  Everything before the counter, e.g. `REC-G001-2026-09-`.
+     * @param  int  $padding  Counter width, zero-padded.
+     */
+    public function reserveSeries(string $key, string $prefix, int $padding): string
+    {
+        if ($prefix === '' || $padding < 1) {
+            throw new InvalidArgumentException(sprintf('Reference series [%s] is invalid.', $key));
+        }
+
+        $definition = ['prefix' => $prefix, 'padding' => $padding];
+
         return DB::transaction(function () use ($key, $definition): string {
             $sequence = DB::table('reference_sequences')
                 ->where('key', $key)

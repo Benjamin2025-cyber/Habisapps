@@ -39,7 +39,12 @@ final class StoreCashDepositRequest extends FormRequest
             'cheque_bank_name' => ['sometimes', 'nullable', 'string', 'max:128'],
             'cheque_issue_date' => ['sometimes', 'nullable', 'date'],
             'external_reference' => ['sometimes', 'nullable', 'string', 'max:128'],
-            'channel' => ['sometimes', 'nullable', Rule::in(['branch_counter', 'mobile_money', 'bank_transfer', 'clearing_house', 'internal_transfer'])],
+            // « le mode de règlement […] espèces, orange money cameroun, mtn
+            // mobile money cameroun, autres » (14/09/2026). The operator is named
+            // rather than lumped under mobile_money because the institution's own
+            // caisse plan gives each one its own sub-caisse — 5710118 Orange Money,
+            // 5710119 MTN Mobile Money — so the two are not interchangeable.
+            'channel' => ['sometimes', 'nullable', Rule::in(['branch_counter', 'mobile_money', 'orange_money', 'mtn_mobile_money', 'bank_transfer', 'clearing_house', 'internal_transfer', 'other'])],
             'fee_policy_key' => ['sometimes', 'nullable', 'string', 'max:64'],
             'fee_amount_minor' => ['prohibited'],
             'notify_customer' => ['sometimes', 'boolean'],
@@ -48,6 +53,10 @@ final class StoreCashDepositRequest extends FormRequest
             'operation_code' => ['sometimes', 'nullable', 'string', 'max:64'],
             'depositor_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'depositor_address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // « Les références de la pièce d'identité du déposant […] elle se
+            // saisit manuellement lors de l'opération au guichet » — free text,
+            // because a CNI, a passport and a récépissé are not one format.
+            'depositor_id_reference' => ['sometimes', 'nullable', 'string', 'max:100'],
             'initiator_type' => ['sometimes', 'nullable', 'string', 'in:holder,proxy,staff_on_behalf,system'],
             'initiator_proxy_public_id' => ['sometimes', 'nullable', 'string', 'exists:client_proxies,public_id'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],

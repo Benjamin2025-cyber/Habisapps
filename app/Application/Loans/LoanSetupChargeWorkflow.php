@@ -126,7 +126,7 @@ final class LoanSetupChargeWorkflow extends BaseController
             $charge = DB::table('loan_charge_assessments')
                 ->where('loan_id', $loan->id)
                 ->where('public_id', $chargePublicId)
-                ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax'])
+                ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'death_fund'])
                 ->lockForUpdate()
                 ->first();
 
@@ -194,7 +194,7 @@ final class LoanSetupChargeWorkflow extends BaseController
                 $charge = DB::table('loan_charge_assessments')
                     ->where('loan_id', $loan->id)
                     ->where('public_id', $chargePublicId)
-                    ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'guarantee_deposit'])
+                    ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'death_fund', 'guarantee_deposit'])
                     ->lockForUpdate()
                     ->first();
 
@@ -589,6 +589,7 @@ final class LoanSetupChargeWorkflow extends BaseController
             'dossier_fee' => 'loan_setup_dossier_fee',
             'principal_tax' => 'loan_setup_principal_tax',
             'dossier_fee_tax' => 'loan_setup_tax',
+            'death_fund' => 'loan_setup_death_fund',
             'guarantee_deposit' => 'loan_setup_guarantee_deposit',
             default => throw new InvalidArgumentException(__('loans.unsupported_setup_charge_type', ['type' => $chargeType])),
         };

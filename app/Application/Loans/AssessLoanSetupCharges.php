@@ -69,7 +69,7 @@ final class AssessLoanSetupCharges
 
             $existing = DB::table('loan_charge_assessments')
                 ->where('loan_id', $lockedLoan->id)
-                ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'guarantee_deposit'])
+                ->whereIn('charge_type', ['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'death_fund', 'guarantee_deposit'])
                 ->orderBy('charge_type')
                 ->get();
 
@@ -127,6 +127,18 @@ final class AssessLoanSetupCharges
                     'released_at' => 'loan_closure_after_full_settlement',
                     'cannot_settle_unpaid_loans' => true,
                     'stakeholder_section' => 9,
+                ]);
+            }
+
+            // « Le compte de frais de dossier (Frais d'ouverture de dossier +
+            // fonds de solidarité décès) » — the death fund was assessed and
+            // stored on the loan but never raised as a charge, so it was never
+            // collected and never reached a ledger account. It is a charge like
+            // the others; 04/09/2026 asks for it on 4611.
+            if ($insurance > 0 && ! $product->isInstallmentComponentFinanced('insurance')) {
+                $charges[] = $this->insertCharge($lockedLoan->id, 'death_fund', $principal, $this->rate($product->insurance_rate), $insurance, $currency, [
+                    'refundable' => false,
+                    'stakeholder_section' => 8,
                 ]);
             }
 

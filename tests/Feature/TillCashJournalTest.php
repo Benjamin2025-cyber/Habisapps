@@ -298,6 +298,112 @@ final class TillCashJournalTest extends TestCase
     }
 
     /**
+     * « La numérotation des pièces de caisse doit respecter la nomenclature
+     * suivante : le type de document + le code du guichet + année en cours +
+     * mois en cours + numéro de reçu à 6 chiffres » — REC-G001-2026-09-000042.
+     *
+     * Versements and retraits are separate series, each restarting at 1, and
+     * the receipt also carries the code guichet and the depositor's identity
+     * document so the printed voucher stands on its own.
+     */
+    public function test_cash_vouchers_are_numbered_by_document_type_guichet_and_month(): void
+    {
+        $agency = $this->createAgency('001', 'Tsinga');
+        $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
+        $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
+        $cashLedger = $this->createLedgerAccount($agency['id'], 'VCH-CASH-TILL', LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE);
+        $customerLedger = $this->createLedgerAccount($agency['id'], 'VCH-CUSTOMER-DEPOSIT', LedgerAccount::ACCOUNT_CLASS_OPERATIONS_CLIENTELE);
+        $customerAccount = $this->createCustomerAccount($agency['id'], $customerLedger['id'], 'VCH-ACC-001');
+
+        $token = 'Bearer '.$actor->createToken('vch')->plainTextToken;
+
+        $till = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/tills', [
+                'code' => 'TILL-VCH',
+                'name' => 'Guichet 001',
+                'requires_denominations' => false,
+                'assigned_user_public_id' => $teller->public_id,
+                'ledger_account_public_id' => $cashLedger['public_id'],
+            ]);
+        $this->assertJsonSuccess($till, 201);
+
+        $open = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions', [
+                'till_public_id' => $this->requireStringJsonPath($till, 'data.public_id'),
+                'teller_user_public_id' => $teller->public_id,
+                'business_date' => now()->toDateString(),
+                'opening_declaration_minor' => 20000,
+                'currency' => 'XAF',
+            ]);
+        $this->assertJsonSuccess($open, 201);
+        $sessionPublicId = $this->requireStringJsonPath($open, 'data.public_id');
+
+        // The series is keyed on the accounting month, so build the expectation
+        // from the same date rather than hard-coding one and failing in October.
+        $period = now()->format('Y-m');
+
+        $first = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 10000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'vch-deposit-001',
+                'depositor_name' => 'NGONO Marie',
+                'depositor_id_reference' => 'CNI 1234567890',
+            ]);
+        $this->assertJsonSuccess($first, 201);
+        $first->assertJsonPath('data.teller_transaction.reference', 'REC-G001-'.$period.'-000001');
+        $first->assertJsonPath('data.teller_transaction.agency_code', '001');
+        $first->assertJsonPath('data.teller_transaction.depositor_id_reference', 'CNI 1234567890');
+
+        $second = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/deposits', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 5000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'vch-deposit-002',
+            ]);
+        $this->assertJsonSuccess($second, 201);
+        $second->assertJsonPath('data.teller_transaction.reference', 'REC-G001-'.$period.'-000002');
+
+        // A retrait is its own series and starts again at 1, exactly as the two
+        // paper pads at the guichet do.
+        $signature = $this->createVerifiedAccountSignature($agency['id'], $customerAccount['id']);
+        $withdrawal = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$sessionPublicId.'/withdrawals', [
+                'customer_account_public_id' => $customerAccount['public_id'],
+                'amount_minor' => 3000,
+                'currency' => 'XAF',
+                'signature_public_id' => $signature['public_id'],
+                'signature_verification_method' => 'visual_match',
+                'idempotency_key' => 'vch-withdrawal-001',
+            ]);
+        $this->assertJsonSuccess($withdrawal, 201);
+        $withdrawal->assertJsonPath('data.teller_transaction.reference', 'RET-G001-'.$period.'-000001');
+
+        // And the reprint path reads the same number, not a regenerated one.
+        $list = $this->withApiHeaders(['Authorization' => $token])
+            ->getJson('/api/v1/teller-transactions?filter[teller_session_public_id]='.$sessionPublicId);
+        $this->assertJsonSuccess($list);
+        $listed = $list->json('data.teller_transactions');
+        self::assertIsArray($listed);
+        // The reprint path must carry the guichet too: the receipt prints it
+        // from here, and an unloaded agency relation silently blanks the field.
+        foreach ($listed as $listedTransaction) {
+            self::assertIsArray($listedTransaction);
+            self::assertSame('001', $listedTransaction['agency_code']);
+        }
+
+        $references = array_column($listed, 'reference');
+        sort($references);
+        self::assertSame([
+            'REC-G001-'.$period.'-000001',
+            'REC-G001-'.$period.'-000002',
+            'RET-G001-'.$period.'-000001',
+        ], $references);
+    }
+
+    /**
      * @return array{actor: User, teller: User, agencyCode: string, agencyName: string, tillPublicId: string, sessionPublicId: string, customerAccount: array{id: int, public_id: string}, signature: array{id: int, public_id: string}}
      */
     private function setUpJournal(): array

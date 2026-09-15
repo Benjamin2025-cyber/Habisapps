@@ -54,6 +54,17 @@ final class DatabaseSeeder extends Seeder
 
         $this->call(PcemfChartSeeder::class);
 
+        // Habibi Finance's own analytical breakdown of 5710 into the four
+        // caisse levels; needs the chart's 5710 to exist first.
+        $this->call(TillHierarchyLedgerAccountSeeder::class);
+
+        // 3081 / 3181 for the medium- and long-term credit families the
+        // extracted chart stops short of, plus the mise-en-place fee accounts.
+        $this->call(LoanSetupLedgerAccountSeeder::class);
+
+        // Needs both the operation code and 4611 to exist.
+        $this->call(LoanSetupMappingSeeder::class);
+
         // Agencies, staff accounts with known passwords and open accounting days
         // — a test bench, not installation data. Scoped to `local` rather than
         // "not production": under `testing` it would plant fixtures the suite

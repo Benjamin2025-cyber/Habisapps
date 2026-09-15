@@ -15,6 +15,7 @@ use App\Models\Client;
 use App\Models\CustomerAccount;
 use App\Models\LedgerAccount;
 use App\Models\User;
+use App\Support\Accounts\CustomerAccountNumberGenerator;
 use App\Support\References\ReferenceNumberGenerator;
 use App\Support\Security\SecurityAudit;
 use App\Support\Staff\StaffAgencyScope;
@@ -30,6 +31,7 @@ final class CustomerAccountWorkflow extends BaseController
         private readonly StaffAgencyScope $staffAgencyScope,
         private readonly ReferenceNumberGenerator $referenceNumberGenerator,
         private readonly OpenCustomerLedgerAccount $openCustomerLedgerAccount,
+        private readonly CustomerAccountNumberGenerator $accountNumbers,
     ) {}
 
     public function index(Request $request): CustomerAccountCollection|JsonResponse
@@ -159,9 +161,20 @@ final class CustomerAccountWorkflow extends BaseController
         }
 
         $providedAccountNumber = $request->string('account_number')->toString();
-        $accountNumber = $providedAccountNumber !== ''
-            ? $providedAccountNumber
-            : $this->referenceNumberGenerator->reserve('account');
+        if ($providedAccountNumber !== '') {
+            $accountNumber = $providedAccountNumber;
+        } elseif ($ledgerAccount instanceof LedgerAccount) {
+            // « Les numéros de comptes doivent représenter les numéros
+            // comptables auxquels ils correspondent » — ten digits built from
+            // the control account and the agency. See
+            // CustomerAccountNumberGenerator.
+            $accountNumber = $this->accountNumbers->generate($ledgerAccount->code, $agency->code);
+        } else {
+            // No control account resolved, so there is no accounting number to
+            // derive one from; fall back to the flat ACC- series rather than
+            // minting something that looks like a chart code and is not.
+            $accountNumber = $this->referenceNumberGenerator->reserve('account');
+        }
 
         // « le numéro du client soit directement son compte comptable » — the
         // resolved control (explicit or product default) is not posted to
@@ -238,6 +251,13 @@ final class CustomerAccountWorkflow extends BaseController
             unset($validated['ledger_account_public_id']);
         }
 
+        // Read before the product branch below, which writes into the same key.
+        // Taken from the request rather than $validated so a re-snapshot cannot
+        // be mistaken for something the operator typed.
+        $explicitFee = $request->has('opening_fee_due_minor')
+            ? $request->integer('opening_fee_due_minor')
+            : null;
+
         if (array_key_exists('account_product_public_id', $validated)) {
             $accountProduct = $this->resolveAccountProduct($validated['account_product_public_id']);
             if ($accountProduct === false) {
@@ -259,11 +279,24 @@ final class CustomerAccountWorkflow extends BaseController
              * change, never on someone editing the product's own tariff, which
              * is what must not reach accounts already opened.
              */
-            if ($customerAccount->opening_fee_collected_at === null) {
+            $productChanged = $validated['account_product_id'] !== $customerAccount->account_product_id;
+            if ($productChanged && $customerAccount->opening_fee_collected_at === null) {
                 $validated['opening_fee_due_minor'] = $accountProduct instanceof AccountProduct
                     ? max(0, $accountProduct->opening_fee_minor)
                     : 0;
             }
+        }
+
+        // Applied last, so a figure the operator typed outranks the default a
+        // product change would otherwise have re-snapshotted over it.
+        if ($explicitFee !== null) {
+            if ($customerAccount->opening_fee_collected_at !== null) {
+                return $this->respondUnprocessable(errors: ['opening_fee_due_minor' => [
+                    __('The opening fee has already been collected and can no longer be changed.'),
+                ]]);
+            }
+
+            $validated['opening_fee_due_minor'] = max(0, $explicitFee);
         }
 
         if (array_key_exists('currency', $validated) && is_string($validated['currency'])) {

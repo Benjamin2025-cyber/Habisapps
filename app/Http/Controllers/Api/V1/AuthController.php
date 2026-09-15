@@ -11,6 +11,7 @@ use App\Http\Requests\Api\V1\RequestPasswordResetOtpRequest;
 use App\Http\Requests\Api\V1\ResendActivationOtpRequest;
 use App\Http\Requests\Api\V1\ResetPasswordRequest;
 use App\Http\Resources\StaffUserResource;
+use App\Models\InstitutionProfile;
 use App\Models\OtpChallenge;
 use App\Models\User;
 use App\Support\Otp\OtpService;
@@ -202,11 +203,23 @@ final class AuthController extends BaseController
             return $this->respondUnauthorized();
         }
 
-        return $this->respondSuccess(
-            ['user' => StaffUserResource::make(
+        return $this->respondSuccess([
+            'user' => StaffUserResource::make(
                 $user->loadMissing(['agency', 'hrEmployee.supervisor', 'roles.permissions', 'permissions'])
-            )]
-        );
+            ),
+            /*
+             * The institution's own name, for the documents handed to customers
+             * — « Le logo à afficher sur les reçus est celui d'Habibi Finance
+             * S.A » (14/09/2026). It travels here rather than being read from
+             * /institution because a teller is the one who prints receipts and
+             * cannot see that profile: the rest of it is tax identifiers and
+             * approval numbers, and widening that read for a letterhead name
+             * would be the wrong trade. The name alone is on every document the
+             * counter already gives out.
+             */
+            'institution_name' => InstitutionProfile::query()->value('trade_name')
+                ?? InstitutionProfile::query()->value('legal_name'),
+        ]);
     }
 
     private function createAccessToken(User $user): NewAccessToken

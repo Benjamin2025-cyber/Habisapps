@@ -29,6 +29,7 @@ use App\Models\User;
 use App\Support\Accounting\AccountingBalanceCalculator;
 use App\Support\Accounting\AgencyLedgerMappingResolver;
 use App\Support\AccountingDay\AccountingDayGuard;
+use App\Support\CashOperations\CashVoucherNumberGenerator;
 use App\Support\Crm\ClientProxyMandateAuthorizer;
 use App\Support\Finance\PhysicalCashAmount;
 use App\Support\Security\SecurityAudit;
@@ -56,6 +57,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         private readonly AccountingDayGuard $accountingDayGuard,
         private readonly UserNotificationFeed $notifications,
         private readonly AgencyLedgerMappingResolver $mappingResolver,
+        private readonly CashVoucherNumberGenerator $voucherNumbers,
     ) {}
 
     /**
@@ -168,7 +170,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines', 'tenders'])
+                ->with(['agency', 'tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines', 'tenders'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
@@ -191,7 +193,13 @@ final class TellerCashTransactionWorkflow extends BaseController
             }
 
             $publicId = (string) Str::ulid();
-            $reference = 'CD-'.Str::upper(Str::random(10));
+            // REC-G001-2026-09-000042 — the nomenclature the accounting team
+            // numbers its paper pads with; see CashVoucherNumberGenerator.
+            $reference = $this->voucherNumbers->generate(
+                TellerTransaction::TYPE_CASH_DEPOSIT,
+                $tellerSession->agency?->code,
+                $accountingDay->business_date,
+            );
 
             $transaction = TellerTransaction::query()->create([
                 'public_id' => $publicId,
@@ -224,6 +232,7 @@ final class TellerCashTransactionWorkflow extends BaseController
                 'notification_status' => TellerTransaction::NOTIFICATION_NOT_REQUESTED,
                 'depositor_name' => $request->input('depositor_name'),
                 'depositor_address' => $request->input('depositor_address'),
+                'depositor_id_reference' => $request->input('depositor_id_reference'),
                 'initiator_type' => $initiator['initiator_type'],
                 'initiator_proxy_id' => $initiator['proxy_id'],
                 'description' => $request->input('description'),
@@ -394,7 +403,7 @@ final class TellerCashTransactionWorkflow extends BaseController
         $idempotencyKey = $this->idempotencyKey($request->header('Idempotency-Key'), $request->input('idempotency_key'));
         if ($idempotencyKey !== null) {
             $existing = TellerTransaction::query()
-                ->with(['tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines', 'tenders'])
+                ->with(['agency', 'tellerSession', 'till', 'customerAccount.client', 'journalEntry.lines', 'tenders'])
                 ->where('idempotency_key', $idempotencyKey)
                 ->first();
             if ($existing instanceof TellerTransaction) {
@@ -415,7 +424,11 @@ final class TellerCashTransactionWorkflow extends BaseController
                     throw new DomainException(__('domain.withdrawal_amount_exceeds_available_balance'));
                 }
 
-                $reference = 'CW-'.Str::upper(Str::random(10));
+                $reference = $this->voucherNumbers->generate(
+                    TellerTransaction::TYPE_CASH_WITHDRAWAL,
+                    $tellerSession->agency?->code,
+                    $accountingDay->business_date,
+                );
 
                 $transaction = TellerTransaction::query()->create([
                     'public_id' => (string) Str::ulid(),
@@ -1193,7 +1206,7 @@ final class TellerCashTransactionWorkflow extends BaseController
      */
     private function transactionResponse(TellerTransaction $transaction, ?array $openingFee, string $message): JsonResponse
     {
-        $transaction->loadMissing(['tellerSession', 'till', 'customerAccount.client', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount', 'tenders']);
+        $transaction->loadMissing(['agency', 'tellerSession', 'till', 'customerAccount.client', 'initiatorProxy', 'customerAccountSignature', 'signatureCheckedBy', 'journalEntry.lines.ledgerAccount', 'journalEntry.lines.customerAccount', 'tenders']);
         $journalEntry = $transaction->journalEntry;
 
         return $this->respondCreated([

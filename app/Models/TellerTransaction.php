@@ -45,6 +45,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'notification_channels',
     'notification_status',
     'depositor_name',
+    'depositor_id_reference',
     'depositor_address',
     'initiator_type',
     'initiator_proxy_id',
@@ -76,6 +77,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $offset_ledger_account_id
  * @property string|null $operation_code
  * @property string|null $depositor_name
+ * @property string|null $depositor_id_reference
  * @property string|null $depositor_address
  * @property int|null $customer_account_signature_id
  * @property string|null $signature_checked_at
@@ -169,6 +171,17 @@ final class TellerTransaction extends Model
     public function tellerSession(): BelongsTo
     {
         return $this->belongsTo(TellerSession::class);
+    }
+
+    /**
+     * The agency the operation was keyed in. Its code is the « code guichet »
+     * printed on the receipt and on the brouillard de caisse.
+     *
+     * @return BelongsTo<Agency, $this>
+     */
+    public function agency(): BelongsTo
+    {
+        return $this->belongsTo(Agency::class);
     }
 
     /** @return BelongsTo<Till, $this> */

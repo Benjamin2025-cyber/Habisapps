@@ -387,13 +387,24 @@ final class Module5CashInfrastructureTest extends TestCase
         $this->assertNoCashWorkflowRecords();
     }
 
-    public function test_till_assignment_requires_teller_role_and_one_active_till_per_teller(): void
+    /**
+     * Assignment says who is responsible for a post, and a cashier is
+     * responsible for several: the institution runs four levels of caisse —
+     * principale, générale d'agence, guichet, then a sub-caisse per module
+     * (fonctionnement, Campost, Orange Money, MTN, transferts…) — and the same
+     * person staffs more than one of them. Refusing the second assignment made
+     * that structure impossible to set up.
+     *
+     * The role check stays: only a teller or cashier may hold a till at all.
+     */
+    public function test_a_teller_may_hold_several_active_tills_but_not_a_manager(): void
     {
         $agency = $this->createAgency('CASH-F');
         $actor = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
         $teller = $this->createUserWithRole('teller', $agency['code'], $agency['name']);
         $managerUser = $this->createUserWithRole('agency-manager', $agency['code'], $agency['name']);
 
+        // Still refused: a manager is not a guichetier.
         $managerAssignment = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-manager-assignment')->plainTextToken])
             ->postJson('/api/v1/tills', [
                 'code' => 'TILL-MANAGER',
@@ -403,43 +414,27 @@ final class Module5CashInfrastructureTest extends TestCase
         $managerAssignment->assertStatus(422);
         $managerAssignment->assertJsonValidationErrors(['assigned_user_public_id']);
 
-        $first = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-first-active')->plainTextToken])
-            ->postJson('/api/v1/tills', [
-                'code' => 'TILL-FIRST',
-                'name' => 'First Active Till',
-                'assigned_user_public_id' => $teller->public_id,
-            ]);
-        $this->assertJsonSuccess($first, 201);
+        // The guichet till and two of its module sub-caisses, all active, all
+        // the same cashier — the shape the accounting team described.
+        foreach ([
+            ['571011', 'Caisse de guichet'],
+            ['5710113', 'Caisse des opérations courantes'],
+            ['5710118', 'Caisse des opérations Orange Money'],
+        ] as [$code, $name]) {
+            $created = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-'.$code)->plainTextToken])
+                ->postJson('/api/v1/tills', [
+                    'code' => $code,
+                    'name' => $name,
+                    'assigned_user_public_id' => $teller->public_id,
+                ]);
+            $this->assertJsonSuccess($created, 201);
+        }
 
-        $duplicateActive = $this->withApiHeaders([
-            'Authorization' => 'Bearer '.$actor->createToken('till-duplicate-active')->plainTextToken,
-            'X-Locale' => 'fr',
-        ])
-            ->postJson('/api/v1/tills', [
-                'code' => 'TILL-DUP-ACTIVE',
-                'name' => 'Duplicate Active Till',
-                'assigned_user_public_id' => $teller->public_id,
-            ]);
-        $duplicateActive->assertStatus(422);
-        $duplicateActive->assertJsonValidationErrors(['assigned_user_public_id']);
-        $duplicateActive->assertJsonPath('errors.assigned_user_public_id.0', 'Le guichetier sélectionné est déjà affecté à une autre caisse active.');
-
-        $inactive = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-inactive-assigned')->plainTextToken])
-            ->postJson('/api/v1/tills', [
-                'code' => 'TILL-INACTIVE',
-                'name' => 'Inactive Till',
-                'status' => 'inactive',
-                'assigned_user_public_id' => $teller->public_id,
-            ]);
-        $this->assertJsonSuccess($inactive, 201);
-        $inactivePublicId = $this->requireStringJsonPath($inactive, 'data.public_id');
-
-        $activateConflict = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('till-activate-conflict')->plainTextToken])
-            ->patchJson('/api/v1/tills/'.$inactivePublicId, [
-                'status' => 'active',
-            ]);
-        $activateConflict->assertStatus(422);
-        $activateConflict->assertJsonValidationErrors(['assigned_user_public_id']);
+        self::assertSame(3, DB::table('tills')
+            ->where('agency_id', $agency['id'])
+            ->where('assigned_user_id', $teller->id)
+            ->where('status', 'active')
+            ->count());
 
         $this->assertNoCashWorkflowRecords();
     }

@@ -24,6 +24,7 @@ use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class LoanCrudWorkflow extends BaseController
@@ -35,6 +36,7 @@ final class LoanCrudWorkflow extends BaseController
         private readonly LoanSetupState $setupState,
         private readonly LoanListQuery $loanListQuery,
         private readonly LoanDelinquencyProjection $delinquencyProjection,
+        private readonly OpenLoanAccount $openLoanAccount,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -137,7 +139,24 @@ final class LoanCrudWorkflow extends BaseController
             return $this->respondUnprocessable(errors: $graceErrors);
         }
 
-        $loan->save();
+        // « Le compte d'amortissement du prêt, des impayés, de virement et de
+        // recouvrement […] est créé automatiquement lors de la mise en place ».
+        // Opened before the save, so the loan is written once already carrying
+        // its four links — and both inside one transaction, because the account
+        // is useless without the loan: a failed insert would otherwise strand a
+        // customer account, its ledger divisionary and a consumed number in the
+        // 3282 series with nothing pointing at them.
+        $loan->setRelation('agency', $client->agency);
+        $loanAccount = DB::transaction(function () use ($loan, $product, $client): ?CustomerAccount {
+            $account = $this->openLoanAccount->openFor($loan, $product, $client);
+            $loan->save();
+
+            return $account;
+        });
+
+        if ($loanAccount instanceof CustomerAccount) {
+            $this->securityAudit->record('loan.account.opened', actor: $request->user(), subject: $loanAccount, request: $request);
+        }
 
         $this->securityAudit->record('loan.application.created', actor: $request->user(), subject: $loan, request: $request);
 

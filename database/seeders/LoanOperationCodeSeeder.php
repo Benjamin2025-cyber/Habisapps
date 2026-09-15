@@ -37,6 +37,8 @@ final class LoanOperationCodeSeeder extends Seeder
         ['code' => 'loan_setup_dossier_fee', 'label' => 'Frais de dossier', 'direction' => 'credit'],
         ['code' => 'loan_setup_principal_tax', 'label' => 'TVA sur le principal', 'direction' => 'credit'],
         ['code' => 'loan_setup_tax', 'label' => 'Taxe sur frais de dossier', 'direction' => 'credit'],
+        // 4611 « Fonds de Solidarité Décès sur prêts à court terme » (04/09/2026).
+        ['code' => 'loan_setup_death_fund', 'label' => 'Fonds de solidarité décès', 'direction' => 'credit'],
         ['code' => 'loan_setup_guarantee_deposit', 'label' => 'Dépôt de garantie', 'direction' => 'credit'],
     ];
 

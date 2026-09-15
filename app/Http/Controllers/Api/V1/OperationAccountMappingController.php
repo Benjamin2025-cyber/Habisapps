@@ -36,6 +36,7 @@ final class OperationAccountMappingController extends BaseController
         ['code' => 'loan_setup_dossier_fee', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_principal_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_tax', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
+        ['code' => 'loan_setup_death_fund', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         ['code' => 'loan_setup_guarantee_deposit', 'module' => 'loan', 'leg' => AgencyLedgerMappingResolver::LEG_CREDIT],
         // The account-opening commission credit. Listed for the same reason as
         // the loan legs: the automatic opening-fee sweep refuses a first deposit

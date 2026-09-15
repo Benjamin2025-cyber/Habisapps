@@ -299,10 +299,13 @@ final class Module3AccountingProductTest extends TestCase
 
     public function test_customer_account_number_is_auto_generated_when_omitted(): void
     {
-        $agency = $this->createAgency('AP-GEN');
+        // « Les numéros de comptes doivent représenter les numéros comptables
+        // auxquels ils correspondent » (14/09/2026, troisième préoccupation):
+        // control account 42 PERSONNEL at agency 007 yields 4200<ordre>007.
+        $agency = $this->createAgency('007');
         $actor = $this->createUserWithRole('platform-admin');
         $client = $this->createVerifiedClient($agency['id']);
-        $ledger = $this->createLedgerAccount($agency['id']);
+        $ledger = $this->createLedgerAccount($agency['id'], LedgerAccount::STATUS_ACTIVE, '42');
 
         $first = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('gen-1')->plainTextToken])
             ->postJson('/api/v1/customer-accounts', [
@@ -314,7 +317,8 @@ final class Module3AccountingProductTest extends TestCase
             ]);
         $this->assertJsonSuccess($first, 201);
         $firstNumber = $this->requireStringJsonPath($first, 'data.account_number');
-        self::assertMatchesRegularExpression('/^ACC\d{8}$/', $firstNumber);
+        // 42 right-padded into the four-digit field, order 001, agency 007.
+        self::assertSame('4200001007', $firstNumber);
 
         $second = $this->withApiHeaders(['Authorization' => 'Bearer '.$actor->createToken('gen-2')->plainTextToken])
             ->postJson('/api/v1/customer-accounts', [
@@ -326,7 +330,8 @@ final class Module3AccountingProductTest extends TestCase
             ]);
         $this->assertJsonSuccess($second, 201);
         $secondNumber = $this->requireStringJsonPath($second, 'data.account_number');
-        self::assertMatchesRegularExpression('/^ACC\d{8}$/', $secondNumber);
+        // The order number advances; the ledger and agency fields do not.
+        self::assertSame('4200002007', $secondNumber);
 
         // Sequential generation never collides.
         self::assertNotSame($firstNumber, $secondNumber);
@@ -765,13 +770,13 @@ final class Module3AccountingProductTest extends TestCase
     /**
      * @return array{id:int, public_id:string}
      */
-    private function createLedgerAccount(int $agencyId, string $status = LedgerAccount::STATUS_ACTIVE): array
+    private function createLedgerAccount(int $agencyId, string $status = LedgerAccount::STATUS_ACTIVE, ?string $code = null): array
     {
         $publicId = (string) Str::ulid();
         $id = DB::table('ledger_accounts')->insertGetId([
             'public_id' => $publicId,
             'agency_id' => $agencyId,
-            'code' => 'LA-'.Str::ulid(),
+            'code' => $code ?? 'LA-'.Str::ulid(),
             'name' => 'Customer Control',
             'account_class' => LedgerAccount::ACCOUNT_CLASS_TRESORERIE_INTERBANCAIRE,
             'normal_balance_side' => LedgerAccount::NORMAL_BALANCE_DEBIT,

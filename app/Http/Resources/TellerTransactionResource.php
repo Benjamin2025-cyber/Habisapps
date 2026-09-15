@@ -58,6 +58,10 @@ final class TellerTransactionResource extends JsonResource
             'tenders' => $this->tenderPayload($transaction),
             'depositor_name' => $transaction->depositor_name,
             'depositor_address' => $transaction->depositor_address,
+            'depositor_id_reference' => $transaction->depositor_id_reference,
+            // « Code guichet » — printed on the receipt and on the brouillard,
+            // where the same agency code already carries that name.
+            'agency_code' => $transaction->relationLoaded('agency') ? $transaction->agency?->code : null,
             'initiator_type' => $transaction->initiator_type,
             'initiator_proxy_public_id' => $transaction->relationLoaded('initiatorProxy') ? $transaction->initiatorProxy?->public_id : null,
             'customer_account_signature_public_id' => $transaction->relationLoaded('customerAccountSignature') ? $transaction->customerAccountSignature?->public_id : null,

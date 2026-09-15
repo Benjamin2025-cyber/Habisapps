@@ -54,6 +54,14 @@ final class CustomerAccount extends Model
     use HasAuditLog;
     use HasUlids;
 
+    /**
+     * `account_type` is free text mirroring the account product's family;
+     * a loan's own account has no product, so it names itself. The four links
+     * a loan carries — amortissement, impayés, virement, recouvrement — all
+     * point at one account of this type. See OpenLoanAccount.
+     */
+    public const TYPE_LOAN = 'loan';
+
     public const STATUS_ACTIVE = 'active';
 
     public const STATUS_SUSPENDED = 'suspended';

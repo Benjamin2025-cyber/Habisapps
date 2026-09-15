@@ -901,20 +901,27 @@ final class Module4CreditLoansTest extends TestCase
         $assess->assertJsonPath('data.loan.guarantee_deposit_amount_minor', 20000);
         $assess->assertJsonPath('data.loan.insurance_amount_minor', 4000);
         // Ordered by charge_type, the same order a repeat assessment reads back.
-        $assess->assertJsonPath('data.charges.0.charge_type', 'dossier_fee');
-        $assess->assertJsonPath('data.charges.0.assessed_amount_minor', 6000);
-        $assess->assertJsonPath('data.charges.0.metadata.non_refundable_after', 'setup_approval');
-        $assess->assertJsonPath('data.charges.1.charge_type', 'dossier_fee_tax');
-        $assess->assertJsonPath('data.charges.1.base_amount_minor', 6000);
-        $assess->assertJsonPath('data.charges.1.assessed_amount_minor', 1155);
-        $assess->assertJsonPath('data.charges.1.metadata.tax_base', 'dossier_fee');
-        $assess->assertJsonPath('data.charges.2.charge_type', 'guarantee_deposit');
-        $assess->assertJsonPath('data.charges.2.assessed_amount_minor', 20000);
-        $assess->assertJsonPath('data.charges.2.metadata.cannot_settle_unpaid_loans', true);
-        $assess->assertJsonPath('data.charges.3.charge_type', 'principal_tax');
-        $assess->assertJsonPath('data.charges.3.base_amount_minor', 220000);
-        $assess->assertJsonPath('data.charges.3.assessed_amount_minor', 42350);
-        $assess->assertJsonPath('data.charges.3.metadata.tax_base', 'principal_plus_interest');
+        // « Fonds de solidarité décès » sorts first and is a charge like the
+        // others: it used to be assessed onto the loan and then left there,
+        // never collected and never posted. It is collected and credited to
+        // 4611 (04/09/2026) — which is separate from the bancassurance premium
+        // workflow, as the rest of this test goes on to prove.
+        $assess->assertJsonPath('data.charges.0.charge_type', 'death_fund');
+        $assess->assertJsonPath('data.charges.0.assessed_amount_minor', 4000);
+        $assess->assertJsonPath('data.charges.1.charge_type', 'dossier_fee');
+        $assess->assertJsonPath('data.charges.1.assessed_amount_minor', 6000);
+        $assess->assertJsonPath('data.charges.1.metadata.non_refundable_after', 'setup_approval');
+        $assess->assertJsonPath('data.charges.2.charge_type', 'dossier_fee_tax');
+        $assess->assertJsonPath('data.charges.2.base_amount_minor', 6000);
+        $assess->assertJsonPath('data.charges.2.assessed_amount_minor', 1155);
+        $assess->assertJsonPath('data.charges.2.metadata.tax_base', 'dossier_fee');
+        $assess->assertJsonPath('data.charges.3.charge_type', 'guarantee_deposit');
+        $assess->assertJsonPath('data.charges.3.assessed_amount_minor', 20000);
+        $assess->assertJsonPath('data.charges.3.metadata.cannot_settle_unpaid_loans', true);
+        $assess->assertJsonPath('data.charges.4.charge_type', 'principal_tax');
+        $assess->assertJsonPath('data.charges.4.base_amount_minor', 220000);
+        $assess->assertJsonPath('data.charges.4.assessed_amount_minor', 42350);
+        $assess->assertJsonPath('data.charges.4.metadata.tax_base', 'principal_plus_interest');
 
         // Repeat assessment returns the identical payload, same order.
         $repeatPayload = $this->assessSetupCharges($actor, $loan->public_id);
@@ -936,7 +943,7 @@ final class Module4CreditLoansTest extends TestCase
             ->actingAsSanctum($actor)
             ->postJson('/api/v1/loans/'.$loan->public_id.'/setup-charges/assess');
         $this->assertJsonSuccess($repeat);
-        self::assertSame(4, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(5, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
         self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
         $feeIncomeLedgerId = $this->createRevenueLedger($agencyId, 'SETUP-FEE');
@@ -947,11 +954,12 @@ final class Module4CreditLoansTest extends TestCase
             'dossier_fee' => $feeIncomeLedgerId,
             'principal_tax' => $principalTaxPayableLedgerId,
             'dossier_fee_tax' => $taxPayableLedgerId,
+            'death_fund' => $this->createCustomerLiabilityLedger($agencyId, 'SETUP-DEATH-FUND'),
             'guarantee_deposit' => $guaranteeLiabilityLedgerId,
         ], 'XAF');
         $collectionLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-COLLECT');
         $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedgerId);
-        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 52350);
+        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 60000);
         $cashLedger = $this->createLedgerAccount($agencyId);
         $session = $this->createOpenTellerSession($agencyId, $cashLedger['id'], 500000);
 
@@ -976,7 +984,7 @@ final class Module4CreditLoansTest extends TestCase
         $chargePublicIds = DB::table('loan_charge_assessments')
             ->where('loan_id', $loan->id)
             ->pluck('public_id', 'charge_type');
-        foreach (['dossier_fee', 'principal_tax', 'dossier_fee_tax'] as $chargeType) {
+        foreach (['dossier_fee', 'principal_tax', 'dossier_fee_tax', 'death_fund'] as $chargeType) {
             $chargePublicId = $chargePublicIds->get($chargeType);
             self::assertIsString($chargePublicId);
 
@@ -3308,6 +3316,7 @@ final class Module4CreditLoansTest extends TestCase
             'dossier_fee' => 'loan_setup_dossier_fee',
             'principal_tax' => 'loan_setup_principal_tax',
             'dossier_fee_tax' => 'loan_setup_tax',
+            'death_fund' => 'loan_setup_death_fund',
             'guarantee_deposit' => 'loan_setup_guarantee_deposit',
             default => self::fail('Unsupported setup charge type '.$chargeType),
         };
@@ -3691,7 +3700,7 @@ final class Module4CreditLoansTest extends TestCase
         // Assess, and prove repeated assessment is idempotent (no duplicate rows).
         $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
         $this->assertJsonSuccess($this->assessSetupCharges($actor, $loan->public_id));
-        self::assertSame(4, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
+        self::assertSame(5, DB::table('loan_charge_assessments')->where('loan_id', $loan->id)->count());
         self::assertSame(0, DB::table('insurance_premium_assessments')->where('loan_id', $loan->id)->count());
 
         // After assessment: all assessed setup charges are visible and blocking.
@@ -3699,11 +3708,13 @@ final class Module4CreditLoansTest extends TestCase
         $assessed->assertJsonPath('data.readiness_status', 'collection_pending');
         $assessed->assertJsonPath('data.ready_for_disbursement', false);
         $assessed->assertJsonPath('data.loan_assurance.amount_minor', 4000);
-        $assessed->assertJsonPath('data.loan_assurance.blocking_disbursement', false);
+        // Assessed and not yet collected, so it holds the disbursement — while
+        // remaining outside the bancassurance premium workflow.
+        $assessed->assertJsonPath('data.loan_assurance.blocking_disbursement', true);
         $assessed->assertJsonPath('data.loan_assurance.managed_as_premium', false);
         $charges = $assessed->json('data.setup_charges');
         self::assertIsArray($charges);
-        self::assertCount(4, $charges);
+        self::assertCount(5, $charges);
         foreach ($charges as $charge) {
             self::assertIsArray($charge);
             self::assertSame('assessed', $charge['status']);
@@ -3740,11 +3751,12 @@ final class Module4CreditLoansTest extends TestCase
             'dossier_fee' => $feeIncomeLedgerId,
             'principal_tax' => $principalTaxPayableLedgerId,
             'dossier_fee_tax' => $taxPayableLedgerId,
+            'death_fund' => $this->createCustomerLiabilityLedger($agencyId, 'SETUP-DEATH-FUND'),
             'guarantee_deposit' => $guaranteeLiabilityLedgerId,
         ], 'XAF');
         $collectionLedgerId = $this->createCustomerLiabilityLedger($agencyId, 'SETUP-COLLECT');
         $collectionAccount = $this->createCustomerAccount($agencyId, $client['id'], $collectionLedgerId);
-        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 52350);
+        $this->fundCustomerAccount($agencyId, $collectionAccount['id'], $collectionLedgerId, 60000);
         $cashLedger = $this->createLedgerAccount($agencyId);
         $session = $this->createOpenTellerSession($agencyId, $cashLedger['id'], 500000);
         $transferLedger = $this->createLedgerAccount($agencyId);
@@ -3764,6 +3776,8 @@ final class Module4CreditLoansTest extends TestCase
         $feeChargePublicId = $chargePublicIds->get('dossier_fee');
         $principalTaxChargePublicId = $chargePublicIds->get('principal_tax');
         $taxChargePublicId = $chargePublicIds->get('dossier_fee_tax');
+        $deathFundChargePublicId = $chargePublicIds->get('death_fund');
+        self::assertIsString($deathFundChargePublicId);
         $guaranteeChargePublicId = $chargePublicIds->get('guarantee_deposit');
         self::assertIsString($feeChargePublicId);
         self::assertIsString($principalTaxChargePublicId);
@@ -3783,7 +3797,10 @@ final class Module4CreditLoansTest extends TestCase
         self::assertIsString($paidCharge['journal_entry_public_id']);
         self::assertTrue($this->chargeByType($afterOne->json('data.setup_charges'), 'dossier_fee_tax')['blocking_disbursement']);
 
-        // Collect the rest: both taxes from account and guarantee from cash. Loan assurance is not a premium collection step.
+        // Collect the rest: both taxes and the death fund from account, guarantee
+        // from cash. The death fund is a setup charge collected here — which is
+        // still not the bancassurance premium workflow, as the counts below show.
+        $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $deathFundChargePublicId, $collectionAccount['public_id'], 'collect-death_fund'));
         $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $principalTaxChargePublicId, $collectionAccount['public_id'], 'collect-principal_tax'));
         $this->assertJsonSuccess($this->collectFromAccount($actor, $loan->public_id, $taxChargePublicId, $collectionAccount['public_id'], 'collect-dossier_fee_tax'));
         $this->assertJsonSuccess($this->withApiHeaders()->actingAsSanctum($actor)
@@ -4346,7 +4363,7 @@ final class Module4CreditLoansTest extends TestCase
         // which blocks the counter rather than disbursement but blocks it just
         // as hard.
         $this->createOperationMapping('loan_principal_disbursement', 'loan', $agency, $this->createLedgerAccount($agency)['id'], null);
-        foreach (['loan_setup_dossier_fee', 'loan_setup_principal_tax', 'loan_setup_tax', 'loan_setup_guarantee_deposit'] as $code) {
+        foreach (['loan_setup_dossier_fee', 'loan_setup_principal_tax', 'loan_setup_tax', 'loan_setup_death_fund', 'loan_setup_guarantee_deposit'] as $code) {
             $this->createOperationMapping($code, 'loan', $agency, null, $this->createLedgerAccount($agency)['id']);
         }
         $this->createOperationMapping('account_opening_fee', 'accounting', $agency, null, $this->createLedgerAccount($agency)['id']);
@@ -4423,8 +4440,11 @@ final class Module4CreditLoansTest extends TestCase
         $inFrench = $this->withApiHeaders(['X-Locale' => 'fr'])->actingAsSanctum($actor)
             ->postJson('/api/v1/loans', $payload + ['number_of_installments' => 60]);
         $inFrench->assertStatus(422);
+        // And it names the bound. The accounting team's 04/09/2026 note asked
+        // « quelles sont les bornes minimum/maximum […] paramétrées » because a
+        // refusal that does not say what would be accepted sends them to ask.
         self::assertSame(
-            ['Le nombre d\'échéances dépasse la durée maximale du produit de prêt.'],
+            ['Le nombre d\'échéances dépasse la durée maximale du produit de prêt (12).'],
             $inFrench->json('errors.number_of_installments'),
         );
 

@@ -39,7 +39,7 @@ final class StoreCashWithdrawalRequest extends FormRequest
             'cheque_bank_name' => ['sometimes', 'nullable', 'string', 'max:128'],
             'cheque_issue_date' => ['sometimes', 'nullable', 'date'],
             'external_reference' => ['sometimes', 'nullable', 'string', 'max:128'],
-            'channel' => ['sometimes', 'nullable', Rule::in(['branch_counter', 'mobile_money', 'bank_transfer', 'clearing_house', 'internal_transfer'])],
+            'channel' => ['sometimes', 'nullable', Rule::in(['branch_counter', 'mobile_money', 'orange_money', 'mtn_mobile_money', 'bank_transfer', 'clearing_house', 'internal_transfer', 'other'])],
             'fee_policy_key' => ['sometimes', 'nullable', 'string', 'max:64'],
             'fee_amount_minor' => ['prohibited'],
             'notify_customer' => ['sometimes', 'boolean'],

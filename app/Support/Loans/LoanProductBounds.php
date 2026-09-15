@@ -13,6 +13,12 @@ use App\Models\LoanProduct;
  * complaint. The amount bound refuses loudly; the other two accepted silently,
  * which is the worse failure: nobody reports a loan that was created.
  *
+ * Each message names the bound it enforces. The accounting team's 04/09/2026
+ * note asked « quelles sont les bornes minimum/maximum de différé paramétrées »
+ * after a red message that refused a date without saying what would be
+ * accepted — a rejection that does not state the limit sends the user to ask
+ * someone, which is what happened.
+ *
  * The rule lives here because two paths write these fields — creating or
  * updating a loan, and rescheduling one — and a bound enforced on only one of
  * them is a bound that can be walked around.
@@ -30,22 +36,22 @@ final class LoanProductBounds
         $installments = self::intOrNull($values, 'number_of_installments');
         if ($installments !== null) {
             if ($product->min_term_count !== null && $installments < $product->min_term_count) {
-                $errors['number_of_installments'] = [(string) __('Number of instalments is below the loan product minimum term.')];
+                $errors['number_of_installments'] = [(string) __('Number of instalments is below the loan product minimum term of :min.', ['min' => $product->min_term_count])];
             }
 
             if ($product->max_term_count !== null && $installments > $product->max_term_count) {
-                $errors['number_of_installments'] = [(string) __('Number of instalments exceeds the loan product maximum term.')];
+                $errors['number_of_installments'] = [(string) __('Number of instalments exceeds the loan product maximum term of :max.', ['max' => $product->max_term_count])];
             }
         }
 
         $grace = self::intOrNull($values, 'grace_period_duration');
         if ($grace !== null) {
             if ($product->min_grace_period_days !== null && $grace < $product->min_grace_period_days) {
-                $errors['grace_period_duration'] = [(string) __('Grace period is below the loan product minimum.')];
+                $errors['grace_period_duration'] = [(string) __('Grace period is below the loan product minimum of :min days.', ['min' => $product->min_grace_period_days])];
             }
 
             if ($product->max_grace_period_days !== null && $grace > $product->max_grace_period_days) {
-                $errors['grace_period_duration'] = [(string) __('Grace period exceeds the loan product maximum.')];
+                $errors['grace_period_duration'] = [(string) __('Grace period exceeds the loan product maximum of :max days.', ['max' => $product->max_grace_period_days])];
             }
         }
 
