@@ -4220,6 +4220,81 @@ final class Module4CreditLoansTest extends TestCase
     }
 
     /**
+     * OpenLoanAccount links transfer_account_id to the loan's own account —
+     * the same column resolveTransferAccount() used to default to for a
+     * client's usual payout account. Neither the implicit default nor an
+     * explicit pick may resolve to the loan's own account: crediting it at
+     * disbursement is not a payout, it is the debit and the credit landing on
+     * the same balance and cancelling out, while the loan still reads as
+     * disbursed and the client receives nothing.
+     */
+    public function test_disbursement_refuses_the_loan_s_own_account_as_the_transfer_destination(): void
+    {
+        $actor = $this->createUserWithRole('platform-admin');
+        $agencyId = $this->createAgency('CR-SELFXFER');
+        $this->createChartLedger($agencyId, '3282', 'Crédits court terme', LedgerAccount::NORMAL_BALANCE_DEBIT);
+        $client = $this->createClientRecord($agencyId, 'verified');
+        $product = $this->createLoanProduct($agencyId);
+
+        $created = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans', [
+                'client_public_id' => $client['public_id'],
+                'loan_product_public_id' => $product->public_id,
+                'requested_amount_minor' => 300000,
+                'currency' => 'XAF',
+                'applied_on' => '2026-05-01',
+                'number_of_installments' => 6,
+            ]);
+        $this->assertJsonSuccess($created, 201);
+        $loan = Loan::query()->where('public_id', $created->json('data.public_id'))->firstOrFail();
+        self::assertIsInt($loan->amortization_account_id);
+        // OpenLoanAccount set this to the loan's own account, exactly the
+        // value the disbursement drawer used to pre-fill its picker with.
+        self::assertSame($loan->amortization_account_id, $loan->transfer_account_id);
+        $ownAccountPublicId = CustomerAccount::query()->findOrFail($loan->amortization_account_id)->public_id;
+
+        $loan->forceFill([
+            'status' => Loan::STATUS_APPROVED,
+            'approved_principal_minor' => 300000,
+            'approved_on' => '2026-05-01',
+        ])->save();
+
+        // The implicit default: no transfer_account_public_id in the request.
+        $implicit = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'business_date' => '2026-05-01',
+            ]);
+        $implicit->assertStatus(422);
+        $implicit->assertJsonValidationErrors(['disbursement']);
+
+        // An explicit pick of the same account is refused the same way.
+        $explicit = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'transfer_account_public_id' => $ownAccountPublicId,
+                'business_date' => '2026-05-01',
+            ]);
+        $explicit->assertStatus(422);
+        $explicit->assertJsonValidationErrors(['disbursement']);
+
+        self::assertSame(0, DB::table('loan_disbursements')->where('loan_id', $loan->id)->count());
+        self::assertSame(Loan::STATUS_APPROVED, $loan->refresh()->status);
+
+        // A genuine, separate payout account still works.
+        $transferLedger = $this->createLedgerAccount($agencyId);
+        $transferAccount = $this->createCustomerAccount($agencyId, $client['id'], $transferLedger['id']);
+        $posted = $this->withApiHeaders()->actingAsSanctum($actor)
+            ->postJson('/api/v1/loans/'.$loan->public_id.'/disburse', [
+                'disbursement_channel' => 'transfer_account',
+                'transfer_account_public_id' => $transferAccount['public_id'],
+                'business_date' => '2026-05-01',
+            ]);
+        $this->assertJsonSuccess($posted);
+        $posted->assertJsonPath('data.loan.status', Loan::STATUS_DISBURSED);
+    }
+
+    /**
      * A control account whose code fills most of its column (the test helpers'
      * ULID-suffixed codes mimic that) still yields a fitting, stable
      * divisionary code through the digest fallback.
