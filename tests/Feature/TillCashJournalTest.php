@@ -404,6 +404,50 @@ final class TillCashJournalTest extends TestCase
     }
 
     /**
+     * « Le mode de règlement […] orange money cameroun, mtn mobile money
+     * cameroun » (14/09/2026). The institution's caisse plan gives each
+     * operator its own sub-caisse — 5710118, 5710119 — separate from the
+     * guichet's cash. So an operation settled through an operator must not
+     * also move the drawer, or the count at close of day comes up short by
+     * exactly that amount.
+     */
+    public function test_a_mobile_money_operation_cannot_carry_cash(): void
+    {
+        $setup = $this->setUpJournal();
+        $token = 'Bearer '.$setup['actor']->createToken('momo')->plainTextToken;
+
+        $refused = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$setup['sessionPublicId'].'/deposits', [
+                'customer_account_public_id' => $setup['customerAccount']['public_id'],
+                'amount_minor' => 5000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'momo-cash-001',
+                'payment_method' => 'cash',
+                'cash_amount_minor' => 5000,
+                'channel' => 'orange_money',
+            ]);
+        $refused->assertStatus(422);
+        $refused->assertJsonValidationErrors(['channel']);
+
+        // Settled as a transfer through the operator, the channel is no longer
+        // what stands in the way. (This bench has no transfer mapping, so the
+        // operation still stops — on the mapping, which is the point: the
+        // refusal is no longer about the channel.)
+        $transfer = $this->withApiHeaders(['Authorization' => $token])
+            ->postJson('/api/v1/teller-sessions/'.$setup['sessionPublicId'].'/deposits', [
+                'customer_account_public_id' => $setup['customerAccount']['public_id'],
+                'amount_minor' => 5000,
+                'currency' => 'XAF',
+                'idempotency_key' => 'momo-transfer-001',
+                'payment_method' => 'transfer',
+                'transfer_amount_minor' => 5000,
+                'channel' => 'orange_money',
+                'external_reference' => 'OM-778899',
+            ]);
+        self::assertArrayNotHasKey('channel', (array) $transfer->json('errors'));
+    }
+
+    /**
      * @return array{actor: User, teller: User, agencyCode: string, agencyName: string, tillPublicId: string, sessionPublicId: string, customerAccount: array{id: int, public_id: string}, signature: array{id: int, public_id: string}}
      */
     private function setUpJournal(): array

@@ -89,7 +89,7 @@ final class LoanSetupLedgerAccountSeeder extends Seeder
             $created += count(array_filter($this->seedNamespace($agency->id), static fn (?int $id): bool => $id !== null));
         }
 
-        $this->command->info(sprintf(
+        $this->command?->info(sprintf(
             'Loan set-up chart: %d account%s created across %d agenc%s.',
             $created,
             $created === 1 ? '' : 's',

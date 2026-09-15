@@ -45,6 +45,11 @@ final class CreateAgency
                 app(AssignAgencyManager::class)->execute($agency, $manager, 'agency-manager');
             }
 
+            // An agency with no chart of accounts cannot open a till or post an
+            // operation, and nothing on screen explains why. Provisioned here,
+            // inside the same transaction, so the two cannot come apart.
+            app(ProvisionAgencyLedgerAccounts::class)->execute($agency);
+
             return $agency->refresh()->loadMissing('manager');
         });
     }

@@ -48,6 +48,13 @@ use InvalidArgumentException;
  */
 final class TellerCashTransactionWorkflow extends BaseController
 {
+    /**
+     * Settlement channels that move money outside the guichet's cash position.
+     *
+     * @var array<int, string>
+     */
+    private const array MOBILE_MONEY_CHANNELS = ['mobile_money', 'orange_money', 'mtn_mobile_money'];
+
     public function __construct(
         private readonly SecurityAudit $securityAudit,
         private readonly StaffAgencyScope $staffAgencyScope,
@@ -703,6 +710,16 @@ final class TellerCashTransactionWorkflow extends BaseController
             if ($positiveComponents < 2 || $cashAmount + $chequeAmount + $transferAmount !== $amountMinor) {
                 $errors['payment_method'][] = 'Mixed payments require at least two positive components whose total equals amount_minor.';
             }
+        }
+
+        // Mobile money never enters the drawer. The institution's own caisse plan
+        // gives Orange Money and MTN their own sub-caisses (5710118, 5710119),
+        // separate from the guichet's cash, so an operation settled through an
+        // operator cannot carry a cash component: counted at close of day, the
+        // drawer would be short by exactly that amount.
+        $channel = $request->input('channel');
+        if (is_string($channel) && in_array($channel, self::MOBILE_MONEY_CHANNELS, true) && $cashAmount > 0) {
+            $errors['channel'][] = 'Mobile money settles outside the till: the operation cannot carry a cash component.';
         }
 
         if ($chequeAmount > 0) {

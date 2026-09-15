@@ -67,7 +67,7 @@ final class TillHierarchyLedgerAccountSeeder extends Seeder
     {
         $agencies = Agency::query()->get(['id', 'code'])->all();
         if ($agencies === []) {
-            $this->command->warn('No agency exists: nothing to seed.');
+            $this->command?->warn('No agency exists: nothing to seed.');
 
             return;
         }
@@ -77,7 +77,7 @@ final class TillHierarchyLedgerAccountSeeder extends Seeder
             $created += $this->seedAgency($agency->id);
         }
 
-        $this->command->info(sprintf(
+        $this->command?->info(sprintf(
             'Till hierarchy: %d caisse account%s created across %d agenc%s.',
             $created,
             $created === 1 ? '' : 's',

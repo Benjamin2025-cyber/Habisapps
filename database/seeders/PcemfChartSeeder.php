@@ -50,7 +50,7 @@ final class PcemfChartSeeder extends Seeder
 
         $agencies = Agency::query()->get(['id', 'code'])->all();
         if ($agencies === []) {
-            $this->command->warn('No agency exists: only the institution-level grouping accounts will be created.');
+            $this->command?->warn('No agency exists: only the institution-level grouping accounts will be created.');
         }
 
         // Parents first: a detail account references its institution parent, and
@@ -59,7 +59,7 @@ final class PcemfChartSeeder extends Seeder
         $created = $this->seedAgencyDetailAccounts($accounts, $byCode, $rootSides, $agencies, $institutionIds);
 
         $provisional = count(array_filter($rootSides, static fn (array $r): bool => ! $r['confirmed']));
-        $this->command->info(sprintf(
+        $this->command?->info(sprintf(
             'PCEMF chart: %d institution grouping accounts, %d agency detail accounts across %d agenc%s.',
             count($institutionIds),
             $created,
@@ -67,7 +67,7 @@ final class PcemfChartSeeder extends Seeder
             count($agencies) === 1 ? 'y' : 'ies',
         ));
         if ($provisional > 0) {
-            $this->command->warn(sprintf(
+            $this->command?->warn(sprintf(
                 '%d of %d root accounts carry a PROVISIONAL normal balance side, pending confirmation by the '
                 .'accounting team. Correct them in database/data/pcemf-chart.json before any entry is posted; '
                 .'the API keeps the side editable only while an account has no movements.',

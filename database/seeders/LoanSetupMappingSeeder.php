@@ -63,7 +63,7 @@ final class LoanSetupMappingSeeder extends Seeder
     {
         $operationCodeId = DB::table('operation_codes')->where('code', self::OPERATION_CODE)->value('id');
         if (! is_int($operationCodeId)) {
-            $this->command->warn('Operation code '.self::OPERATION_CODE.' is missing: run LoanOperationCodeSeeder first.');
+            $this->command?->warn('Operation code '.self::OPERATION_CODE.' is missing: run LoanOperationCodeSeeder first.');
 
             return;
         }
@@ -76,7 +76,7 @@ final class LoanSetupMappingSeeder extends Seeder
                 ->value('id');
 
             if (! is_int($ledgerAccountId)) {
-                $this->command->warn(sprintf(
+                $this->command?->warn(sprintf(
                     'Agency %d has no %s account: run LoanSetupLedgerAccountSeeder first.',
                     $agency->id,
                     self::LEDGER_CODE,
@@ -115,7 +115,7 @@ final class LoanSetupMappingSeeder extends Seeder
             $created++;
         }
 
-        $this->command->info(sprintf('Death-fund mapping: %d agenc%s pointed at %s.', $created, $created === 1 ? 'y' : 'ies', self::LEDGER_CODE));
+        $this->command?->info(sprintf('Death-fund mapping: %d agenc%s pointed at %s.', $created, $created === 1 ? 'y' : 'ies', self::LEDGER_CODE));
     }
 
     /**
@@ -155,7 +155,7 @@ final class LoanSetupMappingSeeder extends Seeder
         }
 
         if ($repaired > 0) {
-            $this->command->info(sprintf(
+            $this->command?->info(sprintf(
                 'Guarantee deposit: %d mapping%s moved from %s to %s.',
                 $repaired,
                 $repaired === 1 ? '' : 's',
